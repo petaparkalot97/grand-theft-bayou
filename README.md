@@ -40,14 +40,47 @@ generated in the browser at load.
   poles and streetlamps are nearest the camera, so the whole strip reads as lit
   without blowing the forward renderer's per-object light budget.
 
+All of the generated surfaces are built during `boot()`, between paints, so the
+loader keeps reporting progress — doing it at module scope froze the menu on
+"loading assets…" for the whole build.
+
+## Characters — the Hoodrats
+
+`src/characters.js` builds the Hoodrats procedurally: **two crews, red and
+blue, in both sexes**, modelled on the reference photos — do-rag on the men, a
+tied headband on the women, white ribbed tank (cropped on the women), crew
+belt or leggings, baggy jeans, matching high-tops, chain and pendant, hoop
+earrings.
+
+They are built in code rather than loaded because no pack in the project has
+anything close, and one builder then covers every combination plus per-spawn
+variation (skin tone, build, denim wash, straight vs. curly hair) from a seed.
+Geometry is shared across every instance; materials are shared too and only
+cloned for an individual when it starts to fade out on death.
+
+A Hoodrat exposes the same surface as an `AnimatedSprite` — `play` / `update` /
+`setFlip` / `finished` / `material.opacity` — so it drops straight into the
+enemy system and `updateEnemy()` never has to know it is 3D. It measures its
+own travel each frame to face where it is walking and to scale the stride to
+its real ground speed, so the same clip covers an amble and a sprint.
+Animations: `idle`, `walk`, `attack`, `hurt`, `death`.
+
+Open **`tools/characters.html`** on the dev server to inspect them — turntable,
+orbit, animation switcher and a reroll for fresh variation.
+
 ## Run
 
-```sh
-cd game
-node serve.mjs 8899
-```
+**It has to be served over http.** Double-clicking `index.html` gives the page a
+`file://` origin, and browsers block ES module loads from there — `src/main.js`
+never runs and the menu sits on "loading assets…" forever. The page now detects
+this and says so rather than hanging silently.
 
-Open <http://localhost:8899> and hit **Start the story**.
+- **Windows:** double-click **`start-game.cmd`** — it starts the server and opens
+  the browser for you.
+- **Anywhere:** `npm start` (or `node serve.mjs 8899`), then open
+  <http://localhost:8899>.
+
+Then hit **Start the story**.
 
 ### Controls
 

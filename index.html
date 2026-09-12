@@ -149,6 +149,30 @@
 
 <audio id="music" src="./assets/audio/theme.mp3" loop preload="auto"></audio>
 
+<script>
+// Double-clicking this file opens it as file:// , and browsers block ES module
+// loads from that origin — src/main.js never runs, so the menu would sit on
+// "loading assets…" forever with no clue why. Say what's wrong instead.
+// Deliberately NOT type="module": this has to run when modules can't.
+(function () {
+  if (location.protocol !== "file:") return;
+  document.addEventListener("DOMContentLoaded", function () {
+    var btn = document.getElementById("startBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "Needs a local server"; }
+    var note = document.getElementById("loadNote");
+    if (!note) return;
+    note.innerHTML =
+      "<b>This page can't run from a file.</b><br>" +
+      "Browsers block ES modules on <code>file://</code>, so the game never loads.<br><br>" +
+      "Double-click <b>start-game.cmd</b> in the project folder &mdash; or run " +
+      "<code>npm start</code> &mdash; then open <b>http://localhost:8899</b>";
+    note.style.cssText =
+      "opacity:1;font-size:13px;line-height:1.7;max-width:560px;color:#ffcf8a;" +
+      "background:rgba(4,6,4,.72);border:1px solid rgba(232,161,58,.45);" +
+      "border-radius:8px;padding:14px 18px";
+  });
+})();
+</script>
 <script type="importmap">
 {
   "imports": {

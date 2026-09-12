@@ -26,10 +26,16 @@ import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 
 // --------------------------------------------------------------- quality tiers
 // `scale` is the long edge, in pixels, the internal render buffer aims for.
+// `derive` caps the generated normal/ORM maps. Do not raise it past 512: the
+// derived detail is mostly high-frequency micro-noise that gains nothing at
+// 1024, while the CPU cost of the material pass scales with its square — at
+// 1024 the load pass took long enough to look like the game had hung. Do not
+// drop it below 256 either, or surfaces tiled many times (the highway repeats
+// its asphalt ~62x) band visibly.
 export const TIERS = {
-  ultra:  { name: "4K ULTRA",    scale: 3840, shadow: 4096, ao: true,  bloom: true,  smaa: true,  derive: 1024 },
+  ultra:  { name: "4K ULTRA",    scale: 3840, shadow: 4096, ao: true,  bloom: true,  smaa: true,  derive: 512 },
   high:   { name: "HIGH",        scale: 2560, shadow: 3072, ao: true,  bloom: true,  smaa: true,  derive: 512  },
-  medium: { name: "BALANCED",    scale: 1920, shadow: 2048, ao: false, bloom: true,  smaa: true,  derive: 512  },
+  medium: { name: "BALANCED",    scale: 1920, shadow: 2048, ao: false, bloom: true,  smaa: true,  derive: 256  },
   low:    { name: "PERFORMANCE", scale: 1280, shadow: 1024, ao: false, bloom: false, smaa: false, derive: 256  },
 };
 const TIER_ORDER = ["low", "medium", "high", "ultra"];
@@ -509,7 +515,9 @@ const RULES = [
     set: { metalness: 0, roughness: 0.96, envMapIntensity: 0.5 }, normalScale: 1.5, tiles: 9 },
 
   { key: "paint", microRepeat: 3,
-    re: /paint|carbody|car_?body|carpaint|\bcar\b|vehicle|chassis|hood|fender|bonnet|sedan|coupe/i,
+    // \b on "hood" matters: without it "hoodrat" matches and every Hoodrat
+    // material comes out as clearcoat car paint.
+    re: /paint|carbody|car_?body|carpaint|\bcar\b|vehicle|chassis|\bhood\b|fender|bonnet|sedan|coupe/i,
     set: { metalness: 0.75, roughness: 0.26, envMapIntensity: 1.7,
            clearcoat: 1, clearcoatRoughness: 0.05 },
     physical: true, normalScale: 0.25 },

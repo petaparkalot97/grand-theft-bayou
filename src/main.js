@@ -6,6 +6,7 @@ import {
   GFX, TIERS, autoTier, nextTier, initRenderer, createEnvironment,
   createComposer, createGovernor, realize, surface,
 } from "./graphics.js";
+import { randomHoodrat } from "./characters.js";
 
 // ---------------------------------------------------------------- config
 // North Louisiana, US-167: Chatham (south) -> Monroe strip (middle) -> Ruston (north).
@@ -123,6 +124,10 @@ scene.add(moon);
 scene.add(moon.target);
 
 // ---------------------------------------------------------------- helpers
+/** Let the browser paint before the next block of synchronous work. */
+const paint = () =>
+  new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+
 const loadManager = new THREE.LoadingManager();
 const gltfLoader = new GLTFLoader(loadManager);
 const fbxLoader = new FBXLoader(loadManager);
@@ -142,24 +147,24 @@ const rand = (lo, hi) => lo + (hi - lo) * rng();
 // Bayou floor: the same hand-mixed swamp palette as before, but at 4x the
 // resolution and run through the PBR deriver so it gets real relief.
 function groundTexture() {
-  const S = 2048;
+  const S = 1024;
   const c = document.createElement("canvas");
   c.width = c.height = S;
   const x = c.getContext("2d", { willReadFrequently: true });
   x.fillStyle = "#2e3d24"; x.fillRect(0, 0, S, S);
   const cols = ["#37481f", "#283a2a", "#3d3016", "#22331c", "#45532b", "#1a2a16", "#4e5a33"];
-  for (let i = 0; i < 26000; i++) {
+  for (let i = 0; i < 7000; i++) {
     x.fillStyle = cols[(Math.random() * cols.length) | 0];
     x.globalAlpha = 0.1 + Math.random() * 0.22;
-    const r = 2 + Math.random() * 26;
+    const r = 1 + Math.random() * 13;
     x.beginPath();
     x.ellipse(Math.random() * S, Math.random() * S, r, r * (0.4 + Math.random()), Math.random() * 6, 0, 7);
     x.fill();
   }
   // blades / litter, so the surface has fine detail to catch the moonlight
   x.lineWidth = 1;
-  for (let i = 0; i < 14000; i++) {
-    const px = Math.random() * S, py = Math.random() * S, a = Math.random() * 6, len = 3 + Math.random() * 11;
+  for (let i = 0; i < 4000; i++) {
+    const px = Math.random() * S, py = Math.random() * S, a = Math.random() * 6, len = 2 + Math.random() * 6;
     x.strokeStyle = cols[(Math.random() * cols.length) | 0];
     x.globalAlpha = 0.25 + Math.random() * 0.45;
     x.beginPath();
@@ -176,19 +181,21 @@ function groundTexture() {
   return t;
 }
 
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(WORLD * 2.4, WORLD * 2.4, 1, 1),
-  new THREE.MeshStandardMaterial({ map: groundTexture(), roughness: 1 })
-);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-ground.castShadow = false;
-scene.add(ground);
-realize(ground, { hint: "grass ground", shadows: false });
-ground.receiveShadow = true;
-// The derived maps inherit the albedo's repeat, which is what we want here, but
-// the relief needs dialling back at this tiling or it reads as gravel.
-ground.material.normalScale.set(0.6, 0.6);
+let ground;
+function buildGround() {
+  ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(WORLD * 2.4, WORLD * 2.4, 1, 1),
+    new THREE.MeshStandardMaterial({ map: groundTexture(), roughness: 1 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.castShadow = false;
+  scene.add(ground);
+  realize(ground, { hint: "grass ground", shadows: false });
+  ground.receiveShadow = true;
+  // The derived maps inherit the albedo's repeat, which is what we want here,
+  // but the relief needs dialling back at this tiling or it reads as gravel.
+  ground.material.normalScale.set(0.6, 0.6);
+}
 
 // Standing bayou water. A true mirror finish reflects the whole sky probe and
 // reads as pale sand from a high camera, so this is deliberately a duller,
@@ -296,7 +303,6 @@ function buildTrees() {
   trunks.count = foliage.count = n;
   scene.add(trunks, foliage);
 }
-buildTrees();
 
 // ---------------------------------------------------------------- kit loading
 const urbanTex = {};
@@ -595,13 +601,16 @@ const signMat = () => new THREE.MeshStandardMaterial({
 });
 // Real aggregate asphalt: 2K albedo + derived normal/ORM, so headlights and
 // moonlight actually skid across the grain instead of hitting a flat slab.
-const asphalt = surface("asphalt", 2048);
-const asphaltMat = asphalt.material(6, { envMapIntensity: 0.9 });
-asphaltMat.normalScale.set(1.9, 1.9);
+let asphalt, asphaltMat;
+function buildAsphalt() {
+  asphalt = surface("asphalt", 1024);
+  asphaltMat = asphalt.material(6, { envMapIntensity: 0.9 });
+  asphaltMat.normalScale.set(1.9, 1.9);
+}
 
 // Painted stalls, drawn over the same aggregate so the derived relief lines up.
 function carParkTexture() {
-  const S = 1024;
+  const S = 512;
   const c = document.createElement("canvas");
   c.width = c.height = S;
   const x = c.getContext("2d");
@@ -625,7 +634,7 @@ function carParkTexture() {
   t.anisotropy = GFX.maxAniso;
   return t;
 }
-const parkTex = carParkTexture();
+let parkTex;
 
 function makePopeyes(x, z, rot = 0) {
   const g = new THREE.Group();
@@ -813,8 +822,11 @@ const ENEMY_TYPES = {
   // recolour so he never reads as the player. Hoodrat is the 'oldman' sheet, cool.
   redneck: { label: "Redneck", kind: "sprite", atlas: "redneck", tint: 0xd6402a,
              h: 2.0, hp: 5, speed: 3.9, aggro: 22, melee: 1.9, dmg: 11, atkGap: 1.1 },
-  hoodrat: { label: "Hoodrat", kind: "sprite", atlas: "oldman", tint: 0x6d95d6,
-             h: 1.95, hp: 4, speed: 4.7, aggro: 24, melee: 1.8, dmg: 8, atkGap: 0.85 },
+  // Hoodrats are 3D actors now (src/characters.js) — red and blue crews, both
+  // sexes. They satisfy the same interface as an AnimatedSprite, so nothing in
+  // updateEnemy() has to care which they are.
+  hoodrat: { label: "Hoodrat", kind: "actor", tint: 0x6d95d6,
+             h: 1.92, hp: 4, speed: 4.7, aggro: 24, melee: 1.8, dmg: 8, atkGap: 0.85 },
   hog:     { label: "Feral Hog", kind: "hog", tint: 0x000000,
              h: 1.0, hp: 6, speed: 2.3, aggro: 18, melee: 1.7, dmg: 20, atkGap: 1.6 },
 };
@@ -852,6 +864,8 @@ function spawnEnemy(typeName, x, z) {
   let view;
   if (T.kind === "hog") {
     view = buildHog();
+  } else if (T.kind === "actor") {
+    view = randomHoodrat(rng, T.h);
   } else {
     view = new AnimatedSprite(atlases[T.atlas], T.h);
     view.setTint(T.tint);
@@ -2169,7 +2183,25 @@ async function boot() {
   player.position.copy(playerPos);
   scene.add(player);
 
+  // Generating the world's PBR surfaces is a few seconds of synchronous canvas
+  // work. It used to run at module top level, which froze the page on
+  // "loading assets…" with no feedback and looked like the game had hung.
+  // Staged here instead, with a paint between each step.
+  loadNote.textContent = "pouring the asphalt…";
+  await paint();
+  buildAsphalt();
+  parkTex = carParkTexture();
+
+  loadNote.textContent = "laying the bayou floor…";
+  await paint();
+  buildGround();
+
+  loadNote.textContent = "planting the swamp…";
+  await paint();
+  buildTrees();
+
   loadNote.textContent = "building the parish…";
+  await paint();
   await buildLevel();
 
   // Final sweep: the hand-built landmarks (Popeyes, trailers, water towers,

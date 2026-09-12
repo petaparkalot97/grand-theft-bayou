@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hoodrats — character viewer</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0e12; }
+  body { font-family: Arial, system-ui, sans-serif; color: #e8e6df; }
+  canvas { display: block; }
+  #bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 5;
+    display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+    padding: 10px 16px; background: rgba(8, 11, 14, .72);
+    border-bottom: 1px solid rgba(150, 180, 150, .18); backdrop-filter: blur(4px);
+  }
+  #bar h1 { font-size: 14px; letter-spacing: .16em; text-transform: uppercase; font-weight: 900; }
+  #bar h1 b { color: #d2434b; }
+  #bar h1 i { color: #3a63c6; font-style: normal; }
+  .grp { display: flex; gap: 6px; align-items: center; }
+  .grp span { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .5; }
+  button {
+    cursor: pointer; font: inherit; font-size: 11px; letter-spacing: .06em;
+    text-transform: uppercase; padding: 5px 11px; border-radius: 5px;
+    border: 1px solid rgba(160, 190, 160, .28); background: rgba(255,255,255,.05); color: #e8e6df;
+  }
+  button:hover { background: rgba(255,255,255,.12); }
+  button.on { background: #2f5a2a; border-color: #6fbf5a; color: #f2fbe8; }
+  #labels { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
+  #labels div {
+    position: absolute; transform: translate(-50%, 0); text-align: center;
+    font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    text-shadow: 0 2px 6px #000; opacity: .85; white-space: nowrap;
+  }
+  #hint {
+    position: fixed; bottom: 10px; left: 16px; z-index: 5;
+    font-size: 11px; opacity: .45; letter-spacing: .06em;
+  }
+</style>
+</head>
+<body>
+<div id="bar">
+  <h1>Hoodrats &mdash; <b>Red</b> / <i>Blue</i> crews</h1>
+  <div class="grp"><span>Anim</span><span id="anims"></span></div>
+  <div class="grp"><span>View</span>
+    <button id="spin" class="on">Turntable</button>
+    <button id="reroll">Reroll</button>
+  </div>
+</div>
+<div id="labels"></div>
+<div id="hint">drag to orbit &middot; scroll to zoom</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from "three";
+import { initRenderer, createEnvironment, surface } from "../src/graphics.js";
+import { makeHoodrat } from "../src/characters.js";
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+initRenderer(renderer);
+renderer.toneMappingExposure = 1.15;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 200);
+
+// Same sky probe the game uses, but lifted above the horizon — this is a
+// showroom, not the bayou at midnight.
+createEnvironment(scene, renderer, {
+  elevation: 8, azimuth: 160, turbidity: 3.5, rayleigh: 1.6,
+  environmentIntensity: 1.0, backgroundIntensity: 0.55,
+});
+
+const key = new THREE.DirectionalLight(0xfff2e0, 2.6);
+key.position.set(4, 7, 6);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = -5; key.shadow.camera.right = 5;
+key.shadow.camera.top = 5; key.shadow.camera.bottom = -5;
+key.shadow.camera.far = 30;
+key.shadow.bias = -0.0005;
+key.shadow.normalBias = 0.02;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x9fc4ff, 1.4);
+rim.position.set(-5, 3, -6);
+scene.add(rim);
+
+const floorSrc = surface("concrete", 1024);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), floorSrc.material(10));
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// --------------------------------------------------------------- the roster
+const ROSTER = [
+  { sex: "m", crew: "red",  label: "Red crew · male" },
+  { sex: "m", crew: "blue", label: "Blue crew · male" },
+  { sex: "f", crew: "red",  label: "Red crew · female" },
+  { sex: "f", crew: "blue", label: "Blue crew · female" },
+];
+const SPACING = 1.45;
+const ANIMS = ["idle", "walk", "attack", "hurt", "death"];
+let cast = [];
+let current = "idle";
+
+function build(seedBase) {
+  for (const c of cast) scene.remove(c);
+  cast = ROSTER.map((r, i) => {
+    const h = makeHoodrat({ sex: r.sex, crew: r.crew, seed: seedBase + i * 7919 });
+    h.position.x = (i - (ROSTER.length - 1) / 2) * SPACING;
+    h.play(current, { force: true });
+    scene.add(h);
+    return h;
+  });
+}
+build(20260912);
+
+// --------------------------------------------------------------- controls
+const animBox = document.getElementById("anims");
+ANIMS.forEach((a) => {
+  const b = document.createElement("button");
+  b.textContent = a;
+  b.className = a === current ? "on" : "";
+  b.onclick = () => {
+    current = a;
+    [...animBox.children].forEach((c) => (c.className = c.textContent === a ? "on" : ""));
+    cast.forEach((c) => c.play(a, { force: true, loop: a !== "death" }));
+  };
+  animBox.appendChild(b);
+});
+
+let spinning = true;
+document.getElementById("spin").onclick = (e) => {
+  spinning = !spinning;
+  e.target.className = spinning ? "on" : "";
+};
+document.getElementById("reroll").onclick = () => build((Math.random() * 1e9) | 0);
+
+// orbit
+let yaw = 0, pitch = 0.1, dist = 6.4, drag = false, lx = 0, ly = 0;
+renderer.domElement.addEventListener("mousedown", (e) => { drag = true; lx = e.clientX; ly = e.clientY; });
+addEventListener("mouseup", () => (drag = false));
+addEventListener("mousemove", (e) => {
+  if (!drag) return;
+  yaw -= (e.clientX - lx) * 0.006;
+  pitch = Math.max(-0.25, Math.min(0.8, pitch + (e.clientY - ly) * 0.004));
+  lx = e.clientX; ly = e.clientY;
+});
+renderer.domElement.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  dist = Math.max(1.6, Math.min(12, dist + Math.sign(e.deltaY) * 0.35));
+}, { passive: false });
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// --------------------------------------------------------------- labels
+const labelBox = document.getElementById("labels");
+const labels = ROSTER.map((r) => {
+  const d = document.createElement("div");
+  d.textContent = r.label;
+  labelBox.appendChild(d);
+  return d;
+});
+
+// --------------------------------------------------------------- loop
+const clock = new THREE.Clock();
+const focus = new THREE.Vector3(0, 1.0, 0);
+const probe = new THREE.Vector3();
+let deathHold = 0;
+
+function tick() {
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (spinning) yaw += dt * 0.28;
+
+  // The walk clip is driven by real ground speed, so slide the cast sideways
+  // on a treadmill to make it play — same code path the game exercises.
+  if (current === "walk") {
+    const t = clock.elapsedTime;
+    cast.forEach((c, i) => { c.position.z = Math.sin(t * 0.7 + i) * 0.9; });
+  }
+  // loop the death clip so it's actually watchable
+  if (current === "death") {
+    deathHold += dt;
+    if (deathHold > 2.2) { deathHold = 0; cast.forEach((c) => c.play("death", { force: true, loop: false })); }
+  } else deathHold = 0;
+
+  cast.forEach((c) => c.update(dt));
+
+  camera.position.set(
+    focus.x + Math.sin(yaw) * Math.cos(pitch) * dist,
+    focus.y + Math.sin(pitch) * dist + 0.15,
+    focus.z + Math.cos(yaw) * Math.cos(pitch) * dist
+  );
+  camera.lookAt(focus);
+
+  cast.forEach((c, i) => {
+    probe.set(c.position.x, 2.15, c.position.z).project(camera);
+    const vis = probe.z < 1;
+    labels[i].style.display = vis ? "block" : "none";
+    labels[i].style.left = ((probe.x * 0.5 + 0.5) * innerWidth) + "px";
+    labels[i].style.top = ((-probe.y * 0.5 + 0.5) * innerHeight) + "px";
+  });
+
+  renderer.render(scene, camera);
+}
+tick();
+</script>
+</body>
+</html>

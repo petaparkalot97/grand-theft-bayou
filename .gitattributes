@@ -9,3 +9,4 @@
 *.glb binary
 *.fbx binary
 *.bin binary
+*.cmd text eol=crlf
