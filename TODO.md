@@ -12,9 +12,37 @@ node serve.mjs 8899          # NOT 5173 — that's the Euclydia dev server
 http://localhost:8899 → **Start the story**.
 
 Controls: **WASD** drive/walk · **F** jack & exit vehicle (also enter truck) ·
-**Shift** sprint / handbrake · **Space/Click** shoot · **Q/E** rotate camera · **M** music.
+**Shift** sprint / handbrake · **Space/Click** shoot · **Q/E** rotate camera · **M** music ·
+**[ ]** graphics quality.
 
 ## Status — PLAYABLE
+
+### Graphics: photoreal PBR pass (`src/graphics.js`)
+
+The packs ship flat albedo and nothing else, so the whole scene is re-surfaced
+at load. See the README's **Graphics** section for the full rundown. In short:
+
+- `realize(root, {hint})` walks any loaded object and upgrades its materials —
+  classified by material + mesh + parent name into paint / chrome / glass /
+  rubber / asphalt / masonry / sheet / wood / foliage / fabric / plastic / skin.
+  It is called from every loader and once more over the whole scene after
+  `buildLevel()` to catch the hand-built landmarks. Materials carry a
+  `userData.gtbRealized` tag so it is idempotent.
+- Normal + ORM maps are derived from each albedo (Sobel over luminance + tiled
+  value noise); untextured geometry gets a shared micro-surface.
+- Sky → PMREM probe for IBL, re-baked as `state.dusk` advances.
+- `RenderPass → GTAO → bloom → OutputPass → grade → SMAA`, internal buffer up to
+  4K, downsampled to the canvas.
+- Four tiers with an auto governor that only steps *down*; `[` / `]` override.
+- Six-light pool recycled onto the nearest lot poles / streetlamps (`litSpots`).
+
+**Load-time note:** measured headless (SwiftShader), warm: **~10.7 s before the
+pipeline, ~12 s after** — about +1.5 s, which is the map derivation (~3.5 s of
+CPU, partly overlapped with asset fetch/parse). It was ~30 s until the tick loop
+was made to idle at ~2.5 fps while the opaque overlay is up: rendering the full
+post chain and a 3072px shadow map behind the menu cost far more than the PBR
+pass itself. First run after a cold start still spikes (~23 s); that's
+contention, not the pipeline.
 
 - **Title screen** shows the provided cover art (`assets/cover.png`).
 - **Theme music** (`assets/audio/theme.mp3`) loops on Start, M to mute.
@@ -67,7 +95,17 @@ Controls: **WASD** drive/walk · **F** jack & exit vehicle (also enter truck) ·
 ## Now / Next / Later
 
 **Now**
-- [ ] Playtest in a *foreground* window (automation tab can't run the loop).
+- [ ] Playtest in a *foreground* window (automation tab can't run the loop) —
+      especially to check the real frame rate at HIGH / 4K ULTRA on this GPU.
+      Headless verification runs on SwiftShader and always drops to PERFORMANCE.
+- [ ] Stylised landmarks (Popeyes, trailers, water towers) are still plain
+      coloured boxes with only micro-surface on them. They are the weakest
+      remaining surfaces — real textures or more geometry would sell them.
+- [ ] Pre-existing, unrelated to the graphics work: `loadDsCar` /
+      `loadFbxScene` share one `FBXLoader`, and `setResourcePath` leaks between
+      them under `Promise.all` — one car texture 404s
+      (`cars/387359c5...png`). The `Trailer_Park` chars FBX also has an
+      absolute `C:/Users/srkak/...` texture path baked in.
 - [ ] Taco stand (`Tacos.glb`) is ~358 meshes — biggest single draw cost. Swap for a
       stylised taco truck if framerate suffers.
 - [ ] Torch sprites still read as carved poles more than flames — bigger flame frame or a 3D torch.

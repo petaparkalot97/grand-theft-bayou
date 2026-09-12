@@ -7,6 +7,39 @@ Ruston line.
 
 Vanilla **Three.js** (loaded from a CDN via import map), no build step.
 
+## Graphics
+
+The asset packs are low-poly / PSX-era: flat albedo textures, no surface data.
+`src/graphics.js` rebuilds them as physically-based materials and renders the
+result through a filmic HDR pipeline, so the models read as the real thing
+rather than as untextured blocks. Nothing new is committed — every map is
+generated in the browser at load.
+
+- **Derived PBR maps.** Every albedo gets a tangent-space **normal map** (Sobel
+  over luminance for macro relief + tiled value noise for micro-surface) and an
+  **ORM map** (occlusion / roughness / metalness packed into RGB). Untextured
+  hand-built geometry gets a shared micro-surface instead, so nothing is a
+  perfectly smooth plane.
+- **Material classification.** Each material is matched against its own name
+  plus its mesh's and parent's, and mapped to a real surface: clearcoat car
+  paint, chrome, glass, rubber, asphalt, masonry, corrugated sheet, wood,
+  foliage, fabric, plastic. Signage becomes emissive.
+- **Image-based lighting.** A physical sky with the sun just below the horizon
+  is baked into a PMREM probe and used as the scene's environment, so metal and
+  glass reflect something real. It is re-baked as the night deepens.
+- **Pipeline.** ACES filmic tone mapping, PCF-soft shadows, then
+  `RenderPass → GTAO → bloom → tone map → filmic grade → SMAA`. The grade pass
+  does vignette, film grain, chromatic aberration and a teal/amber split-tone.
+- **Resolution.** The scene renders into an internal buffer targeting up to
+  4K and is downsampled to the canvas — real supersampling, not upscaling.
+- **Quality tiers.** `4K ULTRA / HIGH / BALANCED / PERFORMANCE`, picked from the
+  display and CPU at boot, shown bottom-left. A governor steps the tier *down*
+  on its own if the frame rate can't hold it; **[** and **]** override it
+  manually and switch the governor off.
+- **Lighting.** A pool of six point lights is recycled onto whichever parking-lot
+  poles and streetlamps are nearest the camera, so the whole strip reads as lit
+  without blowing the forward renderer's per-object light budget.
+
 ## Run
 
 ```sh
@@ -26,6 +59,7 @@ Open <http://localhost:8899> and hit **Start the story**.
 | **Space / left click** | shoot |
 | **Q / E** or **right-drag** | rotate the camera |
 | **M** | mute music |
+| **[** / **]** | step graphics quality down / up |
 
 ## Layout
 
@@ -35,6 +69,7 @@ game/
   serve.mjs         tiny zero-dependency static server
   src/
     main.js         everything — world build, driving, enemies, wanted system
+    graphics.js     PBR material pass + HDR render pipeline (see below)
     sprite.js       billboard sprite / atlas animation
   assets/
     sprites/        pixel-art atlases (built by tools/slice_*.py)

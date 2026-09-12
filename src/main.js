@@ -2,6 +2,10 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { loadAtlas, AnimatedSprite } from "./sprite.js";
+import {
+  GFX, TIERS, autoTier, nextTier, initRenderer, createEnvironment,
+  createComposer, createGovernor, realize, surface,
+} from "./graphics.js";
 
 // ---------------------------------------------------------------- config
 // North Louisiana, US-167: Chatham (south) -> Monroe strip (middle) -> Ruston (north).
@@ -62,38 +66,59 @@ const objEl = document.getElementById("objective");
 const crosshair = document.getElementById("crosshair");
 
 // ---------------------------------------------------------------- renderer / scene
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+GFX.tier = autoTier();
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: false,          // SMAA in the composer does this properly
+  powerPreference: "high-performance",
+  stencil: false,
+});
 renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+initRenderer(renderer);
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x243b34);
-scene.fog = new THREE.FogExp2(0x243b34, 0.011);
+// Aerial perspective. Keep it thin — the whole point of the PBR pass is that
+// you can see surface detail down the strip.
+scene.fog = new THREE.FogExp2(0x24353f, 0.0072);
 
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 400);
+const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.3, 420);
 const CAM_OFFSET = new THREE.Vector3(0, 15, 15);
+
+// Physical sky baked to a PMREM probe — this replaces the old flat ambient and
+// is what makes every metal, glass and wet surface in the scene read correctly.
+// Elevation just under the horizon = deep blue "blue hour" night that still
+// carries enough light to read a surface, rather than pitch black.
+const env = createEnvironment(scene, renderer, {
+  elevation: -1.8, azimuth: 196, turbidity: 4.5, rayleigh: 3.4,
+  environmentIntensity: 2.4, backgroundIntensity: 1.0,
+});
+
+const composer = await createComposer(renderer, scene, camera);
 
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  composer.resize();
 });
 
 // ---------------------------------------------------------------- lights
-scene.add(new THREE.HemisphereLight(0x6f8fa8, 0x1a2416, 1.15));
-scene.add(new THREE.AmbientLight(0x40506a, 0.35));
-const moon = new THREE.DirectionalLight(0xbcd0ff, 1.15);
+// The IBL probe carries the ambient term now, so these are just the two key
+// lights: hard moonlight, and a very low warm bounce off the ground haze.
+scene.add(new THREE.HemisphereLight(0x4a6a8c, 0x2a2c1c, 0.85));
+const moon = new THREE.DirectionalLight(0xc8d8ff, 2.8);
 moon.position.set(-40, 60, -20);
 moon.castShadow = true;
-moon.shadow.mapSize.set(1024, 1024);
+moon.shadow.mapSize.set(GFX.preset.shadow, GFX.preset.shadow);
 const s = 70;
 moon.shadow.camera.left = -s; moon.shadow.camera.right = s;
 moon.shadow.camera.top = s; moon.shadow.camera.bottom = -s;
-moon.shadow.camera.far = 200;
+moon.shadow.camera.near = 1;
+moon.shadow.camera.far = 220;
+moon.shadow.bias = -0.0006;
+moon.shadow.normalBias = 0.035;
+moon.shadow.radius = 3;
 scene.add(moon);
 scene.add(moon.target);
 
@@ -114,25 +139,40 @@ function mulberry32(a) {
 const rand = (lo, hi) => lo + (hi - lo) * rng();
 
 // ---------------------------------------------------------------- ground + water
+// Bayou floor: the same hand-mixed swamp palette as before, but at 4x the
+// resolution and run through the PBR deriver so it gets real relief.
 function groundTexture() {
+  const S = 2048;
   const c = document.createElement("canvas");
-  c.width = c.height = 512;
-  const x = c.getContext("2d");
-  x.fillStyle = "#2e3d24"; x.fillRect(0, 0, 512, 512);
-  const cols = ["#37481f", "#283a2a", "#3d3016", "#22331c", "#45532b"];
-  for (let i = 0; i < 2600; i++) {
+  c.width = c.height = S;
+  const x = c.getContext("2d", { willReadFrequently: true });
+  x.fillStyle = "#2e3d24"; x.fillRect(0, 0, S, S);
+  const cols = ["#37481f", "#283a2a", "#3d3016", "#22331c", "#45532b", "#1a2a16", "#4e5a33"];
+  for (let i = 0; i < 26000; i++) {
     x.fillStyle = cols[(Math.random() * cols.length) | 0];
-    x.globalAlpha = 0.25 + Math.random() * 0.4;
-    const r = 4 + Math.random() * 34;
+    x.globalAlpha = 0.1 + Math.random() * 0.22;
+    const r = 2 + Math.random() * 26;
     x.beginPath();
-    x.ellipse(Math.random() * 512, Math.random() * 512, r, r * (0.5 + Math.random()), Math.random() * 6, 0, 7);
+    x.ellipse(Math.random() * S, Math.random() * S, r, r * (0.4 + Math.random()), Math.random() * 6, 0, 7);
     x.fill();
+  }
+  // blades / litter, so the surface has fine detail to catch the moonlight
+  x.lineWidth = 1;
+  for (let i = 0; i < 14000; i++) {
+    const px = Math.random() * S, py = Math.random() * S, a = Math.random() * 6, len = 3 + Math.random() * 11;
+    x.strokeStyle = cols[(Math.random() * cols.length) | 0];
+    x.globalAlpha = 0.25 + Math.random() * 0.45;
+    x.beginPath();
+    x.moveTo(px, py);
+    x.lineTo(px + Math.cos(a) * len, py + Math.sin(a) * len);
+    x.stroke();
   }
   x.globalAlpha = 1;
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(14, 14);
+  t.repeat.set(30, 30);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = GFX.maxAniso;
   return t;
 }
 
@@ -142,11 +182,23 @@ const ground = new THREE.Mesh(
 );
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
+ground.castShadow = false;
 scene.add(ground);
+realize(ground, { hint: "grass ground", shadows: false });
+ground.receiveShadow = true;
+// The derived maps inherit the albedo's repeat, which is what we want here, but
+// the relief needs dialling back at this tiling or it reads as gravel.
+ground.material.normalScale.set(0.6, 0.6);
 
-const waterMat = new THREE.MeshStandardMaterial({
-  color: 0x14322f, roughness: 0.15, metalness: 0.5, transparent: true, opacity: 0.86,
+// Standing bayou water. A true mirror finish reflects the whole sky probe and
+// reads as pale sand from a high camera, so this is deliberately a duller,
+// wind-rippled surface: dark body, broad specular, a tight clearcoat on top.
+const waterMat = new THREE.MeshPhysicalMaterial({
+  color: 0x07120f, roughness: 0.22, metalness: 0.0,
+  transparent: true, opacity: 0.9,
+  envMapIntensity: 0.9, clearcoat: 1, clearcoatRoughness: 0.16,
 });
+waterMat.userData.gtbRealized = true;
 const waterPatches = [];
 for (let i = 0; i < 9; i++) {
   const w = rand(10, 26), d = rand(10, 26);
@@ -159,16 +211,59 @@ for (let i = 0; i < 9; i++) {
   p.userData.base = p.geometry.attributes.position.array.slice();
 }
 
+// ---------------------------------------------------------------- light pool
+// A US-167 strip at night is defined by its lighting: sodium pole lights over
+// every parking lot, spaced streetlamps down the shoulder. Lighting all ~30 of
+// them at once would blow the forward renderer's per-object light budget, so
+// instead a small pool of real lights is recycled onto whichever spots are
+// nearest the camera. Anything further away still reads, via emissive bulbs.
+const litSpots = [];
+const lightPool = [];
+function initLightPool(n = 6) {
+  for (let i = 0; i < n; i++) {
+    const l = new THREE.PointLight(0xffc27a, 0, 40, 2);
+    l.visible = false;
+    scene.add(l);
+    lightPool.push(l);
+  }
+}
+let poolTimer = 0;
+function updateLightPool(dt, focus) {
+  poolTimer -= dt;
+  if (poolTimer > 0 || !litSpots.length) return;
+  poolTimer = 0.25;                       // 4 Hz is plenty for this
+  for (const sp of litSpots) {
+    sp.d = (sp.x - focus.x) ** 2 + (sp.z - focus.z) ** 2;
+  }
+  litSpots.sort((a, b) => a.d - b.d);
+  for (let i = 0; i < lightPool.length; i++) {
+    const l = lightPool[i];
+    const sp = litSpots[i];
+    if (!sp || sp.d > 90 * 90) { l.visible = false; continue; }
+    l.visible = true;
+    l.position.set(sp.x, sp.y, sp.z);
+    l.color.setHex(sp.warm);
+    l.distance = sp.range;
+    // fade the outermost lights in rather than popping them on
+    l.intensity = sp.power * THREE.MathUtils.smoothstep(90 * 90 - sp.d, 0, 30 * 30);
+  }
+}
+
 // ---------------------------------------------------------------- collision registry
 const blockers = [];   // { x, z, r }  circular obstacles
 function addBlocker(x, z, r) { blockers.push({ x, z, r }); }
 
 // ---------------------------------------------------------------- trees (wall of swamp)
 function buildTrees() {
-  const trunkGeo = new THREE.CylinderGeometry(0.18, 0.32, 3.4, 5);
-  const foliageGeo = new THREE.ConeGeometry(1.9, 4.6, 7);
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x2c2015, roughness: 1 });
-  const foliageMat = new THREE.MeshStandardMaterial({ color: 0x1c3418, roughness: 1 });
+  // more sides now that they're lit properly — 5-sided trunks silhouette badly
+  const trunkGeo = new THREE.CylinderGeometry(0.18, 0.32, 3.4, 10);
+  const foliageGeo = new THREE.ConeGeometry(1.9, 4.6, 12);
+  // colour multiplies the generated albedo, so these stay near-white and let
+  // the "dirt" / "grass" palettes do the work
+  const trunkMat = surface("dirt", 512).material(2, { color: 0xc9b49a, envMapIntensity: 0.7 });
+  const foliageMat = surface("grass", 512).material(3, { color: 0xb9d69a, envMapIntensity: 0.8 });
+  trunkMat.normalScale.set(2.2, 2.2);
+  foliageMat.normalScale.set(1.6, 1.6);
   const N = 460;
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, N);
   const foliage = new THREE.InstancedMesh(foliageGeo, foliageMat, N);
@@ -225,6 +320,8 @@ function loadKit(path) {
             o.material = new THREE.MeshStandardMaterial({ map: urbanTex.albedo, roughness: 0.9 });
           }
         });
+        // urban kit = roads, kerbs, pillars, pavement — all masonry
+        realize(g.scene, { hint: "concrete masonry " + path });
         res(g.scene);
       },
       undefined,
@@ -250,7 +347,6 @@ function loadVehicle(file, texFile) {
   return new Promise((res) => {
     const tex = texLoader.load(`./assets/models/vehicles/${texFile}`);
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.magFilter = THREE.NearestFilter;
     fbxLoader.load(
       `./assets/models/vehicles/${file}`,
       (obj) => {
@@ -264,6 +360,8 @@ function loadVehicle(file, texFile) {
             o.material = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, metalness: 0.2 });
           }
         });
+        // clearcoat car paint + chrome + glass, picked per submesh name
+        realize(obj, { hint: "vehicle carpaint" });
         const box2 = new THREE.Box3().setFromObject(obj);
         obj.position.y = -box2.min.y;
         res(obj);
@@ -308,6 +406,9 @@ function loadGLB(path, cullRe, keepRe) {
         }
       });
       doomed.forEach((m) => m.parent && m.parent.remove(m));
+      // GLBs keep their authored materials; realize() only adds what's missing
+      // (normal / ORM / envMapIntensity) and reclassifies glass + metal trim.
+      realize(g.scene, { hint: path });
       res(g.scene);
     }, undefined, (e) => { console.warn("GLB fail", path, e); res(null); });
   });
@@ -331,6 +432,7 @@ function loadDsCar(name) {
           o.material = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5, metalness: 0.25 });
         }
       });
+      realize(obj, { hint: "vehicle carpaint " + name });
       const b = new THREE.Box3().setFromObject(obj);
       obj.position.y = -b.min.y;
       res(obj);
@@ -372,6 +474,7 @@ function loadFbxScene(fbxPath, texDir, targetSize, cullRe) {
           Array.isArray(o.material) ? o.material.forEach(apply) : apply(o.material);
         }
       });
+      realize(obj, { hint: fbxPath, emissiveBoost: 1.15 });
       const b = new THREE.Box3().setFromObject(obj);
       obj.position.y = -b.min.y;
       fbxLoader.setResourcePath("");
@@ -391,7 +494,7 @@ function shackTexture(file, rep = [1, 1]) {
   const t = texLoader.load(`./assets/models/shacks/${file}`);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.magFilter = THREE.NearestFilter;
+  t.anisotropy = GFX.maxAniso;   // was NearestFilter for the PSX look
   t.repeat.set(rep[0], rep[1]);
   return t;
 }
@@ -490,19 +593,36 @@ const popeyesSign = signTexture();
 const signMat = () => new THREE.MeshStandardMaterial({
   map: popeyesSign, emissive: 0xff8a2c, emissiveIntensity: 1.0, emissiveMap: popeyesSign,
 });
-const asphaltMat = new THREE.MeshStandardMaterial({ color: 0x17171a, roughness: 1 });
+// Real aggregate asphalt: 2K albedo + derived normal/ORM, so headlights and
+// moonlight actually skid across the grain instead of hitting a flat slab.
+const asphalt = surface("asphalt", 2048);
+const asphaltMat = asphalt.material(6, { envMapIntensity: 0.9 });
+asphaltMat.normalScale.set(1.9, 1.9);
 
+// Painted stalls, drawn over the same aggregate so the derived relief lines up.
 function carParkTexture() {
+  const S = 1024;
   const c = document.createElement("canvas");
-  c.width = c.height = 256;
+  c.width = c.height = S;
   const x = c.getContext("2d");
-  x.fillStyle = "#17171a"; x.fillRect(0, 0, 256, 256);
-  x.strokeStyle = "#c9c4b0"; x.lineWidth = 5;
-  for (let i = 32; i < 256; i += 48) { x.beginPath(); x.moveTo(i, 20); x.lineTo(i, 236); x.stroke(); }
+  x.drawImage(asphalt.map.image, 0, 0, S, S);
+  x.lineCap = "butt";
+  for (let i = S * 0.125; i < S; i += S * 0.1875) {
+    // worn paint: several jittered passes rather than one clean stroke
+    for (let p = 0; p < 5; p++) {
+      x.strokeStyle = `rgba(201,196,176,${0.16 + Math.random() * 0.2})`;
+      x.lineWidth = 14 + Math.random() * 5;
+      x.beginPath();
+      x.moveTo(i + (Math.random() - 0.5) * 5, S * 0.08);
+      x.lineTo(i + (Math.random() - 0.5) * 5, S * 0.92);
+      x.stroke();
+    }
+  }
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(2, 1);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = GFX.maxAniso;
   return t;
 }
 const parkTex = carParkTexture();
@@ -646,6 +766,14 @@ addEventListener("keydown", (e) => {
   keys.add(e.code);
   if (e.code === "KeyF") { enterExitVehicle(); tryInteract(); }
   if (e.code === "KeyM") toggleMute();
+  // [ / ] step the graphics tier down / up; once you touch it, the auto
+  // governor stops overriding your choice.
+  if (e.code === "BracketLeft" || e.code === "BracketRight") {
+    GFX.adaptive = false;
+    nextTier(e.code === "BracketRight" ? 1 : -1);
+    applyTier();
+    flashGfx(`graphics: ${TIERS[GFX.tier].name}`);
+  }
   if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space"].includes(e.code)) e.preventDefault();
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
@@ -744,15 +872,20 @@ const truckPos = new THREE.Vector3(-6, 0, TRUCK_Z);
 // ---------------------------------------------------------------- build the level
 async function buildLevel() {
   // ---- Route 9: one long asphalt highway, swamp in the south, city in the north
-  const road = new THREE.Mesh(
-    new THREE.PlaneGeometry(10, WORLD * 2 + 40),
-    new THREE.MeshStandardMaterial({ color: 0x20201f, roughness: 1 })
-  );
+  const roadMat = asphalt.material(1, { envMapIntensity: 0.9 });
+  roadMat.normalScale.set(2.1, 2.1);
+  for (const t of [roadMat.map, roadMat.normalMap, roadMat.roughnessMap]) {
+    if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, (WORLD * 2 + 40) / 5); }
+  }
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(10, WORLD * 2 + 40), roadMat);
   road.rotation.x = -Math.PI / 2;
   road.position.set(ROAD_X, 0.02, -10);
   road.receiveShadow = true;
   scene.add(road);
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0xd9c14a });
+  const lineMat = new THREE.MeshStandardMaterial({
+    color: 0xd9c14a, roughness: 0.62, metalness: 0, envMapIntensity: 1.1,
+  });
+  lineMat.userData.gtbRealized = true;
   for (let z = WORLD; z > TRUCK_Z; z -= 6) {
     const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 2.4), lineMat);
     dash.rotation.x = -Math.PI / 2;
@@ -799,16 +932,19 @@ async function buildLevel() {
     else if (type === "taco")
       placeGlbLandmark(tacoGLB, bx, z, rot, 14, "Tacos", 0xffd27a, -Math.PI)
         || makePizzeria(bx, z, rot);
+    // every lot gets a parking-lot pole light out front
+    litSpots.push({ x: bx - side * 9, y: 8.5, z: z + 9, warm: 0xffbf74, power: 170, range: 30 });
   }
 
   // streetlamps + one warm glow for the whole strip
   for (let z = SPAWN_Z; z > -100; z -= 22) {
     const L = placeKit(lamp, ROAD_X + ROAD_HALF + 1.5, z, 0, 0.6);
     if (L) addBlocker(ROAD_X + ROAD_HALF + 1.5, z, 0.4);
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8),
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 10),
       new THREE.MeshBasicMaterial({ color: 0xffe6b0 }));
     bulb.position.set(ROAD_X + ROAD_HALF + 1.5, 4.4, z);
     scene.add(bulb);
+    litSpots.push({ x: ROAD_X + ROAD_HALF + 1.5, y: 4.3, z, warm: 0xffd9a0, power: 90, range: 22 });
   }
   for (const lz of [78, 24, -30, -84]) {
     const gl = new THREE.PointLight(0xffcf8a, 90, 70, 2);
@@ -851,8 +987,9 @@ async function buildLevel() {
     }
   }
   // plain asphalt lot around the truck (no dense-city street kit — off theme)
-  const lot = new THREE.Mesh(new THREE.PlaneGeometry(70, 44),
-    new THREE.MeshStandardMaterial({ color: 0x26262a, roughness: 1 }));
+  const lotMat = asphaltMat.clone();
+  lotMat.color.setHex(0xb9b9c2);
+  const lot = new THREE.Mesh(new THREE.PlaneGeometry(70, 44), lotMat);
   lot.rotation.x = -Math.PI / 2;
   lot.position.set(ROAD_X, 0.015, -98);
   lot.receiveShadow = true;
@@ -976,7 +1113,7 @@ function roadApron(side, z, depth) {
   const outer = ROAD_X + side * (LOT_X + 4);
   const p = new THREE.Mesh(
     new THREE.PlaneGeometry(Math.abs(outer - inner), depth),
-    new THREE.MeshStandardMaterial({ color: 0x232326, roughness: 1 })
+    asphaltMat
   );
   p.rotation.x = -Math.PI / 2;
   p.position.set((inner + outer) / 2, 0.02, z);
@@ -1510,9 +1647,21 @@ function busted() {
 
 // ---------------------------------------------------------------- main loop
 const clock = new THREE.Clock();
+let idleAcc = 0;
 function tick() {
   requestAnimationFrame(tick);
   const dt = Math.min(clock.getDelta(), 0.05);
+
+  // The menu / end-screen overlay is opaque, so driving the full post chain and
+  // a 3072px shadow map behind it is pure waste — and on a software GL context
+  // it is what makes the level appear to load slowly. Tick it at ~2.5 fps
+  // instead: slow enough to cost nothing, often enough that shaders are already
+  // compiled and there is no hitch on Start.
+  if (!state.running) {
+    idleAcc += dt;
+    if (idleAcc < 0.4) return;
+    idleAcc = 0;
+  }
 
   if (state.running && !state.over) simulate(dt);
 
@@ -1548,20 +1697,61 @@ function tick() {
   }
   for (const s of shrooms) s.update(dt, camera);
   for (const t of torches) t.update(dt, camera);
+  updateLightPool(dt, camera.position);
 
-  renderer.render(scene, camera);
+  composer.render(dt);
+  governor(dt);
 }
 
+// Steps the quality tier down if this machine can't hold the 4K buffer.
+const governor = createGovernor((tier) => {
+  applyTier();
+  flashGfx(`graphics auto-set to ${TIERS[tier].name}`);
+});
+
+function applyTier() {
+  moon.shadow.mapSize.set(GFX.preset.shadow, GFX.preset.shadow);
+  if (moon.shadow.map) { moon.shadow.map.dispose(); moon.shadow.map = null; }
+  composer.resize();
+  if (composer.bloom) composer.bloom.enabled = GFX.preset.bloom;
+  if (composer.gtao) composer.gtao.enabled = GFX.preset.ao;
+  if (composer.smaa) composer.smaa.enabled = GFX.preset.smaa;
+  updateGfxLabel();
+}
+
+const gfxLabel = document.getElementById("gfxLabel");
+let gfxFlash = 0;
+function updateGfxLabel() {
+  if (!gfxLabel) return;
+  const [w, h] = composer.renderScale;
+  gfxLabel.textContent = `${TIERS[GFX.tier].name} · ${w}×${h}`;
+}
+function flashGfx(msg) {
+  if (!gfxLabel) return;
+  gfxLabel.textContent = msg;
+  clearTimeout(gfxFlash);
+  gfxFlash = setTimeout(updateGfxLabel, 2200);
+}
+
+let lastElev = -1.8;
 function simulate(dt) {
   state.fireCd = Math.max(0, state.fireCd - dt);
   state.hurtCd = Math.max(0, state.hurtCd - dt);
   state.dusk = Math.min(1, state.dusk + dt * 0.0016);
   if (objTimer > 0) { objTimer -= dt; if (objTimer <= 0) objEl.textContent = defaultObjective(); }
 
-  // darken over time
+  // Night deepens: the sun sinks further below the horizon, which drains the
+  // blue out of the sky probe, so the whole scene's ambient goes with it.
   const f = 1 - state.dusk * 0.4;
-  moon.intensity = 1.15 * f;
-  scene.fog.density = 0.011 + state.dusk * 0.006;
+  moon.intensity = 2.8 * f;
+  scene.fog.density = 0.0072 + state.dusk * 0.004;
+  const elev = -1.8 - state.dusk * 4.2;
+  // re-baking the PMREM probe is expensive — only when it would actually show
+  if (Math.abs(elev - lastElev) > 0.4) {
+    lastElev = elev;
+    env.setElevation(elev);
+    env.setIntensity(2.4 * f, 1.0 * f);
+  }
 
   // ---- camera orbit (Q/E) ----
   camYaw += ((keys.has("KeyE") || keys.has("ArrowRight") ? 1 : 0)
@@ -1982,11 +2172,23 @@ async function boot() {
   loadNote.textContent = "building the parish…";
   await buildLevel();
 
+  // Final sweep: the hand-built landmarks (Popeyes, trailers, water towers,
+  // sheds) are plain coloured boxes straight out of the builders. Everything
+  // already upgraded carries a gtbRealized tag and is skipped, and shadow flags
+  // are left exactly as each builder set them.
+  initLightPool();
+
+  loadNote.textContent = "resurfacing the parish…";
+  await new Promise((r) => setTimeout(r, 0));   // let the loading text paint
+  realize(scene, { shadows: false });
+  updateGfxLabel();
+
   camera.position.copy(playerPos.clone().add(CAM_OFFSET));
   camera.lookAt(playerPos);
   syncHUD();
 
   window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
+    gfxStats: GFX.stats,
     get player() { return player; }, truck, blockers };
   loadNote.textContent = "ready.";
   startBtn.disabled = false;

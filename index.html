@@ -47,6 +47,12 @@
   #stars .off { opacity: .18; }
   #cans { font-size: 20px; font-weight: bold; }
   #cans small { font-size: 12px; opacity: .7; font-weight: normal; }
+  #gfxLabel {
+    position: absolute; bottom: 12px; left: 16px;
+    font-family: Arial, sans-serif; font-size: 11px; letter-spacing: .09em;
+    text-transform: uppercase; color: rgba(210, 232, 210, .55);
+    text-shadow: 0 1px 3px rgba(0,0,0,.9);
+  }
   #vehIndic {
     position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
     background: rgba(6,10,8,.6); border: 1px solid rgba(160,190,150,.25);
@@ -122,6 +128,7 @@
   <div id="stars"></div>
   <div id="objective">Steal a ride. Scrounge 4 gas cans. Get to the truck and leave the parish.</div>
   <div id="vehIndic" hidden></div>
+  <div id="gfxLabel">HIGH</div>
 </div>
 <div id="crosshair"></div>
 <div id="mute" title="mute music (M)">♪</div>
@@ -135,7 +142,7 @@
      strip malls, and get to the <b>truck</b> past the Ruston line.</p>
   <p class="keys"><b>WASD</b> drive / walk &nbsp;·&nbsp; <b>F</b> jack &amp; exit vehicle &nbsp;·&nbsp;
      <b>Shift</b> sprint / handbrake &nbsp;·&nbsp; <b>Space / Click</b> shoot &nbsp;·&nbsp;
-     <b>Q / E</b> or <b>right-drag</b> camera &nbsp;·&nbsp; <b>M</b> music</p>
+     <b>Q / E</b> or <b>right-drag</b> camera &nbsp;·&nbsp; <b>M</b> music &nbsp;·&nbsp; <b>[ ]</b> graphics</p>
   <button id="startBtn">Start the story</button>
   <div id="loadNote">loading assets…</div>
 </div>

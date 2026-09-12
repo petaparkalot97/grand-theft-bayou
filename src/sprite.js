@@ -2,6 +2,24 @@ import * as THREE from "three";
 
 const loader = new THREE.TextureLoader();
 
+// A radial falloff for the contact shadow — a hard-edged disc reads as a decal.
+let _blobTex = null;
+function blobTexture() {
+  if (_blobTex) return _blobTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const x = c.getContext("2d");
+  const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.45, "rgba(255,255,255,0.72)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  x.fillStyle = g;
+  x.fillRect(0, 0, 128, 128);
+  _blobTex = new THREE.CanvasTexture(c);
+  _blobTex.colorSpace = THREE.SRGBColorSpace;
+  return _blobTex;
+}
+
 export function loadAtlas(name) {
   return Promise.all([
     fetch(`./assets/sprites/${name}.json`).then((r) => r.json()),
@@ -31,26 +49,50 @@ export class AnimatedSprite extends THREE.Object3D {
     this.texture.needsUpdate = true;
     this.texture.repeat.set(1 / this.count, 1);
 
-    this.material = new THREE.MeshBasicMaterial({
+    // Lit, not unlit: a billboard that ignores the scene's lighting is the
+    // single most obvious "this is a game sprite" tell. A little emissive from
+    // its own albedo keeps it from going pitch black on the night side.
+    this.material = new THREE.MeshStandardMaterial({
       map: this.texture,
+      emissive: 0xffffff,
+      emissiveMap: this.texture,
+      emissiveIntensity: 0.22,
+      roughness: 0.92,
+      metalness: 0,
+      envMapIntensity: 0.85,
       transparent: true,
       alphaTest: 0.5,
       side: THREE.DoubleSide,
       depthWrite: true,
     });
+    this.material.userData.gtbRealized = true;   // keep the pixel art crisp
 
     const h = worldHeight;
     const w = h * this.aspect;
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), this.material);
     this.mesh.position.y = h / 2;
     this.mesh.renderOrder = 1;
+    this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
+    // Cut-out shadows: the default depth material ignores the alpha channel, so
+    // an alpha-tested billboard would otherwise cast a solid rectangle.
+    this.mesh.customDepthMaterial = new THREE.MeshDepthMaterial({
+      depthPacking: THREE.RGBADepthPacking,
+      map: this.texture,
+      alphaTest: 0.5,
+    });
     this.add(this.mesh);
 
-    // soft blob shadow
+    // soft contact shadow under the feet — the real shadow map handles the
+    // rest, this just grounds the billboard when the moon is near-overhead
     this.blob = new THREE.Mesh(
-      new THREE.CircleGeometry(w * 0.34, 16),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false })
+      new THREE.CircleGeometry(w * 0.38, 24),
+      new THREE.MeshBasicMaterial({
+        map: blobTexture(), color: 0x000000, transparent: true,
+        opacity: 0.28, depthWrite: false,
+      })
     );
+    this.blob.material.userData.gtbRealized = true;
     this.blob.rotation.x = -Math.PI / 2;
     this.blob.position.y = 0.03;
     this.add(this.blob);
