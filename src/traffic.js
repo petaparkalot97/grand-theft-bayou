@@ -94,6 +94,7 @@ function lampMaterial(kind) {
 export function createTraffic(o) {
   const lanes = o.lanes.map(makeLane);
   const perLane = o.perLane || 4;
+  const maxCars = o.maxCars || o.lanes.length * perLane;   // pool size
   const SPAWN_MIN = o.spawnMin || 75;
   const SPAWN_MAX = o.spawnMax || 130;
   const DESPAWN = o.despawn || 155;
@@ -160,16 +161,34 @@ export function createTraffic(o) {
     car.obj.position.set(1e5, car.obj.position.y, 1e5);
   }
 
-  /** Find a free spot out of sight, ahead of or behind `focus`, in `lane`. */
-  function trySpawn(car, lane, focus) {
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const dir = Math.random() < 0.6 ? -1 : 1;   // the strip runs north, bias ahead
-      const z = focus.z + dir * (SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN));
-      const s = projectLane(lane, lane.pts[0].x, z);
-      if (s < 4 || s > lane.length - 4) continue;
-      if (cars.some((c) => c.active && c.lane === lane && Math.abs(c.s - s) < 20)) continue;
-      place(car, lane, s);
-      return true;
+  /**
+   * Find a free spot out of sight on a lane that passes near `focus`. Starts
+   * from the point on each lane nearest the player and steps along it, so it
+   * works for north–south and east–west lanes alike; emptiest lanes first.
+   */
+  function trySpawn(car, focus) {
+    const near = [];
+    for (const l of lanes) {
+      const s0 = projectLane(l, focus.x, focus.z);
+      sampleLane(l, s0, tmp);
+      if (Math.hypot(tmp.x - focus.x, tmp.z - focus.z) > DESPAWN * 0.6) continue;
+      let n = 0;
+      for (const c of cars) if (c.active && c.lane === l) n++;
+      near.push({ l, s0, n });
+    }
+    near.sort((a, b) => a.n - b.n);
+    for (const { l: lane, s0 } of near) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const dir = Math.random() < 0.5 ? 1 : -1;
+        const s = s0 + dir * (SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN));
+        if (s < 4 || s > lane.length - 4) continue;
+        sampleLane(lane, s, tmp);
+        const d = Math.hypot(tmp.x - focus.x, tmp.z - focus.z);
+        if (d < SPAWN_MIN * 0.8 || d > DESPAWN * 0.9) continue;
+        if (cars.some((c) => c.active && c.lane === lane && Math.abs(c.s - s) < 20)) continue;
+        place(car, lane, s);
+        return true;
+      }
     }
     return false;
   }
@@ -221,7 +240,7 @@ export function createTraffic(o) {
       // keep the pool topped up — one new car per call at most, so a burst of
       // cloning never lands in a single frame
       spawnCd -= dt;
-      if (spawnCd <= 0 && cars.length < lanes.length * perLane) {
+      if (spawnCd <= 0 && cars.length < maxCars) {
         const car = buildCar();
         if (car) { cars.push(car); park(car); }
         spawnCd = 0.25;
@@ -232,13 +251,7 @@ export function createTraffic(o) {
         if (car.v.dead || car.v === playerVeh) { release(car); continue; }
 
         if (!car.active) {
-          // pick the lane with the fewest cars in it
-          let lane = lanes[0], fewest = Infinity;
-          for (const l of lanes) {
-            const n = cars.reduce((k, c) => k + (c.active && c.lane === l ? 1 : 0), 0);
-            if (n < fewest) { fewest = n; lane = l; }
-          }
-          trySpawn(car, lane, focus);
+          trySpawn(car, focus);
           continue;
         }
 

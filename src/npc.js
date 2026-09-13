@@ -217,8 +217,11 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
     if (vel.lengthSq() > 0) {
       next.copy(p).addScaledVector(vel, dt);
       resolveCollision(p, next, 0.5);
-      p.x = THREE.MathUtils.clamp(p.x, -bounds + 3, bounds - 3);
-      p.z = THREE.MathUtils.clamp(p.z, -bounds + 3, bounds - 3);
+      // bounds: a half-size (square map) or { minX, maxX, minZ, maxZ }
+      const B = typeof bounds === "number"
+        ? { minX: -bounds, maxX: bounds, minZ: -bounds, maxZ: bounds } : bounds;
+      p.x = THREE.MathUtils.clamp(p.x, B.minX + 3, B.maxX - 3);
+      p.z = THREE.MathUtils.clamp(p.z, B.minZ + 3, B.maxZ - 3);
     }
   }
 

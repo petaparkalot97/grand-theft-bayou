@@ -1,316 +1,438 @@
-# GRAND THEFT BAYOU: Louisiana Stories — TODO / progress
+# TODO.md — Multi-Agent Task Board
 
-GTA-style joke game. North Louisiana: **Chatham → Monroe → Ruston** along US-167.
-Built from dropped asset packs. Vanilla Three.js (CDN import map), no build step.
+> **Shared live task board for Claude, Codex, Antigravity, and Freebuff.**
+>
+> This file is the current state of work. Permanent collaboration rules live in
+> [`AGENT_PROTOCOL.md`](AGENT_PROTOCOL.md); discoveries, decisions, interface
+> contracts and test history live in [`AGENT_LOG.md`](AGENT_LOG.md).
+> Read the protocol before claiming anything.
 
-## How to run
+---
 
+# 🚦 STATUS LEGEND
+
+- `BACKLOG` — identified but not started
+- `READY` — dependencies satisfied; brief complete; safe to claim
+- `IN PROGRESS` — actively owned by an agent
+- `BLOCKED` — waiting on another task, decision, or resource
+- `REVIEW` — implementation finished; awaiting review/integration
+- `COMPLETE` — reviewed and tested
+- `CANCELLED` — intentionally abandoned
+
+---
+
+# 🧭 CURRENT OBJECTIVE
+
+**Primary objective:**
+Bring the script to life. Finish and verify **Act One "Welcome Home"**
+(Tusouxroe), then plan **OrleaRouge**, while keeping free roam smooth
+(draw calls, not AI, are the cost to watch).
+
+**Current phase:** `Testing / Integration`
+
+---
+
+# 🔒 ACTIVE TASKS
+
+### TASK-031 — Grow the map south: the causeway and OrleaRouge
+
+**Status:** `IN PROGRESS`
+**Agent:** `Claude`
+**Files / subsystem:**
+- `src/main.js` (`MAP` bounds, ground, highway, clamps, region integration)
+- `src/npc.js` (bounds object), `src/traffic.js` (spawning on any lane, `maxCars`)
+- `src/orlearouge.js` (new), `tools/qa/orlearouge.mjs` (new)
+
+**Dependencies:** human decision made (grow south). Supersedes TASK-016's placement question.
+
+**Plan:**
+1. `MAP` bounds replace the ±WORLD square; highway, ground and clamps extended to z = 382.
+2. `src/orlearouge.js`: the causeway (open water, overpass with a camp beneath,
+   refinery flare), then the city on a street grid: the French District
+   (balconied low-rises, jazz / daiquiri neon), downtown towers, a riverfront
+   casino boat, a cemetery, a construction site, street lights.
+3. Integration: city NPC hangouts and spawn mix (no hogs downtown), traffic
+   lanes on city streets, the entry V.O. ("OrleaRouge teaches you two things…").
+4. Headless test: teleport south, screenshots, traffic + NPC behaviour, draw
+   calls on foot and driving, no console errors; the gameplay / prologue /
+   Act One regressions still pass.
+
+**Acceptance criteria:**
+- You can drive from Chatboro down the causeway into OrleaRouge and walk its streets.
+- Traffic runs on the boulevard and at least two cross streets; NPCs populate
+  the city without converging on the player.
+- On-foot draw calls in the city stay within ~1.5× the strip's (headless HIGH).
+- No regressions in the existing QA scripts.
+
+**Notes:**
+- Step 1 done: `MAP` replaces ±WORLD for z; ground, highway, lane markings,
+  traffic lanes and all z clamps run to 382; NPC bounds take the `MAP` object;
+  no pines south of z = 142. `traffic.js` spawns from the nearest point on any
+  lane, and `maxCars` caps the pool. Syntax-checked.
+- Step 2 written: `src/orlearouge.js`. Causeway (swamp water, guardrails,
+  overpass camp, refinery flares), street grid (avenues x = −86 / −46 / 34 / 74 /
+  114, streets z = 210…370), French District rowhouses with balconies and neon,
+  downtown towers, hospital, cemetery, construction site, riverboat casino, lamps,
+  the entry V.O., NPC hangouts, four cross-street lanes.
+- Step 3 applying now (`.claude/wire/orlea-wire.mjs`): build + hangouts, traffic
+  lanes with a 12-car pool, traffic cars as each other's obstacles, a city
+  spawn mix (no hogs, no causeway spawns), `__game.teleport` for QA.
+- First `tools/qa/orlearouge.mjs` run: the region builds and plays. Entry V.O.
+  fires; city NPCs are people only (5–18 near each stop, all calm); traffic is
+  active on all four cross-street lanes plus the boulevard; **on-foot draw calls
+  in the city are 263–500** (inside the budget); HP 100; no new console errors.
+  Screenshots show the causeway, overpass camp and skyline, French District
+  balconies, downtown towers reflected in wet streets, and the riverfront promenade.
+- Found and fixed: the camera looked down through the overpass deck (grey
+  screen). Occluder boxes were added to `camera.js`. The test also drove south
+  in the northbound lane and jammed against oncoming traffic; that was a test
+  error, since fixed.
+- Second `orlearouge.mjs` run **passes**: drove from the causeway (z 146) into
+  the city (z 267) in the southbound lane, the entry V.O. played, and the overpass
+  camp shot shows the camera pulled in beneath the deck. Draw calls: on foot in
+  the city 232–426, driving in the city 262, causeway looking at the skyline 981.
+  HP 100; traffic on all six lanes; no new console errors.
+- Not yet shown: city bystanders reacting to gunfire (no NPC was within the
+  26 m noise radius when the test fired).
+- **Regression re-runs in progress** (gameplay, prologue, Act One) before this
+  moves to REVIEW.
+
+### TASK-009 — Act One "Welcome Home" (Tusouxroe)
+
+**Status:** `REVIEW` (headless walkthrough passes; regression re-runs and a real-browser play-through pending)
+**Agent:** `Claude`
+**Files / subsystem:**
+- `src/actone.js`, `src/ledgerboard.js` (new)
+- `src/cinema.js` (scene queue fix)
+- `src/prologue.js` (the `onFinished` hook)
+- `src/main.js` (integration)
+- `tools/qa/actone.mjs`
+
+**Dependencies:** TASK-008 (in review)
+
+**Acceptance criteria:**
+- The prologue ending starts Act One; Free roam does not.
+- Headless `tools/qa/actone.mjs` reaches `done`: radio gag → establishing
+  scene → door → kitchen (Emiko) → ledger board (12 cards, strings, stamp) →
+  back on the street.
+- Screenshots show the neighbourhood, the kitchen and the board correctly.
+- No new console errors; `tools/qa/gameplay.mjs` and `tools/qa/prologue.mjs`
+  still pass.
+
+**Notes:**
+- First walkthrough stalled in the prologue: two cutscenes ran at once and the
+  first one's cleanup broke the second (Esc stopped working). `cinema.js` now
+  queues scenes. The test was rewritten to poll for phases.
+- Second walkthrough **reached `done`**: all 12 steps in order, HP 100, no new
+  console errors. Its screenshots showed three bugs, now fixed:
+  kitchen actors snapped to street level (`baseY` in `characters.js`);
+  ledger-board cards stacked at the origin (SVG / CSS transform clash in
+  `ledgerboard.js`); the crews shot missed both crews, the letterbox covered the
+  board, and the post-scene camera sat above the roof (`actone.js`, plus
+  `setCameraYaw` in `main.js`).
+- Third walkthrough **passes**: all 12 steps. Screenshots confirm both crews in
+  the establishing shot, Keseme and Emiko in the kitchen at floor height, all 12
+  ledger cards with strings (Pelican Crown highlighted, Nolantis linked), and
+  the camera facing the house afterwards. HP 100; the only console error is the
+  known playlist 404 from the stale dev server.
+- Pending: re-run `prologue.mjs` + `gameplay.mjs` after the `cinema.js` queue and
+  `characters.js` `baseY` changes, then TASK-010 in a real browser.
+- The kitchen is a sealed room under the neighbourhood at y = −40 (see
+  AGENT_LOG decisions).
+
+---
+
+# 📋 TASK QUEUE
+
+## READY
+
+### TASK-010 — Real-browser playtest pass
+**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Antigravity**, or the human)
+**Files / subsystem:** none (read-only); results go to `AGENT_LOG.md` → Test results, and any bugs become new BACKLOG tasks.
+**Dependencies:** none for free roam; TASK-009 for the Act One part.
+**Context:** Everything so far was verified in headless Chromium (SwiftShader),
+which can't test pointer-lock release, audio, or real frame rate.
+**Acceptance criteria:**
+- Esc releases the mouse; clicking recaptures it; wheel zoom works; the camera
+  pulls in past buildings at low angles; mouse sensitivity feels right (note values).
+- F3 numbers at HIGH and 4K ULTRA on foot and driving (fps, frame ms, draw calls).
+- The prologue chase driven by hand: the Bravado is catchable but not trivial,
+  the dirt-road turn works, losing it resets.
+- Synthesized SFX are audible (shotgun, siren, ring, squeal); the soundtrack
+  plays and **N** skips tracks.
+- Act One plays through, and the ledger board is readable at the tested window size.
+**Out of scope:** changing code.
+
+### TASK-011 — Batch static meshes by material signature
+**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Codex**)
+**Files / subsystem:** `src/merge.js`
+**Dependencies:** none
+**Context:** `batchStatic` groups by material *instance*. 406 static
+materials are only 152 distinct setups (same maps / color / flags), so identical
+materials still split batches. See AGENT_LOG → Performance investigations.
+**Goal:** Treat materials with identical settings as one when grouping, sharing a
+single material instance per batch.
+**Acceptance criteria:**
+- Headless HIGH free roam (F3 / `__game.perf.calls`) shows fewer draw calls on
+  foot than now (500–780). Record before/after with the same camera position.
+- No visible change: compare screenshots from `tools/qa/gameplay.mjs`.
+- Wet-road asphalt (`userData.surfaceKind === "asphalt"`) and ShaderMaterials
+  stay excluded; no new console errors.
+**Out of scope:** `src/main.js` (tell Claude if a hook is needed).
+**Integration notes (for Claude):** —
+
+### TASK-012 — Cut draw calls while driving
+**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Codex**)
+**Files / subsystem:** `src/fx.js` (road-mirror pass), `src/traffic.js` (traffic car cost)
+**Dependencies:** none. **Conflicts with TASK-014 (`traffic.js`); don't run both at once.**
+**Context:** Driving peaks around 1,850 draw calls headless vs. 500–780 on foot.
+The mirror pass re-renders the scene every 2nd frame on HIGH; each traffic car
+carries 4 sprites plus its meshes.
+**Goal:** Bring the driving peak down without losing the wet-road reflections.
+**Acceptance criteria:**
+- Headless HIGH driving peak < 1,200 draw calls (measure with
+  `tools/qa/gameplay.mjs` → `driving.perf.calls`).
+- Reflections of lamps and headlights are still visible in puddles (screenshot).
+- Traffic behaviour is unchanged (lanes, spacing, recycling); no new console errors.
+**Ideas:** restrict the mirror camera to a render layer or a shorter far plane
+for small props; skip tiny meshes in the mirror; share or cull traffic sprites by distance.
+**Out of scope:** `src/main.js`, tier definitions in `src/graphics.js`.
+
+### TASK-018 — Character viewer: expose the story options
+**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Freebuff**)
+**Files / subsystem:** `tools/characters.html`
+**Dependencies:** none
+**Context:** `makeHoodrat` gained `skin / top / denim / hair / headwear
+(band|none|hat) / beard / curly` and palette-object crews (AGENT_LOG →
+Interface contracts). The viewer only knows red/blue crews.
+**Acceptance criteria:** controls for those options, plus presets for the cast
+(Keseme, Mally, Bubba, Mercer, deputy, Emiko: see the `CAST` values in
+`src/prologue.js` and `populate()` in `src/actone.js`); the page loads with no
+console errors.
+
+## BACKLOG
+
+### TASK-032 — Potholes across Tusouxroe
+**Status:** `BACKLOG` · **Agent:** `UNASSIGNED` (suggested: **Codex** for the module; Claude wires it in)
+**Requested by:** the human.
+**Files / subsystem:** `src/potholes.js` (new); `src/main.js` integration (Claude)
+**Dependencies:** none. Tusouxroe's roads already exist.
+**Context:** Tusouxroe is the north of the map (z < −30): the US-167 stretch
+through town, the truck lot (x −41…29, z −120…−76), the shopfront street
+(z ≈ −78) and South Tusouxroe's street (z = −106, x 29…124). Road surfaces are
+`surface("asphalt")` meshes, which get the wet-road shader.
+**Goal:** Several potholes spread across Tusouxroe, not clustered in one spot.
+You see them, and you feel them when you drive over one.
+**Acceptance criteria:**
+- At least 10 potholes, spread over at least 4 different Tusouxroe roads or
+  lots, with a minimum spacing (e.g. Poisson-disc, no two within ~15 m).
+  Placement is deterministic (seeded), so they don't move between loads.
+- Each reads as a pothole at night: a dark, irregular, slightly recessed patch
+  with a broken asphalt rim, and some holding standing water.
+- Driving over one jolts the car (brief speed loss + body bounce / camera
+  shake), scaled by speed; on foot there's no effect.
+- Static and cheap: batched or instanced, no new lights, no per-frame
+  allocation; draw calls in Tusouxroe rise by < 20 (headless HIGH, F3).
+- No new console errors.
+**Interface to expose (for Claude):** `createPotholes({ scene, surface, rng })` →
+`{ list: [{ x, z, r }], hitTest(x, z, radius) -> depth 0..1 }`, so
+`drivingUpdate` can apply the jolt.
+
+- [ ] `TASK-013` — **Bravado reads as green at night** (`src/prologue.js`: `tintClone` / an emissive trim). Blocked on the TASK-009 lock. Suggested: Freebuff.
+- [ ] `TASK-014` — **Traffic on Tusouxroe streets + a player standing in the road** (`src/traffic.js`; Claude adds lanes in `main.js`). Cars honk or steer around a pedestrian instead of only easing past. After TASK-012.
+- [ ] `TASK-016` — **OrleaRouge: decide placement, then write a design doc** (`docs/orlearouge.md`). Blocked on a human decision (see Blockers).
+- [ ] `TASK-017` — **Act One's later beats**: the threatening phone call ("Your mother's house is very pretty"), Governor Bellefontaine's meeting with Mercer, the flood tunnel and the Nirbayou Nolantis descent. Needs TASK-009 and TASK-016.
+- [ ] `TASK-019` — **Weakest surfaces**: the stylised Popeyes, trailers and water towers are plain boxes. Needs their builders moved out of `main.js` into `src/landmarks.js` first (Claude). Suggested: Antigravity.
+- [ ] `TASK-020` — **Police**: make the Sheriff escapable (give-up timer) and tune `HEAT_KILLS`, spawn count and ram damage. Move the sheriff code out of `main.js` into `src/police.js` first (Claude).
+- [ ] `TASK-021` — **Minimap / waypoint arrow** (new `src/minimap.js`; Claude hooks it up). Story objectives already have world positions. Suggested: Codex.
+- [ ] `TASK-022` — **Check the taco stand's draw cost** (`Tacos.glb` was ~358 meshes) now that batching exists; swap for a stylised stand if it's still heavy.
+- [ ] `TASK-023` — **Torch sprites read as carved poles**; a bigger flame frame or a 3D torch. Suggested: Freebuff.
+- [ ] `TASK-024` — **Tune car handling** and enemy aggro while driving.
+- [ ] `TASK-025` — **Airboat** for the bayou stretches (the cover art has one).
+- [ ] `TASK-026` — **Drive the escape truck out** instead of an instant win.
+- [ ] `TASK-027` — **Radio stations** on top of the soundtrack folder.
+- [ ] `TASK-028` — **Tune mist, beams and headlight brightness on a real GPU.** After TASK-010.
+- [ ] `TASK-029` — **Traffic headlights**: share the player's spotlight rig with the nearest oncoming car.
+- [ ] `TASK-030` — **Wire unused set dressing**: the Trailer_Park.fbx scene and the Tacos / Pizzeria props.
+
+## BLOCKED
+
+- [ ] `TASK-013` — Blocked by `TASK-009`
+  - Reason: `src/prologue.js` is locked while the Act One hand-off is being tested.
+- [ ] `TASK-016` — Blocked by a **human decision**
+  - Reason: OrleaRouge as a new region on this map vs. a separate level (see Blockers).
+
+---
+
+# 🔗 DEPENDENCIES
+
+```text
+TASK-008 (review) ──→ TASK-009 (in progress) ──┬─→ TASK-013
+                                               └─→ TASK-017 ←── TASK-016 ←── human decision
+TASK-012 ──→ TASK-014
+TASK-010 ──→ TASK-028
+Claude extraction ──→ TASK-019 (landmarks.js), TASK-020 (police.js)
+TASK-011, TASK-018, TASK-021 — independent
 ```
-node serve.mjs 8899          # NOT 5173 — that's the Euclydia dev server
+
+---
+
+# 👥 AGENT OWNERSHIP
+
+| Agent | Current task | Files / subsystems | Status |
+|---|---|---|---|
+| Claude | TASK-009; orchestration, review, `main.js` integration | `src/actone.js`, `src/ledgerboard.js`, `src/cinema.js`, `src/prologue.js`, `src/main.js`, `tools/qa/actone.mjs` | Active |
+| Codex | — (suggested: TASK-011, then TASK-012) | — | Available |
+| Antigravity | — (suggested: TASK-010) | — | Available |
+| Freebuff | — (suggested: TASK-018) | — | Available |
+
+> Update this table whenever ownership changes.
+
+---
+
+# 🧩 FILE / SUBSYSTEM LOCKS
+
+| File / subsystem | Owner | Task | Lock status |
+|---|---|---|---|
+| `TODO.md` | All agents | Coordination | Shared |
+| `AGENT_PROTOCOL.md` | All agents | Team rules | Shared |
+| `AGENT_LOG.md` | All agents | Communication | Shared |
+| `src/main.js` | Claude | Orchestrator-owned (always) | Locked |
+| `src/actone.js`, `src/ledgerboard.js` | Claude | TASK-009 | Locked |
+| `src/cinema.js` | Claude | TASK-009 | Locked |
+| `src/prologue.js` | Claude | TASK-009 | Locked |
+| `tools/qa/actone.mjs` | Claude | TASK-009 | Locked |
+| `src/graphics.js`, `index.html`, `serve.mjs`, `package.json` | Claude | Serial files: ask first | Locked |
+| `src/merge.js` | — | TASK-011 | Available |
+| `src/fx.js` | — | TASK-012 | Available |
+| `src/traffic.js` | — | TASK-012 / TASK-014 | Available |
+| `tools/characters.html` | — | TASK-018 | Available |
+| `src/npc.js`, `src/camera.js`, `src/spatial.js`, `src/music.js`, `src/characters.js` | — | — | Available |
+| `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |
+
+### Lock rules
+- `LOCKED` means another agent is actively making changes there.
+- `SHARED` means multiple agents may read/update it under the protocol.
+- `AVAILABLE` means an agent may claim it.
+- Never silently take another agent's locked file/subsystem.
+- If ownership must change, record the handoff below.
+
+---
+
+# 🔄 HANDOFFS
+
+*No active handoffs.*
+
+---
+
+# 🧪 REVIEW QUEUE
+
+Implemented and headless-tested; waiting on the real-browser pass (TASK-010)
+before `COMPLETE`.
+
+- `TASK-001` — Atmosphere and graphics pass: height fog / mist, light shafts,
+  headlights, wet roads + mirror, speed blur (`src/fx.js`, `src/graphics.js`).
+  Needs real-GPU tuning (TASK-028).
+- `TASK-003` — NPC behaviour system (`src/npc.js`). Headless: calm at rest,
+  scatter from gunfire, capped hostility.
+- `TASK-004` — Ambient traffic (`src/traffic.js`). Headless: lanes held, pool
+  stable. The "ease past a pedestrian" fix hasn't been observed in a test yet.
+- `TASK-005` — Pointer-lock camera (`src/camera.js`). Headless: capture, mouse
+  look and right-drag work; **Esc release untested**.
+- `TASK-007` — Dixie Beaux rebrand, cutscene toolkit (`src/cinema.js`), story
+  options in `src/characters.js`, menu buttons.
+- `TASK-008` — Prologue + Mission 1 "Hog Wild" (`src/prologue.js`). Headless
+  walkthrough passes (twice); a hand-driven chase is still unverified.
+
+---
+
+# ✅ COMPLETED TASKS
+
+- `TASK-002` — **Performance pass**: static lights into the nearest-8 pool,
+  native-res HIGH, half-res GTAO, mirror every 2nd frame, collision grid
+  (`src/spatial.js`), `mergeRigid` / `batchStatic` (`src/merge.js`), fixed-step
+  simulation, F3 overlay. Bug fixes: pooled tracers, wrecked vehicles and dead
+  cruisers removed from their lists, aim assist prefers hostiles, FBX texture
+  404s redirected. Measured headless: draw calls 1,259 → 450, sim 0.88 →
+  0.45 ms, AI 0.55 → 0.14 ms, load with 0 console errors.
+- `TASK-006` — **Soundtrack folder** `assets/music/`: live playlist from
+  `serve.mjs`, `npm run build` writes `playlist.json`, shuffle, **N** next track,
+  fallback theme. Endpoint verified.
+
+---
+
+# 🚨 BLOCKERS / DECISIONS NEEDED
+
+- **OrleaRouge placement (human).** The script's next region is a big city. Is
+  it (a) a new region added to this map (the map would need to grow south), or
+  (b) a separate level loaded when you take the highway south? This blocks TASK-016 / TASK-017.
+- **Commits (human).** Everything since the "updates 1" commit is uncommitted:
+  the NPC system, story modules, Act One, QA scripts, docs and these
+  coordination files. Agents don't commit without approval.
+- **Dev server restart (human).** A server started before `serve.mjs` gained
+  the playlist endpoint 404s on `assets/music/playlist.json`. The game falls
+  back to the theme; restart `start-game.cmd` to pick it up.
+- Open design questions carried over: how weak should the police be (spawn
+  distance, count, give-up timer)? Is the map scale right, or should the towns
+  sit closer together?
+
+---
+
+# 🧠 CURRENT TECHNICAL NOTES
+
+- `src/main.js` is orchestrator-owned; build features as modules with a
+  `create…()` factory, and document the wiring.
+- Story acts follow `createActX(ctx) → { buildSet, start, update, phase, debug }`.
+- **Cutscenes queue.** Never `await cine.scene()` inside another scene.
+- Custom materials need `userData.gtbRealized = true`; moving objects must be
+  excluded from `batchStatic`; never add or toggle lights mid-game.
+- Several files are CRLF in the working tree (see protocol §6).
+- Headless fps is meaningless (SwiftShader). Measure draw calls / CPU ms.
+
+---
+
+# 🧪 TESTING STATUS
+
+**Last known test status:**
+- Free roam (`tools/qa/gameplay.mjs`): **pass** (re-run after the `cinema.js` /
+  `characters.js` changes).
+- Prologue (`tools/qa/prologue.mjs`): **pass** (re-run; it now hands off to
+  Act One: objective "Go home to South Tusouxroe").
+- Act One (`tools/qa/actone.mjs`): **pass** (3rd run, screenshots verified).
+
+**Last tested by:** Claude (headless Chromium / SwiftShader)
+
+**Last tested at:** 2026-09-12
+
+**Known regressions:** none recorded. Still unverified: real-browser items (TASK-010).
+
+---
+
+# 📊 PERFORMANCE NOTES
+
+Headless Chromium (SwiftShader), HIGH tier, 1280×720. CPU-side timings; fps not meaningful.
+
+| Metric | Before | After | Test conditions |
+|---|---|---|---|
+| Draw calls (on foot) | 1,259 | 450 → 500–780 with NPC system + traffic | spawn area, free roam |
+| Draw calls (driving) | ~1,160 | ~1,850 peak (story props + traffic) | gameplay.mjs driving step |
+| Meshes | 1,434 | 866 | after mergeRigid + batchStatic |
+| Sim / AI per frame | 0.88 / 0.55 ms | 0.45 / 0.14 ms | collision grid + NPC LOD |
+| Render submit | 15.8 ms | 10–16 ms | on foot |
+| Load | 6 console 404s | 0 errors, 0 failed requests | FBX URL modifier |
+
+Full history: `AGENT_LOG.md` → Performance investigations.
+
+---
+
+# 📝 UPDATE RULE
+
+Whenever an agent changes the state of a task, update this file. At minimum record:
+
+```text
+Task ID · Status · Agent · Files affected · Dependencies
+What changed · What remains · Testing performed · Known issues
 ```
-…or `npm start`, or double-click **`start-game.cmd`** on Windows.
-http://localhost:8899 → **Start the story**.
 
-**Never open `index.html` by double-clicking it.** That is a `file://` origin,
-browsers refuse to load ES modules from it, `src/main.js` never executes, and
-the menu sits on "loading assets…" with the Start button still enabled — which
-looks exactly like a hang. `index.html` now detects `file:` and prints an
-explanation instead. (`.gitattributes` pins `*.cmd` to CRLF; the repo-wide
-`eol=lf` would otherwise break the launcher on checkout.)
-
-Controls: **WASD** drive/walk · **F** jack & exit vehicle (also enter truck) ·
-**Shift** sprint / handbrake · **Space/Click** shoot · **Q/E** rotate camera · **M** music ·
-**[ ]** graphics quality.
-
-## Status — PLAYABLE
-
-### Graphics: photoreal PBR pass (`src/graphics.js`)
-
-The packs ship flat albedo and nothing else, so the whole scene is re-surfaced
-at load. See the README's **Graphics** section for the full rundown. In short:
-
-- `realize(root, {hint})` walks any loaded object and upgrades its materials —
-  classified by material + mesh + parent name into paint / chrome / glass /
-  rubber / asphalt / masonry / sheet / wood / foliage / fabric / plastic / skin.
-  It is called from every loader and once more over the whole scene after
-  `buildLevel()` to catch the hand-built landmarks. Materials carry a
-  `userData.gtbRealized` tag so it is idempotent.
-- Normal + ORM maps are derived from each albedo (Sobel over luminance + tiled
-  value noise); untextured geometry gets a shared micro-surface.
-- Sky → PMREM probe for IBL, re-baked as `state.dusk` advances.
-- `RenderPass → GTAO → bloom → OutputPass → grade → SMAA`, internal buffer up to
-  4K, downsampled to the canvas.
-- Four tiers with an auto governor that only steps *down*; `[` / `]` override.
-- Six-light pool recycled onto the nearest lot poles / streetlamps (`litSpots`).
-  Pool lights now park at intensity 0 instead of `visible = false`, since
-  toggling visibility changed the light count and recompiled every shader.
-
-### Graphics: atmosphere pass (`src/fx.js`)
-
-- Height fog + drifting ground mist patched into `ShaderChunk.fog_*`. `MIST`
-  is a plain object on purpose: three clones Vector3 uniforms per material
-  but shares plain objects, so one write updates every program.
-- `addLamp(scene, spot)` for each `litSpots` entry: shaft + ground pool + halo
-  (+ pole/head when `pole: true`).
-- `createHeadlights(scene)`: 2 SpotLights, beams, lens + brake-light sprites on
-  `state.veh`. Measures the car un-rotated once and caches it as `veh.fxDims`.
-- `createWetRoads(...)`: wet/puddle shader on every asphalt material (found via
-  `userData.surfaceKind`), plus a Reflector-style mirror render on HIGH/ULTRA.
-  The asphalt meshes are hidden during that render (feedback loop otherwise).
-- Grade pass: `uBlur` radial speed blur; FOV opens up at speed.
-
-- [ ] Tune mist density, beam intensity and headlight brightness on the real
-      GPU. Headless checks run on SwiftShader.
-- [ ] Mirror pass doubles scene draw calls on HIGH/ULTRA. If the governor
-      steps down too eagerly, lower `reflect` or cull the mirror camera's far
-      plane to ~120.
-
-### Hoodrats — 3D characters (`src/characters.js`)
-
-Replaces the old "tinted oldman sprite sheet" Hoodrat. Red and blue crews,
-male and female, built procedurally from the reference photos. Viewer at
-`tools/characters.html`.
-
-- `ENEMY_TYPES.hoodrat.kind` is now `"actor"`; `spawnEnemy` calls
-  `randomHoodrat(rng, T.h)`. Nothing else in the enemy system changed — the
-  actor implements the `AnimatedSprite` surface (`play` / `update` / `setFlip`
-  / `finished` / `material.opacity` / `blob`).
-- It reads its own per-frame travel to set yaw and stride rate, so it faces
-  where it walks and the one walk clip covers ambling and sprinting.
-- Geometry shared across instances; materials shared until an individual dies,
-  at which point its materials are cloned so the fade doesn't drag the rest of
-  the crew with it.
-- Watch out: the `paint` rule in graphics.js used to match the bare substring
-  `hood`, so "hoodrat" turned every material into clearcoat car paint. It is
-  `hood` now.
-
-- [ ] **Draw calls.** 45 meshes per male, 54 per female, ~6 spawned at a time —
-      roughly +290 draw calls on a ~930-mesh scene. Each head alone is ~14
-      rigid meshes. Merging the rigid groups per material (skull + jaw + eyes +
-      brows + do-rag into one head mesh) would cut most of it without touching
-      the rig, since only the joint pivots actually animate.
-
-### Loading — two bugs this pipeline caused, and the fixes
-
-1. **The menu froze on "loading assets…" and looked like the game wouldn't open.**
-   The world's PBR surfaces (`groundTexture`, `surface("asphalt")`, `buildTrees`,
-   `carParkTexture`) were generated at **module top level** — seconds of
-   synchronous canvas work before `boot()` ran, so the loader text never
-   updated and the page couldn't even paint. Worse on a machine `autoTier()`
-   rated `ultra`, where `derive` was 1024 and every map cost 4x. Now staged
-   inside `boot()` behind `await paint()` with its own loader lines
-   ("pouring the asphalt…" / "laying the bayou floor…" / "planting the swamp…").
-   First progress text at **~340 ms** instead of never.
-2. **The tick loop rendered the full post chain behind the opaque overlay.**
-   GTAO + bloom + SMAA + a 3072px shadow map, every frame, entirely hidden.
-   It now idles at ~2.5 fps until `state.running` — enough to keep shaders
-   compiled so there is no hitch on Start.
-
-`TIERS[*].derive` is the knob that bit here: **keep it at 256–512**. Above that
-the material pass gets slow enough to look like a hang and buys nothing (the
-detail is high-frequency noise); below it, surfaces tiled many times — the
-highway repeats its asphalt ~62x — band visibly.
-
-**Numbers** (headless SwiftShader, warm, so dominated by software rasterisation
-— a real GPU will be far quicker): ~10.7 s before the pipeline, ~17 s after.
-The first run after a cold start spikes to ~35 s; that's contention, not the
-pipeline. Worth re-measuring on the actual GPU.
-
-- **Title screen** shows the provided cover art (`assets/cover.png`).
-- **Theme music** (`assets/audio/theme.mp3`) loops on Start, M to mute.
-- **Driving**: 25 drivable vehicles (PSX pack + Designersoup cars incl. the DeLorean
-  at the pumps). Arcade handling, chase cam, handbrake, road-kill.
-- **On foot**: redneck billboard sprite, auto-aim rifle, sprint/stamina.
-- **Enemies** (only these three): **Feral Hogs** (3D, charge), **Rednecks**
-  (billboard sprite) & **Hoodrats** (3D actors, red/blue crews, both sexes —
-  see above). 16 spawned, herding you north. Voodoo Man fully removed.
-- **Everything lines US-167** now — one continuous strip you drive past:
-  `LANDMARKS` list in main.js = **9 Popeyes** + the **6twelve** (right at the spawn) +
-  Tony's Pizza + the taco stand (`Tacos.glb`), alternating sides, each with a car
-  park + parked cars + an **asphalt apron linking it to the highway**.
-  - *Chatham* (spawn): trailer park (stylised mobile homes + 4 pedestrian FBX),
-    "Bienvenue en Louisiane" sign, a few torches/shrooms, 2 shacks.
-  - *Ruston* (north): two rows of `Buildings.glb` shopfronts, asphalt lot, the truck.
-  - Water towers CHATHAM / MONROE / RUSTON.
-- **Real models now used** for the key businesses:
-  - **6twelve** — `sixtwelve/6twelve.fbx` (the small 1 MB pack, not the old 960-node one).
-  - **BurgerPiz** — `burgerpiz/BurgerPiz.glb`, filtered to just the `BurgerPiz_*` meshes
-    (dropped its background city + interior clutter → 9 meshes).
-  - **Taco stand** — `Tacos.glb`, filtered to the stand + food meshes.
-  - Stylised `makeSixtwelve` / `makePizzeria` kept as fallbacks if a load fails.
-- **Shacks Shanties Sheds** pack (blend-only) → stylised `makeShed / makeBarrel /
-  makePallet / makeFence` using the pack's corrugated / chainlink / barrel / pallet
-  textures. Built a fenced **junkyard** (46, 92) + sheds in the trailer park.
-- GLB mesh-culling (`loadGLB` cullRe/keepRe) took the scene from ~2200 meshes to ~930.
-- Torch/shroom "weird orange orb" halos removed; torches near spawn have real lights.
-- Redneck sprite tint softened (was near-solid red at distance).
-- **Pickups**: 4-of-5 gas cans (goal), Popeyes buckets (+28 HP), $ cash counter.
-- **Wanted / Sheriff**: dormant until you kill **12 Rednecks/Hoodrats combined**
-  (`HEAT_KILLS` in main.js), then it kicks in at 2 stars and cruisers spawn.
-- Win = 4 cans + reach truck → "left the parish". Die → **WASTED**. (BUSTED wired for later.)
-
-## Asset usage
-
-| pack | in game? |
-|---|---|
-| `APIgqp.jpg` / `S4KKpl.jpg` | player + Redneck sprites (`tools/slice_sprites.py`). The `oldman` sheet is no longer used for Hoodrats. |
-| `Dead Swamp` | glowing mushrooms, bamboo torches (`tools/slice_swamp.py`). Voodoo-man sprite dropped entirely. |
-| `PSX_Vehicle_Pack` | wrecks, parked cars, the escape truck, sheriff proto |
-| `Designersoup Low Poly Car Pack` | drivable cars incl. DeLorean |
-| `Gas_station` (6twelve) | strip landmark (FBX) |
-| `Buildings.glb` | Ruston shopfronts |
-| `Tacos.glb` | taco truck on the strip |
-| `Trailer_Park` characters | pedestrians |
-| `Urban_Modular_Demo` | shack walls, streetlamp, stop sign |
-| `TownTileSet` | copied, not wired (GLB has no embedded textures) |
-| **NOT USED (off-theme / unusable):** Downtown City MegaKit (dense city — dropped), Retro PSX Mansion, Trashville, Pizzeria_Scene.glb (100 MB), "Shacks Shanties Sheds" (.blend only), Modular Village / RCC / azul / PP furniture (2D tilesets) |
-
-## Backlog — everything still to do (updated 2026-09-12)
-
-### In progress: performance / NPCs / traffic / camera pass
-Spec: the "improve the existing game substantially" brief (perf, NPC behaviour,
-ambient traffic, GTA-style mouse camera). Diagnose first, test each subsystem.
-
-Measured baseline (headless, HIGH, 1280×720, after the light + resolution fixes):
-sim 0.9 ms, AI 0.55 ms, **render submit 15.8 ms, 1,259 draw calls**, 279k tris,
-1,434 visible meshes. The bottleneck is draw calls, not AI.
-
-- [x] ~21 always-on PointLights folded into the nearest-8 light pool (`poolLight`).
-- [x] HIGH no longer supersamples (`TIERS[*].ss`); only 4K ULTRA does.
-- [x] Mirror pass: far plane 130, every 2nd frame on HIGH.
-- [x] GTAO at half resolution, 10 samples on HIGH.
-- [x] F3 frame-time / draw-call overlay (hidden by default); fixed-step
-      simulation (1/30 s steps) so game speed no longer depends on fps.
-- [x] Cut draw calls: `src/merge.js` — `mergeRigid` bakes each Hoodrat's parts
-      per joint + material; `batchStatic` merges static props per material in
-      48 m chunks. Measured: meshes 1,434 → 866, draw calls 1,259 → 450,
-      tris 279k → 171k, render submit 15.8 → 12.3 ms, no new console errors.
-- [x] `src/spatial.js` (BlockerGrid) drives `resolveCollision` and car
-      collision. Sim 0.88 → 0.45 ms, AI 0.55 → 0.14 ms.
-- [x] Allocations removed from on-foot movement and driving collision
-      (scratch vectors).
-- [ ] Batch by material *signature* too: 406 static materials are only 152
-      distinct setups, so identical-but-separate materials still split batches.
-- [ ] Pooled lights never toggle `.visible`; muzzle, wreck and 2 beacon lights
-      are created up front (a light added mid-game recompiled every shader).
-      Implemented; the first-shot hitch needs checking on a real GPU.
-- [x] NPC behaviour system (`src/npc.js`): temperaments, home turf (POIs),
-      idle / wander / loiter / flee / hostile, violence events, max 7 hostile,
-      staggered thinks, distance LOD. Tested (`tools/qa/gameplay.mjs`): at rest
-      0 hostile, the rest wander / loiter / idle; 5 shots → 8 flee, 0 hostile;
-      player HP stayed 100 for the whole run (the old build got WASTED in 9 s
-      standing still). NPC count stays under the cap of 40.
-- [x] Traffic (`src/traffic.js`): 8 pooled cars on two lanes, spacing, stops
-      for obstacles, recycles ahead/behind. Tested: cars stay in their lanes
-      (x = −3.6 / −8.4) at 12–19 m/s, pool stays 8, vehicle count flat at 60.
-      Fixed: cars queued forever behind a pedestrian at the road edge; they now
-      ease past after 3 s (not yet re-observed in a test).
-- [x] Pointer-lock camera (`src/camera.js`): click to capture, clamped pitch,
-      wheel zoom, auto-recentre behind the car, pull-in past buildings at low
-      angles; Q/E secondary; right-drag fallback. Tested headless: click locks
-      the pointer and mouse movement turns the view; right-drag turns it too;
-      walking and driving both work with it.
-- [ ] Verify in a real browser: **Esc releases the mouse** (headless Chromium
-      ignores a synthetic Esc for pointer lock), wheel zoom, camera pull-in, and
-      the feel of the mouse sensitivity.
-- [ ] Draw calls while driving are still ~1,160 (the chase view sees far down
-      the strip, plus the road mirror). Candidates: cull the mirror pass to
-      objects near the road, give traffic cars LOD, batch by material signature.
-- [ ] Traffic only runs on US-167. Ruston's main street (z ≈ −78) could get a
-      cross lane; cars could honk at, or steer around, a player standing in the road.
-- [ ] Bugs found while reading the code:
-  - [x] Tracers created a geometry + material per shot, never freed → pooled.
-  - [x] Wrecked vehicles stayed in `vehicles` (F could enter an invisible car).
-  - [x] Dead sheriff units stayed in `sheriffs`.
-  - [x] `fire()` auto-aimed at any NPC → hostiles first, bystanders only when
-        aimed at along the camera direction.
-  - [x] Pre-existing 404s: `cars/387359…png` (the Designersoup FBX points one
-        folder above its .fbm directory) and the Trailer Park FBX's absolute
-        texture path. Redirected with a `LoadingManager` URL modifier; the load
-        now finishes with 0 console errors and 0 failed requests.
-- [ ] Player is the redneck sprite, so it can't face the camera direction while
-      aiming; the Keseme 3D actor (story work) would fix this.
-- [ ] Full test pass: walk, drive, enter/exit, shoot, NPCs, traffic, pointer
-      lock / Esc, many NPCs + cars, console clean.
-
-### Story: Prologue "Mud, Blood & Magnolia" + Mission 1 "Hog Wild" (not started)
-From the script the user supplied (Dixie Beaux; protagonist Keseme Nadia).
-Planned as the playable opening, with the current gas-can loop continuing after it.
-- [ ] Rebrand the world: Dixie Beaux; Chatham → **Chatboro** (water tower
-      "FAITH — FAMILY — FREEDOM / TERMS AND CONDITIONS APPLY"); Monroe/Ruston →
-      **Tusouxroe**. Welcome billboard "SPORTSMAN'S HEAVEN — EVERYBODY ELSE'S
-      PROBLEM" + graffiti "HEAVEN GOT A LOW BAR"; "LUXURY CONDOS COMING SOON /
-      WHERE WE SUPPOSED TO GO?" billboard. Update menu, HUD, win/lose/busted copy.
-- [ ] Cinematic system: letterbox, speaker subtitles, location / mission / title
-      cards, camera shots, Enter skips a line, Esc skips a scene; synthesized SFX
-      (shotgun, siren, phone ring, hog squeal) — no new audio assets.
-- [ ] Cold open: black screen sound collage, radio dial gags, dawn aerial over
-      the strip, welcome billboard, Chatboro water tower, into Keseme's coupe.
-- [ ] In-car GPS gag + phone call with Mally; the green Bravado passes.
-- [ ] Mission 1 "Hog Wild": follow the stolen Bravado (rubber-banded AI, lose
-      it = retry), thief shotgun exchange, turn-off onto a dirt road into the
-      woods east of the strip, hog stampede, crash through a fence, Bubba's
-      pickup arrives, clear the hogs with Bubba (tranq rifle), retrieve the car.
-- [ ] Ledger scene: Mally arrives, duffel of cash + ledger, sheriff convoy,
-      Sheriff Clay Mercer + deputies, bag handed over but ledger kept, title
-      card blown apart by a shotgun blast, "ACT ONE — WELCOME HOME".
-- [ ] Characters: extend `characters.js` (skin / top colour / headwear / hat /
-      beard options) for Keseme (player, replaces the redneck sprite), Mally,
-      Bubba, Mercer, deputies.
-- [ ] Menu: "Start the prologue" + "Free roam" (skip story).
-- [ ] Later acts from the script (not scoped): Tusouxroe + Nadia family house,
-      the ledger map, OrleaRouge (French District, "Blue Light Special" raid
-      escape), flood tunnel, Nirbayou Nolantis (underwater city), Governor
-      Bellefontaine, Pelican Crown Holdings arc, branching endings.
-
-### Graphics follow-ups
-- [ ] Tune mist / beams / headlights on a real GPU (headless is SwiftShader).
-- [ ] Traffic cars have sprite head/tail lights only; consider sharing the
-      player's headlight rig with the nearest oncoming car.
-
-## Now / Next / Later
-
-**Now**
-- [ ] Playtest in a *foreground* window (automation tab can't run the loop) —
-      especially to check the real frame rate at HIGH / 4K ULTRA on this GPU.
-      Headless verification runs on SwiftShader and always drops to PERFORMANCE.
-- [ ] Stylised landmarks (Popeyes, trailers, water towers) are still plain
-      coloured boxes with only micro-surface on them. They are the weakest
-      remaining surfaces — real textures or more geometry would sell them.
-- [ ] Pre-existing, unrelated to the graphics work: `loadDsCar` /
-      `loadFbxScene` share one `FBXLoader`, and `setResourcePath` leaks between
-      them under `Promise.all` — one car texture 404s
-      (`cars/387359c5...png`). The `Trailer_Park` chars FBX also has an
-      absolute `C:/Users/srkak/...` texture path baked in.
-- [ ] Taco stand (`Tacos.glb`) is ~358 meshes — biggest single draw cost. Swap for a
-      stylised taco truck if framerate suffers.
-- [ ] Torch sprites still read as carved poles more than flames — bigger flame frame or a 3D torch.
-- [ ] Tune car handling + enemy aggro while driving.
-
-**Next**
-- [ ] Make the Sheriff escapable — currently no give-up timer once they're active.
-      Tune `HEAT_KILLS`, spawn count, ram damage.
-- [ ] Mission structure ("Louisiana Stories" — a few numbered jobs per town).
-- [ ] Minimap / waypoint arrow (easy to get lost on the highway).
-- [ ] Wire Trailer_Park.fbx scene + Tacos_Props / Pizzeria props as set dressing.
-- [ ] Airboat (cover art!) for the bayou stretches.
-
-**Later**
-- [ ] Actually drive the escape truck out instead of instant win.
-- [ ] Radio stations / more tracks.
-- [ ] Pedestrian AI (walk, flee, get in cars).
-
-## Web / deploy
-
-- **Landing page**: `index.html` at repo root (GTA-styled, links to `./game/`).
-- **Discord unfurl**: `og.png` (1200×630, `tools/make_og.py`). OG/twitter meta in
-  `index.html` — URLs hardcoded to `https://grand-theft-bayou.pages.dev/`. **If the
-  Cloudflare Pages project name isn't `grand-theft-bayou`, fix those 4 `og:*` /
-  `twitter:*` URLs.**
-- **Cloudflare Pages**: `wrangler.jsonc` sets `pages_build_output_dir = "."`;
-  `package.json` has a no-op `build` script so the dashboard's `npm run build` passes.
-  Static site — no framework, Three.js from CDN.
-
-## Open questions
-- Cops: how weak? (spawn distance, count, give-up timer)
-- Map scale feel OK, or tighten the three towns closer together?
+**Do not claim work is complete merely because code was written.** A task
+becomes `COMPLETE` only after appropriate review and testing.

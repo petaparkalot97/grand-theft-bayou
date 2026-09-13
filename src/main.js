@@ -13,11 +13,20 @@ import { batchStatic } from "./merge.js";
 import { createNpcSystem } from "./npc.js";
 import { createCameraController } from "./camera.js";
 import { createTraffic } from "./traffic.js";
-import { randomHoodrat } from "./characters.js";
+import { randomHoodrat, makeHoodrat } from "./characters.js";
+import { createCinema } from "./cinema.js";
+import { createPrologue, makeCastMember, PROLOGUE_KEEPOUT } from "./prologue.js";
+import { createActOne } from "./actone.js";
+import { createOrleaRouge } from "./orlearouge.js";
 
 // ---------------------------------------------------------------- config
-// North Louisiana, US-167: Chatham (south) -> Monroe strip (middle) -> Ruston (north).
-const WORLD = 136;           // half-size of the map
+// Dixie Beaux, a Gulf Coast state that isn't Louisiana, honest: US-167 runs from
+// Chatboro (south, the swamp and the trailer park) up the Tusouxroe strip (north).
+const WORLD = 136;           // half-width of the map (x), and its northern extent
+// The map grew south to fit OrleaRouge. x stays ±WORLD; z runs from the
+// Tusouxroe city limits (north, -z) past Chatboro and the bayou causeway to the
+// OrleaRouge riverfront (south, +z). Use MAP, not ±WORLD, for any z bound.
+const MAP = { minX: -WORLD, maxX: WORLD, minZ: -WORLD, maxZ: 382 };
 const CAN_GOAL = 4;
 const ROAD_X = -6;           // the highway runs N/S along this line
 const ROAD_HALF = 5;         // half road width
@@ -55,18 +64,21 @@ const KEEPOUT = [
   { x: -46, z: 112, r: 22 },   // trailer park
   { x: 46, z: 92, r: 22 },     // junkyard
   { x: 30, z: 70, r: 10 },     // shack
+  ...PROLOGUE_KEEPOUT,         // Mission 1: dirt road into the woods + crash site
 ];
 function inKeepout(x, z) {
   if (Math.abs(x - ROAD_X) < ROAD_HALF + 4) return true;         // road corridor
   if (Math.abs(x - ROAD_X) < LOT_X + 14) return true;            // the whole strip frontage
   if (Math.hypot(x - ROAD_X, z - SPAWN_Z) < 24) return true;     // clear the spawn + sign
   if (z < -50) return true;                                      // Ruston
+  if (z > 142) return true;                                      // causeway + OrleaRouge: no swamp pines
   return KEEPOUT.some((k) => Math.hypot(x - k.x, z - k.z) < k.r);
 }
 
 const overlay = document.getElementById("overlay");
 const loadNote = document.getElementById("loadNote");
 const startBtn = document.getElementById("startBtn");
+const freeBtn = document.getElementById("freeBtn");
 const hpFill = document.getElementById("hpFill");
 const spFill = document.getElementById("spFill");
 const cansEl = document.getElementById("cans");
@@ -211,10 +223,13 @@ function groundTexture() {
 let ground;
 function buildGround() {
   ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(WORLD * 2.4, WORLD * 2.4, 1, 1),
+    new THREE.PlaneGeometry(WORLD * 2.4, MAP.maxZ - MAP.minZ + WORLD * 0.8, 1, 1),
     new THREE.MeshStandardMaterial({ map: groundTexture(), roughness: 1 })
   );
   ground.rotation.x = -Math.PI / 2;
+  // centred on the grown map, and tiled to match its longer z so it doesn't stretch
+  ground.position.z = (MAP.maxZ + MAP.minZ) / 2;
+  ground.material.map.repeat.set(30, 30 * (MAP.maxZ - MAP.minZ + WORLD * 0.8) / (WORLD * 2.4));
   ground.castShadow = false;
   scene.add(ground);
   realize(ground, { hint: "grass ground", shadows: false });
@@ -797,6 +812,7 @@ const state = {
   wanted: 0,
   crimeCd: 0,         // time since last crime (heat holds while > 0)
   bustCd: 0,          // seconds a sheriff has been on top of you
+  cinematic: false,   // a cutscene owns the world: simulation and input pause
 };
 const vehicles = [];   // every drivable car
 const sheriffs = [];   // active police units
@@ -854,6 +870,10 @@ addEventListener("keyup", (e) => keys.delete(e.code));
 // looks around and left click shoots. Esc releases. Right-drag still orbits
 // while the pointer is free, but is no longer required.
 renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
+const cine = createCinema({ camera, muted: () => music.muted });
+let prologue = null;           // created once the car models have loaded
+let actOne = null;             // Act One "Welcome Home" (actone.js), starts when the prologue ends
+let orlea = null;              // the causeway + OrleaRouge, the south of the map (orlearouge.js)
 const camCtl = createCameraController({
   camera, dom: renderer.domElement, canCapture: () => state.running && !state.over,
 });
@@ -925,10 +945,10 @@ const NPC_POIS = [
   { x: -48, z: 116, r: 16 }, { x: 48, z: 100, r: 12 }, { x: 34, z: 88, r: 6 },
   ...[-60, -40, -20, 0, 20, 40].map((x) => ({ x, z: -78, r: 8 })),
 ];
-for (let z = WORLD - 16; z > -WORLD + 16; z -= 24) {
+for (let z = MAP.maxZ - 16; z > MAP.minZ + 16; z -= 24) {
   NPC_POIS.push({ x: ROAD_X + (z % 48 ? 9 : -9), z, r: 6 });
 }
-const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, bounds: WORLD });
+const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, bounds: MAP });
 const npcEnv = { player: playerPos, driving: false, others: enemies };
 
 function spawnEnemy(typeName, x, z) {
@@ -961,6 +981,7 @@ const _obstacles = [];
 function trafficObstacles() {
   _obstacles.length = 0;
   _obstacles.push(playerPos);
+  if (traffic) for (const c of traffic.cars) if (c.active) _obstacles.push(c.obj.position);
   for (const s of sheriffs) if (!s.dead) _obstacles.push(s.obj.position);
   for (const e of enemies) {
     if (!e.dead && Math.abs(e.spr.position.x - ROAD_X) < ROAD_HALF + 3) _obstacles.push(e.spr.position);
@@ -980,18 +1001,19 @@ async function buildLevel() {
   const roadMat = asphalt.material(1, { envMapIntensity: 0.9 });
   roadMat.normalScale.set(2.1, 2.1);
   for (const t of [roadMat.map, roadMat.normalMap, roadMat.roughnessMap]) {
-    if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, (WORLD * 2 + 40) / 5); }
+    if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, (MAP.maxZ - MAP.minZ + 40) / 5); }
   }
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(10, WORLD * 2 + 40), roadMat);
+  // US-167 runs the whole length of the map, and becomes OrleaRouge's main boulevard
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(10, MAP.maxZ - MAP.minZ + 40), roadMat);
   road.rotation.x = -Math.PI / 2;
-  road.position.set(ROAD_X, 0.02, -10);
+  road.position.set(ROAD_X, 0.02, (MAP.maxZ + MAP.minZ) / 2);
   road.receiveShadow = true;
   scene.add(road);
   const lineMat = new THREE.MeshStandardMaterial({
     color: 0xd9c14a, roughness: 0.62, metalness: 0, envMapIntensity: 1.1,
   });
   lineMat.userData.gtbRealized = true;
-  for (let z = WORLD; z > TRUCK_Z; z -= 6) {
+  for (let z = MAP.maxZ; z > TRUCK_Z; z -= 6) {
     const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 2.4), lineMat);
     dash.rotation.x = -Math.PI / 2;
     dash.position.set(ROAD_X, 0.05, z);
@@ -1012,7 +1034,7 @@ async function buildLevel() {
   // just past it, nose pointed north up US-167.
   // player's RIGHT shoulder, just before the gas station, facing oncoming traffic
   makeWelcomeSign(ROAD_X + ROAD_HALF + 3.5, SIGN_Z, -0.35);
-  makeWaterTower(-58, SPAWN_Z - 2, "CHATHAM");
+  makeWaterTower(-58, SPAWN_Z - 2, "CHATBORO", ["FAITH — FAMILY — FREEDOM"], "TERMS AND CONDITIONS APPLY");
   makeTrailerPark(-48, 116);
   makeJunkyard(48, 100);
   buildShack(wall, doorway, windowW, roofC, 34, 88, 0.15);
@@ -1061,7 +1083,10 @@ async function buildLevel() {
     if (!inKeepout(x, z)) makeShroom(x, z);
   }
   if (stop) placeKit(stop, ROAD_X - ROAD_HALF - 1, SPAWN_Z - 24, 0, 1.2);
-  makeWaterTower(64, 2, "MONROE");
+  makeWaterTower(64, 2, "TUSOUXROE", ["SOUTH SIDE"]);
+  // Tusouxroe's welcome: redevelopment, and the neighbourhood's answer to it
+  makeBillboard(ROAD_X - ROAD_HALF - 6, -38, 0.12,
+    "LUXURY CONDOS", "COMING SOON", "WHERE WE SUPPOSED TO GO?");
 
   // ================= RUSTON (north) — small-town shopfronts =================
   const buildings = await loadGLB("./assets/models/buildings/Buildings.glb");
@@ -1095,7 +1120,7 @@ async function buildLevel() {
   lot.position.set(ROAD_X, 0.015, -98);
   lot.receiveShadow = true;
   scene.add(lot);
-  makeWaterTower(52, -92, "RUSTON");
+  makeWaterTower(52, -92, "TUSOUXROE", ["CITY LIMITS"]);
 
   // ================= VEHICLES =================
   loadNote.textContent = "towing in the cars…";
@@ -1144,15 +1169,91 @@ async function buildLevel() {
     sheriffProto.add(bar);
   }
 
+  // ---- the Prologue / Mission 1 set: Keseme's coupe, Mally's Bravado, the dirt road ----
+  prologue = createPrologue({
+    scene, camera, cine, state, playerPos, getPlayer: () => player, vehicles, enemies,
+    registerVehicle, spawnEnemy, killEnemy, npcs, makeHoodrat, surface, hitPlayer,
+    spawnTracer, muzzleFlash, flashObjective,
+    makeThief: () => {
+      const t = new AnimatedSprite(atlases.redneck, 1.9);
+      t.setTint(0x9aa3ab);
+      t.play("idle", { fps: 5 });
+      return t;
+    },
+    setObjective: setStoryObjective,
+    enterVehicle: (v) => {
+      state.veh = v;
+      playerPos.copy(v.obj.position);
+      player.visible = false;
+    },
+    exitVehicle: () => {
+      if (!state.veh) return;
+      state.veh.speed = 0;
+      state.veh = null;
+      player.visible = true;
+    },
+    startMusic: () => {
+      music.volume = 0.55;
+      soundtrackReady.then((s) => s.play());
+    },
+    setPopulation: (on) => { populationOn = on; },
+    onFinished: () => { if (actOne) actOne.start(); },
+    models: { coupe: carB, bravado: carR, pickup },
+    getSheriffProto: () => sheriffProto,
+    ROAD_X, ROAD_HALF, SPAWN_Z, SIGN_Z,
+  });
+  prologue.buildSet();
+
+  // ---- Act One set: South Tusouxroe and the Nadia kitchen ----
+  actOne = createActOne({
+    setCameraYaw: (yaw) => camCtl.addYaw(yaw - camCtl.yaw),
+    scene, camera, cine, state, playerPos, getPlayer: () => player, makeHoodrat, surface,
+    makeBillboard, addBlocker, poolLight, flashObjective,
+    makeCastMember: (who) => makeCastMember(makeHoodrat, who),
+    addLitSpot: (spot) => litSpots.push(spot),
+    setObjective: setStoryObjective,
+    exitVehicle: () => {
+      if (!state.veh) return;
+      state.veh.speed = 0;
+      state.veh = null;
+      player.visible = true;
+    },
+    teleport: (x, z, heading = 0) => {
+      const v = state.veh;
+      if (v) {
+        v.obj.position.x = x; v.obj.position.z = z;
+        v.heading = heading; v.obj.rotation.y = heading; v.speed = 0;
+        v.blocker.x = x; v.blocker.z = z;
+      }
+      playerPos.set(x, 0, z);
+      player.position.set(x, 0, z);
+      if (player._last) player._last.copy(player.position);
+    },
+  });
+  actOne.buildSet();
+
+  // ---- the south: bayou causeway and the city of OrleaRouge ----
+  orlea = createOrleaRouge({
+    scene, surface, addBlocker, poolLight, makeBillboard, makeNeonSign,
+    addLitSpot: (spot) => litSpots.push(spot),
+    getSheriffProto: () => sheriffProto,
+    cine, state, playerPos, ROAD_X, ROAD_HALF,
+  });
+  orlea.buildSet();
+  NPC_POIS.push(...orlea.pois);          // npcs holds this same array
+  camCtl.setOccluders(orlea.occluders);  // keep the camera out of the overpass deck
+
   // ---- ambient traffic: both lanes of US-167 ----
   traffic = createTraffic({
     scene, registerVehicle,
     models: [carR, carB, van, pickup, beetle, landy],
     lanes: [
-      { name: "northbound", points: [[ROAD_X + 2.4, WORLD - 2], [ROAD_X + 2.4, -WORLD + 2]], cruise: [12, 19] },
-      { name: "southbound", points: [[ROAD_X - 2.4, -WORLD + 2], [ROAD_X - 2.4, WORLD - 2]], cruise: [12, 19] },
+      { name: "northbound", points: [[ROAD_X + 2.4, MAP.maxZ - 2], [ROAD_X + 2.4, MAP.minZ + 2]], cruise: [12, 19] },
+      { name: "southbound", points: [[ROAD_X - 2.4, MAP.minZ + 2], [ROAD_X - 2.4, MAP.maxZ - 2]], cruise: [12, 19] },
+      ...(orlea ? orlea.lanes : []),
     ],
     perLane: 4,
+    maxCars: 12,
   });
 
   // ---- the escape truck ----
@@ -1192,7 +1293,9 @@ async function buildLevel() {
 const ENEMY_KINDS = ["hog", "redneck", "hoodrat"];
 const ENEMY_CAP = 40;         // living enemies to maintain
 let enemyRespawnCd = 0;
+let populationOn = true;      // missions switch spawning off during set pieces
 function updateEnemyPopulation(dt) {
+  if (!populationOn) return;
   let alive = 0;
   for (const e of enemies) if (!e.dead) alive++;
   enemyRespawnCd -= dt;
@@ -1204,8 +1307,24 @@ function updateEnemyPopulation(dt) {
   const zoff = (ahead ? -1 : 1) * rand(65, 105);
   const side = Math.random() < 0.5 ? -1 : 1;
   let x = ROAD_X + side * rand(10, 30);
-  let z = THREE.MathUtils.clamp(playerPos.z + zoff, -WORLD + 12, WORLD - 12);
-  spawnEnemy(ENEMY_KINDS[(Math.random() * 3) | 0], x, z);
+  let z = THREE.MathUtils.clamp(playerPos.z + zoff, MAP.minZ + 12, MAP.maxZ - 12);
+  let kind = ENEMY_KINDS[(Math.random() * 3) | 0];
+  if (orlea && orlea.inCity(x, z)) {
+    // city streets: people, not hogs, and at a hangout rather than inside a building
+    kind = Math.random() < 0.7 ? "hoodrat" : "redneck";
+    const spots = orlea.pois.filter((p) => {
+      const d = Math.hypot(p.x - playerPos.x, p.z - playerPos.z);
+      return d > 60 && d < 110;
+    });
+    if (spots.length) {
+      const p = spots[(Math.random() * spots.length) | 0];
+      x = p.x + rand(-p.r, p.r);
+      z = p.z + rand(-p.r, p.r);
+    }
+  } else if (z > 136 && z < 196) {
+    return;                              // the causeway is open water: nobody lives there
+  }
+  spawnEnemy(kind, x, z);
 
   // cull enemies that wandered absurdly far, then compact the list
   for (const e of enemies) {
@@ -1482,7 +1601,7 @@ function makeTorch(x, z, withLight) {
   if (withLight) poolLight(0xff9a3c, 22, 18, x, 2.6, z);
 }
 
-// ---- the "Bienvenue en Louisiane" sign — planted on the shoulder, angled to the road ----
+// ---- the state line billboard — planted on the shoulder, angled to the road ----
 function makeWelcomeSign(x, z, ry = 0) {
   const c = document.createElement("canvas");
   c.width = 768; c.height = 420;
@@ -1490,10 +1609,18 @@ function makeWelcomeSign(x, z, ry = 0) {
   g.fillStyle = "#1f5d3a"; g.fillRect(0, 0, 768, 420);
   g.strokeStyle = "#f4f1e4"; g.lineWidth = 14; g.strokeRect(26, 26, 716, 368);
   g.fillStyle = "#f4f1e4"; g.textAlign = "center";
-  g.font = "italic 48px Georgia, serif"; g.fillText("Bienvenue en", 384, 116);
-  g.font = "bold 108px Georgia, serif"; g.fillText("LOUISIANE", 384, 228);
-  g.font = "italic 32px Georgia, serif";
-  g.fillText("Laissez les bons temps rouler !", 384, 320);
+  g.font = "italic 44px Georgia, serif"; g.fillText("Welcome to", 384, 98);
+  g.font = "bold 100px Georgia, serif"; g.fillText("DIXIE BEAUX", 384, 196);
+  g.font = "italic 27px Georgia, serif";
+  g.fillText("“Sportsman’s Heaven — Everybody Else’s Problem.”", 384, 258);
+  // somebody got to it with a spray can
+  g.save();
+  g.translate(398, 336);
+  g.rotate(-0.06);
+  g.font = "bold 46px 'Comic Sans MS', 'Marker Felt', Impact, sans-serif";
+  g.fillStyle = "#e8402c";
+  g.fillText("HEAVEN GOT A LOW BAR.", 0, 0);
+  g.restore();
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
 
   const grp = new THREE.Group();
@@ -1515,15 +1642,82 @@ function makeWelcomeSign(x, z, ry = 0) {
   scene.add(grp);
 }
 
-// ---- water tower with the town name (CHATHAM / MONROE / RUSTON) ----
-function makeWaterTower(x, z, name) {
+// ---- a big roadside billboard on two posts, with optional graffiti ----
+function makeBillboard(x, z, ry, headline, sub, graffiti) {
+  const c = document.createElement("canvas");
+  c.width = 1024; c.height = 420;
+  const g = c.getContext("2d");
+  const grad = g.createLinearGradient(0, 0, 0, 420);
+  grad.addColorStop(0, "#f4efe4");
+  grad.addColorStop(1, "#d9cdb4");
+  g.fillStyle = grad; g.fillRect(0, 0, 1024, 420);
+  g.fillStyle = "#1f2a36"; g.fillRect(0, 0, 1024, 34); g.fillRect(0, 386, 1024, 34);
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillStyle = "#1f2a36"; g.font = "bold 128px Georgia, serif"; g.fillText(headline, 512, 150);
+  g.fillStyle = "#a8812f"; g.font = "italic 64px Georgia, serif"; g.fillText(sub, 512, 250);
+  if (graffiti) {
+    g.save();
+    g.translate(530, 336);
+    g.rotate(-0.05);
+    g.fillStyle = "#d4321f";
+    g.font = "bold 62px 'Comic Sans MS', 'Marker Felt', Impact, sans-serif";
+    g.fillText(graffiti, 0, 0);
+    g.restore();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = GFX.maxAniso;
+
+  const grp = new THREE.Group();
+  grp.position.set(x, 0, z);
+  grp.rotation.y = ry;
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(12, 4.9, 0.3),
+    new THREE.MeshStandardMaterial({ map: tex, emissive: 0x2a2418, emissiveIntensity: 0.35, emissiveMap: tex }));
+  panel.position.y = 7.2;
+  panel.castShadow = true;
+  grp.add(panel);
+  for (const px of [-4, 4]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.35, 7.4, 0.35),
+      new THREE.MeshStandardMaterial({ name: "steel post", color: 0x4a4d50 }));
+    post.position.set(px, 3.7, 0);
+    post.castShadow = true;
+    grp.add(post);
+  }
+  scene.add(grp);
+  grp.updateMatrixWorld(true);
+  for (const px of [-4, 4]) {
+    const p = new THREE.Vector3(px, 0, 0).applyMatrix4(grp.matrixWorld);
+    addBlocker(p.x, p.z, 0.5);
+  }
+  poolLight(0xffe2b0, 30, 18, x, 3, z + 2);
+}
+
+// ---- water tower with the town name, a motto, and whatever got painted on it ----
+function makeWaterTower(x, z, name, lines = [], graffiti = null) {
   const c = document.createElement("canvas");
   c.width = 512; c.height = 256;
   const g = c.getContext("2d");
   g.fillStyle = "#c9cdd0"; g.fillRect(0, 0, 512, 256);
   g.fillStyle = "#26333f"; g.textAlign = "center"; g.textBaseline = "middle";
-  g.font = "bold 90px Arial Black, sans-serif";
-  g.fillText(name, 256, 138);
+  // long names (TUSOUXROE) shrink to fit the tank
+  let size = 90;
+  g.font = "bold " + size + "px Arial Black, sans-serif";
+  while (g.measureText(name).width > 470 && size > 40) {
+    size -= 4;
+    g.font = "bold " + size + "px Arial Black, sans-serif";
+  }
+  g.fillText(name, 256, lines.length || graffiti ? 92 : 138);
+  g.font = "bold 26px Arial, sans-serif";
+  lines.forEach((line, i) => g.fillText(line, 256, 158 + i * 30));
+  if (graffiti) {
+    g.save();
+    g.translate(256, 212);
+    g.rotate(-0.035);
+    g.fillStyle = "#c0392b";
+    g.font = "bold 27px 'Comic Sans MS', 'Marker Felt', Impact, sans-serif";
+    g.fillText(graffiti, 0, 0);
+    g.restore();
+  }
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
   const grp = new THREE.Group();
   grp.position.set(x, 0, z);
@@ -1624,7 +1818,7 @@ function tryInteract() {
 // ---------------------------------------------------------------- combat
 const _tmpV = new THREE.Vector3();
 function fire() {
-  if (state.fireCd > 0 || state.over) return;
+  if (state.fireCd > 0 || state.over || state.cinematic) return;
   state.fireCd = state.veh ? 0.3 : 0.42;
   crime(0.12);
   const origin = _tmpV.copy(playerPos).setY(state.veh ? 1.4 : 1.2);
@@ -1743,10 +1937,10 @@ function scoreLine() {
     &nbsp;·&nbsp; ${state.wanted}★ at the line`;
 }
 function win() {
-  endScreen("left the parish",
-    `The truck catches on the third try and you point it north out of Terrebonne
-     as the sun comes up over the cypress. Somebody still owes somebody money, but
-     that's a sequel problem.<br><br>${scoreLine()}`,
+  endScreen("left dixie beaux",
+    `The truck catches on the third try and you point it north, out of Dixie Beaux,
+     as the sun comes up over the cypress. Somebody still owes somebody money, and
+     somebody still has the ledger — but that's a sequel problem.<br><br>${scoreLine()}`,
     "Run it back");
 }
 function lose() {
@@ -1757,8 +1951,8 @@ function lose() {
 }
 function busted() {
   endScreen('<span style="color:#2e6fff;font-style:italic">BUSTED</span>',
-    `Terrebonne Parish Sheriff's Office would like a word. Bail is more than you've
-     got.<br><br>${scoreLine()}`,
+    `The Chatboro Sheriff's Office would like a word. Bail is more than you've got,
+     and Sheriff Mercer is smiling.<br><br>${scoreLine()}`,
     "Make bail");
 }
 
@@ -1832,10 +2026,17 @@ function tick() {
   if (state.running && !state.over) {
     const t0 = performance.now();
     // fixed-size steps: collision and AI stay stable at any frame rate
-    for (let left = dt; left > 1e-4 && !state.over; left -= 1 / 30) {
-      simulate(Math.min(left, 1 / 30));
+    // (a cutscene pauses the simulation; the story drives its own actors)
+    if (!state.cinematic) {
+      for (let left = dt; left > 1e-4 && !state.over; left -= 1 / 30) {
+        simulate(Math.min(left, 1 / 30));
+      }
     }
-    camCtl.update(dt, playerPos, state.veh, blockerGrid);
+    if (prologue) prologue.update(dt);
+    if (actOne) actOne.update(dt);
+    if (orlea) orlea.update(dt);
+    cine.update(dt);
+    if (!cine.hasCamera) camCtl.update(dt, playerPos, state.veh, blockerGrid);
     perf._sim += performance.now() - t0;
   }
 
@@ -2020,10 +2221,19 @@ function simulate(dt) {
   syncHUD();
 }
 
+// A mission can pin the objective line; null hands it back to the free-roam text.
+let storyObjective = null;
+function setStoryObjective(text) {
+  if (storyObjective === text) return;
+  storyObjective = text;
+  if (objTimer <= 0) objEl.textContent = defaultObjective();
+}
+
 function defaultObjective() {
+  if (storyObjective) return storyObjective;
   if (copsActive() && state.wanted >= 1) return "Lose the Sheriff.";
   return state.cans >= CAN_GOAL
-    ? "Get to the truck past the Ruston line."
+    ? "Get to the truck past the Tusouxroe city limits."
     : `Jack a ride · rob gas cans: ${state.cans}/${CAN_GOAL}`;
 }
 
@@ -2055,7 +2265,7 @@ function onFootUpdate(dt) {
     resolveCollision(playerPos, next, 0.6);
   }
   playerPos.x = THREE.MathUtils.clamp(playerPos.x, -WORLD + 4, WORLD - 4);
-  playerPos.z = THREE.MathUtils.clamp(playerPos.z, -WORLD + 4, WORLD - 4);
+  playerPos.z = THREE.MathUtils.clamp(playerPos.z, MAP.minZ + 4, MAP.maxZ - 4);
   player.position.copy(playerPos);
   player.visible = true;
 
@@ -2091,7 +2301,7 @@ function drivingUpdate(dt) {
   const bumped = blockerGrid.resolve(next, v.r, next, v.blocker);
   if (bumped) v.speed *= 0.45;
   next.x = THREE.MathUtils.clamp(next.x, -WORLD + 3, WORLD - 3);
-  next.z = THREE.MathUtils.clamp(next.z, -WORLD + 3, WORLD - 3);
+  next.z = THREE.MathUtils.clamp(next.z, MAP.minZ + 3, MAP.maxZ - 3);
   v.obj.position.copy(next);
   v.blocker.x = next.x; v.blocker.z = next.z;
 
@@ -2125,7 +2335,7 @@ function drivingUpdate(dt) {
 function nearestVehicle(pos, maxD) {
   let best = null, bd = maxD;
   for (const v of vehicles) {
-    if (v === state.veh || v.dead) continue;
+    if (v === state.veh || v.dead || v.locked) continue;
     const d = v.obj.position.distanceTo(pos);
     if (d < bd) { bd = d; best = v; }
   }
@@ -2133,7 +2343,7 @@ function nearestVehicle(pos, maxD) {
 }
 
 function enterExitVehicle() {
-  if (!state.running) return;
+  if (!state.running || state.cinematic) return;
   if (state.veh) {
     // step out
     const v = state.veh;
@@ -2164,7 +2374,7 @@ function spawnSheriff() {
   const ang = Math.random() * Math.PI * 2;
   car.position.set(playerPos.x + Math.cos(ang) * 55, 0, playerPos.z + Math.sin(ang) * 55);
   car.position.x = THREE.MathUtils.clamp(car.position.x, -WORLD + 6, WORLD - 6);
-  car.position.z = THREE.MathUtils.clamp(car.position.z, -WORLD + 6, WORLD - 6);
+  car.position.z = THREE.MathUtils.clamp(car.position.z, MAP.minZ + 6, MAP.maxZ - 6);
   car.rotation.y = ang;
   scene.add(car);
   const v = registerVehicle(car, 2.0, { sheriff: true, hp: 32 });
@@ -2178,7 +2388,7 @@ function checkHeatUp() {
     state._copsAnnounced = true;
     state.heat = 2.2;                 // start at ~2 stars, not an instant 5
     state.wanted = 2;
-    flashObjective("⚡ You made the Parish most-wanted list. Sheriff inbound.");
+    flashObjective("⚡ Sheriff Mercer's department would like a word. Cruisers inbound.");
     syncHUD();
   }
 }
@@ -2212,7 +2422,7 @@ function updateSheriffs(dt) {
     const nx = s.obj.position.x + _fwd.x * s.speed * dt;
     const nz = s.obj.position.z + _fwd.z * s.speed * dt;
     s.obj.position.set(THREE.MathUtils.clamp(nx, -WORLD + 4, WORLD - 4), 0,
-                       THREE.MathUtils.clamp(nz, -WORLD + 4, WORLD - 4));
+                       THREE.MathUtils.clamp(nz, MAP.minZ + 4, MAP.maxZ - 4));
     s.blocker.x = s.obj.position.x; s.blocker.z = s.obj.position.z;
     s.obj.rotation.y = s.heading;
 
@@ -2288,7 +2498,9 @@ async function boot() {
   atlases.shroom = sh;
   atlases.torch = to;
 
-  player = new AnimatedSprite(rn, 1.95);
+  // Keseme Nadia: a 3D actor with the same play / update / setFlip surface as
+  // the old sprite, so on-foot movement and combat drive her unchanged
+  player = makeCastMember(makeHoodrat, "keseme", { height: 1.74 });
   player.position.copy(playerPos);
   scene.add(player);
 
@@ -2334,6 +2546,7 @@ async function boot() {
   const moving = new Set([
     player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
     ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
+    ...(prologue ? prologue.props : []),
   ]);
   const batch = batchStatic(scene, { exclude: (root) => moving.has(root) });
   console.info(`[gfx] static batching: ${batch.meshes} meshes -> ${batch.meshes - batch.removed} (${batch.batches} batches)`);
@@ -2344,17 +2557,33 @@ async function boot() {
   syncHUD();
 
   window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
-    gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl,
+    gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
-    get player() { return player; }, truck, blockers, blockerGrid, renderer, perf,
+    get player() { return player; }, get prologue() { return prologue; }, get actOne() { return actOne; }, get orlea() { return orlea; },
+    teleport: (x, z) => {                // QA: move the player on foot
+      if (state.veh) { state.veh.speed = 0; state.veh = null; }
+      playerPos.set(x, 0, z);
+      player.position.set(x, 0, z);
+      player.visible = true;
+      if (player._last) player._last.copy(player.position);
+    }, cine, truck, blockers, blockerGrid, renderer, perf,
     get soundtrack() { return soundtrackReady; } };
   loadNote.textContent = "ready.";
   startBtn.disabled = false;
-  startBtn.onclick = () => {
+  freeBtn.disabled = false;
+  const begin = () => {
     overlay.classList.add("hidden");
     crosshair.style.display = "block";
     state.running = true;
     clock.start();
+  };
+  startBtn.onclick = () => {
+    begin();
+    prologue.start();              // the cold open starts the music on its brass-band cue
+  };
+  freeBtn.onclick = () => {
+    begin();
+    prologue.skip();
     music.volume = 0.55;
     soundtrackReady.then((s) => s.play());
     flashObjective("Click the game to look around with the mouse · Esc releases it");
@@ -2362,6 +2591,7 @@ async function boot() {
 }
 
 startBtn.disabled = true;
+freeBtn.disabled = true;
 tick();
 boot().catch((err) => {
   console.error(err);

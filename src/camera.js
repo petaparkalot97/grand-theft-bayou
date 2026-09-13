@@ -34,6 +34,22 @@ export function createCameraController({ camera, dom, canCapture }) {
   const focus = new THREE.Vector3();
   const look = new THREE.Vector3();
   let primed = false;
+  let occluders = [];            // overhead boxes { minX, maxX, minY, maxY, minZ, maxZ }
+
+  /** Distance along a ray to where it enters box `b`, or null (also when starting inside). */
+  function rayBox(px, py, pz, dx, dy, dz, b) {
+    let tmin = 0, tmax = Infinity;
+    const axis = (p, d, lo, hi) => {
+      if (Math.abs(d) < 1e-6) return p >= lo && p <= hi;
+      let t1 = (lo - p) / d, t2 = (hi - p) / d;
+      if (t1 > t2) { const s = t1; t1 = t2; t2 = s; }
+      tmin = Math.max(tmin, t1);
+      tmax = Math.min(tmax, t2);
+      return tmin <= tmax;
+    };
+    if (!axis(px, dx, b.minX, b.maxX) || !axis(py, dy, b.minY, b.maxY) || !axis(pz, dz, b.minZ, b.maxZ)) return null;
+    return tmin > 0 ? tmin : null;
+  }
 
   const onLock = () => { locked = document.pointerLockElement === dom; };
   document.addEventListener("pointerlockchange", onLock);
@@ -74,6 +90,8 @@ export function createCameraController({ camera, dom, canCapture }) {
     get yaw() { return yaw; },
     addYaw(a) { targetYaw += a; lastMouse = performance.now() / 1000; },
     release() { if (locked) document.exitPointerLock(); },
+    /** Overhead structures the camera must stay in front of. */
+    setOccluders(list) { occluders = list || []; },
 
     /**
      * @param {number} dt
@@ -124,6 +142,16 @@ export function createCameraController({ camera, dom, canCapture }) {
           }
           return false;
         });
+      }
+      // ...and in front of anything overhead between the focus and the camera
+      // (standing under or beside the overpass used to put the lens above the deck)
+      if (occluders.length) {
+        const lift0 = driving ? 1.6 : 1.4;
+        const ox = Math.sin(yaw) * cosP, oz = Math.cos(yaw) * cosP;
+        for (const b of occluders) {
+          const t = rayBox(focus.x, focus.y + lift0, focus.z, ox, sinP, oz, b);
+          if (t !== null && t < want) want = Math.max(3, t - 0.8);
+        }
       }
       // snap in quickly, ease back out
       dist += (want - dist) * (1 - Math.exp(-(want < dist ? 20 : 3) * dt));

@@ -128,19 +128,26 @@ class Hoodrat extends THREE.Object3D {
     super();
     const rnd = mulberry(opts.seed != null ? opts.seed : (Math.random() * 1e9) | 0);
     const female = opts.sex === "f";
-    const crew = CREWS[opts.crew] || CREWS.red;
+    // `crew` is a crew name, or a palette object for the story characters
+    const crew = typeof opts.crew === "object"
+      ? { ...CREWS.red, ...opts.crew }
+      : CREWS[opts.crew] || CREWS.red;
+    const headwear = opts.headwear || "band";      // "band" | "none" | "hat"
 
     this.female = female;
-    this.crew = opts.crew || "red";
+    this.crew = typeof opts.crew === "object" ? "custom" : opts.crew || "red";
     this.crewInfo = crew;
 
-    const skin = mat("skin", SKIN_TONES[(rnd() * SKIN_TONES.length) | 0]);
-    const white = mat("cloth", 0xeceae4);
-    const denim = mat("denim", DENIM[(rnd() * DENIM.length) | 0]);
+    // draw both tones even when overridden, so a seed builds the same body
+    const skinTone = SKIN_TONES[(rnd() * SKIN_TONES.length) | 0];
+    const denimTone = DENIM[(rnd() * DENIM.length) | 0];
+    const skin = mat("skin", opts.skin != null ? opts.skin : skinTone);
+    const white = mat("cloth", opts.top != null ? opts.top : 0xeceae4);
+    const denim = mat("denim", opts.denim != null ? opts.denim : denimTone);
     const band = mat("cloth", crew.cloth);
     const legging = mat("lycra", crew.cloth);
     const chainMat = mat("metal", crew.chain);
-    const hairMat = mat("hair", 0x16100d);
+    const hairMat = mat("hair", opts.hair != null ? opts.hair : 0x16100d);
     const shoeWhite = mat("leather", 0xf2f0ec);
     const shoeAccent = mat("leather", crew.shoe);
     const sole = mat("rubber", 0xe6e3dc);
@@ -222,19 +229,21 @@ class Hoodrat extends THREE.Object3D {
     }
 
     if (female) {
-      // tied headband, tails to one side, plus a long fall of hair
-      const hb = add(head, cyl(0.121, 0.121, 0.075, 14), band, 0, 0.12, 0);
-      hb.scale.z = 1.02;
-      const knot = add(head, sph(0.036), band, 0.105, 0.125, -0.055);
-      knot.scale.set(1, 0.8, 1);
-      for (let i = 0; i < 2; i++) {
-        const tail = add(head, box(0.05, 0.16, 0.016), band, 0.125 + i * 0.02, 0.04 - i * 0.03, -0.075);
-        tail.rotation.z = 0.5 + i * 0.35;
+      if (headwear === "band") {
+        // tied headband, tails to one side
+        const hb = add(head, cyl(0.121, 0.121, 0.075, 14), band, 0, 0.12, 0);
+        hb.scale.z = 1.02;
+        const knot = add(head, sph(0.036), band, 0.105, 0.125, -0.055);
+        knot.scale.set(1, 0.8, 1);
+        for (let i = 0; i < 2; i++) {
+          const tail = add(head, box(0.05, 0.16, 0.016), band, 0.125 + i * 0.02, 0.04 - i * 0.03, -0.075);
+          tail.rotation.z = 0.5 + i * 0.35;
+        }
       }
       // Hair: a skull cap, one sheet falling down the back, and a slim strand
       // over each shoulder. The blue-crew reference is curly and the red is
       // straight, so the curly build gets a wider, wavier sheet.
-      const curly = this.crew === "blue";
+      const curly = opts.curly != null ? opts.curly : this.crew === "blue";
       const cap = add(head, sph(0.126), hairMat, 0, 0.045, -0.012);
       cap.scale.set(1.02, 1.06, 1.05);
       let y = -0.03;
@@ -253,18 +262,35 @@ class Hoodrat extends THREE.Object3D {
       add(head, torus(0.042, 0.008, 6, 14), chainMat, 0.115, -0.01, 0.01);
       add(head, torus(0.042, 0.008, 6, 14), chainMat, -0.115, -0.01, 0.01);
     } else {
-      // do-rag: skull cap with the two tails hanging down the back
-      const cap = add(head, sph(0.121, 12, 8), band, 0, 0.062, -0.006);
-      cap.scale.set(1, 0.92, 1.05);
-      const knot = add(head, sph(0.04), band, 0, 0.055, -0.115);
-      knot.scale.set(0.9, 0.8, 1);
-      for (const side of [-1, 1]) {
-        const tail = add(head, box(0.055, 0.2, 0.016), band, side * 0.035, -0.05, -0.125);
-        tail.rotation.z = side * 0.18;
-        tail.rotation.x = -0.22;
+      if (headwear === "band") {
+        // do-rag: skull cap with the two tails hanging down the back
+        const cap = add(head, sph(0.121, 12, 8), band, 0, 0.062, -0.006);
+        cap.scale.set(1, 0.92, 1.05);
+        const knot = add(head, sph(0.04), band, 0, 0.055, -0.115);
+        knot.scale.set(0.9, 0.8, 1);
+        for (const side of [-1, 1]) {
+          const tail = add(head, box(0.055, 0.2, 0.016), band, side * 0.035, -0.05, -0.125);
+          tail.rotation.z = side * 0.18;
+          tail.rotation.x = -0.22;
+        }
+      } else {
+        // close-cropped hair
+        const crop = add(head, sph(0.12, 12, 8), hairMat, 0, 0.072, -0.012);
+        crop.scale.set(1.02, 0.78, 1.06);
       }
-      // short beard / goatee
-      add(head, box(0.085, 0.05, 0.035), hairMat, 0, -0.028, 0.1);
+      if (opts.beard !== false) {
+        // short beard / goatee
+        add(head, box(0.085, 0.05, 0.035), hairMat, 0, -0.028, 0.1);
+      }
+    }
+
+    if (headwear === "hat") {
+      // wide-brimmed campaign hat: the sheriff's, or anyone's in the sun
+      const felt = mat("leather", crew.hat != null ? crew.hat : 0x8a6a44);
+      const brim = add(head, cyl(0.24, 0.24, 0.018, 20), felt, 0, 0.13, 0);
+      brim.scale.z = 1.08;
+      add(head, cyl(0.105, 0.13, 0.12, 16), felt, 0, 0.2, 0);
+      add(head, cyl(0.133, 0.133, 0.03, 16), band, 0, 0.155, 0);
     }
 
     // ---- arms ----------------------------------------------------------
@@ -317,7 +343,7 @@ class Hoodrat extends THREE.Object3D {
     }
 
     // the bandana hanging off the back pocket, as in the reference
-    if (!female) {
+    if (!female && headwear === "band") {
       const rag = add(hips, box(0.11, 0.3, 0.02), band, 0.16 * bulk, -0.16, -0.055);
       rag.rotation.z = 0.14;
     }
@@ -477,7 +503,9 @@ class Hoodrat extends THREE.Object3D {
         a.elbow.rotation.x = -0.3 - Math.max(0, d) * 0.45;
       });
       this.torso.rotation.y = -s * 0.1;
-      this.position.y = Math.abs(Math.sin(this.phase * 2)) * 0.022;
+      // `baseY` is the floor this actor stands on (0 = the ground); story
+      // scenes set it for rooms that aren't at ground level
+      this.position.y = (this.baseY || 0) + Math.abs(Math.sin(this.phase * 2)) * 0.022;
       return;
     }
 
@@ -490,7 +518,7 @@ class Hoodrat extends THREE.Object3D {
       a.elbow.rotation.x = -0.3 - (i ? 0.05 : 0);
     });
     this.torso.rotation.y = b * 0.045;
-    this.position.y = 0;
+    this.position.y = this.baseY || 0;
   }
 }
 

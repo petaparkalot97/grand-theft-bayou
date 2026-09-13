@@ -89,6 +89,53 @@ Animations: `idle`, `walk`, `attack`, `hurt`, `death`.
 Open **`tools/characters.html`** on the dev server to inspect them — turntable,
 orbit, animation switcher and a reroll for fresh variation.
 
+## Story — Prologue "Mud, Blood & Magnolia"
+
+**Start the prologue** plays the opening of the script; **Free roam** skips
+straight to the open strip.
+
+1. **Cold open.** A sound collage and a radio dial over a black screen, then a
+   dawn flyover of Dixie Beaux, the state-line billboard and Chatboro's water
+   tower.
+2. **Keseme's coupe.** The GPS tries to drive her into the swamp, and Mally
+   calls: somebody stole his green Bravado, and it just passed her.
+3. **Mission 1 — Hog Wild.** Follow the Bravado up US-167 and onto a dirt road
+   into the woods, dodging the thief's shotgun. Lose it and the chase restarts.
+   A hog stampede runs it through a fence. Bubba shows up with a tranquilizer
+   rifle; clear the hogs together and take the car back.
+4. **The ledger.** A duffel of cash, a book of names and badge numbers, and
+   Sheriff Clay Mercer. Then the title card, and *Act One — Welcome Home*.
+
+5. **Act One — Welcome Home.** Drive home to South Tusouxroe (north-east of the
+   strip): the redevelopment radio gag, then the neighbourhood (the court, the
+   dominoes, a porch plate sale, two crews squaring off under a luxury-condo
+   billboard). Go inside to Emiko, lay the ledger out, and watch Keseme's
+   evidence board connect everything to Pelican Crown Holdings and Project
+   Nolantis, with coordinates pointing south to OrleaRouge.
+
+In cutscenes, **Enter** skips a line and **Esc** skips the scene.
+
+## The map
+
+US-167 runs north–south through the whole map:
+
+- **Tusouxroe** (north): shopfronts, the truck lot, and South Tusouxroe (the
+  Nadia house) in the north-east corner.
+- **The strip**: the businesses lining the highway.
+- **Chatboro** (where you start): the trailer park, the swamp, and the state line.
+- **The bayou causeway**: south of Chatboro, the highway crosses open swamp
+  under an overpass with a camp beneath it, and a refinery burns to the east.
+- **OrleaRouge** (south): a street grid around the boulevard. The French
+  District's balconied rowhouses and jazz and daiquiri neon, downtown towers,
+  the public hospital, a cemetery, a construction site with Pelican Crown's
+  hoarding, and the riverfront promenade with a casino riverboat. Traffic runs
+  the boulevard and two cross streets. The first time you arrive, Keseme has
+  something to say about the place.
+
+The region is built in `src/orlearouge.js`. `MAP` in `src/main.js` holds the
+map's bounds. Cutscenes are
+built with `src/cinema.js`, and the mission lives in `src/prologue.js`.
+
 ## Soundtrack
 
 Drop audio files into **`assets/music/`** to add them to the background music,
@@ -121,6 +168,18 @@ and WEBM all work.
 - **F3** shows fps, frame time, simulation / AI / render cost and draw calls.
 - **QA.** `tools/qa/gameplay.mjs` is a headless regression pass (walk, look,
   shoot, drive, NPCs, traffic, entity counts) for the browser-automation runner.
+
+## Working on this with several AI agents
+
+The project is set up for a team of coding agents (Claude as orchestrator,
+plus Codex, Antigravity and Freebuff) working without stepping on each other:
+
+- **[`AGENT_PROTOCOL.md`](AGENT_PROTOCOL.md)** — the rules: roles, how to claim
+  a task, file locks, and why only the orchestrator edits `src/main.js`.
+- **[`TODO.md`](TODO.md)** — the live task board: tasks with briefs, owners,
+  locks, dependencies, a review queue, and test status.
+- **[`AGENT_LOG.md`](AGENT_LOG.md)** — discoveries, decisions, interface
+  contracts for every module, failed approaches, and test history.
 
 ## Run
 

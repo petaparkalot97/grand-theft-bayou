@@ -37,10 +37,10 @@ export default async function run(page) {
   const log = {};
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.waitForFunction(() => {
-    const b = document.getElementById("startBtn");
+    const b = document.getElementById("freeBtn");
     return b && !b.disabled;
   }, null, { timeout: 240000 });
-  await page.click("#startBtn");
+  await page.click("#freeBtn");                  // free roam: no story cutscenes
   for (let i = 0; i < 3; i++) { await page.keyboard.press("BracketRight"); await page.waitForTimeout(150); }
   await page.keyboard.press("BracketLeft");      // -> HIGH
   await page.waitForTimeout(5000);
