@@ -465,7 +465,7 @@ export function createOrleaRouge(ctx) {
     get entered() { return entered; },
     /** Keep trees and scattered decor out. */
     contains(x, z) { return z > CAUSEWAY.minZ; },
-    inCity(x, z) { return z > CITY.minZ; },
+    inCity(x, z) { return z > CITY.minZ && x >= CITY.minX - 2; },   // the rural parish lies west of the city
 
     /** Traffic lanes for two cross streets (both directions), for createTraffic. */
     lanes: [
@@ -484,7 +484,7 @@ export function createOrleaRouge(ctx) {
         if (n.color) n.mat.color.copy(n.color).multiplyScalar(n.base * (1 - dip));
         else n.mat.emissiveIntensity = n.base * (1 - dip);
       }
-      if (!entered && ctx.playerPos.z > CITY.minZ + 6 && !ctx.state.cinematic) {
+      if (!entered && ctx.playerPos.z > CITY.minZ + 6 && ctx.playerPos.x > CITY.minX - 2 && !ctx.state.cinematic) {
         entered = true;
         ctx.cine.scene(async (c) => {
           c.card("EXT.", "ORLEAROUGE", "Gorgeous and wounded");

@@ -1,16 +1,15 @@
 // ---------------------------------------------------------------------------
 // npc.js — NPC behaviour: people and hogs who live here, not a swarm.
 //
-// Before: every Redneck, Hoodrat and hog chased and attacked the player as soon
-// as they were in range, so the whole parish converged on you. Now each NPC has
-// a temperament and a home turf, and only turns hostile when something gives it
-// a reason — you shot at it, violence broke out nearby, or it's the kind that
-// picks fights and you walked right up to it.
+// Civilians, not enemies. Everyone idles, loiters and wanders their home turf
+// and ignores the player; default aggression is zero. Violence nearby makes
+// people scatter. Only an NPC the player actually hurts reacts, and its
+// temperament decides how: it defends itself (fights back) or it flees.
 //
 //   idle / loiter  — standing around, facing a neighbour if one is close
 //   wander         — strolling to a point on its home turf, or to another spot
 //   flee           — running from gunfire or a fight, then calming down
-//   hostile        — the old chase / charge / melee behaviour
+//   hostile        — defending itself after being attacked: chase / charge / melee
 //
 // Cost: decisions run on staggered timers (not per frame), and distance sets
 // the level of detail — near NPCs get everything, mid-range ones think rarely
@@ -23,13 +22,14 @@ const rand = (lo, hi) => lo + (hi - lo) * Math.random();
 const NEAR = 55, FAR = 110;
 const MAX_HOSTILE = 7;             // never let the whole map pile onto the player
 
-// Temperaments. Hogs are feral: some defend their patch, the rest bolt.
-// People mostly mind their own business.
+// Nobody attacks unprovoked. Temperament only matters once the player hurts an
+// NPC: "brave" people and "territorial" hogs defend themselves, the rest run.
+export const DEFAULT_AGGRESSION = 0;
 function temperament(type) {
   const r = Math.random();
   if (type === "hog") return r < 0.4 ? "territorial" : "skittish";
-  if (type === "redneck") return r < 0.28 ? "hothead" : r < 0.55 ? "brave" : "timid";
-  return r < 0.22 ? "lookout" : r < 0.5 ? "brave" : "timid";
+  if (type === "redneck") return r < 0.5 ? "brave" : "timid";
+  return r < 0.35 ? "brave" : "timid";
 }
 
 export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
@@ -57,7 +57,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
   function pickGoal(e) {
     // mostly potter about home; now and then walk over to a nearby spot
     let base = e.home;
-    if (Math.random() < 0.22) {
+    if (e.type !== "hog" && Math.random() < 0.22) {   // hogs stay in their patch of woods
       const options = pois.filter((p) => p !== e.home &&
         Math.hypot(p.x - e.home.x, p.z - e.home.z) < 70);
       if (options.length) base = e.home = options[(Math.random() * options.length) | 0];
@@ -108,25 +108,13 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
       return;
     }
 
+    // gunfire or a fight nearby: bystanders scatter, nobody joins in
     const ev = recentViolence(p);
     if (ev && e.state !== "flee") {
-      const nearPlayer = Math.hypot(ev.x - env.player.x, ev.z - env.player.z) < 30;
-      if ((e.mood === "hothead" || e.mood === "territorial" || (e.mood === "brave" && Math.random() < 0.35))
-          && nearPlayer && becomeHostile(e)) return;
       flee(e, ev.x, ev.z);
       return;
     }
-
-    // temperament vs. the player simply being close
-    if (!env.driving) {
-      if ((e.mood === "territorial" && dist < 10) || (e.mood === "hothead" && dist < 8)) {
-        if (becomeHostile(e)) return;
-      }
-      if (e.mood === "lookout" && dist < 6) {
-        e.stare += interval;
-        if (e.stare > 3 && becomeHostile(e)) return;
-      } else e.stare = 0;
-    }
+    // (the player merely being close is not a reason to do anything)
 
     if (e.state === "flee") {
       if (e.stateT <= 0) setState(e, "idle", rand(1, 3));
@@ -232,7 +220,10 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
     init(e) {
       e.id = nextId++;
       e.mood = temperament(e.type);
-      e.home = nearestPoi(e.spr.position.x, e.spr.position.z);
+      // people hang out at the nearest hangout; a hog's home is the woods it was born in
+      e.home = e.type === "hog"
+        ? { x: e.spr.position.x, z: e.spr.position.z, r: 14 }
+        : nearestPoi(e.spr.position.x, e.spr.position.z);
       e.goal = new THREE.Vector3().copy(e.spr.position);
       e.threat = new THREE.Vector3();
       e.chargeDir = new THREE.Vector3();

@@ -39,6 +39,97 @@ setup existed (TASK-001 … TASK-009).
 # 🧠 DISCOVERIES
 
 ## 2026-09-13 — Claude
+**Type:** DISCOVERY · **Task:** TASK-033 (core gameplay audit)
+
+### Finding
+The coordinate conventions the code actually used, before any changes:
+- **World:** north is −z (Tusouxroe), south is +z (Chatboro, OrleaRouge),
+  east is +x, up is +y.
+- **Heading** `h` means forward = (sin h, 0, cos h). `h = 0` faces south,
+  `h = π` faces north. Vehicles (`drivingUpdate`), traffic (`sampleLane`) and
+  sheriffs all agree on this.
+- **Camera yaw:** the camera sits at focus + (sin yaw, cos yaw)·dist and looks
+  along (−sin yaw, −cos yaw). `yaw = 0` looks north. Camera right is
+  (cos yaw, 0, −sin yaw).
+- **Walking:** `onFootUpdate` built mv = (inX·cos − inZ·sin, inX·sin + inZ·cos),
+  which rotates by −yaw. The correct formula is forward·(W−S) + right·(D−A).
+  The error is 2·yaw: invisible facing north or south, a full inversion facing
+  east or west. Entering a car sets yaw = heading + π, so leaving an east- or
+  west-facing car inverts the controls. This is exactly the human's report.
+- **Vehicle models:** no loader normalized forward. A side-view probe (player
+  standing along +z as a marker, `tools/qa/out/car-orient-*.png`) showed:
+  - the Kenney-style FBXs (`Car_1_*`, `Van_1`, `Pick_Up_1`) point their nose
+    at −z;
+  - the Designersoup FBXs (`Beatall`, `Landyroamer`, `docLorean`) point it at −x.
+  - The traffic headlight sprites were placed at local +z, i.e. on the tail.
+- **Assets:**
+  - `Buildings.glb` (10 buildings, 15–41 m) is used only for Tusouxroe's
+    shopfronts.
+  - `TownTiles_003.glb` is a tile kit of 2 m pieces.
+  - `Car_1_Y`, `Tristar Racer` and `Toyoyo Highlight` are never loaded.
+
+### Impact
+Every "forward" in the game has to go through one set of helpers. Anything that
+adds `rotation.y += Math.PI` to fix a model reintroduces this bug class.
+
+### Action
+TASK-033: `src/world.js` owns the conventions; `src/vehicles.js` normalizes
+model forward once per asset definition; walking uses the camera's forward and
+right vectors from `camera.js`.
+
+## 2026-09-13 — Claude
+**Type:** DISCOVERY · **Task:** TASK-017 part A
+
+### Finding
+1. **`gameplay.mjs`'s last step is flaky, not broken.** After "drive 2.5 s,
+   exit, wait 8 s" the player sometimes dies. An in-page probe sampling every
+   300 ms showed wanted 0, `forceCops` false, 0 cruisers and no story chapter
+   running. The damage comes from free-roam hogs and rednecks. Where the car
+   stops depends on SwiftShader frame rate (z ≈ 40 by the crash site vs z ≈ 101).
+2. **Story captions queue as cine scenes.** A `cine.shot()` set from outside a
+   scene is dropped when the next queued scene starts. Wait for `!cine.active`
+   before framing a QA screenshot.
+3. **Enclosed cutscene sets still pay for the whole city.** Nothing culls
+   what's behind a wall, so the tunnel scene drew 1,971 calls. A short
+   `camera.far` for the scene cut it to 312; restore it afterwards.
+
+### Impact
+(1) Don't read a WASTED at the end of `gameplay.mjs` as a regression; check
+the hp samples. (2) and (3) apply to every future story module.
+
+### Action
+- The flood tunnel is built as a sealed set at ground level just outside the
+  west map edge (x −236, z 330), like the Act One kitchen, and the scene
+  teleports the player there. Ground level keeps height fog sane, and the
+  light pool (which follows the camera) lights it.
+- Candidate: make `gameplay.mjs` teleport to a fixed spot before its idle wait.
+
+## 2026-09-13 — Claude
+**Type:** DISCOVERY · **Task:** TASK-010
+
+### Finding
+Driving the human's real Chrome through the Claude in Chrome extension:
+1. **A hidden tab never finishes loading.** Boot's `await paint()` waited on
+   `requestAnimationFrame`, which Chrome doesn't fire for background tabs
+   (`visibilityState: "hidden"`). Loading froze on "batching the parish…". A
+   player who switches tabs while the game loads would hit the same thing.
+2. **One stalled CDN import freezes the game silently.** On the first load
+   the ES module graph never resolved ("loading assets…" for 90+ s, no console
+   error). A clean reload fetched all 24 jsDelivr modules with HTTP 200 in
+   under a second.
+3. The render loop is rAF-driven, so **real frame rate can only be measured
+   in a visible tab**. The extension's tab has to be in the foreground.
+
+### Impact
+(1) A real loading bug for players. (2) Only a reload recovers; there's no
+feedback. (3) Real-browser QA needs the human to bring the tab forward.
+
+### Action
+(1) `paint()` falls back to a 100 ms timer. (2) Not fixed yet. Candidate: a
+loader watchdog that says "still loading — check your connection" after ~20 s
+without progress, or vendoring three.js locally. (3) Logged on TASK-010.
+
+## 2026-09-13 — Claude
 **Type:** DISCOVERY · **Task:** TASK-032
 
 ### Finding
@@ -331,6 +422,143 @@ road plane.
 # 🧪 TEST RESULTS
 
 ## 2026-09-13 — Claude
+**Type:** TEST · **Task:** TASK-033 (driving collisions)
+
+- **Before (probe, headless):**
+  - Rammed a parked car by the Popeyes lot. With W held against it, speed sat
+    at 0.33–0.38 m/s; with W+D, 0.46–0.62 m/s, and the car moved about 0.4 m
+    in 1.8 s.
+  - Only S (reverse) got out.
+  - Cause: `speed *= 0.45` on every frame of contact.
+- **After** (`collisionResponse` in `vehicles.js`: remove only the inward
+  motion, slide, align the nose, impact cost once; throttle keeps 30% steering):
+  - `controls.mjs` section 37:
+    - scrape along a blocker wall at 11°: 37.6 m travelled, 19.9 m/s at the end;
+    - head-on, then S: backed out 10.8 m;
+    - head-on, then W+D: turned 2.3 rad, moved 6.2 m, 13.6 m/s.
+    - All pass; the whole script is **30 / 30**.
+  - Probe, head-on into a stopped traffic car (two runs): W+D breaks contact
+    after about 0.9 s and reaches 12.4 / 17.2 m/s. S reverses at −11 m/s. It
+    still stops dead against a 0.4 m post while W is held head-on (intended);
+    S gets out at once.
+  - Regressions: gameplay (hp 100, 0 hostile, driving 1,213 calls), prologue
+    (all phases), `westparish.mjs` 8 / 8.
+- **Finding:** `westparish.mjs`'s 85% drive failed twice (2 m, 6.4 m) with no
+  contact. A frame logger showed a **2,761 ms frame** the first time the
+  OrleaRouge end of Hwy 9 came into view. `dt` is capped at 0.1 s, so the stall
+  swallowed simulated time.
+  - The test now settles 2 s, clears traffic within 60 m, and records
+    `touchedSomething` and `worstFrameMs`.
+  - The stall itself (probably shader compilation on first view) needs checking
+    on a real GPU (TASK-010).
+
+## 2026-09-13 — Claude
+**Type:** TEST · **Task:** TASK-033 (gas can fix)
+
+- **Probe:** checked every gas can against the blocker grid and tried to walk
+  in from 6 m on four sides.
+  - Can 3 (Popeyes, (18, −40)): inside the Popeyes wall blocker, unreachable.
+  - Can 1 ((−30, 50)): inside the `Buildings.glb` storefront on the z 52 lot,
+    unreachable.
+  - The other three: fine.
+- **Fix:** moved them to (11, −42) and (−16, 41), in front of the lots and clear
+  of walls and parked cars.
+- **`controls.mjs`** section 36 (new): all 5 cans overlap no static blocker and
+  get picked up by walking in. The script passes 27 / 27.
+- **Warning for whoever edits the strip:** cans are placed at fixed positions in
+  `main.js` (the PICKUPS block), not relative to a lot's footprint. Changing a
+  lot's type or size can bury a can. Re-run `controls.mjs` after any
+  `LANDMARKS` change.
+
+## 2026-09-13 — Claude
+**Type:** TEST · **Task:** TASK-033 phase 8 (Parish Highway 9, the rural west)
+
+- **`tools/qa/westparish.mjs`** (new): **8 / 8 pass.**
+  - Region built: 747 m of highway, 188 samples, 843 trees, 2 lanes, 9 POIs.
+  - Carriageway clear: 0 static blockers within 5.5 m of the centreline along
+    all 188 samples.
+  - Zones: mid-highway → highway; field / hamlet → rural; the far west and
+    south-west → forest. City, strip, town and US-167 unchanged.
+    `orlea.inCity(-300, 300)` is false.
+  - Four 1.2 s drives at 10 / 35 / 60 / 85% along the route: alignment 1.0,
+    13.8–16.4 m travelled, 3.5–4.6 m from the centreline (in the right-hand
+    lane), about 19 m/s.
+  - Traffic: 16 active cars on `Hwy 9 westbound` / `eastbound` at 20–25 m/s.
+  - Bayou Noir after 10 s: 12 NPCs (8 rednecks, 4 hogs), 0 hostile, all hogs
+    in forest, hp 100.
+- **Screenshots** (`wp-*.png`) checked: junction, curves with lighting,
+  rest stop, Bayou Noir (store, church steeple, water tower, barn), cane
+  fields, the city end, a road-level view with traffic.
+- **Distance culling:** `gameplay.mjs` driving draw calls 1,905 → 1,254 (1,361
+  before phase 8). Hamlet on foot 195–209; highway driving 132–527.
+- **Regressions after phase 8:** gameplay (hp 100, 0 hostile), OrleaRouge (all
+  stops, 0 hostile, traffic 16), Act One (12 steps). Controls, prologue and
+  Blue Light Special were re-run on the final code; see TODO TASK-033.
+- **Mistake caught by testing:** the culling edit declared `const s` inside a
+  block that already used an outer `s`, so the game failed to load with
+  "Cannot access 's' before initialization". All three headless runs timed out
+  waiting for the menu. Found with a boot-timeline probe of `#loadNote`; fixed
+  by renaming the variable.
+
+## 2026-09-13 — Claude
+**Type:** TEST · **Task:** TASK-033 phases 1–7, 9
+
+- **`tools/qa/controls.mjs`** (new), headless HIGH: **22 / 22 pass.**
+  - On foot:
+    - W moves along the camera's forward at camera bearings 0 / 270 / 180 / 97°
+      (alignment 0.993–1.0);
+    - S, A, D and W+D align (±1.0);
+    - releasing the keys stops you; turning the camera alone doesn't move you.
+  - Vehicle:
+    - north + W → north (alignment 1.0, 18.6 m);
+    - camera at bearing 90° + W → still north;
+    - W+D turns the heading from bearing 0° to 89°;
+    - east + W → east; S reverses west;
+    - after stepping out of the east-facing car, W follows the camera (0.999).
+    - This is the human's original bug.
+  - Model screenshots `ctl-model-*.png`, heading east: all 10 models' noses
+    point east.
+  - NPCs: a hoodrat 1.8 m away stays idle for 6 s (0 hostile total); two shots,
+    and it flees.
+  - Spawn zones:
+    - the 7 sample points classify correctly;
+    - city picks: 0 hogs out of 587;
+    - strip-focus picks: 52 hogs, all in forest;
+    - live census after 12 s near the strip: 18 NPCs, 1 hog (forest), 0 hostile.
+- **Regressions:** gameplay, prologue, Act One (12 steps), Blue Light Special,
+  OrleaRouge and potholes all pass.
+  - `gameplay.mjs` now ends at hp 100 with 0 hostile NPCs (it used to end
+    WASTED about half the time).
+- **Draw calls:**
+  - spawn on foot 428 / 504 (gameplay);
+  - driving 953 / 1,361;
+  - city on foot 270–326;
+  - causeway 980.
+- **Console:** only the known `playlist.json` 404.
+
+## 2026-09-13 — Claude
+**Type:** TEST · **Task:** TASK-017 part A ("Blue Light Special")
+
+- **`tools/qa/bluelight.mjs`**, headless HIGH, 4 runs, every step passes:
+  - chapter start → meeting → raid (police wash) → sensory overload (canvas
+    blur) → run at 3 stars, 2 cruisers;
+  - `hp = 0` mid-run respawns at the checkpoint (hp 100, not over, still 3★);
+  - 6 checkpoints → drain → tunnel scene → door opens → done;
+  - after: police cleared, wanted 0, player back at the drain.
+- **Screenshots** (`tools/qa/out/bl-*.png`) checked: Solange meeting, raid,
+  overload, wedding tent, parade street, tunnel with the crown-over-waves door,
+  open door onto the shaft, storm-drain headwall.
+  - Fixed on the way: the raid camera sat inside a rowhouse; the shaft glow was
+    hidden inside the end-wall frame.
+- **Draw calls:** meeting 650, raid 956, run 347–471. Tunnel scene 1,971 → 312
+  with `camera.far = 60` for the scene.
+- **`tools/qa/gameplay.mjs` regression**, 4 runs: walk, look, shots, drive and
+  exit all as before. The final 8 s idle ended WASTED twice (hp −16 / −13),
+  once at hp 40 and once untouched. See the DISCOVERIES entry: free-roam
+  enemies, not the police or the new chapter.
+- **Console:** only the known `playlist.json` 404 (dev server needs a restart).
+
+## 2026-09-13 — Claude
 **Type:** TEST · **Task:** TASK-032 regressions (shopfront rows moved, building camera occluders)
 
 - `tools/qa/gameplay.mjs`: at rest 0 hostile; shots → 2 flee, 1 hostile; walk,
@@ -530,6 +758,57 @@ act.start(); act.update(dt); act.phase; act.debug(step);
 ```
 The `ctx` fields are listed in each file's JSDoc.
 
+### Core gameplay (TASK-033). The full description is in `docs/ARCHITECTURE.md`.
+```js
+// world.js: NORTH = −Z, EAST = +X; heading h → forward (sin h, 0, cos h); camera yaw 0 looks north
+forwardFromHeading(h, out); rightFromHeading(h, out); headingFromVector(x, z);
+cameraYawToHeading(yaw); headingToCameraYaw(h); bearingDegrees(h); compassPoint(deg);
+
+// input.js: actions, never key codes
+const input = createInput();  input.isDown("forward");  input.axis("back", "forward");
+input.onPress("interact", fn);   // bindings in DEFAULT_BINDINGS
+
+// camera.js
+camCtl.forward(out); camCtl.right(out); camCtl.heading; camCtl.pitch;
+camCtl.update(dt, target, veh, grid, moveHeading);   // tuning in CAMERA_CONFIG
+
+// vehicles.js: the ONLY place model orientation is corrected
+VEHICLE_DEFS[name] = { name, pack, class, modelForward: "-Z" | "-X" | "+Z" | "+X", length };
+normalizeVehicleModel(model, vehicleDef(fileOrName));  // → root facing +Z
+stepArcadeVehicle(v, { throttle, steer, brake }, dt);  exitOffset(v, out);
+v.def; v.seats[0].occupant ("player" | "npc" | null); canHijack(v);
+
+// spawnzones.js
+spawnZones.zoneAt(x, z);      // urban | town | commercial | residential | forest | highway | water
+spawnZones.pick(focus, living, { minDist, maxDist });  // → { x, z, kind, zone } | null
+
+// debug.js
+createOrientationDebug({ scene }).toggle() / .update({ pos, playerHeading, camera, veh });  // F4
+createCompass().update(cameraHeading);
+```
+- `npc.js`: `DEFAULT_AGGRESSION = 0`. `provoke(e)` is the only way into
+  `hostile`, and `noise()` only makes NPCs flee.
+
+### `src/bluelight.js` (TASK-017 part A)
+```js
+const blueLight = createBlueLight({ scene, camera, cine, state, playerPos, renderer,
+  makeHoodrat, addBlocker, poolLight, flashObjective, getPlayer, makeCastMember,
+  getSheriffProto, setObjective, setCameraYaw, exitVehicle, teleport,
+  setWanted(stars), holdWanted(stars), clearPolice(), revive(), setFail(fn | null) });
+blueLight.buildSet();      // during buildLevel; animated door pieces are in blueLight.props
+blueLight.start();         // from actOne's ctx.startNext
+blueLight.update(dt);      // every frame, cutscenes included
+blueLight.phase;           // idle | toMeet | meet | run | tunnel | done
+blueLight.checkpoint;      // 0…5 during the run
+blueLight.debug("meet" | "next" | "drain");
+```
+- **Police:** `setWanted` sets `state.forceCops`, and `copsActive()` honours it
+  whatever the kill count. `clearPolice()` removes the cruisers the way a
+  destroyed vehicle is removed and resets the flag.
+- **Fail handler:** `setFail(fn)` installs a handler that `lose()` and
+  `busted()` call first. Returning true means the mission handled it (respawn)
+  and the end screen is skipped. Always `setFail(null)` when the mission ends.
+
 ### `src/potholes.js` (TASK-032)
 ```js
 const potholes = createPotholes({ scene, perStreet: 40, seed,
@@ -562,7 +841,7 @@ makeHoodrat({ sex: "m"|"f", crew: "red"|"blue"|{cloth, chain, shoe, hat}, seed, 
 
 # 🧹 CLEANUP NOTES
 
-- `prologue.debug()` and `actOne.debug()` exist for headless QA. Keep them, but
+- `prologue.debug()`, `actOne.debug()` and `blueLight.debug()` exist for headless QA. Keep them, but
   never call them from gameplay.
 - `CAM_OFFSET` in `main.js` is only used to place the camera at boot.
 - `TODO.md` used to hold a long narrative history. Its technical content now

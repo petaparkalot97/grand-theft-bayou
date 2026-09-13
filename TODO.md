@@ -34,6 +34,174 @@ Bring the script to life. Finish and verify **Act One "Welcome Home"**
 
 # 🔒 ACTIVE TASKS
 
+### TASK-033 — Core gameplay rework: orientation, controls, camera, vehicles, NPCs, spawning
+
+**Status:** `REVIEW`. All 10 phases are implemented and headless-tested. Still
+pending: the human's own playtest of the controls and camera feel on a real
+GPU, which TASK-010 covers.
+**Agent:** `Claude`
+**Source:** the human's spec (`message (5).txt`) plus a playtest report: *"once
+you exit the vehicle the controls are backwards … all the cars are driving
+backwards"*.
+
+**Files / subsystem (lock released; changes to these go through review against
+`docs/ARCHITECTURE.md`):**
+- New: `src/world.js` (directions, headings), `src/input.js` (actions),
+  `src/vehicles.js` (vehicle definitions, model-forward normalization, seats),
+  `src/debug.js` (orientation overlay), `src/spawnzones.js` (zones, population mix)
+- `src/main.js`, `src/camera.js`, `src/npc.js`, `src/traffic.js`
+
+**Root causes (audit, 2026-09-13):**
+1. **Walking inverts at ±90° camera yaw.** `onFootUpdate` rotates WASD by
+   −yaw, but the camera looks along (−sin yaw, −cos yaw). The error is 2×yaw:
+   none facing north/south, 180° facing east/west. Getting into a car swings
+   the camera behind it, so any car pointing east or west leaves the camera at
+   ±90° when you get out.
+2. **Cars drive backwards or sideways.** Driving, traffic and the headlight
+   sprites all treat local +z as the nose. Checked in a model-orientation
+   screenshot probe:
+   - `Car_1_R/B`, `Van_1`, `Pick_Up_1` face −z (backwards);
+   - `Beatall`, `Landyroamer`, `docLorean` face −x (sideways).
+   - Neither loader corrects this.
+3. **NPCs hostile without cause.** "Hothead", "territorial" and "lookout"
+   temperaments attack just for being near the player, and brave or hothead
+   NPCs join fights near gunfire.
+4. **Hogs everywhere.** One third of a 40-NPC cap, spawned 10–30 m either
+   side of the highway, whatever the surroundings.
+5. **Popeyes everywhere.** 10 of 15 strip lots. `Car_1_Y`,
+   `Tristar Racer` and `Toyoyo Highlight` are never loaded.
+6. **Input read raw.** Key codes are checked directly in three update
+   functions and three separate keydown listeners.
+
+**Phases:**
+1. Audit ✔
+2. World orientation (`world.js`)
+3. Input + walking
+4. Camera (config, recentring on foot)
+5. Vehicles (definitions, normalization, seats)
+6. NPCs (calm by default)
+7. Spawning (zones, hog biomes, Popeyes density, building variety)
+8. World expansion (a curving highway, rural outskirts, forest)
+9. Debug overlay, HUD direction
+10. Docs
+
+After each phase: run the game and its QA scripts.
+
+**Progress (2026-09-13):**
+- **Phases 1–7, 9 and 10 done and headless-tested.**
+  - New modules: `src/world.js`, `src/input.js`, `src/vehicles.js`,
+    `src/debug.js` (F4 overlay + HUD compass), `src/spawnzones.js`.
+  - Changed: `camera.js` (rewritten around `CAMERA_CONFIG`), `npc.js`
+    (aggression 0), `traffic.js` (NPC driver seat), `main.js` (31 anchored
+    edits via `.claude/wire/core-wire.mjs`).
+  - Docs: `docs/ARCHITECTURE.md`.
+- **Strip:** 2 Popeyes (was 10); 5 `Buildings.glb` storefronts, a second gas
+  station, 6twelve and Tacos.
+- **Cars:** `Car_1_Y`, `Tristar Racer` and `Toyoyo Highlight` are now loaded
+  and in traffic.
+- **`tools/qa/controls.mjs`: 22 / 22 pass.**
+  - On foot: W walks where the camera looks at all four angles, including after
+    leaving an east-facing car. S, A, D, the diagonal, stopping, and turning the
+    camera alone all behave.
+  - Vehicles: facing north, W drives north even with the camera turned east;
+    W+D turns it to face east; facing east, W drives east and S reverses.
+  - Model screenshots: all 10 models point their nose along their heading.
+  - NPCs: a civilian next to you stays idle; shot, it flees.
+  - Hogs:
+    - 0 hog spawns out of 587 city picks;
+    - of 557 picks around the strip, the 52 hogs all landed in forest;
+    - live census: 1 hog, in the woods.
+- **Regressions pass:** gameplay (0 hostile, hp 100 at the end), prologue,
+  Act One, Blue Light Special, OrleaRouge, potholes. Only the known
+  `playlist.json` 404.
+- **Draw calls (headless HIGH):** spawn on foot 428–504 (was ~503); driving
+  953–1,361 (was ~1,300–1,410).
+- **Phase 8 (world expansion): done and headless-tested.** `src/westparish.js`
+  (new); `.claude/wire/westparish-wire.mjs` made 17 anchored edits to
+  `main.js`.
+  - **Map:** `MAP.minX` moved from −136 to −440. The ground plane is widened,
+    and every x clamp uses `MAP`.
+  - **Parish Highway 9:** a four-lane highway, 747 m long.
+    - It leaves US-167 at z ≈ 8, curves south-west through the forest, runs a
+      long straight, turns south, and enters OrleaRouge at street 330.
+    - Lane markings, guardrails with blockers on the curves, sodium lights,
+      green signs and a billboard.
+    - Traffic lanes both ways; the traffic pool is now 16 cars.
+  - **Bayou Noir:**
+    - a dirt road;
+    - a general store and church from `Buildings.glb`;
+    - shacks, a barn, a water tower;
+    - three fenced sugar-cane fields.
+  - **Rest stop** with the gas-station asset.
+  - **Forest:** 843 pines in chunked instanced meshes, plus swamp water.
+  - **Spawning:** new `rural` zone; the highway corridor is a no-spawn zone.
+    Spawns go around the player when they're far from US-167. Town and city
+    zones stop at the old west edge.
+  - **Bug found and fixed:** `orlea.inCity()` and the city entry V.O. only
+    checked z, so they would have claimed the whole parish south-west. Now they
+    check x too.
+  - **Distance culling:** the hamlet, the rest stop and each forest chunk hide
+    past 300 m (the fog hides them past ~260 m anyway). Driving draw calls in
+    `gameplay.mjs` went 1,905 → 1,254.
+  - **`tools/qa/westparish.mjs`: 8 / 8 pass.**
+    - No static blockers on the carriageway.
+    - Zones correct, old map unchanged, `inCity` excludes the parish.
+    - Four drives along the route stay aligned (1.0) at about 19 m/s.
+    - 16 traffic cars on both Hwy 9 lanes.
+    - Bayou Noir: 12 calm locals, hogs only in the forest.
+    - Draw calls 132–527.
+- **Not testable headless:** how the mouse camera and recentring *feel*, on a
+  real GPU (TASK-010).
+- **Gas cans fixed (the human's report: "the gas can by Popeye's").**
+  - The Popeyes can at `landmarkPos(1, -40)` = (18, −40) sat 0.5 m from the
+    Popeyes wall blocker (r 2.6), so it could never be picked up.
+  - The "Tony's Pizza lot" can at (−30, 50) had ended up inside the storefront
+    that replaced that lot (r 5).
+  - Both now sit out front: (11, −42) by the Popeyes car park, and (−16, 41).
+  - New test 36 in `tools/qa/controls.mjs`: no can may overlap a static
+    blocker, and each must be picked up by walking in. All 5 pass, and the
+    script now passes **27 / 27**.
+- **Crash handling fixed (the human's report: "after crashing into objects the
+  controls act sluggish and out of control").**
+  - **Cause:** `drivingUpdate` did `if (bumped) v.speed *= 0.45` on every
+    frame of contact. Holding W or W+D against something pinned the car at
+    0.3–0.5 m/s, and steering authority scales with speed, so you couldn't turn
+    out either.
+  - **Fix:** `collisionResponse()` in `src/vehicles.js`.
+    - Only the motion pointing into the obstacle is removed; the rest becomes a
+      slide along it (scrape friction 0.6/s), and the nose swings round to
+      follow.
+    - A speed loss and a jolt apply only on the first frame of a hit, scaled by
+      how head-on it was.
+    - `stepArcadeVehicle` keeps 30% steering at a standstill while on the
+      throttle.
+  - **Tests:** new section 37 in `controls.mjs`, **30 / 30 pass**:
+    - scraping a wall at 11° keeps the car moving (37.6 m, 19.9 m/s at the end);
+    - head-on, then S backs out 10.8 m;
+    - head-on, then W+D turns 2.3 rad and drives off at 13.6 m/s.
+  - **Probes:**
+    - ramming a stopped traffic car head-on, W+D is back up to 12–17 m/s
+      within about 1 s (twice);
+    - ramming a parked car, W+D escapes.
+  - **Regressions:** gameplay, prologue and `westparish.mjs` 8 / 8.
+    `westparish.mjs` now clears nearby traffic before its drives, lets the view
+    settle, and logs frame times.
+- **Not fixed; for TASK-010 on a real GPU:** a 2.7 s frame stall the first time
+  the OrleaRouge end of Hwy 9 comes into view (headless). It looks like shader
+  compilation. The game loop caps dt at 0.1 s, so a stall like this freezes
+  movement instead of teleporting the car.
+
+**Acceptance criteria:** section 42 of the spec. Tests from sections 30–35 go
+in `tools/qa/controls.mjs`:
+- W walks toward where the camera looks at yaw 0 / 90 / 180 / 270°;
+- a car facing north still drives north with the camera turned east;
+- each vehicle's nose matches its heading;
+- civilians ignore you until attacked;
+- no hogs downtown or on the highway;
+- visible building variety.
+
+---
+
 ### TASK-031 — Grow the map south: the causeway and OrleaRouge
 
 **Status:** `REVIEW` (headless: region test + all regressions pass; real-browser drive pending)
@@ -150,7 +318,19 @@ Bring the script to life. Finish and verify **Act One "Welcome Home"**
 ## READY
 
 ### TASK-010 — Real-browser playtest pass
-**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Antigravity**, or the human)
+**Status:** `IN PROGRESS` · **Agent:** `Claude` (driving the human's real Chrome through the Claude in Chrome extension)
+**Progress (2026-09-13):**
+- Chrome: 1920×1080 at DPR 1; the game auto-picked HIGH.
+- First load **never booted**: it sat on "loading assets…" for 90+ s with no
+  error. One CDN module import stalled; a clean reload fetched all 24 three.js
+  modules (HTTP 200) and boot started. Transient, but a single stalled import
+  freezes the game with no message.
+- Second load **stalled at "batching the parish…"**. The automation tab is
+  *hidden* (`visibilityState: hidden`, rAF never fires), and boot's `paint()`
+  waited on rAF. Fixed: `paint()` now falls back to a 100 ms timer, so loading
+  finishes in a background tab.
+- **Blocked on the human:** the tab must be visible (foreground) to measure
+  real frame rate and run the playtest; the render loop is rAF-driven.
 **Files / subsystem:** none (read-only); results go to `AGENT_LOG.md` → Test results, and any bugs become new BACKLOG tasks.
 **Dependencies:** none for free roam; TASK-009 for the Act One part.
 **Context:** Everything so far was verified in headless Chromium (SwiftShader),
@@ -275,7 +455,31 @@ You see them, and you feel them when you drive over one.
 - [ ] `TASK-013` — **Bravado reads as green at night** (`src/prologue.js`: `tintClone` / an emissive trim). Blocked on the TASK-009 lock. Suggested: Freebuff.
 - [ ] `TASK-014` — **Traffic on Tusouxroe streets + a player standing in the road** (`src/traffic.js`; Claude adds lanes in `main.js`). Cars honk or steer around a pedestrian instead of only easing past. After TASK-012.
 - [ ] `TASK-016` — **OrleaRouge: decide placement, then write a design doc** (`docs/orlearouge.md`). Blocked on a human decision (see Blockers).
-- [ ] `TASK-017` — **Act One's later beats**: the threatening phone call ("Your mother's house is very pretty"), Governor Bellefontaine's meeting with Mercer, the flood tunnel and the Nirbayou Nolantis descent. Needs TASK-009 and TASK-016.
+- [~] `TASK-017` — **IN PROGRESS (Claude), split into three parts:**
+  - **Part A, "Blue Light Special"** (`src/bluelight.js`): **REVIEW.**
+    Implemented, wired into `main.js` (Act One's `startNext`) and
+    headless-tested with `tools/qa/bluelight.mjs` (4 runs, every step passes).
+    - Getting WASTED mid-run respawns you (hp 100, still 3 stars).
+    - 2 cruisers chase you at 3 stars; the police clear at the drain.
+    - Draw calls in the tunnel scene: 312, after a short far plane culls
+      the city (1,971 before).
+    - Pending: a real-browser run (TASK-010) to judge the chase difficulty
+      and the siren and wash feel.
+    - It covers:
+    - Act One's end leads south to meet Solange Duval in the French District.
+    - The raid: police light wash, and Keseme's sensory-overload beat.
+    - The escape: a six-checkpoint run at 3 stars (east alley / nightclub
+      kitchen → wedding reception → cemetery → brass-band parade → riverfront
+      casino → storm drain). Getting wasted or busted respawns you at the last
+      checkpoint.
+    - The flood-tunnel cutscene ends at the crown-over-waves door.
+  - **Part B, Nirbayou Nolantis:** the elevator descent, the city reveal, Amara
+    Veaux, the tour, the archive ("the truth").
+  - **Part C:** Governor Bellefontaine and Mercer at the Chatboro Sheriff's
+    Office, the observation platform with Solange, the montage + V.O., the
+    threatening phone call, "MISSION UNLOCKED: WELCOME BACK TO DIXIE", and the
+    final elevator cinematic.
+- [ ] `TASK-017` (original scope) — **Act One's later beats**: the threatening phone call ("Your mother's house is very pretty"), Governor Bellefontaine's meeting with Mercer, the flood tunnel and the Nirbayou Nolantis descent. Needs TASK-009 and TASK-016.
 - [ ] `TASK-019` — **Weakest surfaces**: the stylised Popeyes, trailers and water towers are plain boxes. Needs their builders moved out of `main.js` into `src/landmarks.js` first (Claude). Suggested: Antigravity.
 - [ ] `TASK-020` — **Police**: make the Sheriff escapable (give-up timer) and tune `HEAT_KILLS`, spawn count and ram damage. Move the sheriff code out of `main.js` into `src/police.js` first (Claude).
 - [ ] `TASK-021` — **Minimap / waypoint arrow** (new `src/minimap.js`; Claude hooks it up). Story objectives already have world positions. Suggested: Codex.

@@ -125,6 +125,7 @@ export function createTraffic(o) {
     obj.visible = false;
     o.scene.add(obj);
     const v = o.registerVehicle(obj, 1.9, { hp: 30 });
+    if (v.seats) v.seats[0].occupant = "npc";  // someone's driving; a future hijack pulls them out
     const car = { obj, v, lane: null, s: 0, speed: 0, target: 0, cruise: 15, think: 0, active: false };
     v.traffic = car;
     return car;

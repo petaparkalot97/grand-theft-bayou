@@ -112,6 +112,15 @@ straight to the open strip.
    billboard). Go inside to Emiko, lay the ledger out, and watch Keseme's
    evidence board connect everything to Pelican Crown Holdings and Project
    Nolantis, with coordinates pointing south to OrleaRouge.
+6. **Blue Light Special** (OrleaRouge). Meet the journalist Solange Duval in the
+   French District ("It's not a conspiracy. It's worse. It's business."), until
+   the police raid the street. Keseme counts her way through the sensory
+   overload, spots the east alley they left open, and the escape begins at
+   three stars. Go through the nightclub kitchen, a wedding reception, the
+   cemetery, a brass-band parade and the riverfront, down into the storm drain.
+   Getting wasted mid-run puts you back at the last checkpoint. It ends in a
+   flood tunnel at a door marked with a crown over three waves.
+   *Nirbayou Nolantis is next.*
 
 In cutscenes, **Enter** skips a line and **Esc** skips the scene.
 
@@ -133,9 +142,21 @@ US-167 runs north–south through the whole map:
   hoarding, and the riverfront promenade with a casino riverboat. Traffic runs
   the boulevard and two cross streets. The first time you arrive, Keseme has
   something to say about the place.
+- **Parish Highway 9 and the rural west** (`src/westparish.js`).
+  - A 750 m four-lane highway leaves US-167 in the middle of the strip, curves
+    south-west through the pines, runs a long straight past the Bayou Noir Fuel
+    rest stop, swings south, and comes into OrleaRouge on street 330. It's a
+    second way into the city, built for driving fast, with traffic both ways.
+  - A dirt road leads to **Bayou Noir** (pop. 212): a general store, the
+    Baptist church, shacks, a barn, the water tower, and fenced sugar-cane
+    fields. Hogs live out here, not downtown.
 
-The region is built in `src/orlearouge.js`. `MAP` in `src/main.js` holds the
-map's bounds. Cutscenes are
+The strip mixes what's actually in `assets/`: gas stations, 6twelves, BurgerPiz,
+Tacos, storefronts from `Buildings.glb`, and just two Popeyes.
+
+North is −z and east is +x everywhere in the code (`src/world.js`); see
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). OrleaRouge is built in
+`src/orlearouge.js`. `MAP` in `src/main.js` holds the map's bounds. Cutscenes are
 built with `src/cinema.js`, and the mission lives in `src/prologue.js`.
 
 ## Soundtrack
@@ -157,16 +178,26 @@ and WEBM all work.
   `src/merge.js`. Static lights share a pool of the nearest 8.
 - **Collision.** `src/spatial.js` puts blockers in a uniform grid, so a mover
   only tests what is near it.
-- **NPCs** (`src/npc.js`). Each NPC has a temperament and a home turf. They
-  idle, wander, loiter and flee, and only turn hostile when provoked, when
-  violence breaks out nearby, or (for hotheads and territorial hogs) when you
-  walk right up to them. No more than 7 are hostile at once. Decisions run on
-  staggered timers, and far-away NPCs are paused.
-- **Traffic** (`src/traffic.js`). Pooled cars drive both lanes of US-167, keep
-  their distance, stop for obstacles and recycle ahead of and behind you.
-- **Camera** (`src/camera.js`). Click to capture the mouse and Esc to release
-  it. Scroll to zoom. The camera recentres behind the car when you leave the
-  mouse alone.
+- **NPCs** (`src/npc.js`). They're civilians: they idle, wander and loiter on
+  their home turf and ignore you. Gunfire nearby sends them running. Only
+  someone you actually hurt reacts: they fight back or flee, depending on
+  temperament. Decisions run on staggered timers, and far-away NPCs are paused.
+- **Spawning** (`src/spawnzones.js`). Who appears depends on where you are:
+  people in towns and on the strip, rednecks at the trailer park and in Bayou
+  Noir, the occasional hog in the woods and fields (never downtown, never on a
+  highway, at most 4 at once).
+- **Traffic** (`src/traffic.js`). Pooled cars drive both lanes of US-167, the
+  city streets and Parish Highway 9. They keep their distance, stop for
+  obstacles, and recycle ahead of and behind you.
+- **Camera** (`src/camera.js`, tuning in `CAMERA_CONFIG`).
+  - Click to capture the mouse and Esc to release it. Scroll to zoom.
+  - The camera drifts back behind the car when you leave the mouse alone, and
+    behind you when you walk forward for a while.
+  - It pulls in when a building gets between you and it.
+- **Vehicles** (`src/vehicles.js`). Every model's nose is corrected once, by
+  definition, so cars drive the way they face.
+- **Distance culling.** The western parish hides detail past 300 m, where the
+  fog has already swallowed it.
 - **F3** shows fps, frame time, simulation / AI / render cost and draw calls.
 - **QA.** `tools/qa/gameplay.mjs` is a headless regression pass (walk, look,
   shoot, drive, NPCs, traffic, entity counts) for the browser-automation runner.
@@ -201,7 +232,7 @@ Then hit **Start the story**.
 
 | | |
 |---|---|
-| **WASD** | drive / walk |
+| **WASD** | walk: **W** always goes where the camera looks · drive: **W** / **S** throttle and brake-reverse, **A** / **D** steer (the camera never changes where the car goes) |
 | **F** | jack a car / get out / enter the truck |
 | **Shift** | sprint on foot · handbrake in a car |
 | **Space / left click** | shoot |
@@ -211,6 +242,7 @@ Then hit **Start the story**.
 | **M** | mute music |
 | **N** | next soundtrack track |
 | **F3** | frame-time / draw-call readout |
+| **F4** | orientation debug: world axes, player / camera / vehicle headings and arrows |
 | **[** / **]** | step graphics quality down / up |
 
 ## Layout
