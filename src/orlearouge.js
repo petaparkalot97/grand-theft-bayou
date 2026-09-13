@@ -237,6 +237,7 @@ export function createOrleaRouge(ctx) {
         }
       }
     }
+    occluders.push({ minX: x - w / 2, maxX: x + w / 2, minY: 0, maxY: h + 0.5, minZ: z - d / 2 - 1.3, maxZ: z + d / 2 + 1.3 });
     ctx.addBlocker(x - w / 4, z, Math.min(w / 2, d / 2));
     ctx.addBlocker(x + w / 4, z, Math.min(w / 2, d / 2));
     return g;
@@ -293,6 +294,7 @@ export function createOrleaRouge(ctx) {
     mesh(new THREE.BoxGeometry(w + 0.6, 1.2, d + 0.6), std("concrete roof", 0x3a3d40), x, h + 0.6, z);
     mesh(new THREE.SphereGeometry(0.35, 8, 6), basic(new THREE.Color(0xff2a1a).multiplyScalar(3)), x, h + 2, z, { cast: false });
     for (const [bx, bz] of [[-w / 4, -d / 4], [w / 4, -d / 4], [-w / 4, d / 4], [w / 4, d / 4]]) ctx.addBlocker(x + bx, z + bz, Math.min(w, d) / 3);
+    occluders.push({ minX: x - w / 2, maxX: x + w / 2, minY: 0, maxY: h + 1.2, minZ: z - d / 2, maxZ: z + d / 2 });
   }
   function downtown(bl) {
     let v = 0;
@@ -349,6 +351,7 @@ export function createOrleaRouge(ctx) {
     m.userData.gtbRealized = true;
     mesh(new THREE.BoxGeometry(18, 2.2, 0.3), m, b.cx, 9, b.z0 - 0.2, { cast: false });
     for (const [bx, bz] of [[-8, 0], [0, 0], [8, 0]]) ctx.addBlocker(b.cx + bx, b.cz + bz, (b.z1 - b.z0) / 2 - 2);
+    occluders.push({ minX: b.x0 + 1, maxX: b.x1 - 1, minY: 0, maxY: 11, minZ: b.z0 + 2, maxZ: b.z1 - 2 });
     pois.push({ x: b.cx, z: b.z0 - 4, r: 7 });
   }
 

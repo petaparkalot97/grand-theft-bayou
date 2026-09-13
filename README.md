@@ -119,8 +119,10 @@ In cutscenes, **Enter** skips a line and **Esc** skips the scene.
 
 US-167 runs north–south through the whole map:
 
-- **Tusouxroe** (north): shopfronts, the truck lot, and South Tusouxroe (the
-  Nadia house) in the north-east corner.
+- **Tusouxroe** (north): shopfronts along Main Street, the truck lot, and
+  South Tusouxroe (the Nadia house) in the north-east corner. The redevelopment
+  money never reached the roads: every street in town has 40 potholes, some full
+  of rainwater, and hitting one at speed jolts the car (`src/potholes.js`).
 - **The strip**: the businesses lining the highway.
 - **Chatboro** (where you start): the trailer park, the swamp, and the state line.
 - **The bayou causeway**: south of Chatboro, the highway crosses open swamp

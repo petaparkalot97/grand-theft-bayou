@@ -18,6 +18,7 @@ import { createCinema } from "./cinema.js";
 import { createPrologue, makeCastMember, PROLOGUE_KEEPOUT } from "./prologue.js";
 import { createActOne } from "./actone.js";
 import { createOrleaRouge } from "./orlearouge.js";
+import { createPotholes } from "./potholes.js";
 
 // ---------------------------------------------------------------- config
 // Dixie Beaux, a Gulf Coast state that isn't Louisiana, honest: US-167 runs from
@@ -874,6 +875,9 @@ const cine = createCinema({ camera, muted: () => music.muted });
 let prologue = null;           // created once the car models have loaded
 let actOne = null;             // Act One "Welcome Home" (actone.js), starts when the prologue ends
 let orlea = null;              // the causeway + OrleaRouge, the south of the map (orlearouge.js)
+let potholes = null;           // Tusouxroe's potholes (potholes.js)
+const buildingOccluders = [];  // tall buildings the camera must stay in front of
+let mainStreetWest = -73;      // Main Street runs from US-167 west to the last shopfront
 const camCtl = createCameraController({
   camera, dom: renderer.domElement, canCapture: () => state.running && !state.over,
 });
@@ -1094,7 +1098,8 @@ async function buildLevel() {
     const parts = buildings.children.filter((c) => c.name && /Building/i.test(c.name));
     // two facing rows of low shopfronts along a main street
     for (const side of [-1, 1]) {
-      let bx = -70;
+      // west from just past the Popeyes lots, so no shopfront lands on US-167
+      let bx = -44;
       parts.forEach((src, i) => {
         if (!src) return;
         const b = src.clone(true);
@@ -1102,13 +1107,18 @@ async function buildLevel() {
         const s = (10 + (i % 3) * 3) / Math.max(sz.x, sz.z || 1);   // keep them small-town
         b.scale.setScalar(s);
         const w = sz.x * s;
-        bx += w * 0.6 + 3;
+        bx -= w / 2 + 1.5;
         b.position.set(bx, 0, -78 + side * 16);
+        bx -= w / 2 + 1.5;
         b.rotation.y = side < 0 ? 0 : Math.PI;
         const gb = new THREE.Box3().setFromObject(b);
         b.position.y = -gb.min.y;
         scene.add(b);
         addBlocker(b.position.x, b.position.z, Math.max(sz.x, sz.z) * s * 0.4);
+        // tall enough to swallow the camera: keep the lens in front of it
+        const ob = new THREE.Box3().setFromObject(b);
+        buildingOccluders.push({ minX: ob.min.x, maxX: ob.max.x, minY: ob.min.y, maxY: ob.max.y, minZ: ob.min.z, maxZ: ob.max.z });
+        mainStreetWest = Math.min(mainStreetWest, ob.min.x - 3);
       });
     }
   }
@@ -1241,7 +1251,29 @@ async function buildLevel() {
   });
   orlea.buildSet();
   NPC_POIS.push(...orlea.pois);          // npcs holds this same array
-  camCtl.setOccluders(orlea.occluders);  // keep the camera out of the overpass deck
+  // the overpass deck, OrleaRouge's buildings, and Tusouxroe's shopfronts
+  camCtl.setOccluders([...orlea.occluders, ...buildingOccluders]);
+
+  // ---- Tusouxroe's roads, and 40 potholes on each one ----
+  // Main Street runs between the two shopfront rows, west from US-167.
+  {
+    const len = (ROAD_X - ROAD_HALF) - mainStreetWest;
+    const mat = asphalt.material(1);
+    for (const t of [mat.map, mat.normalMap, mat.roughnessMap]) if (t) t.repeat.set(len / 9, 1);
+    const mainStreet = new THREE.Mesh(new THREE.PlaneGeometry(len, 9), mat);
+    mainStreet.rotation.x = -Math.PI / 2;
+    mainStreet.position.set(ROAD_X - ROAD_HALF - len / 2, 0.019, -78);
+    mainStreet.receiveShadow = true;
+    scene.add(mainStreet);
+  }
+  potholes = createPotholes({
+    scene, perStreet: 40, seed: 20260913,
+    streets: [
+      { name: "US-167 (Tusouxroe)", x0: ROAD_X - ROAD_HALF + 0.6, x1: ROAD_X + ROAD_HALF - 0.6, z0: -132, z1: -32, y: 0.042 },
+      { name: "Main Street", x0: mainStreetWest + 1, x1: ROAD_X - ROAD_HALF - 0.6, z0: -82, z1: -74, y: 0.041 },
+      { name: "South Tusouxroe", x0: 31, x1: 122, z0: -109.8, z1: -102.2, y: 0.04 },
+    ],
+  });
 
   // ---- ambient traffic: both lanes of US-167 ----
   traffic = createTraffic({
@@ -2036,7 +2068,14 @@ function tick() {
     if (actOne) actOne.update(dt);
     if (orlea) orlea.update(dt);
     cine.update(dt);
-    if (!cine.hasCamera) camCtl.update(dt, playerPos, state.veh, blockerGrid);
+    if (!cine.hasCamera) {
+      camCtl.update(dt, playerPos, state.veh, blockerGrid);
+      if (state.veh && state.veh.jolt > 0) {
+        const j = state.veh.jolt;
+        camera.position.x += (Math.random() - 0.5) * 0.25 * j;
+        camera.position.y += (Math.random() - 0.5) * 0.35 * j;
+      }
+    }
     perf._sim += performance.now() - t0;
   }
 
@@ -2310,6 +2349,25 @@ function drivingUpdate(dt) {
   v.obj.rotation.y = v.heading;
   v.obj.rotation.z = -inX * Math.min(0.12, Math.abs(v.speed) / 60) + Math.sin(v.wob) * 0.01;
 
+  // potholes: a jolt the moment a wheel drops into one, harder at speed
+  if (potholes && Math.abs(v.speed) > 2) {
+    const hit = potholes.hitTest(next.x, next.z, v.r * 0.6);
+    if (hit && hit.hole !== v.lastHole) {
+      const hard = hit.depth * Math.min(1, Math.abs(v.speed) / 22);
+      v.speed *= 1 - 0.22 * hard;
+      v.jolt = Math.min(1, (v.jolt || 0) + 0.35 + hard);
+      v.potholesHit = (v.potholesHit || 0) + 1;
+    }
+    v.lastHole = hit ? hit.hole : null;
+  }
+  if (v.jolt > 0) {
+    v.jolt = Math.max(0, v.jolt - dt * 3.2);
+    v.obj.rotation.x = Math.sin(v.wob * 7) * 0.05 * v.jolt;
+    v.obj.rotation.z += Math.sin(v.wob * 5) * 0.03 * v.jolt;
+  } else if (v.obj.rotation.x) {
+    v.obj.rotation.x = 0;
+  }
+
   // roadkill
   if (Math.abs(v.speed) > 7) {
     for (const e of enemies) {
@@ -2559,7 +2617,7 @@ async function boot() {
   window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
-    get player() { return player; }, get prologue() { return prologue; }, get actOne() { return actOne; }, get orlea() { return orlea; },
+    get player() { return player; }, get prologue() { return prologue; }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; },
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
       playerPos.set(x, 0, z);

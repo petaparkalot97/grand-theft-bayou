@@ -36,7 +36,7 @@ Bring the script to life. Finish and verify **Act One "Welcome Home"**
 
 ### TASK-031 — Grow the map south: the causeway and OrleaRouge
 
-**Status:** `IN PROGRESS`
+**Status:** `REVIEW` (headless: region test + all regressions pass; real-browser drive pending)
 **Agent:** `Claude`
 **Files / subsystem:**
 - `src/main.js` (`MAP` bounds, ground, highway, clamps, region integration)
@@ -94,8 +94,11 @@ Bring the script to life. Finish and verify **Act One "Welcome Home"**
   HP 100; traffic on all six lanes; no new console errors.
 - Not yet shown: city bystanders reacting to gunfire (no NPC was within the
   26 m noise radius when the test fired).
-- **Regression re-runs in progress** (gameplay, prologue, Act One) before this
-  moves to REVIEW.
+- Regressions re-run after the map growth: **gameplay, prologue and Act One all
+  pass** (free roam calm and stable with a 12-car pool; prologue hands off to
+  Act One; Act One's 12 steps complete). Only the known playlist 404.
+- **Status → REVIEW.** Still to do: a real-browser drive through the causeway
+  and the city (TASK-010), and a check that city bystanders react to gunfire.
 
 ### TASK-009 — Act One "Welcome Home" (Tusouxroe)
 
@@ -213,8 +216,39 @@ console errors.
 ## BACKLOG
 
 ### TASK-032 — Potholes across Tusouxroe
-**Status:** `BACKLOG` · **Agent:** `UNASSIGNED` (suggested: **Codex** for the module; Claude wires it in)
-**Requested by:** the human.
+**Status:** `REVIEW` (headless test passes; regression re-runs and a real-browser drive pending) · **Agent:** `Claude`
+**Requested by:** the human. **Updated 2026-09-13: 40 potholes on *every*
+street in Tusouxroe** (this replaces "at least 10" in the criteria below).
+Streets: US-167 through town (z −32…−132), a new Main Street between the
+shopfront rows (z −78, x −73…−11), and South Tusouxroe's street (z −106,
+x 31…122): 120 potholes in total. Spacing is "no overlap" rather than 15 m,
+since 40 per street needs density.
+
+**Progress (2026-09-13):**
+- `src/potholes.js` plus wiring: Main Street built, potholes created, jolt in
+  `drivingUpdate`, camera shake. Syntax-checked.
+- First headless run: **counts 40 / 40 / 40, no overlaps, 54 wet, 6 instanced
+  meshes**; the South Tusouxroe screenshot shows the potholes on the street.
+- Problems found:
+  1. The Main Street screenshot put the camera *inside* a shopfront. Camera
+     pull-in only runs at low angles, so tall buildings swallowed it. Fix
+     written (tall buildings registered as camera occluders, in Tusouxroe and
+     OrleaRouge); applying after the diagnostic.
+  2. The test car stopped dead against a brick wall ~26 m into Tusouxroe on
+     US-167 (not caused by the potholes). **Diagnostic running** to identify
+     the object.
+  3. The jolt wasn't measured reliably, because polling missed sub-second
+     jolts. The test now records every frame inside the page.
+- Second run **passes**: 40 / 40 / 40, no overlaps; the drive covered 77.6 m
+  through Tusouxroe with 11 hits (peak jolt 0.71); Main Street's camera stays
+  outside; Tusouxroe draw calls 164–377 on foot. Fixed along the way: the
+  shopfront rows no longer sit on US-167 (a bug that predates this task and
+  also blocked the drive to the escape truck).
+- Regressions re-run after the layout and camera changes: **free roam and
+  OrleaRouge both pass.** City bystanders now confirmed reacting to gunfire:
+  3 flee, 0 hostile (this closes the open item on TASK-031). Only the known
+  playlist 404.
+- Pending: a real-browser drive through Tusouxroe (TASK-010) to judge how the jolt feels.
 **Files / subsystem:** `src/potholes.js` (new); `src/main.js` integration (Claude)
 **Dependencies:** none. Tusouxroe's roads already exist.
 **Context:** Tusouxroe is the north of the map (z < −30): the US-167 stretch
@@ -366,9 +400,6 @@ before `COMPLETE`.
 - **OrleaRouge placement (human).** The script's next region is a big city. Is
   it (a) a new region added to this map (the map would need to grow south), or
   (b) a separate level loaded when you take the highway south? This blocks TASK-016 / TASK-017.
-- **Commits (human).** Everything since the "updates 1" commit is uncommitted:
-  the NPC system, story modules, Act One, QA scripts, docs and these
-  coordination files. Agents don't commit without approval.
 - **Dev server restart (human).** A server started before `serve.mjs` gained
   the playlist endpoint 404s on `assets/music/playlist.json`. The game falls
   back to the theme; restart `start-game.cmd` to pick it up.
@@ -394,11 +425,10 @@ before `COMPLETE`.
 # 🧪 TESTING STATUS
 
 **Last known test status:**
-- Free roam (`tools/qa/gameplay.mjs`): **pass** (re-run after the `cinema.js` /
-  `characters.js` changes).
-- Prologue (`tools/qa/prologue.mjs`): **pass** (re-run; it now hands off to
-  Act One: objective "Go home to South Tusouxroe").
-- Act One (`tools/qa/actone.mjs`): **pass** (3rd run, screenshots verified).
+- Free roam (`tools/qa/gameplay.mjs`): **pass** (re-run after the map grew south).
+- Prologue (`tools/qa/prologue.mjs`): **pass** (re-run; hands off to Act One).
+- Act One (`tools/qa/actone.mjs`): **pass** (re-run; all 12 steps).
+- Causeway + OrleaRouge (`tools/qa/orlearouge.mjs`): **pass** (2nd run, screenshots verified).
 
 **Last tested by:** Claude (headless Chromium / SwiftShader)
 

@@ -38,6 +38,32 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-13 — Claude
+**Type:** DISCOVERY · **Task:** TASK-032
+
+### Finding
+1. **Tusouxroe's shopfront rows sat on US-167.** This bug predates today's
+   work. `buildLevel` laid the Buildings.glb rows out from x = −70 stepping
+   *east* (`bx += w·0.6 + 3`), so they ran across the highway at z −62 and
+   −94. A diagnostic drive north accelerated to 18.9 m/s, then stopped dead at
+   z ≈ −54 against a shop's blocker. The road to the escape truck was cut off,
+   and neighbouring shops overlapped each other.
+2. **Camera inside tall buildings.** The blocker-circle pull-in only runs when
+   `want·sin(pitch) < 8`, so from the default on-foot angle a shopfront taller
+   than the lens swallowed the camera (the Main Street screenshot).
+3. **`Raycaster` crashes on Sprites unless `raycaster.camera` is set.** Set it
+   when raycasting the whole scene in diagnostics.
+
+### Impact
+(1) Driving north through Tusouxroe, and reaching the truck. (2) Any tall
+building near where the player walks. (3) Scene raycasts in QA scripts.
+
+### Action
+(1) Rows now step *west* from x = −44 (past the Popeyes lots) with 3 m gaps;
+Main Street's length and its potholes follow the rows (`mainStreetWest`).
+(2) Tusouxroe shopfronts and OrleaRouge rowhouses / towers / hospital are
+registered as camera occluder boxes. (3) Noted here; re-test running.
+
 ## 2026-09-12 — Claude
 **Type:** DISCOVERY · **Task:** TASK-031
 
@@ -304,6 +330,44 @@ road plane.
 
 # 🧪 TEST RESULTS
 
+## 2026-09-13 — Claude
+**Type:** TEST · **Task:** TASK-032 regressions (shopfront rows moved, building camera occluders)
+
+- `tools/qa/gameplay.mjs`: at rest 0 hostile; shots → 2 flee, 1 hostile; walk,
+  pointer lock, right-drag, drive and exit OK; traffic pool 12; vehicles 66;
+  HP 100. Draw calls 491–576 on foot, 1,324 driving.
+- `tools/qa/orlearouge.mjs`: drive into the city (z 267), entry V.O. fires;
+  city NPCs are people only, none hostile; **gunfire in the French District →
+  3 flee, 0 hostile** (the city bystander reaction is now confirmed). Draw
+  calls 257–511 on foot.
+- Console in both: only the known `playlist.json` 404.
+
+## 2026-09-13 — Claude
+**Type:** TEST · **Task:** TASK-032 (potholes), second run
+
+- `tools/qa/potholes.mjs`, headless HIGH 1280×720, after the shopfront-row fix
+  and the building camera occluders:
+  - **40 / 40 / 40** potholes (US-167 Tusouxroe / Main Street / South
+    Tusouxroe), no overlaps, 48 wet, **6 instanced meshes** in total.
+  - Drive north on US-167 (northbound lane, from z −30): **77.6 m travelled**
+    (the first run stopped after 24 m against a shopfront on the road), reached
+    66 mph, **11 pothole hits, peak jolt 0.71, body pitch 0.032 rad**. It
+    stopped at z ≈ −108, at the escape truck parked at the end of the highway.
+  - Draw calls in Tusouxroe: 164–377 on foot, 274 driving.
+  - Screenshots: potholes on South Tusouxroe street, Main Street (camera
+    outside the buildings now, shopfront row set back west), US-167 clear ahead.
+  - Console: only the known `playlist.json` 404.
+
+## 2026-09-12 — Claude
+**Type:** TEST · **Task:** TASK-031 regressions (map grown south, traffic spawning on any lane, camera occluders)
+
+- `tools/qa/gameplay.mjs`: at rest 0 hostile; 4 shots → 2 flee, 0 hostile; walk,
+  pointer lock, right-drag, drive and exit OK; 12-car traffic pool; vehicles
+  flat at 66; HP 100. Draw calls 560–894 on foot, 1,279 driving.
+- `tools/qa/prologue.mjs`: every phase in order; hands off to Act One. HP 100.
+- `tools/qa/actone.mjs`: all 12 steps pass.
+- Console in all three: only the known `playlist.json` 404.
+
 ## 2026-09-12 — Claude
 **Type:** TEST · **Task:** TASK-031 (causeway + OrleaRouge)
 
@@ -465,6 +529,20 @@ act.start(); act.update(dt); act.phase; act.debug(step);
 // prologue: act.skip() (free roam), act.props, act.vehicles; ctx.onFinished starts Act One
 ```
 The `ctx` fields are listed in each file's JSDoc.
+
+### `src/potholes.js` (TASK-032)
+```js
+const potholes = createPotholes({ scene, perStreet: 40, seed,
+  streets: [{ name, x0, x1, z0, z1, y }] });      // axis-aligned road areas
+potholes.list      // [{ x, z, r, y, rot, wet, street }]
+potholes.counts    // { streetName: n }
+potholes.meshes    // InstancedMeshes: holes + standing water, 2 per street
+potholes.hitTest(x, z, radius) -> { depth: 0..1, hole } | null
+```
+`drivingUpdate` in `main.js` calls `hitTest` with the car's position and
+radius. A new hole sets `v.jolt` (speed loss, body pitch / roll, camera shake)
+and counts `v.potholesHit`. Placement is seeded (`seed: 20260913`), so potholes
+never move between loads.
 
 ### `src/ledgerboard.js`
 ```js
