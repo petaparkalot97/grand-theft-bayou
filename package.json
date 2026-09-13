@@ -4,7 +4,7 @@
   "private": true,
   "description": "Joke GTA-style Three.js game set in north Louisiana (Chatham / Monroe / Ruston)",
   "scripts": {
-    "build": "node -e \"console.log('static site — nothing to build')\"",
+    "build": "node tools/music-playlist.mjs",
     "start": "node serve.mjs 8899"
   },
   "license": "UNLICENSED"

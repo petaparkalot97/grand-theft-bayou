@@ -40,6 +40,27 @@ generated in the browser at load.
   poles and streetlamps are nearest the camera, so the whole strip reads as lit
   without blowing the forward renderer's per-object light budget.
 
+### Atmosphere (`src/fx.js` + the fog patch in `graphics.js`)
+
+- **Ground mist.** three's fog chunks are patched so every fogged material
+  also gets exponential **height fog**, integrated along the view ray and
+  broken into slow-drifting mist banks. `MIST` in `graphics.js` is the one
+  live uniform object (time / density / falloff) shared by every program.
+- **Volumetric light shafts.** Every streetlamp and lot pole gets a soft
+  additive light cone, a pool of light on the ground and a lens halo. The lot
+  lights, which had no geometry before, also get a steel pole and lamp head.
+- **Headlights.** Whatever you drive gets two real spotlights with visible
+  beams, lens flares and tail lights that flare up when you brake. The lights
+  are always in the scene at zero intensity, because adding or hiding a light
+  recompiles every lit shader.
+- **Wet asphalt.** Every `surface("asphalt")` material is damp, with standing
+  puddles laid out in world space. On **HIGH / 4K ULTRA** a planar mirror pass
+  re-renders the scene from under the road, so lamps, beams and headlights
+  reflect in the puddles (`TIERS[*].reflect` sizes that buffer).
+- **Speed.** At speed the camera FOV opens up and the grade pass adds radial
+  motion blur and extra chromatic aberration, keeping the centre of the frame
+  sharp.
+
 All of the generated surfaces are built during `boot()`, between paints, so the
 loader keeps reporting progress — doing it at module scope froze the menu on
 "loading assets…" for the whole build.

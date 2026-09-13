@@ -42,6 +42,28 @@ at load. See the README's **Graphics** section for the full rundown. In short:
   4K, downsampled to the canvas.
 - Four tiers with an auto governor that only steps *down*; `[` / `]` override.
 - Six-light pool recycled onto the nearest lot poles / streetlamps (`litSpots`).
+  Pool lights now park at intensity 0 instead of `visible = false`, since
+  toggling visibility changed the light count and recompiled every shader.
+
+### Graphics: atmosphere pass (`src/fx.js`)
+
+- Height fog + drifting ground mist patched into `ShaderChunk.fog_*`. `MIST`
+  is a plain object on purpose: three clones Vector3 uniforms per material
+  but shares plain objects, so one write updates every program.
+- `addLamp(scene, spot)` for each `litSpots` entry: shaft + ground pool + halo
+  (+ pole/head when `pole: true`).
+- `createHeadlights(scene)`: 2 SpotLights, beams, lens + brake-light sprites on
+  `state.veh`. Measures the car un-rotated once and caches it as `veh.fxDims`.
+- `createWetRoads(...)`: wet/puddle shader on every asphalt material (found via
+  `userData.surfaceKind`), plus a Reflector-style mirror render on HIGH/ULTRA.
+  The asphalt meshes are hidden during that render (feedback loop otherwise).
+- Grade pass: `uBlur` radial speed blur; FOV opens up at speed.
+
+- [ ] Tune mist density, beam intensity and headlight brightness on the real
+      GPU. Headless checks run on SwiftShader.
+- [ ] Mirror pass doubles scene draw calls on HIGH/ULTRA. If the governor
+      steps down too eagerly, lower `reflect` or cull the mirror camera's far
+      plane to ~120.
 
 ### Hoodrats — 3D characters (`src/characters.js`)
 
@@ -142,6 +164,83 @@ pipeline. Worth re-measuring on the actual GPU.
 | `Urban_Modular_Demo` | shack walls, streetlamp, stop sign |
 | `TownTileSet` | copied, not wired (GLB has no embedded textures) |
 | **NOT USED (off-theme / unusable):** Downtown City MegaKit (dense city — dropped), Retro PSX Mansion, Trashville, Pizzeria_Scene.glb (100 MB), "Shacks Shanties Sheds" (.blend only), Modular Village / RCC / azul / PP furniture (2D tilesets) |
+
+## Backlog — everything still to do (updated 2026-09-12)
+
+### In progress: performance / NPCs / traffic / camera pass
+Spec: the "improve the existing game substantially" brief (perf, NPC behaviour,
+ambient traffic, GTA-style mouse camera). Diagnose first, test each subsystem.
+
+Measured baseline (headless, HIGH, 1280×720, after the light + resolution fixes):
+sim 0.9 ms, AI 0.55 ms, **render submit 15.8 ms, 1,259 draw calls**, 279k tris,
+1,434 visible meshes. The bottleneck is draw calls, not AI.
+
+- [x] ~21 always-on PointLights folded into the nearest-8 light pool (`poolLight`).
+- [x] HIGH no longer supersamples (`TIERS[*].ss`); only 4K ULTRA does.
+- [x] Mirror pass: far plane 130, every 2nd frame on HIGH.
+- [x] GTAO at half resolution, 10 samples on HIGH.
+- [x] F3 frame-time / draw-call overlay (hidden by default); fixed-step
+      simulation (1/30 s steps) so game speed no longer depends on fps.
+- [ ] Cut draw calls: merge each Hoodrat's rigid parts per joint + material
+      (~50 meshes → ~15), and statically batch world props by material in
+      spatial chunks so frustum culling still works.
+- [ ] Wire `src/spatial.js` (BlockerGrid) into `resolveCollision`, driving and
+      NPC movement instead of scanning all ~430 blockers per mover.
+- [ ] Remove per-frame allocations in `updateEnemy`, `onFootUpdate`,
+      `drivingUpdate`, `fire()` (vector clones / `new Vector3`).
+- [ ] NPC behaviour system: idle / wander between points of interest / loiter /
+      flee / react to violence / hostile only when provoked (hogs stay wild).
+      Staggered think timers; distance LOD (near = full, mid = throttled,
+      far = paused + no animation).
+- [ ] Wire `src/traffic.js`: two highway lanes (northbound x = ROAD_X + 2.5,
+      southbound x = ROAD_X − 2.5), pooled cars, spacing, recycle ahead/behind.
+- [ ] Pointer-lock mouse camera: click to capture, Esc releases, yaw + clamped
+      pitch, smoothing, auto-recentre behind the car, wheel zoom; Q/E kept as
+      secondary; right-drag no longer required.
+- [ ] Camera: keep above ground, pull in when a blocker sits between camera and
+      player.
+- [ ] Bugs found while reading the code:
+  - [ ] Tracers create a geometry + material per shot and never dispose them.
+  - [ ] Wrecked vehicles stay in `vehicles`, so F can "enter" an invisible dead car.
+  - [ ] Dead sheriff units are never removed from `sheriffs`.
+  - [ ] `fire()` auto-aims at any NPC, including ones that aren't hostile.
+- [ ] Full test pass: walk, drive, enter/exit, shoot, NPCs, traffic, pointer
+      lock / Esc, many NPCs + cars, console clean.
+
+### Story: Prologue "Mud, Blood & Magnolia" + Mission 1 "Hog Wild" (not started)
+From the script the user supplied (Dixie Beaux; protagonist Keseme Nadia).
+Planned as the playable opening, with the current gas-can loop continuing after it.
+- [ ] Rebrand the world: Dixie Beaux; Chatham → **Chatboro** (water tower
+      "FAITH — FAMILY — FREEDOM / TERMS AND CONDITIONS APPLY"); Monroe/Ruston →
+      **Tusouxroe**. Welcome billboard "SPORTSMAN'S HEAVEN — EVERYBODY ELSE'S
+      PROBLEM" + graffiti "HEAVEN GOT A LOW BAR"; "LUXURY CONDOS COMING SOON /
+      WHERE WE SUPPOSED TO GO?" billboard. Update menu, HUD, win/lose/busted copy.
+- [ ] Cinematic system: letterbox, speaker subtitles, location / mission / title
+      cards, camera shots, Enter skips a line, Esc skips a scene; synthesized SFX
+      (shotgun, siren, phone ring, hog squeal) — no new audio assets.
+- [ ] Cold open: black screen sound collage, radio dial gags, dawn aerial over
+      the strip, welcome billboard, Chatboro water tower, into Keseme's coupe.
+- [ ] In-car GPS gag + phone call with Mally; the green Bravado passes.
+- [ ] Mission 1 "Hog Wild": follow the stolen Bravado (rubber-banded AI, lose
+      it = retry), thief shotgun exchange, turn-off onto a dirt road into the
+      woods east of the strip, hog stampede, crash through a fence, Bubba's
+      pickup arrives, clear the hogs with Bubba (tranq rifle), retrieve the car.
+- [ ] Ledger scene: Mally arrives, duffel of cash + ledger, sheriff convoy,
+      Sheriff Clay Mercer + deputies, bag handed over but ledger kept, title
+      card blown apart by a shotgun blast, "ACT ONE — WELCOME HOME".
+- [ ] Characters: extend `characters.js` (skin / top colour / headwear / hat /
+      beard options) for Keseme (player, replaces the redneck sprite), Mally,
+      Bubba, Mercer, deputies.
+- [ ] Menu: "Start the prologue" + "Free roam" (skip story).
+- [ ] Later acts from the script (not scoped): Tusouxroe + Nadia family house,
+      the ledger map, OrleaRouge (French District, "Blue Light Special" raid
+      escape), flood tunnel, Nirbayou Nolantis (underwater city), Governor
+      Bellefontaine, Pelican Crown Holdings arc, branching endings.
+
+### Graphics follow-ups
+- [ ] Tune mist / beams / headlights on a real GPU (headless is SwiftShader).
+- [ ] Traffic cars have sprite head/tail lights only; consider sharing the
+      player's headlight rig with the nearest oncoming car.
 
 ## Now / Next / Later
 

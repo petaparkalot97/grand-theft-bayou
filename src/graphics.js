@@ -32,13 +32,105 @@ import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 // 1024 the load pass took long enough to look like the game had hung. Do not
 // drop it below 256 either, or surfaces tiled many times (the highway repeats
 // its asphalt ~62x) band visibly.
+// `reflect` sizes the wet-road mirror pass as a fraction of the canvas (fx.js);
+// 0 skips that second scene render and leaves the roads wet but IBL-lit only.
 export const TIERS = {
-  ultra:  { name: "4K ULTRA",    scale: 3840, shadow: 4096, ao: true,  bloom: true,  smaa: true,  derive: 512 },
-  high:   { name: "HIGH",        scale: 2560, shadow: 3072, ao: true,  bloom: true,  smaa: true,  derive: 512  },
-  medium: { name: "BALANCED",    scale: 1920, shadow: 2048, ao: false, bloom: true,  smaa: true,  derive: 256  },
-  low:    { name: "PERFORMANCE", scale: 1280, shadow: 1024, ao: false, bloom: false, smaa: false, derive: 256  },
+  // `ss` caps supersampling relative to the display's own pixels. Rendering
+  // HIGH at 2560 on a 1080p screen cost ~1.8x the pixels for a barely visible
+  // gain, so only 4K ULTRA supersamples now. `reflectEvery` refreshes the
+  // mirror every Nth frame; `aoSamples` is the GTAO sample count.
+  ultra:  { name: "4K ULTRA",    scale: 3840, ss: 1.5, shadow: 4096, ao: true,  aoSamples: 16, bloom: true,  smaa: true,  derive: 512, reflect: 0.6,  reflectEvery: 1 },
+  high:   { name: "HIGH",        scale: 2560, ss: 1.0, shadow: 2048, ao: true,  aoSamples: 10, bloom: true,  smaa: true,  derive: 512, reflect: 0.45, reflectEvery: 2 },
+  medium: { name: "BALANCED",    scale: 1920, ss: 1.0, shadow: 2048, ao: false, aoSamples: 0,  bloom: true,  smaa: true,  derive: 256, reflect: 0,    reflectEvery: 1 },
+  low:    { name: "PERFORMANCE", scale: 1280, ss: 1.0, shadow: 1024, ao: false, aoSamples: 0,  bloom: false, smaa: false, derive: 256, reflect: 0,    reflectEvery: 1 },
 };
 const TIER_ORDER = ["low", "medium", "high", "ultra"];
+
+// --------------------------------------------------------------- height fog + mist
+// three's fog is a flat distance fade. A bayou at night wants mist lying on the
+// ground: exponential height fog integrated along each view ray, broken into
+// slow-drifting banks. Patched into the shared fog chunks so every fogged
+// material in the scene — PBR, sprites, instanced trees — gets it for free.
+//
+// MIST is deliberately a PLAIN object, not a Vector3. three clones Vector3
+// uniform values per material but copies plain objects by reference, so this
+// one object is live in every program and main.js only has to write to it.
+//   x = time (s), y = ground density, z = height falloff (1/m)
+export const MIST = { x: 0, y: 0.04, z: 0.3 };
+
+for (const key of Object.keys(THREE.ShaderLib)) {
+  const u = THREE.ShaderLib[key].uniforms;
+  if (u && u.fogColor) u.fogMist = { value: MIST };
+}
+THREE.UniformsLib.fog.fogMist = { value: MIST };
+
+THREE.ShaderChunk.fog_pars_vertex = /* glsl */ `
+#ifdef USE_FOG
+	varying float vFogDepth;
+	varying vec3 vFogWorld;
+#endif
+`;
+
+// world position recovered from mvPosition, so instancing and sprites are
+// already accounted for; viewMatrix is rigid, so its inverse is a transpose
+THREE.ShaderChunk.fog_vertex = /* glsl */ `
+#ifdef USE_FOG
+	vFogDepth = - mvPosition.z;
+	vFogWorld = transpose( mat3( viewMatrix ) ) * ( mvPosition.xyz - viewMatrix[ 3 ].xyz );
+#endif
+`;
+
+THREE.ShaderChunk.fog_pars_fragment = /* glsl */ `
+#ifdef USE_FOG
+	uniform vec3 fogColor;
+	uniform vec3 fogMist;
+	varying float vFogDepth;
+	varying vec3 vFogWorld;
+	#ifdef FOG_EXP2
+		uniform float fogDensity;
+	#else
+		uniform float fogNear;
+		uniform float fogFar;
+	#endif
+	float gtbFogHash( vec2 p ) {
+		p = fract( p * vec2( 123.34, 456.21 ) );
+		p += dot( p, p + 45.32 );
+		return fract( p.x * p.y );
+	}
+	float gtbFogNoise( vec2 p ) {
+		vec2 i = floor( p );
+		vec2 f = fract( p );
+		f = f * f * ( 3.0 - 2.0 * f );
+		return mix( mix( gtbFogHash( i ), gtbFogHash( i + vec2( 1.0, 0.0 ) ), f.x ),
+		            mix( gtbFogHash( i + vec2( 0.0, 1.0 ) ), gtbFogHash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
+	}
+#endif
+`;
+
+THREE.ShaderChunk.fog_fragment = /* glsl */ `
+#ifdef USE_FOG
+	#ifdef FOG_EXP2
+		float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
+	#else
+		float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+	#endif
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+
+	// Optical depth of density y * exp(-z * height) along the eye ray. abs() on
+	// the heights lets the wet-road mirror camera, which sits under the road,
+	// see the same mist as the real one.
+	float gtbY0 = abs( cameraPosition.y );
+	float gtbK = fogMist.z * ( abs( vFogWorld.y ) - gtbY0 );
+	float gtbLine = abs( gtbK ) > 1e-4 ? ( 1.0 - exp( - gtbK ) ) / gtbK : 1.0;
+	vec2 gtbP = vFogWorld.xz * 0.035;
+	float gtbBank = gtbFogNoise( gtbP + fogMist.x * vec2( 0.018, 0.011 ) ) * 0.65
+	              + gtbFogNoise( gtbP * 2.7 - fogMist.x * vec2( 0.026, -0.014 ) ) * 0.35;
+	float gtbOpt = fogMist.y * length( vFogWorld - cameraPosition ) * exp( - fogMist.z * gtbY0 )
+	             * gtbLine * ( 0.25 + 1.5 * gtbBank * gtbBank );
+	// moonlit mist reads a little brighter than the distance haze behind it
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor * 1.5, 1.0 - exp( - gtbOpt ) );
+#endif
+`;
 
 export const GFX = {
   tier: "high",
@@ -83,7 +175,7 @@ export function initRenderer(renderer) {
 export function targetPixelRatio() {
   const longEdge = Math.max(innerWidth, innerHeight);
   const want = GFX.preset.scale / longEdge;
-  return Math.max(0.6, Math.min(want, (devicePixelRatio || 1) * 2, 2.5));
+  return Math.max(0.6, Math.min(want, (devicePixelRatio || 1) * GFX.preset.ss, 2.5));
 }
 
 // --------------------------------------------------------------- noise helpers
@@ -492,6 +584,8 @@ export function surface(kind, size) {
         }
       }
       m.userData.gtbRealized = true;
+      // survives material.clone(), so fx.js can find every asphalt surface
+      m.userData.surfaceKind = kind;
       return m;
     },
   };
@@ -778,6 +872,7 @@ const GradeShader = {
     uHighlightTint: { value: new THREE.Color(0xffe6c2) },
     uContrast: { value: 1.08 },
     uSaturation: { value: 1.05 },
+    uBlur: { value: 0 },          // 0..1 speed blur, driven by main.js while driving
   },
   vertexShader: [
     "varying vec2 vUv;",
@@ -788,7 +883,7 @@ const GradeShader = {
   ].join("\n"),
   fragmentShader: [
     "uniform sampler2D tDiffuse;",
-    "uniform float uTime, uVignette, uGrain, uAberration, uContrast, uSaturation;",
+    "uniform float uTime, uVignette, uGrain, uAberration, uContrast, uSaturation, uBlur;",
     "uniform vec3 uShadowTint, uHighlightTint;",
     "varying vec2 vUv;",
     "",
@@ -798,12 +893,23 @@ const GradeShader = {
     "  vec2 c = vUv - 0.5;",
     "  float r2 = dot(c, c);",
     "",
-    "  // lens: channels separate further from centre",
-    "  float ab = uAberration * 0.0018 * r2;",
+    "  // lens: channels separate further from centre, more so at speed",
+    "  float ab = uAberration * (0.0018 + uBlur * 0.004) * r2;",
     "  vec3 col;",
     "  col.r = texture2D(tDiffuse, vUv + c * ab).r;",
     "  col.g = texture2D(tDiffuse, vUv).g;",
     "  col.b = texture2D(tDiffuse, vUv - c * ab).b;",
+    "",
+    "  // speed blur: streaks radiating from the centre, which stays sharp so",
+    "  // the road ahead is still readable",
+    "  if (uBlur > 0.001) {",
+    "    float k = uBlur * 0.03 * smoothstep(0.02, 0.25, r2);",
+    "    vec3 acc = col;",
+    "    for (int i = 1; i < 8; i++) {",
+    "      acc += texture2D(tDiffuse, vUv - c * k * (float(i) / 7.0)).rgb;",
+    "    }",
+    "    col = acc / 8.0;",
+    "  }",
     "",
     "  float l = dot(col, vec3(0.2126, 0.7152, 0.0722));",
     "",
@@ -855,8 +961,14 @@ export async function createComposer(renderer, scene, camera) {
       gtao.blendIntensity = 0.9;
       gtao.updateGtaoMaterial({
         radius: 0.5, distanceExponent: 1.4, thickness: 1.2,
-        scale: 1.35, samples: 16, screenSpaceRadius: false,
+        scale: 1.35, samples: GFX.preset.aoSamples || 12, screenSpaceRadius: false,
       });
+      // AO is low-frequency, so it is computed at half resolution and the
+      // blend step upsamples it — a quarter of the pixels for the costliest
+      // pass. The composer calls setSize on every pass, so wrap it once here.
+      const fullSetSize = gtao.setSize.bind(gtao);
+      gtao.setSize = (w, h) => fullSetSize(Math.max(1, Math.ceil(w / 2)), Math.max(1, Math.ceil(h / 2)));
+      gtao.setSize(innerWidth * ratio, innerHeight * ratio);
       composer.addPass(gtao);
     } catch (e) {
       console.warn("[gfx] GTAO unavailable, continuing without it:", e && e.message);

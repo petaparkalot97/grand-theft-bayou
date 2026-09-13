@@ -16,6 +16,7 @@
 
 import * as THREE from "three";
 import { microSurface } from "./graphics.js";
+import { mergeRigid } from "./merge.js";
 
 // --------------------------------------------------------------- palette
 export const CREWS = {
@@ -329,6 +330,15 @@ class Hoodrat extends THREE.Object3D {
     const target = opts.height || (female ? 1.82 : 1.95);
     const raw = 1.86;
     this.scale.setScalar(target / raw);
+
+    // ~50 parts but only a dozen joints move: bake the parts riding each joint
+    // into one mesh per material. Same silhouette, roughly a third of the draw
+    // calls in every pass (shadows, main view, AO, road mirror).
+    mergeRigid(this, [
+      hips, torso,
+      ...this.arms.flatMap((a) => [a.pivot, a.elbow]),
+      ...this.legs.flatMap((l) => [l.pivot, l.knee, l.foot]),
+    ]);
 
     this._meshes = [];
     this.traverse((o) => { if (o.isMesh && o !== this.blob) this._meshes.push(o); });

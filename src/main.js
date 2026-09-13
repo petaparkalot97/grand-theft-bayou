@@ -4,8 +4,9 @@ import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { loadAtlas, AnimatedSprite } from "./sprite.js";
 import {
   GFX, TIERS, autoTier, nextTier, initRenderer, createEnvironment,
-  createComposer, createGovernor, realize, surface,
+  createComposer, createGovernor, realize, surface, MIST,
 } from "./graphics.js";
+import { addLamp, createHeadlights, createWetRoads, updateFx } from "./fx.js";
 import { randomHoodrat } from "./characters.js";
 
 // ---------------------------------------------------------------- config
@@ -97,11 +98,18 @@ const env = createEnvironment(scene, renderer, {
 
 const composer = await createComposer(renderer, scene, camera);
 
+// Wet asphalt with a mirror pass under the road, and the player's headlights.
+// Both live in fx.js; the wet shader is attached to the roads once they exist.
+const wetRoads = createWetRoads(renderer, scene, camera);
+wetRoads.setQuality(GFX.preset.reflect, GFX.preset.reflectEvery);
+const headlights = createHeadlights(scene);
+
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
   composer.resize();
+  wetRoads.resize();
 });
 
 // ---------------------------------------------------------------- lights
@@ -226,14 +234,26 @@ for (let i = 0; i < 9; i++) {
 // nearest the camera. Anything further away still reads, via emissive bulbs.
 const litSpots = [];
 const lightPool = [];
-function initLightPool(n = 6) {
+function initLightPool(n = 8) {
   for (let i = 0; i < n; i++) {
     const l = new THREE.PointLight(0xffc27a, 0, 40, 2);
-    l.visible = false;
     scene.add(l);
     lightPool.push(l);
   }
 }
+// Every static light in the level goes through the pool too. Each PointLight in
+// the scene is evaluated for every lit pixel on screen, so ~20 always-on lights
+// were the single biggest shading cost; pooled, only the nearest 8 are real.
+// `group`: position is local to a builder's group (converted to world here).
+function poolLight(color, power, range, x, y, z, group) {
+  const p = new THREE.Vector3(x, y, z);
+  if (group) {
+    group.updateMatrixWorld(true);
+    p.applyMatrix4(group.matrixWorld);
+  }
+  litSpots.push({ x: p.x, y: p.y, z: p.z, warm: color, power, range, fx: false });
+}
+
 let poolTimer = 0;
 function updateLightPool(dt, focus) {
   poolTimer -= dt;
@@ -246,8 +266,9 @@ function updateLightPool(dt, focus) {
   for (let i = 0; i < lightPool.length; i++) {
     const l = lightPool[i];
     const sp = litSpots[i];
-    if (!sp || sp.d > 90 * 90) { l.visible = false; continue; }
-    l.visible = true;
+    // Parked at zero intensity rather than hidden: toggling .visible changes
+    // the scene's light count, which recompiles every lit shader mid-frame.
+    if (!sp || sp.d > 90 * 90) { l.intensity = 0; continue; }
     l.position.set(sp.x, sp.y, sp.z);
     l.color.setHex(sp.warm);
     l.distance = sp.range;
@@ -947,7 +968,7 @@ async function buildLevel() {
       placeGlbLandmark(tacoGLB, bx, z, rot, 14, "Tacos", 0xffd27a, -Math.PI)
         || makePizzeria(bx, z, rot);
     // every lot gets a parking-lot pole light out front
-    litSpots.push({ x: bx - side * 9, y: 8.5, z: z + 9, warm: 0xffbf74, power: 170, range: 30 });
+    litSpots.push({ x: bx - side * 9, y: 8.5, z: z + 9, warm: 0xffbf74, power: 170, range: 30, pole: true });
   }
 
   // streetlamps + one warm glow for the whole strip
@@ -960,11 +981,7 @@ async function buildLevel() {
     scene.add(bulb);
     litSpots.push({ x: ROAD_X + ROAD_HALF + 1.5, y: 4.3, z, warm: 0xffd9a0, power: 90, range: 22 });
   }
-  for (const lz of [78, 24, -30, -84]) {
-    const gl = new THREE.PointLight(0xffcf8a, 90, 70, 2);
-    gl.position.set(ROAD_X, 11, lz);
-    scene.add(gl);
-  }
+  for (const lz of [78, 24, -30, -84]) poolLight(0xffcf8a, 90, 70, ROAD_X, 11, lz);
   // a few torches + shrooms only right around the spawn so it reads "bayou"
   makeTorch(ROAD_X - ROAD_HALF - 1.5, SPAWN_Z - 3, true);
   makeTorch(ROAD_X + ROAD_HALF + 1.5, SPAWN_Z - 10, true);
@@ -1067,9 +1084,7 @@ async function buildLevel() {
     new THREE.MeshBasicMaterial({ color: 0x7ee87e }));
   truckMarker.position.set(truckPos.x, 5.5, truckPos.z);
   scene.add(truckMarker);
-  const tl = new THREE.PointLight(0x7ee87e, 26, 34, 2);
-  tl.position.set(truckPos.x, 4, truckPos.z);
-  scene.add(tl);
+  poolLight(0x7ee87e, 26, 34, truckPos.x, 4, truckPos.z);
 
   // ================= PICKUPS ================= (spread down the highway)
   makeCan(...landmarkPos(1, 100), true);        // at the 6twelve pumps
@@ -1178,8 +1193,7 @@ function makeGasStation(x, z, rot = 0, o = {}) {
     addBlocker(x + px * Math.cos(rot) - pz * Math.sin(rot),
                z + px * Math.sin(rot) + pz * Math.cos(rot), 0.5);
   }
-  const canLight = new THREE.PointLight(0xfff4d8, 60, 30, 2);
-  canLight.position.set(0, 5.4, 6);
+  poolLight(0xfff4d8, 60, 30, 0, 5.4, 6, g);
 
   // pump islands
   for (const px of [-3.5, 3.5]) {
@@ -1198,10 +1212,9 @@ function makeGasStation(x, z, rot = 0, o = {}) {
   const pylon = new THREE.Mesh(new THREE.BoxGeometry(6, 3.4, 0.5), sign());
   pylon.position.set(7, 15, 13);
   const pylonB = pylon.clone(); pylonB.rotation.y = Math.PI; pylon.add(pylonB);
-  const pl = new THREE.PointLight(0xffe6b0, 24, 26, 2);
-  pl.position.set(7, 14, 13);
+  poolLight(0xffe6b0, 24, 26, 7, 14, 13, g);
 
-  g.add(shop, stripe, wsign, canopy, cstripe, canLight, pole, pylon, pl);
+  g.add(shop, stripe, wsign, canopy, cstripe, pole, pylon);
   scene.add(g);
   parkedCarSpots.push({ x, z, rot });
   for (const [bx, bz] of [[0, -4], [5.5, -4], [-5.5, -4]]) {
@@ -1230,9 +1243,7 @@ function placeGlbLandmark(src, x, z, rot, target, label, glow, rotOffset = 0) {
   o.rotation.y = rot;
   scene.add(o);
   addBlocker(x, z, 5);
-  const l = new THREE.PointLight(glow || 0xffe0b0, 40, 30, 2);
-  l.position.set(x, 6, z);
-  scene.add(l);
+  poolLight(glow || 0xffe0b0, 40, 30, x, 6, z);
   parkedCarSpots.push({ x, z, rot });
   return true;
 }
@@ -1339,9 +1350,8 @@ function makePizzeria(x, z, rot = 0) {
   pole.position.set(6.5, 7, 5);
   const pyl = new THREE.Mesh(new THREE.BoxGeometry(4.5, 2.6, 0.4), sign);
   pyl.position.set(6.5, 13, 5);
-  const nl = new THREE.PointLight(0xff5a3c, 20, 26, 2);
-  nl.position.set(3, 6, 4);
-  g.add(box, awn, board, pole, pyl, nl);
+  poolLight(0xff5a3c, 20, 26, 3, 6, 4, g);
+  g.add(box, awn, board, pole, pyl);
   scene.add(g);
   parkedCarSpots.push({ x, z, rot });
   for (const [bx, bz] of [[0, 4], [0, -4], [5, 0], [-5, 0]]) {
@@ -1386,11 +1396,7 @@ function makeTorch(x, z, withLight) {
   scene.add(spr);
   torches.push(spr);
   addBlocker(x, z, 0.3);
-  if (withLight) {
-    const l = new THREE.PointLight(0xff9a3c, 22, 18, 2);
-    l.position.set(x, 2.6, z);
-    scene.add(l);
-  }
+  if (withLight) poolLight(0xff9a3c, 22, 18, x, 2.6, z);
 }
 
 // ---- the "Bienvenue en Louisiane" sign — planted on the shoulder, angled to the road ----
@@ -1422,9 +1428,7 @@ function makeWelcomeSign(x, z, ry = 0) {
     grp.add(post);
   }
   addBlocker(x, z, 2);
-  const sl = new THREE.PointLight(0xcfeecb, 16, 20, 2);
-  sl.position.set(x, 5, z);
-  scene.add(sl);
+  poolLight(0xcfeecb, 16, 20, x, 5, z);
   scene.add(grp);
 }
 
@@ -1662,9 +1666,58 @@ function busted() {
 // ---------------------------------------------------------------- main loop
 const clock = new THREE.Clock();
 let idleAcc = 0;
+
+// ---- dev diagnostics: F3 toggles a frame-time readout (hidden by default) ----
+// CPU-side timings only; the GPU works asynchronously, so "render" is the cost of
+// submitting the frame, and a slow GPU shows up as a low fps with small numbers.
+const perf = {
+  fps: 0, frameMs: 0, worstMs: 0, simMs: 0, aiMs: 0, renderMs: 0,
+  calls: 0, tris: 0, _frames: 0, _acc: 0, _worst: 0, _sim: 0, _ai: 0, _render: 0,
+};
+renderer.info.autoReset = false;          // count draw calls across every pass
+const perfEl = document.createElement("div");
+perfEl.id = "perf";
+perfEl.hidden = true;
+perfEl.style.cssText = "position:fixed;top:120px;right:16px;z-index:30;pointer-events:none;" +
+  "font:12px/1.5 Consolas,monospace;color:#cfe8bf;background:rgba(0,0,0,.6);" +
+  "padding:8px 10px;border-radius:6px;white-space:pre";
+document.body.appendChild(perfEl);
+addEventListener("keydown", (e) => {
+  if (e.code === "F3") { e.preventDefault(); perfEl.hidden = !perfEl.hidden; }
+});
+function samplePerf(frameMs) {
+  perf._frames++;
+  perf._acc += frameMs;
+  perf._worst = Math.max(perf._worst, frameMs);
+  if (perf._acc < 500) return;
+  const n = perf._frames;
+  perf.fps = Math.round((n * 1000) / perf._acc);
+  perf.frameMs = +(perf._acc / n).toFixed(1);
+  perf.worstMs = +perf._worst.toFixed(1);
+  perf.simMs = +(perf._sim / n).toFixed(2);
+  perf.aiMs = +(perf._ai / n).toFixed(2);
+  perf.renderMs = +(perf._render / n).toFixed(2);
+  perf._frames = perf._acc = perf._worst = perf._sim = perf._ai = perf._render = 0;
+  if (!perfEl.hidden) {
+    perfEl.textContent =
+      `${perf.fps} fps   ${perf.frameMs} ms (worst ${perf.worstMs})\n` +
+      `sim ${perf.simMs} ms   ai ${perf.aiMs} ms\n` +
+      `render submit ${perf.renderMs} ms\n` +
+      `draw calls ${perf.calls}   tris ${(perf.tris / 1000).toFixed(0)}k\n` +
+      `npcs ${enemies.length}   vehicles ${vehicles.length}`;
+  }
+}
+let lastFrameStamp = performance.now();
+
 function tick() {
   requestAnimationFrame(tick);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const now = performance.now();
+  const frameMs = now - lastFrameStamp;
+  lastFrameStamp = now;
+  // Clamp only real stalls (tab switches, load hitches). Everything under
+  // 100 ms is simulated in full, in fixed steps below, so gameplay speed no
+  // longer drops when the frame rate does.
+  const dt = Math.min(clock.getDelta(), 0.1);
 
   // The menu / end-screen overlay is opaque, so driving the full post chain and
   // a 3072px shadow map behind it is pure waste — and on a software GL context
@@ -1677,7 +1730,14 @@ function tick() {
     idleAcc = 0;
   }
 
-  if (state.running && !state.over) simulate(dt);
+  if (state.running && !state.over) {
+    const t0 = performance.now();
+    // fixed-size steps: collision and AI stay stable at any frame rate
+    for (let left = dt; left > 1e-4 && !state.over; left -= 1 / 30) {
+      simulate(Math.min(left, 1 / 30));
+    }
+    perf._sim += performance.now() - t0;
+  }
 
   // tracers fade
   for (let i = tracers.length - 1; i >= 0; i--) {
@@ -1713,7 +1773,26 @@ function tick() {
   for (const t of torches) t.update(dt, camera);
   updateLightPool(dt, camera.position);
 
+  // ---- atmosphere: drifting mist, lamp beams, headlights, sense of speed ----
+  MIST.x = time;
+  updateFx(dt);
+  headlights.update(dt, state.veh);
+  const rush = state.veh ? THREE.MathUtils.smoothstep(Math.abs(state.veh.speed), 12, 30) : 0;
+  const fov = THREE.MathUtils.damp(camera.fov, 52 + rush * 8, 3, dt);
+  if (Math.abs(fov - camera.fov) > 1e-3) {
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+  }
+  composer.grade.uniforms.uBlur.value = rush;
+
+  const r0 = performance.now();
+  renderer.info.reset();
+  wetRoads.render();
   composer.render(dt);
+  perf.calls = renderer.info.render.calls;
+  perf.tris = renderer.info.render.triangles;
+  perf._render += performance.now() - r0;
+  if (state.running) samplePerf(frameMs);
   governor(dt);
 }
 
@@ -1730,6 +1809,7 @@ function applyTier() {
   if (composer.bloom) composer.bloom.enabled = GFX.preset.bloom;
   if (composer.gtao) composer.gtao.enabled = GFX.preset.ao;
   if (composer.smaa) composer.smaa.enabled = GFX.preset.smaa;
+  wetRoads.setQuality(GFX.preset.reflect, GFX.preset.reflectEvery);
   updateGfxLabel();
 }
 
@@ -1759,6 +1839,7 @@ function simulate(dt) {
   const f = 1 - state.dusk * 0.4;
   moon.intensity = 2.8 * f;
   scene.fog.density = 0.0072 + state.dusk * 0.004;
+  MIST.y = 0.04 + state.dusk * 0.025;   // the mist thickens as the night goes on
   const elev = -1.8 - state.dusk * 4.2;
   // re-baking the PMREM probe is expensive — only when it would actually show
   if (Math.abs(elev - lastElev) > 0.4) {
@@ -1820,11 +1901,13 @@ function simulate(dt) {
   if (state.cans >= CAN_GOAL && playerPos.distanceTo(truckPos) < 4.2) win();
 
   // ---- enemies ----
+  const a0 = performance.now();
   updateEnemyPopulation(dt);
   for (const e of enemies) {
     updateEnemy(e, dt);
     if (e.spr.update) e.spr.update(dt, camera);
   }
+  perf._ai += performance.now() - a0;
 
   if (state.hp <= 0) lose();
   syncHUD();
@@ -2209,10 +2292,14 @@ async function boot() {
   // already upgraded carries a gtbRealized tag and is skipped, and shadow flags
   // are left exactly as each builder set them.
   initLightPool();
+  // shafts, pools and halos under every lamp (and poles for the lot lights) —
+  // before the sweep below, so the new poles get a proper steel surface
+  for (const sp of litSpots) if (sp.fx !== false) addLamp(scene, sp);
 
   loadNote.textContent = "resurfacing the parish…";
   await new Promise((r) => setTimeout(r, 0));   // let the loading text paint
   realize(scene, { shadows: false });
+  wetRoads.collect(scene);
   updateGfxLabel();
 
   camera.position.copy(playerPos.clone().add(CAM_OFFSET));
@@ -2220,8 +2307,8 @@ async function boot() {
   syncHUD();
 
   window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
-    gfxStats: GFX.stats,
-    get player() { return player; }, truck, blockers };
+    gfxStats: GFX.stats, MIST, wetRoads, headlights,
+    get player() { return player; }, truck, blockers, renderer, perf };
   loadNote.textContent = "ready.";
   startBtn.disabled = false;
   startBtn.onclick = () => {
