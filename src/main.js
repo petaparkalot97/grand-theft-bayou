@@ -7,6 +7,12 @@ import {
   createComposer, createGovernor, realize, surface, MIST,
 } from "./graphics.js";
 import { addLamp, createHeadlights, createWetRoads, updateFx } from "./fx.js";
+import { BlockerGrid } from "./spatial.js";
+import { createSoundtrack } from "./music.js";
+import { batchStatic } from "./merge.js";
+import { createNpcSystem } from "./npc.js";
+import { createCameraController } from "./camera.js";
+import { createTraffic } from "./traffic.js";
 import { randomHoodrat } from "./characters.js";
 
 // ---------------------------------------------------------------- config
@@ -137,6 +143,19 @@ const paint = () =>
   new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 
 const loadManager = new THREE.LoadingManager();
+// Two packs reference textures that aren't where their FBX says: the
+// Designersoup cars point one folder above their .fbm directory, and the
+// Trailer Park characters carry an absolute path from the author's machine.
+// Both sets of materials are replaced with the right textures after loading,
+// so redirect those requests instead of letting them 404 into the console.
+const BLANK_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAMAASsJTYQAAAAASUVORK5CYII=";
+loadManager.setURLModifier((url) => {
+  if (/(^|\/)C:\/Users\//i.test(url)) return BLANK_PNG;
+  if (/\/cars\/387359c5580f06c08c266126b3b46db47e48ba44\.png$/.test(url)) {
+    return "./assets/models/cars/docLorean.fbm/387359c5580f06c08c266126b3b46db47e48ba44.png";
+  }
+  return url;
+});
 const gltfLoader = new GLTFLoader(loadManager);
 const fbxLoader = new FBXLoader(loadManager);
 const texLoader = new THREE.TextureLoader(loadManager);
@@ -279,7 +298,14 @@ function updateLightPool(dt, focus) {
 
 // ---------------------------------------------------------------- collision registry
 const blockers = [];   // { x, z, r }  circular obstacles
-function addBlocker(x, z, r) { blockers.push({ x, z, r }); }
+// Spatial index over `blockers`: movers only test what is near them.
+const blockerGrid = new BlockerGrid(8);
+function addBlocker(x, z, r) {
+  const b = { x, z, r };
+  blockers.push(b);
+  blockerGrid.addStatic(b);
+  return b;
+}
 
 // ---------------------------------------------------------------- trees (wall of swamp)
 function buildTrees() {
@@ -743,9 +769,19 @@ function makeBucket(x, z) {
 // ---------------------------------------------------------------- muzzle flash / tracer
 const tracerMat = new THREE.LineBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.9 });
 const tracers = [];
+const tracerPool = [];
 function spawnTracer(from, to) {
-  const geo = new THREE.BufferGeometry().setFromPoints([from.clone(), to.clone()]);
-  const line = new THREE.Line(geo, tracerMat.clone());
+  let line = tracerPool.pop();
+  if (!line) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+    line = new THREE.Line(geo, tracerMat.clone());
+    line.frustumCulled = false;
+  }
+  const p = line.geometry.attributes.position;
+  p.setXYZ(0, from.x, from.y, from.z);
+  p.setXYZ(1, to.x, to.y, to.z);
+  p.needsUpdate = true;
   line.userData.life = 0.09;
   scene.add(line);
   tracers.push(line);
@@ -768,6 +804,8 @@ const cashEl = document.getElementById("cash");
 const starsEl = document.getElementById("stars");
 const vehIndic = document.getElementById("vehIndic");
 const music = document.getElementById("music");
+// Soundtrack: every audio file in assets/music/ (see the README there), shuffled.
+const soundtrackReady = createSoundtrack(music, { fallback: "./assets/audio/theme.mp3" });
 document.getElementById("mute").onclick = () => toggleMute();
 function toggleMute() {
   music.muted = !music.muted;
@@ -781,7 +819,10 @@ function registerVehicle(obj, r = 1.8, opts = {}) {
     sheriff: !!opts.sheriff, blocker: { x: obj.position.x, z: obj.position.z, r },
     r, wob: 0,
   };
-  if (!opts.sheriff) blockers.push(v.blocker);
+  if (!opts.sheriff) {
+    blockers.push(v.blocker);
+    blockerGrid.addDynamic(v.blocker);   // its x/z move with the car
+  }
   vehicles.push(v);
   return v;
 }
@@ -796,6 +837,7 @@ addEventListener("keydown", (e) => {
   keys.add(e.code);
   if (e.code === "KeyF") { enterExitVehicle(); tryInteract(); }
   if (e.code === "KeyM") toggleMute();
+  if (e.code === "KeyN") soundtrackReady.then((s) => s.next());
   // [ / ] step the graphics tier down / up; once you touch it, the auto
   // governor stops overriding your choice.
   if (e.code === "BracketLeft" || e.code === "BracketRight") {
@@ -808,27 +850,23 @@ addEventListener("keydown", (e) => {
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
 
-// left click = shoot · hold right click + drag = swing the camera
-let dragCam = false, lastMX = 0;
+// Mouse: the first click captures the pointer (camera.js), after which the mouse
+// looks around and left click shoots. Esc releases. Right-drag still orbits
+// while the pointer is free, but is no longer required.
 renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
+const camCtl = createCameraController({
+  camera, dom: renderer.domElement, canCapture: () => state.running && !state.over,
+});
 renderer.domElement.addEventListener("mousedown", (e) => {
-  if (!state.running) return;
-  if (e.button === 2) { dragCam = true; lastMX = e.clientX; }
-  else if (e.button === 0) fire();
+  if (state.running && e.button === 0) fire();
 });
-addEventListener("mouseup", (e) => { if (e.button === 2) dragCam = false; });
-addEventListener("mousemove", (e) => {
-  if (!dragCam) return;
-  camYaw -= (e.clientX - lastMX) * 0.006;
-  lastMX = e.clientX;
-});
-addEventListener("blur", () => { dragCam = false; });
 
 // ---------------------------------------------------------------- player
 let player, playerObj;
 const playerPos = new THREE.Vector3(ROAD_X, 0, SPAWN_Z);
 let playerFacing = new THREE.Vector3(0, 0, -1);   // last movement direction
-let camYaw = 0;                                    // map rotation (Q/E)
+// scratch vectors, so movement doesn't allocate every frame
+const _mv = new THREE.Vector3(), _step = new THREE.Vector3(), _aim = new THREE.Vector3();
 let attackTimer = 0;
 
 // ---------------------------------------------------------------- enemies
@@ -880,6 +918,19 @@ function buildHog() {
   return g;
 }
 
+// Home turf NPCs hang around: every lot on the strip, the trailer park, the
+// junkyard, the shack, Ruston's main street and the shoulders in between.
+const NPC_POIS = [
+  ...LANDMARKS.map(([, side, z]) => ({ x: ROAD_X + side * (LOT_X - 11), z, r: 9 })),
+  { x: -48, z: 116, r: 16 }, { x: 48, z: 100, r: 12 }, { x: 34, z: 88, r: 6 },
+  ...[-60, -40, -20, 0, 20, 40].map((x) => ({ x, z: -78, r: 8 })),
+];
+for (let z = WORLD - 16; z > -WORLD + 16; z -= 24) {
+  NPC_POIS.push({ x: ROAD_X + (z % 48 ? 9 : -9), z, r: 6 });
+}
+const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, bounds: WORLD });
+const npcEnv = { player: playerPos, driving: false, others: enemies };
+
 function spawnEnemy(typeName, x, z) {
   const T = ENEMY_TYPES[typeName];
   let view;
@@ -893,15 +944,34 @@ function spawnEnemy(typeName, x, z) {
   }
   view.position.set(x, 0, z);
   scene.add(view);
-  enemies.push({
-    type: typeName, T, spr: view, hp: T.hp, state: "wander", t: rand(0, 3),
-    dir: new THREE.Vector3(rand(-1, 1), 0, rand(-1, 1)).normalize(),
+  const rec = {
+    type: typeName, T, spr: view, hp: T.hp, t: rand(0, 3),
     atkCd: 0, dead: false, fade: 1, charge: 0, chargeCd: 0,
-  });
+  };
+  npcs.init(rec);
+  enemies.push(rec);
 }
 
 // ---------------------------------------------------------------- truck (escape)
 let truck, truckMarker;
+let traffic = null;   // ambient cars (traffic.js), created once the car models load
+
+// Things a traffic car should stop for, gathered into one reused array.
+const _obstacles = [];
+function trafficObstacles() {
+  _obstacles.length = 0;
+  _obstacles.push(playerPos);
+  for (const s of sheriffs) if (!s.dead) _obstacles.push(s.obj.position);
+  for (const e of enemies) {
+    if (!e.dead && Math.abs(e.spr.position.x - ROAD_X) < ROAD_HALF + 3) _obstacles.push(e.spr.position);
+  }
+  for (const v of vehicles) {
+    if (!v.traffic && !v.sheriff && v !== state.veh && Math.abs(v.obj.position.x - ROAD_X) < ROAD_HALF) {
+      _obstacles.push(v.obj.position);
+    }
+  }
+  return _obstacles;
+}
 const truckPos = new THREE.Vector3(-6, 0, TRUCK_Z);
 
 // ---------------------------------------------------------------- build the level
@@ -1074,6 +1144,17 @@ async function buildLevel() {
     sheriffProto.add(bar);
   }
 
+  // ---- ambient traffic: both lanes of US-167 ----
+  traffic = createTraffic({
+    scene, registerVehicle,
+    models: [carR, carB, van, pickup, beetle, landy],
+    lanes: [
+      { name: "northbound", points: [[ROAD_X + 2.4, WORLD - 2], [ROAD_X + 2.4, -WORLD + 2]], cruise: [12, 19] },
+      { name: "southbound", points: [[ROAD_X - 2.4, -WORLD + 2], [ROAD_X - 2.4, WORLD - 2]], cruise: [12, 19] },
+    ],
+    perLane: 4,
+  });
+
   // ---- the escape truck ----
   truck = truckMesh || fallbackCar(null);
   truck.position.copy(truckPos);
@@ -1109,17 +1190,18 @@ async function buildLevel() {
 }
 // ...and top it back up forever, out of sight of the player.
 const ENEMY_KINDS = ["hog", "redneck", "hoodrat"];
-const ENEMY_CAP = 34;         // living enemies to maintain
+const ENEMY_CAP = 40;         // living enemies to maintain
 let enemyRespawnCd = 0;
 function updateEnemyPopulation(dt) {
-  const alive = enemies.filter((e) => !e.dead).length;
+  let alive = 0;
+  for (const e of enemies) if (!e.dead) alive++;
   enemyRespawnCd -= dt;
   if (enemyRespawnCd > 0 || alive >= ENEMY_CAP) return;
   enemyRespawnCd = alive < ENEMY_CAP * 0.5 ? 0.6 : 2.0;
 
   // spawn just off the road, ahead of and behind the player, past view distance
   const ahead = Math.random() < 0.62;
-  const zoff = (ahead ? -1 : 1) * rand(34, 60);
+  const zoff = (ahead ? -1 : 1) * rand(65, 105);
   const side = Math.random() < 0.5 ? -1 : 1;
   let x = ROAD_X + side * rand(10, 30);
   let z = THREE.MathUtils.clamp(playerPos.z + zoff, -WORLD + 12, WORLD - 12);
@@ -1127,7 +1209,8 @@ function updateEnemyPopulation(dt) {
 
   // cull enemies that wandered absurdly far, then compact the list
   for (const e of enemies) {
-    if (!e.dead && Math.abs(e.spr.position.z - playerPos.z) > 135) {
+    if (!e.dead && Math.hypot(e.spr.position.x - playerPos.x, e.spr.position.z - playerPos.z) > 160) {
+      npcs.release(e);
       scene.remove(e.spr); e.dead = "gone";
     }
   }
@@ -1548,28 +1631,39 @@ function fire() {
 
   if (!state.veh) { attackTimer = 0.42; player.play("attack", { fps: 12, loop: false, force: true }); }
 
-  // nearest target: enemy or active sheriff cruiser
-  let best = null, bestD = 30, bestKind = null;
+  // Aim assist: hostile NPCs and cruisers first; a bystander is only hit if
+  // the camera is pointed right at them. Used to snap to whoever was nearest.
+  _aim.set(-Math.sin(camCtl.yaw), 0, -Math.cos(camCtl.yaw));
+  let best = null, bestScore = Infinity, bestKind = null;
   for (const e of enemies) {
     if (e.dead) continue;
-    const d = e.spr.position.distanceTo(playerPos);
-    if (d < bestD) { bestD = d; best = e; bestKind = "enemy"; }
+    const dx = e.spr.position.x - playerPos.x, dz = e.spr.position.z - playerPos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 30 || d < 1e-3) continue;
+    const facing = (dx * _aim.x + dz * _aim.z) / d;       // 1 = dead ahead
+    const hostile = e.state === "hostile";
+    if (!hostile && facing < 0.93) continue;
+    if (hostile && facing < -0.2 && d > 6) continue;
+    const score = d * (hostile ? 0.6 : 1) * (1.6 - facing);
+    if (score < bestScore) { bestScore = score; best = e; bestKind = "enemy"; }
   }
   for (const s of sheriffs) {
     if (s.dead) continue;
     const d = s.obj.position.distanceTo(playerPos);
-    if (d < bestD) { bestD = d; best = s; bestKind = "sheriff"; }
+    if (d < 30 && d * 0.6 < bestScore) { bestScore = d * 0.6; best = s; bestKind = "sheriff"; }
   }
+  npcs.noise(playerPos.x, playerPos.z, 26);     // gunfire carries
 
   let target;
   if (bestKind === "enemy") target = best.spr.position.clone().setY(best.type === "hog" ? 0.8 : 1.1);
   else if (bestKind === "sheriff") target = best.obj.position.clone().setY(1.1);
-  else target = origin.clone().addScaledVector(playerFacing, 24);
+  else target = origin.clone().addScaledVector(_aim, 24);
   spawnTracer(origin, target);
   muzzleFlash(origin, target);
 
   if (bestKind === "enemy") {
     best.hp -= 2;
+    npcs.provoke(best);
     if (best.type !== "hog") { best.spr.play("hurt", { loop: false, force: true }); best.t = 0; }
     else best.spr.position.addScaledVector(best.spr.position.clone().sub(playerPos).setY(0).normalize(), 0.4);
     if (best.hp <= 0) { killEnemy(best); if (best.type !== "hog") crime(1.2); }
@@ -1579,17 +1673,21 @@ function fire() {
   }
 }
 
-let muzzleLight;
+// Created up front at zero intensity. Adding a light mid-game changes the light
+// count, which recompiles every lit shader: a visible hitch on the first shot,
+// on every wrecked car and on every cruiser that spawned with its own beacon.
+const muzzleLight = new THREE.PointLight(0xffd070, 0, 12, 2);
+const wreckLight = new THREE.PointLight(0xff6a1e, 0, 16, 2);
+const beaconLights = [new THREE.PointLight(0x3366ff, 0, 18, 2), new THREE.PointLight(0xff2233, 0, 18, 2)];
+scene.add(muzzleLight, wreckLight, ...beaconLights);
 function muzzleFlash(from) {
-  if (!muzzleLight) {
-    muzzleLight = new THREE.PointLight(0xffd070, 0, 12, 2);
-    scene.add(muzzleLight);
-  }
   muzzleLight.position.copy(from);
   muzzleLight.intensity = 30;
 }
 
 function killEnemy(e) {
+  npcs.release(e);
+  npcs.noise(e.spr.position.x, e.spr.position.z, 30);
   e.dead = true;
   e.state = "dead";
   e.t = 0;
@@ -1633,6 +1731,7 @@ function endScreen(title, body, btn) {
   state.running = false;
   state.over = true;
   crosshair.style.display = "none";
+  camCtl.release();
   overlay.classList.remove("hidden");
   overlay.style.background = "radial-gradient(ellipse at center, rgba(8,16,10,.82), rgba(3,5,4,.97))";
   overlay.innerHTML = `<h1 class="end">${title}</h1><p>${body}</p><button id="againBtn">${btn}</button>`;
@@ -1736,6 +1835,7 @@ function tick() {
     for (let left = dt; left > 1e-4 && !state.over; left -= 1 / 30) {
       simulate(Math.min(left, 1 / 30));
     }
+    camCtl.update(dt, playerPos, state.veh, blockerGrid);
     perf._sim += performance.now() - t0;
   }
 
@@ -1744,7 +1844,7 @@ function tick() {
     const t = tracers[i];
     t.userData.life -= dt;
     t.material.opacity = Math.max(0, t.userData.life / 0.09) * 0.9;
-    if (t.userData.life <= 0) { scene.remove(t); tracers.splice(i, 1); }
+    if (t.userData.life <= 0) { scene.remove(t); tracers.splice(i, 1); tracerPool.push(t); }
   }
   if (muzzleLight) muzzleLight.intensity = Math.max(0, muzzleLight.intensity - dt * 240);
 
@@ -1848,9 +1948,10 @@ function simulate(dt) {
     env.setIntensity(2.4 * f, 1.0 * f);
   }
 
-  // ---- camera orbit (Q/E) ----
-  camYaw += ((keys.has("KeyE") || keys.has("ArrowRight") ? 1 : 0)
-           - (keys.has("KeyQ") || keys.has("ArrowLeft") ? 1 : 0)) * dt * 2.0;
+  // ---- camera orbit (Q/E), secondary to mouse look ----
+  const orbit = (keys.has("KeyE") || keys.has("ArrowRight") ? 1 : 0)
+              - (keys.has("KeyQ") || keys.has("ArrowLeft") ? 1 : 0);
+  if (orbit) camCtl.addYaw(orbit * dt * 2.0);
 
   if (state.veh) drivingUpdate(dt);
   else onFootUpdate(dt);
@@ -1903,11 +2004,17 @@ function simulate(dt) {
   // ---- enemies ----
   const a0 = performance.now();
   updateEnemyPopulation(dt);
+  npcEnv.driving = !!state.veh;
+  npcs.beginFrame(dt);
   for (const e of enemies) {
-    updateEnemy(e, dt);
-    if (e.spr.update) e.spr.update(dt, camera);
+    if (e.dead === "gone") continue;
+    // false = paused or off-beat for its distance: skip the animation as well
+    if (updateEnemy(e, dt) && e.spr.update) e.spr.update(dt, camera);
   }
   perf._ai += performance.now() - a0;
+
+  // ---- ambient traffic ----
+  if (traffic) traffic.update(dt, playerPos, trafficObstacles(), state.veh);
 
   if (state.hp <= 0) lose();
   syncHUD();
@@ -1931,8 +2038,9 @@ function hitPlayer(dmg) {
 function onFootUpdate(dt) {
   const inX = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
   const inZ = (keys.has("KeyS") ? 1 : 0) - (keys.has("KeyW") ? 1 : 0);
-  const cos = Math.cos(camYaw), sin = Math.sin(camYaw);
-  const mv = new THREE.Vector3(inX * cos - inZ * sin, 0, inX * sin + inZ * cos);
+  const yaw = camCtl.yaw;
+  const cos = Math.cos(yaw), sin = Math.sin(yaw);
+  const mv = _mv.set(inX * cos - inZ * sin, 0, inX * sin + inZ * cos);
   const moving = mv.lengthSq() > 0;
   const sprint = keys.has("ShiftLeft") || keys.has("ShiftRight");
   let speed = 6.5;
@@ -1942,8 +2050,8 @@ function onFootUpdate(dt) {
   if (moving) {
     mv.normalize();
     if (inX !== 0) player.setFlip(inX);
-    playerFacing = mv.clone();
-    const next = playerPos.clone().addScaledVector(mv, speed * dt);
+    playerFacing.copy(mv);
+    const next = _step.copy(playerPos).addScaledVector(mv, speed * dt);
     resolveCollision(playerPos, next, 0.6);
   }
   playerPos.x = THREE.MathUtils.clamp(playerPos.x, -WORLD + 4, WORLD - 4);
@@ -1954,14 +2062,11 @@ function onFootUpdate(dt) {
   attackTimer = Math.max(0, attackTimer - dt);
   if (attackTimer <= 0) player.play(moving ? "walk" : "idle", { fps: moving ? 10 : 5 });
   player.update(dt, camera);
-
-  const off = new THREE.Vector3(CAM_OFFSET.z * Math.sin(camYaw), CAM_OFFSET.y, CAM_OFFSET.z * Math.cos(camYaw));
-  camera.position.lerp(playerPos.clone().add(off), 1 - Math.pow(0.0015, dt));
-  camera.lookAt(playerPos.x, 1.4, playerPos.z);
 }
 
 // ============================================================ DRIVING
 const _fwd = new THREE.Vector3();
+const _next = new THREE.Vector3();
 function drivingUpdate(dt) {
   const v = state.veh;
   const inX = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
@@ -1980,18 +2085,10 @@ function drivingUpdate(dt) {
   v.heading -= inX * grip * dt * Math.sign(v.speed || 1) * Math.min(1, Math.abs(v.speed) / 7);
 
   _fwd.set(Math.sin(v.heading), 0, Math.cos(v.heading));
-  const next = v.obj.position.clone().addScaledVector(_fwd, v.speed * dt);
+  const next = _next.copy(v.obj.position).addScaledVector(_fwd, v.speed * dt);
 
   // collide with world blockers (excluding own)
-  let bumped = false;
-  for (const b of blockers) {
-    if (b === v.blocker) continue;
-    const dx = next.x - b.x, dz = next.z - b.z, d = Math.hypot(dx, dz), min = b.r + v.r;
-    if (d < min && d > 1e-4) {
-      next.x += dx / d * (min - d); next.z += dz / d * (min - d);
-      bumped = true;
-    }
-  }
+  const bumped = blockerGrid.resolve(next, v.r, next, v.blocker);
   if (bumped) v.speed *= 0.45;
   next.x = THREE.MathUtils.clamp(next.x, -WORLD + 3, WORLD - 3);
   next.z = THREE.MathUtils.clamp(next.z, -WORLD + 3, WORLD - 3);
@@ -2009,6 +2106,7 @@ function drivingUpdate(dt) {
       if (e.dead) continue;
       if (e.spr.position.distanceTo(next) < 2.4) {
         e.hp -= 5;
+        npcs.provoke(e);
         e.spr.position.addScaledVector(_fwd, 1.2);
         v.speed *= 0.82;
         if (e.hp <= 0) { killEnemy(e); if (e.type !== "hog") crime(1.1); }
@@ -2021,22 +2119,13 @@ function drivingUpdate(dt) {
   player.position.copy(next);
   player.visible = false;
 
-  // chase cam behind the car
-  const back = _fwd.clone().multiplyScalar(-13).add(new THREE.Vector3(0, 8.5, 0));
-  const yq = camYaw;
-  const bx = back.x * Math.cos(yq) - back.z * Math.sin(yq);
-  const bz = back.x * Math.sin(yq) + back.z * Math.cos(yq);
-  camera.position.lerp(new THREE.Vector3(next.x + bx, next.y + back.y, next.z + bz),
-    1 - Math.pow(0.0009, dt));
-  camera.lookAt(next.x + _fwd.x * 5, 1.6, next.z + _fwd.z * 5);
-
   syncHUD();
 }
 
 function nearestVehicle(pos, maxD) {
   let best = null, bd = maxD;
   for (const v of vehicles) {
-    if (v === state.veh) continue;
+    if (v === state.veh || v.dead) continue;
     const d = v.obj.position.distanceTo(pos);
     if (d < bd) { bd = d; best = v; }
   }
@@ -2077,12 +2166,8 @@ function spawnSheriff() {
   car.position.x = THREE.MathUtils.clamp(car.position.x, -WORLD + 6, WORLD - 6);
   car.position.z = THREE.MathUtils.clamp(car.position.z, -WORLD + 6, WORLD - 6);
   car.rotation.y = ang;
-  const beacon = new THREE.PointLight(0x3366ff, 20, 18, 2);
-  beacon.position.set(0, 2.4, 0);
-  car.add(beacon);
   scene.add(car);
   const v = registerVehicle(car, 2.0, { sheriff: true, hp: 32 });
-  v.beacon = beacon;
   sheriffs.push(v);
 }
 // The Sheriff only shows up after you've put down a dozen Rednecks/Hoodrats.
@@ -2102,9 +2187,17 @@ function updateSheriffs(dt) {
   if (sheriffs.filter((s) => !s.dead).length < want && sheriffProto) spawnSheriff();
 
   let onTop = false;
+  const flash = Math.sin(clock.elapsedTime * 12) > 0 ? 0x3366ff : 0xff2233;
+  let lit = 0;
   for (const s of sheriffs) {
     if (s.dead) continue;
-    s.beacon.color.setHex(Math.sin(clock.elapsedTime * 12) > 0 ? 0x3366ff : 0xff2233);
+    // the two persistent beacon lights ride the first two cruisers
+    if (lit < beaconLights.length) {
+      const b = beaconLights[lit++];
+      b.position.copy(s.obj.position).setY(2.4);
+      b.color.setHex(flash);
+      b.intensity = 20;
+    }
     const to = _tmpV.copy(playerPos).sub(s.obj.position); to.y = 0;
     const d = to.length();
     to.normalize();
@@ -2129,6 +2222,7 @@ function updateSheriffs(dt) {
       else state.veh.speed *= (1 - dt * 1.5);       // ram / pit
     }
   }
+  for (; lit < beaconLights.length; lit++) beaconLights[lit].intensity = 0;
   state.bustCd = onTop ? state.bustCd + dt : Math.max(0, state.bustCd - dt * 0.6);
   if (state.bustCd > 3 && !state.veh) return busted();
 }
@@ -2138,12 +2232,17 @@ function damageVehicle(v, amount) {
   if (v.hp <= 0) {
     v.dead = true;
     // burn + remove after a beat
-    const fire = new THREE.PointLight(0xff6a1e, 30, 16, 2);
-    fire.position.copy(v.obj.position).setY(1.5);
-    scene.add(fire);
-    setTimeout(() => { scene.remove(fire); scene.remove(v.obj); }, 1400);
+    wreckLight.position.copy(v.obj.position).setY(1.5);
+    wreckLight.intensity = 30;
+    setTimeout(() => { wreckLight.intensity = 0; scene.remove(v.obj); }, 1400);
     const bi = blockers.indexOf(v.blocker);
     if (bi >= 0) blockers.splice(bi, 1);
+    blockerGrid.remove(v.blocker);
+    // it used to stay in `vehicles`, so F could "enter" the invisible wreck
+    const vi = vehicles.indexOf(v);
+    if (vi >= 0) vehicles.splice(vi, 1);
+    const si = sheriffs.indexOf(v);
+    if (si >= 0) sheriffs.splice(si, 1);
     if (v.sheriff) { state.cash += 250; crime(0.6); flashObjective("Cruiser wrecked. +$250"); syncHUD(); }
     if (state.veh === v) state.veh = null;
   }
@@ -2166,89 +2265,16 @@ function updateEnemy(e, dt) {
       e.spr.blob.material.opacity = Math.max(0, e.fade * 0.3);
       if (e.fade <= 0) { scene.remove(e.spr); e.dead = "gone"; }
     }
-    return;
+    return true;                 // keep playing the death animation
   }
 
-  const toPlayer = _tmpV.copy(playerPos).sub(p);
-  const dist = toPlayer.length();
-  toPlayer.y = 0;
-  e.atkCd = Math.max(0, e.atkCd - dt);
-  e.chargeCd = Math.max(0, e.chargeCd - dt);
-  e.t += dt;
-
-  if (dist < T.aggro) e.state = "chase";
-  else if (e.state === "chase" && dist > T.aggro + 12) e.state = "wander";
-
-  const vel = new THREE.Vector3();
-  const dir = toPlayer.clone().normalize();
-
-  if (e.state === "chase") {
-    if (e.type === "hog") {
-      // hogs line up, then explosively charge in a straight line
-      if (e.charge > 0) {
-        e.charge -= dt;
-        vel.copy(e.chargeDir).multiplyScalar(13);
-      } else if (e.chargeCd === 0 && dist < 14 && dist > 2) {
-        e.charge = 0.55; e.chargeCd = 2.4;
-        e.chargeDir = dir.clone();
-        vel.copy(dir).multiplyScalar(13);
-      } else {
-        vel.copy(dir).multiplyScalar(T.speed);
-      }
-      const yaw = Math.atan2(vel.x || dir.x, vel.z || dir.z);
-      e.spr.rotation.y = yaw;
-      const gait = Math.sin(e.t * (e.charge > 0 ? 30 : 12)) * 0.12;
-      e.spr.userData.legs.forEach((l, i) => (l.position.y = 0.35 + (i % 2 ? gait : -gait)));
-      e.spr.position.y = e.charge > 0 ? Math.abs(Math.sin(e.t * 30)) * 0.15 : 0;
-      if (dist < T.melee && e.atkCd === 0) {
-        e.atkCd = T.atkGap; hitPlayer(T.dmg); e.charge = 0; e.knock = dir.clone().multiplyScalar(-1);
-      }
-    } else {
-      vel.copy(dir).multiplyScalar(T.speed);
-      e.spr.setFlip(dir.x);
-      if (dist < T.melee) {
-        e.spr.play("attack", { fps: 10, loop: true });
-        if (e.atkCd === 0) { e.atkCd = T.atkGap; hitPlayer(T.dmg); }
-        vel.setScalar(0);
-      } else {
-        e.spr.play("walk", { fps: 9 });
-      }
-    }
-  } else {
-    // wander
-    if (e.t > 3) { e.t = 0; e.dir.set(rand(-1, 1), 0, rand(-1, 1)).normalize(); }
-    vel.copy(e.dir).multiplyScalar(T.kind === "hog" ? 1.3 : 1.6);
-    if (e.type === "hog") {
-      e.spr.rotation.y = Math.atan2(e.dir.x, e.dir.z);
-    } else {
-      e.spr.setFlip(e.dir.x);
-      e.spr.play("walk", { fps: 6 });
-    }
-  }
-
-  if (vel.lengthSq() > 0) {
-    const next = p.clone().addScaledVector(vel, dt);
-    resolveCollision(p, next, 0.5);
-    p.x = THREE.MathUtils.clamp(p.x, -WORLD + 3, WORLD - 3);
-    p.z = THREE.MathUtils.clamp(p.z, -WORLD + 3, WORLD - 3);
-  }
+  // behaviour, level of detail and movement live in npc.js
+  return npcs.update(e, dt, npcEnv);
 }
 
 // slide-along-obstacle collision: mutate `current` toward `next`
 function resolveCollision(current, next, radius) {
-  let nx = next.x, nz = next.z;
-  for (const b of blockers) {
-    const dx = nx - b.x, dz = nz - b.z;
-    const d = Math.hypot(dx, dz);
-    const min = b.r + radius;
-    if (d < min && d > 1e-4) {
-      const push = (min - d) / d;
-      nx += dx * push;
-      nz += dz * push;
-    }
-  }
-  current.x = nx;
-  current.z = nz;
+  blockerGrid.resolve(next, radius, current, null);
 }
 
 // ---------------------------------------------------------------- boot
@@ -2300,6 +2326,17 @@ async function boot() {
   await new Promise((r) => setTimeout(r, 0));   // let the loading text paint
   realize(scene, { shadows: false });
   wetRoads.collect(scene);
+
+  // Merge everything that never moves, per material and 48 m chunk. Anything
+  // that moves or animates is excluded by its top-level object.
+  loadNote.textContent = "batching the parish…";
+  await paint();
+  const moving = new Set([
+    player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
+    ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
+  ]);
+  const batch = batchStatic(scene, { exclude: (root) => moving.has(root) });
+  console.info(`[gfx] static batching: ${batch.meshes} meshes -> ${batch.meshes - batch.removed} (${batch.batches} batches)`);
   updateGfxLabel();
 
   camera.position.copy(playerPos.clone().add(CAM_OFFSET));
@@ -2307,8 +2344,10 @@ async function boot() {
   syncHUD();
 
   window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
-    gfxStats: GFX.stats, MIST, wetRoads, headlights,
-    get player() { return player; }, truck, blockers, renderer, perf };
+    gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl,
+    get traffic() { return traffic; },
+    get player() { return player; }, truck, blockers, blockerGrid, renderer, perf,
+    get soundtrack() { return soundtrackReady; } };
   loadNote.textContent = "ready.";
   startBtn.disabled = false;
   startBtn.onclick = () => {
@@ -2317,7 +2356,8 @@ async function boot() {
     state.running = true;
     clock.start();
     music.volume = 0.55;
-    music.play().catch(() => {});
+    soundtrackReady.then((s) => s.play());
+    flashObjective("Click the game to look around with the mouse · Esc releases it");
   };
 }
 

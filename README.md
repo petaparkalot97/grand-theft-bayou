@@ -89,6 +89,39 @@ Animations: `idle`, `walk`, `attack`, `hurt`, `death`.
 Open **`tools/characters.html`** on the dev server to inspect them — turntable,
 orbit, animation switcher and a reroll for fresh variation.
 
+## Soundtrack
+
+Drop audio files into **`assets/music/`** to add them to the background music,
+and delete them to take them out. The game shuffles through everything in the
+folder, and **N** skips to the next track. MP3, OGG, WAV, M4A, AAC, FLAC, OPUS
+and WEBM all work.
+
+- Locally, `serve.mjs` lists the folder live, so changes show up on the next
+  page load.
+- For static hosting, `npm run build` writes `assets/music/playlist.json`.
+- If the folder is empty, the game falls back to `assets/audio/theme.mp3`.
+
+## Performance and the living world
+
+- **Draw calls.** Characters bake their parts per joint (`mergeRigid`), and
+  static props are merged per material in 48 m chunks (`batchStatic`), both in
+  `src/merge.js`. Static lights share a pool of the nearest 8.
+- **Collision.** `src/spatial.js` puts blockers in a uniform grid, so a mover
+  only tests what is near it.
+- **NPCs** (`src/npc.js`). Each NPC has a temperament and a home turf. They
+  idle, wander, loiter and flee, and only turn hostile when provoked, when
+  violence breaks out nearby, or (for hotheads and territorial hogs) when you
+  walk right up to them. No more than 7 are hostile at once. Decisions run on
+  staggered timers, and far-away NPCs are paused.
+- **Traffic** (`src/traffic.js`). Pooled cars drive both lanes of US-167, keep
+  their distance, stop for obstacles and recycle ahead of and behind you.
+- **Camera** (`src/camera.js`). Click to capture the mouse and Esc to release
+  it. Scroll to zoom. The camera recentres behind the car when you leave the
+  mouse alone.
+- **F3** shows fps, frame time, simulation / AI / render cost and draw calls.
+- **QA.** `tools/qa/gameplay.mjs` is a headless regression pass (walk, look,
+  shoot, drive, NPCs, traffic, entity counts) for the browser-automation runner.
+
 ## Run
 
 **It has to be served over http.** Double-clicking `index.html` gives the page a
@@ -111,8 +144,12 @@ Then hit **Start the story**.
 | **F** | jack a car / get out / enter the truck |
 | **Shift** | sprint on foot · handbrake in a car |
 | **Space / left click** | shoot |
-| **Q / E** or **right-drag** | rotate the camera |
+| **Mouse** | look around — click the game to capture the mouse, **Esc** releases it |
+| **Wheel** | zoom the camera in / out |
+| **Q / E** | rotate the camera (secondary) |
 | **M** | mute music |
+| **N** | next soundtrack track |
+| **F3** | frame-time / draw-call readout |
 | **[** / **]** | step graphics quality down / up |
 
 ## Layout

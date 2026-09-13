@@ -198,8 +198,13 @@ export function createTraffic(o) {
       const along = rx * fx + rz * fz;
       if (along <= 0 || along > 32) continue;
       const lateral = Math.abs(rx * fz - rz * fx);
-      if (lateral < 2.4 && along < gap) gap = along;
+      // After waiting a few seconds, only something squarely in the lane holds
+      // the car up; a pedestrian on the edge of the road gets eased past
+      // instead of blocking the highway forever.
+      if (lateral < (car.wait > 3 ? 1.2 : 2.4) && along < gap) gap = along;
     }
+    // called right after `car.think` is reset, so it holds the think interval
+    car.wait = gap < 7 ? (car.wait || 0) + car.think : 0;
     return gap;
   }
 

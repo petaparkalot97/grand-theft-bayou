@@ -181,29 +181,55 @@ sim 0.9 ms, AI 0.55 ms, **render submit 15.8 ms, 1,259 draw calls**, 279k tris,
 - [x] GTAO at half resolution, 10 samples on HIGH.
 - [x] F3 frame-time / draw-call overlay (hidden by default); fixed-step
       simulation (1/30 s steps) so game speed no longer depends on fps.
-- [ ] Cut draw calls: merge each Hoodrat's rigid parts per joint + material
-      (~50 meshes → ~15), and statically batch world props by material in
-      spatial chunks so frustum culling still works.
-- [ ] Wire `src/spatial.js` (BlockerGrid) into `resolveCollision`, driving and
-      NPC movement instead of scanning all ~430 blockers per mover.
-- [ ] Remove per-frame allocations in `updateEnemy`, `onFootUpdate`,
-      `drivingUpdate`, `fire()` (vector clones / `new Vector3`).
-- [ ] NPC behaviour system: idle / wander between points of interest / loiter /
-      flee / react to violence / hostile only when provoked (hogs stay wild).
-      Staggered think timers; distance LOD (near = full, mid = throttled,
-      far = paused + no animation).
-- [ ] Wire `src/traffic.js`: two highway lanes (northbound x = ROAD_X + 2.5,
-      southbound x = ROAD_X − 2.5), pooled cars, spacing, recycle ahead/behind.
-- [ ] Pointer-lock mouse camera: click to capture, Esc releases, yaw + clamped
-      pitch, smoothing, auto-recentre behind the car, wheel zoom; Q/E kept as
-      secondary; right-drag no longer required.
-- [ ] Camera: keep above ground, pull in when a blocker sits between camera and
-      player.
+- [x] Cut draw calls: `src/merge.js` — `mergeRigid` bakes each Hoodrat's parts
+      per joint + material; `batchStatic` merges static props per material in
+      48 m chunks. Measured: meshes 1,434 → 866, draw calls 1,259 → 450,
+      tris 279k → 171k, render submit 15.8 → 12.3 ms, no new console errors.
+- [x] `src/spatial.js` (BlockerGrid) drives `resolveCollision` and car
+      collision. Sim 0.88 → 0.45 ms, AI 0.55 → 0.14 ms.
+- [x] Allocations removed from on-foot movement and driving collision
+      (scratch vectors).
+- [ ] Batch by material *signature* too: 406 static materials are only 152
+      distinct setups, so identical-but-separate materials still split batches.
+- [ ] Pooled lights never toggle `.visible`; muzzle, wreck and 2 beacon lights
+      are created up front (a light added mid-game recompiled every shader).
+      Implemented; the first-shot hitch needs checking on a real GPU.
+- [x] NPC behaviour system (`src/npc.js`): temperaments, home turf (POIs),
+      idle / wander / loiter / flee / hostile, violence events, max 7 hostile,
+      staggered thinks, distance LOD. Tested (`tools/qa/gameplay.mjs`): at rest
+      0 hostile, the rest wander / loiter / idle; 5 shots → 8 flee, 0 hostile;
+      player HP stayed 100 for the whole run (the old build got WASTED in 9 s
+      standing still). NPC count stays under the cap of 40.
+- [x] Traffic (`src/traffic.js`): 8 pooled cars on two lanes, spacing, stops
+      for obstacles, recycles ahead/behind. Tested: cars stay in their lanes
+      (x = −3.6 / −8.4) at 12–19 m/s, pool stays 8, vehicle count flat at 60.
+      Fixed: cars queued forever behind a pedestrian at the road edge; they now
+      ease past after 3 s (not yet re-observed in a test).
+- [x] Pointer-lock camera (`src/camera.js`): click to capture, clamped pitch,
+      wheel zoom, auto-recentre behind the car, pull-in past buildings at low
+      angles; Q/E secondary; right-drag fallback. Tested headless: click locks
+      the pointer and mouse movement turns the view; right-drag turns it too;
+      walking and driving both work with it.
+- [ ] Verify in a real browser: **Esc releases the mouse** (headless Chromium
+      ignores a synthetic Esc for pointer lock), wheel zoom, camera pull-in, and
+      the feel of the mouse sensitivity.
+- [ ] Draw calls while driving are still ~1,160 (the chase view sees far down
+      the strip, plus the road mirror). Candidates: cull the mirror pass to
+      objects near the road, give traffic cars LOD, batch by material signature.
+- [ ] Traffic only runs on US-167. Ruston's main street (z ≈ −78) could get a
+      cross lane; cars could honk at, or steer around, a player standing in the road.
 - [ ] Bugs found while reading the code:
-  - [ ] Tracers create a geometry + material per shot and never dispose them.
-  - [ ] Wrecked vehicles stay in `vehicles`, so F can "enter" an invisible dead car.
-  - [ ] Dead sheriff units are never removed from `sheriffs`.
-  - [ ] `fire()` auto-aims at any NPC, including ones that aren't hostile.
+  - [x] Tracers created a geometry + material per shot, never freed → pooled.
+  - [x] Wrecked vehicles stayed in `vehicles` (F could enter an invisible car).
+  - [x] Dead sheriff units stayed in `sheriffs`.
+  - [x] `fire()` auto-aimed at any NPC → hostiles first, bystanders only when
+        aimed at along the camera direction.
+  - [x] Pre-existing 404s: `cars/387359…png` (the Designersoup FBX points one
+        folder above its .fbm directory) and the Trailer Park FBX's absolute
+        texture path. Redirected with a `LoadingManager` URL modifier; the load
+        now finishes with 0 console errors and 0 failed requests.
+- [ ] Player is the redneck sprite, so it can't face the camera direction while
+      aiming; the Keseme 3D actor (story work) would fix this.
 - [ ] Full test pass: walk, drive, enter/exit, shoot, NPCs, traffic, pointer
       lock / Esc, many NPCs + cars, console clean.
 
