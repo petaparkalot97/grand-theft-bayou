@@ -1,4 +1,4 @@
-import { createSpawnZones, ZONE_MIX } from "../../src/spawnzones.js";
+import { createSpawnZones, ZONE_MIX, WANDER } from "../../src/spawnzones.js";
 import { createNpcSystem } from "../../src/npc.js";
 import { createFactionWar } from "../../src/factions.js";
 import * as THREE from "three";
@@ -136,5 +136,35 @@ for (let i = 0; i < 10; i++) {
   extraNpcs.push(n);
 }
 assert(npcs.hostileCount <= 7, `hostileCount (${npcs.hostileCount}) never exceeds MAX_HOSTILE (7)`);
+
+// Scenario E: per-zone wander profiles (zone-dependent walk speed + radius)
+console.log("=== Per-zone wander profiles (WANDER) ===");
+assert(WANDER.urban.speed > 1 && WANDER.urban.r < 1, "Urban profile: quicker steps, tighter radius");
+assert(WANDER.rural.speed < 1 && WANDER.rural.r > 1, "Rural profile: slower steps, wider radius");
+assert(WANDER.highway === null && WANDER.water === null, "Nobody wanders on the highway or the water");
+
+const p2 = spawnZones.pick({ x: 20, z: 0 }, []);          // the border strip
+assert(p2 && p2.wanderR != null && p2.wanderSpeed != null, "pick() returns a wander profile alongside the spot");
+assert(p2.wanderR === WANDER[p2.zone].r && p2.wanderSpeed === WANDER[p2.zone].speed, "The returned profile matches the spot's zone");
+
+const cityZones = createSpawnZones({
+  MAP, ROAD_X: 0, ROAD_HALF: 8, LOT_X: 40,
+  // everything east of x 150 is "urban"; the pick relocates to a hangout
+  getOrlea: () => ({ inCity: (x, z) => x > 150, pois: [{ x: 245, z: 0, r: 10 }] }),
+  coreMinX: 100,
+});
+const cityPick = cityZones.pick({ x: 180, z: 0 }, []);
+assert(cityPick && cityPick.zone === "urban" && cityPick.wanderSpeed === WANDER.urban.speed,
+  "A city pick carries the urban profile (fast, tight)");
+
+const npcs2 = createNpcSystem({ pois: [{ x: 180, z: 0, r: 10 }], resolveCollision, hitPlayer, bounds: MAP });
+const c = createMockNpc("hoodrat", 180, 0);
+c.wanderR = cityPick.wanderR; c.wanderSpeed = cityPick.wanderSpeed;
+npcs2.init(c);
+assert(c.wanderR === WANDER.urban.r && c.wanderSpeed === WANDER.urban.speed, "init() keeps the spawner's zone profile on the record");
+
+const unp = createMockNpc("hoodrat", 0, 0);
+npcs2.init(unp);
+assert(unp.wanderR === 1 && unp.wanderSpeed === 1, "A record without a zone profile gets the neutral default");
 
 console.log("🎉 All unit tests passed cleanly!");

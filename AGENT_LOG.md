@@ -39,6 +39,19 @@ setup existed (TASK-001 … TASK-009).
 # 🧠 DISCOVERIES
 
 ## 2026-09-14 — Freebuff
+**Type:** CHANGE · **Task:** TASK-034 roadmap item "Role-specific civilian presentation and pedestrian pool"
+
+### Finding
+The human asked for zone-dependent walk speed and wander radius so downtown crowds read denser than the parish. Previously every NPC strolled at 1.7 m/s × pace around a POI's full radius, so OrleaRouge's wide POIs scattered people thinly and everyone moved at the same amble.
+
+### Action
+- `src/spawnzones.js`: new `WANDER` table (per zone: `r` scales the POI's wander radius, `speed` scales the stroll). urban 0.55/1.25, town 0.8/1.1, commercial + borders 0.85–0.9/1.05, residential 1.0/1.0, rural + forest 1.6/0.85, highway/water null. `pick()` now returns `wanderR` / `wanderSpeed` on the spot.
+- `src/npc.js`: `pickGoal()` multiplies the goal radius by `e.wanderR`; the wander branch of `act()` multiplies civilian stroll speed by `e.wanderSpeed` (hogs and hostile chase/flee speeds untouched); `init()` defaults both fields to 1 for records spawned without a spot (e.g. `spawnDriver`).
+- `src/main.js`: `spawnEnemy(type, x, z, spot)` threads the profile onto the record; strip POI radii 9/16/12/8 → 6/12/9/6 and roadside POIs 6 → 4 so tight radii actually bunch people up; ten new OrleaRouge corner POIs (x −46/34 at z 225…345, r 7) alongside the boulevard's `orlea.pois`.
+- `tools/qa/factions_test.mjs`: +7 assertions on the `WANDER` table, the profile riding on `pick()`, the urban pick end-to-end, and the neutral default — **21/21 pass**. All four edited files `node --check` clean.
+- Note for the density change earlier today: same test file, `tools/qa/police_test.mjs` still fails at HEAD (pre-existing, unrelated).
+
+## 2026-09-14 — Freebuff
 **Type:** CHANGE · **Task:** TASK-034 roadmap item "Role-specific civilian presentation and pedestrian pool" (density half)
 
 ### Finding
