@@ -59,6 +59,24 @@ setup existed (TASK-001 … TASK-009).
 - `graphics.js` `NanGuardShader`: a pass before bloom turns any NaN / Inf pixel
   black, so one bad value can never spread into a blur again.
 
+## 2026-09-14 — Antigravity
+**Type:** DISCOVERY · **Task:** TASK-020 (Police: Cruiser visuals, Evasion Search AI & On-Foot Deputies)
+
+### Finding
+- Police previously consisted solely of vehicle cruisers with omnipresent tracking, missing on-foot officer units and escapable search mechanics.
+- `makeDeputy` in `src/characters.js` provides procedural 3D Parish Deputies with uniform shirt, dark trousers, gold star badge, duty belt (holster + radio), and campaign hat.
+- `createPoliceSystem` in `src/police.js` upgrades generic car meshes into two-tone Sheriff cruisers with alternating emissive red/blue lightbars and push-bars, and implements last-known-position search AI (giving up and decaying heat after ~5s out of sight).
+- On-foot deputies spawn alongside cruisers or patrol on foot, pursuing `lastKnownPos`, performing balanced melee attacks, and dropping loot when defeated.
+
+### Impact
+- Police chases can now be escaped via line-of-sight evasion.
+- Deputies patrol and engage on foot in 3D.
+
+### Action
+- Added `makeDeputy` in `src/characters.js`.
+- Implemented `src/police.js` (`buildCruiserModel`, `spawnFootCop`, `updateSearchAndEvasion`, `updateFootCops`).
+- Tested via `tools/qa/police_test.mjs` (11/11 tests pass cleanly).
+
 ## 2026-09-14 — Freebuff
 **Type:** DISCOVERY · **Task:** TASK-018
 
@@ -1032,6 +1050,15 @@ nolantis.phase;      // idle | descent | arrival | tour | archive | truth | done
 nolantis.inside;     // player in the cavern: main.js lifts the MAP clamp and hides the radar
 nolantis.waypoint; nolantis.stop; nolantis.debug("stop" | "archive" | "elevator");
 ```
+
+### `src/police.js` & `src/characters.js` (TASK-020: Police & On-Foot Deputies)
+- `makeDeputy(opts)` in `src/characters.js`:
+  - Returns a 3D procedural Parish Deputy / Police Officer character object with khaki uniform shirt, dark trousers, campaign hat, gold star badge, and black duty belt (holster + radio).
+- `createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted })` in `src/police.js`:
+  - `buildCruiserModel(baseMesh)`: upgrades generic vehicle into two-tone Sheriff cruiser with dual emissive red/blue lightbar beacons and push-bar grill.
+  - `spawnFootCop(x, z)`: spawns an on-foot 3D deputy officer with pursuit & melee combat AI.
+  - `updateSearchAndEvasion(dt, playerPos, isPlayerInSight, state)`: tracks last-known-position during line-of-sight loss and triggers heat/wanted decay after give-up window (~5s).
+  - `updateFootCops(dt, env)`: advances on-foot deputies, performs melee/arrest checks, and triggers loot drops on defeat.
 
 ### `src/minimap.js` (radar)
 ```js

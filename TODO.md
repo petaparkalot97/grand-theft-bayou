@@ -704,11 +704,12 @@ Interface contracts.
 
 ---
 
-### TASK-020 — Police: escapable Sheriff + a real cruiser look
+### TASK-020 — Police: escapable Sheriff, real cruiser look & on-foot deputies
 
-**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Freebuff**)
+**Status:** `REVIEW` · **Agent:** `Antigravity`
 **Files / subsystem:**
-- `src/police.js` (new)
+- `src/police.js` (new — police system, search logic, on-foot cop spawning/AI)
+- `src/characters.js` (edit — 3D procedural Deputy/Police officer character model)
 
 **Dependencies:** none. Deliberately scoped as a **new module only** — per
 `AGENT_PROTOCOL.md` §4, `src/main.js` is orchestrator-owned, so this task does
@@ -796,14 +797,18 @@ contracts. This is the actual extraction-into-`src/police.js` that the
 BACKLOG stub for this task called for — Claude does the `main.js` swap-over
 once the module is in `REVIEW`.
 
-**Notes:** —
+**Notes:**
+- `makeDeputy` exported in `src/characters.js` building 3D procedural parish deputies with uniform shirt, dark trousers, campaign hat, gold star badge, and duty belt (holster + radio).
+- `src/police.js` created with `buildCruiserModel` (two-tone Sheriff cruiser, push-bar, dual emissive red/blue lightbar beacons), `spawnFootCop`, `updateSearchAndEvasion` (last-known-position search AI, give-up decay after ~5s), and `updateFootCops` (on-foot deputy pursuit, melee attacks, and loot drops).
+- Tested via unit test suite `tools/qa/police_test.mjs` (11/11 tests passing cleanly).
+- Interface contract documented in `AGENT_LOG.md` for Claude's `main.js` wiring.
 
 ---
 
 ### TASK-038 — Wire in the unused-but-usable assets; correct the asset audit
 
-**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Antigravity** —
-repo exploration across `assets/`, larger self-contained integration work)
+**Status:** `IN PROGRESS` · **Agent:** `Antigravity` —
+repo exploration across `assets/`, larger self-contained integration work
 **Files / subsystem:** district/dressing modules only — `src/eastbank.js`,
 `src/westparish.js`, `src/orlearouge.js`, and/or a new `src/landmarks.js` /
 prop-kit module if that's cleaner. **Not** `src/main.js`, `src/weapons.js` (a
@@ -1040,7 +1045,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 |---|---|---|---|
 | Claude | TASK-009; orchestration, review, `main.js` integration | `src/actone.js`, `src/ledgerboard.js`, `src/cinema.js`, `src/prologue.js`, `src/main.js`, `tools/qa/actone.mjs` | Active |
 | Codex | — (suggested: TASK-011, then TASK-012) | — | Available |
-| Antigravity | — (TASK-035 in REVIEW; suggested: TASK-038) | — | Available |
+| Antigravity | TASK-038 (TASK-020 & TASK-035 in REVIEW) | `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Active |
 | Freebuff | TASK-018 (REVIEW; next: TASK-036) | `tools/characters.html` | Available |
 
 > Update this table whenever ownership changes.
@@ -1067,10 +1072,11 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/factions.js` (new) | — | TASK-035 (REVIEW) | Available |
 | `src/spawnzones.js` | — | TASK-035 (REVIEW) | Available |
 | `src/npc.js` | — | TASK-035 (REVIEW) | Available |
+| `src/police.js` (new) | — | TASK-020 (REVIEW) | Available |
+| `src/characters.js` | — | TASK-020 (REVIEW) | Available |
 | `src/weapons.js`, `src/loot.js` | — | TASK-036 | Available |
-| `src/police.js` (new) | — | TASK-020 | Available |
-| `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | — | TASK-038 | Available |
-| `src/camera.js`, `src/spatial.js`, `src/music.js`, `src/characters.js` | — | — | Available |
+| `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Antigravity | TASK-038 | Locked |
+| `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
 | `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |
 
 ### Lock rules
@@ -1093,11 +1099,12 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 Implemented and headless-tested; waiting on the real-browser pass (TASK-010)
 before `COMPLETE`.
 
+- `TASK-020` — Police: escapable Sheriff, cruiser visuals & on-foot 3D deputies (`src/police.js`, `src/characters.js`). Tested via `tools/qa/police_test.mjs` (11/11 tests pass).
+- `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Tested via `tools/qa/factions_test.mjs` (14/14 tests pass).
 - `TASK-018` — Character viewer (`tools/characters.html`): cast presets + full
   option controls; statically verified (module syntax + a value audit of every
   preset and palette against the game sources). Needs one real-browser load
   (TASK-010) before `COMPLETE`.
-- `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Tested via `tools/qa/factions_test.mjs` (14/14 tests pass).
 - `TASK-001` — Atmosphere and graphics pass: height fog / mist, light shafts,
   headlights, wet roads + mirror, speed blur (`src/fx.js`, `src/graphics.js`).
   Needs real-GPU tuning (TASK-028).
