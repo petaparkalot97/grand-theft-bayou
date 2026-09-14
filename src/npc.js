@@ -48,7 +48,10 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
   }
 
   function setState(e, s, time) {
-    if (e.state === "hostile" && s !== "hostile") hostiles--;
+    if (e.state === "hostile" && s !== "hostile") {
+      hostiles--;
+      e.rivalTarget = null;
+    }
     if (s === "hostile" && e.state !== "hostile") hostiles++;
     e.state = s;
     e.stateT = time != null ? time : rand(2, 5);
@@ -75,9 +78,13 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
     return null;
   }
 
-  function becomeHostile(e) {
-    if (e.state === "hostile") return true;
+  function becomeHostile(e, rivalTarget = null) {
+    if (e.state === "hostile") {
+      if (rivalTarget && (!e.rivalTarget || e.rivalTarget.dead)) e.rivalTarget = rivalTarget;
+      return true;
+    }
     if (hostiles >= MAX_HOSTILE) return false;
+    e.rivalTarget = rivalTarget || null;
     setState(e, "hostile", 0);
     e.calm = 0;
     return true;
@@ -88,11 +95,44 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
     setState(e, "flee", rand(4, 7));
   }
 
+  function hitRival(attacker, victim, dmg, env) {
+    if (!victim || victim.dead || victim.state === "dead") return;
+    victim.hp = (victim.hp || 5) - dmg;
+    events.push({ x: victim.spr.position.x, z: victim.spr.position.z, r: 15, t: now });
+    if (victim.hp <= 0) {
+      if (env && typeof env.killEnemy === "function") {
+        env.killEnemy(victim);
+      } else {
+        release(victim);
+        victim.dead = true;
+        victim.state = "dead";
+        if (victim.spr && typeof victim.spr.play === "function") {
+          victim.spr.play("death", { fps: 9, loop: false, force: true });
+        }
+      }
+    }
+  }
+
   function decide(e, dist, env) {
     const p = e.spr.position;
     const interval = e.lod ? 1 : 0.3;
 
     if (e.state === "hostile") {
+      if (e.rivalTarget) {
+        if (e.rivalTarget.dead || e.rivalTarget.state === "dead") {
+          e.rivalTarget = null;
+          setState(e, "wander");
+          pickGoal(e);
+          return;
+        }
+        const rPos = e.rivalTarget.spr.position;
+        const rDist = Math.hypot(rPos.x - p.x, rPos.z - p.z);
+        if (rDist > e.T.aggro + 18) {
+          e.calm += interval;
+          if (e.calm > 6) { e.rivalTarget = null; setState(e, "wander"); pickGoal(e); }
+        } else e.calm = 0;
+        return;
+      }
       // lose interest once the player is well out of reach for a while
       if (dist > e.T.aggro + 18) {
         e.calm += interval;
@@ -147,25 +187,38 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
     let anim = "idle", fps = 5;
 
     if (e.state === "hostile") {
-      const inv = dist > 1e-4 ? 1 / dist : 0;
-      const dx = (env.player.x - p.x) * inv, dz = (env.player.z - p.z) * inv;
+      const hasRival = e.rivalTarget && !e.rivalTarget.dead && e.rivalTarget.state !== "dead";
+      const targetPos = hasRival ? e.rivalTarget.spr.position : env.player;
+      const targetDist = hasRival ? Math.hypot(targetPos.x - p.x, targetPos.z - p.z) : dist;
+      const inv = targetDist > 1e-4 ? 1 / targetDist : 0;
+      const dx = (targetPos.x - p.x) * inv, dz = (targetPos.z - p.z) * inv;
+
       if (hog) {
         // hogs line up, then explosively charge in a straight line
         if (e.charge > 0) {
           e.charge -= dt;
           vel.copy(e.chargeDir).multiplyScalar(13);
-        } else if (e.chargeCd === 0 && dist < 14 && dist > 2) {
+        } else if (e.chargeCd === 0 && targetDist < 14 && targetDist > 2) {
           e.charge = 0.55; e.chargeCd = 2.4;
           e.chargeDir.set(dx, 0, dz);
           vel.copy(e.chargeDir).multiplyScalar(13);
         } else {
           vel.set(dx * T.speed, 0, dz * T.speed);
         }
-        if (dist < T.melee && e.atkCd === 0) { e.atkCd = T.atkGap; hitPlayer(T.dmg); e.charge = 0; }
+        if (targetDist < T.melee && e.atkCd === 0) {
+          e.atkCd = T.atkGap;
+          if (hasRival) hitRival(e, e.rivalTarget, T.dmg, env);
+          else hitPlayer(T.dmg);
+          e.charge = 0;
+        }
         anim = e.charge > 0 ? "charge" : "walk";
-      } else if (dist < T.melee) {
+      } else if (targetDist < T.melee) {
         anim = "attack"; fps = 10;
-        if (e.atkCd === 0) { e.atkCd = T.atkGap; hitPlayer(T.dmg); }
+        if (e.atkCd === 0) {
+          e.atkCd = T.atkGap;
+          if (hasRival) hitRival(e, e.rivalTarget, T.dmg, env);
+          else hitPlayer(T.dmg);
+        }
         e.spr.setFlip(dx);
       } else {
         vel.set(dx * T.speed, 0, dz * T.speed);
@@ -213,8 +266,15 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
     }
   }
 
+  function release(e) {
+    if (e.state === "hostile") hostiles--;
+    e.rivalTarget = null;
+    e.state = "dead";
+  }
+
   return {
     get hostileCount() { return hostiles; },
+    becomeHostile,
 
     /** Give a freshly spawned NPC record its temperament and home turf. */
     init(e) {

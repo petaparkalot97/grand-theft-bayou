@@ -44,6 +44,13 @@ Bring the script to life. Finish and verify **Act One "Welcome Home"**
 
 **Current phase:** `Testing / Integration`
 
+**Parallel workstream (human request, 2026-09-14):** "keep expanding the world."
+Four new briefs added below — TASK-035 (faction warfare), TASK-036 (starter
+loadout / ammo), TASK-020 (police escapability + visuals, fleshed out from the
+backlog stub), TASK-038 (unused-asset integration pass). Suggested for
+Antigravity and Freebuff so they don't compete with the Act One work on
+`main.js`. See each brief for exact files.
+
 ---
 
 # 🔒 ACTIVE TASKS
@@ -492,7 +499,7 @@ for small props; skip tiny meshes in the mirror; share or cull traffic sprites b
 **Out of scope:** `src/main.js`, tier definitions in `src/graphics.js`.
 
 ### TASK-018 — Character viewer: expose the story options
-**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Freebuff**)
+**Status:** `REVIEW` · **Agent:** `Freebuff`
 **Files / subsystem:** `tools/characters.html`
 **Dependencies:** none
 **Context:** `makeHoodrat` gained `skin / top / denim / hair / headwear
@@ -502,6 +509,382 @@ Interface contracts). The viewer only knows red/blue crews.
 (Keseme, Mally, Bubba, Mercer, deputy, Emiko: see the `CAST` values in
 `src/prologue.js` and `populate()` in `src/actone.js`); the page loads with no
 console errors.
+**Notes:**
+- `tools/characters.html` rebuilt around three modes: the four-figure crew
+  roster (as before), a cast preset per story character, and a draft driven by
+  the controls. Any control edit leaves the preset.
+- Controls: sex, headwear (band / none / hat), beard, curly toggles; skin /
+  top / denim / hair swatches; crew selector (red / blue / custom) with cloth /
+  chain / shoe / hat / legging swatches for the custom palette; seed field +
+  reroll; height override.
+- Cast presets: Keseme, Mally, Bubba, Mercer, deputy, Emiko, plus Solange and
+  Amara (the brief predates them). Palette sources snapshotted at build:
+  `CAST` in `src/prologue.js`, `populate()` in `src/actone.js` (Emiko),
+  `src/bluelight.js` (Solange), `src/nolantis.js` (Amara). The deputy's seed
+  follows prologue's `who.length * 911` rule ("deputy2" → 6377).
+- **Maintenance caveat:** the palettes are hand-mirrored snapshots, not live
+  imports. If a `CAST` entry or `CREWS` / `SKIN_TONES` / `DENIM` changes in
+  `src/`, update the viewer's block to match (see AGENT_LOG).
+- Testing (static — no local headless browser available, and the project
+  carries no npm dependencies): the inline module passes `node --check`; an
+  audit script compared every preset's options and the tone palettes against
+  the game sources — 8 presets, all keys equal. Not yet verified in a real
+  browser: load, rendering, console output. Serve with `node serve.mjs` and
+  open /tools/characters.html (file:// won't resolve the import map).
+
+### TASK-035 — Redneck vs Hoodrat territorial warfare
+
+**Status:** `REVIEW` · **Agent:** `Antigravity`
+**Files / subsystem:**
+- `src/factions.js` (new)
+- `src/spawnzones.js` (edit — add territory/border zone tagging)
+- `src/npc.js` (edit — cross-faction aggro hook)
+
+**Dependencies:** none. Does not touch `src/main.js`.
+
+**Context:** The pieces already exist, just not wired to each other:
+- `spawnzones.js` → `ZONE_MIX` already leans each zone toward one faction
+  (`residential: { redneck: 0.75, hoodrat: 0.25 }`, `urban: { hoodrat: 0.7,
+  redneck: 0.3 }`, etc.) but it's a soft population blend, not a hard
+  territory — every zone can spawn either faction, everywhere.
+- `npc.js` → every spawned NPC already carries `e.type` (`"redneck"` /
+  `"hoodrat"` / `"hog"`), `e.home` (its POI/turf), and a temperament
+  (`temperament()`, line ~28: rednecks 50/50 brave/timid). NPCs are calm by
+  default (`DEFAULT_AGGRESSION = 0`, per TASK-033) and only turn `"hostile"`
+  via `becomeHostile()` — currently only ever called when the *player* hurts
+  an NPC. Rednecks and hoodrats never react to each other at all right now.
+- `kills.redneck` / `kills.hoodrat` are already tracked separately in
+  `main.js` (used for `HEAT_KILLS`, the Sheriff trigger).
+
+**Goal:** Rednecks and Hoodrats hold their own territory and ignore each
+other inside it (as now), but in a small number of explicit border/crossover
+zones, a redneck and a hoodrat that spot each other fight — no player
+involvement needed. This should read as two gangs at war, not a random
+scuffle generator.
+
+**Design:**
+1. In `spawnzones.js`, tighten a subset of existing zones into near-exclusive
+   territory (e.g. `residential` → 0.92 redneck / 0.08 hoodrat, `urban` → 0.9
+   hoodrat / 0.1 redneck) and add 1–3 new named **border zones** (e.g. around
+   Market Row / the strip's contested middle stretch) with a roughly 50/50 mix
+   and a `border: true` flag returned alongside `{ x, z, kind, zone }` from
+   `pick()`.
+2. In `factions.js`, export something like
+   `createFactionWar({ npcs, events })` → `update(dt, living)` that, on the
+   same staggered-timer cadence `npc.js` already uses (not per-frame), checks
+   pairs of live NPCs where `a.type !== b.type`, both are `"redneck"`/`"hoodrat"`
+   (never hogs), both are within sight range of each other (~18–22 m, reuse
+   the constants already in `npc.js`), and at least one is standing in a
+   border zone — then calls `becomeHostile` on both, with each other as the
+   target instead of the player.
+3. `npc.js` needs a small extension: `hostile` state currently always chases
+   `playerPos`. Give it an optional rival target (another NPC) so it chases
+   and melees that NPC using the same `melee` / `dmg` / `atkGap` stats already
+   defined per type in `main.js` (~line 1168), instead of the player. A dead
+   rival should drop through the existing `killEnemy` / `loot.dropFor` path so
+   turf kills still pay out like player kills.
+4. Respect `MAX_HOSTILE` (7) — faction fights compete with player-provoked
+   hostiles for that budget; don't add a separate uncapped pool.
+
+**Acceptance criteria:**
+- Inside solid territory (e.g. deep residential or deep urban), rednecks and
+  hoodrats spawned near each other stay calm — no unprovoked fighting.
+- In a border zone, a redneck and hoodrat within sight range fight each other
+  without the player nearby; the loser drops loot as normal.
+- The player can walk through a faction fight without being auto-targeted
+  (existing player-provoked hostility rules are untouched).
+- `MAX_HOSTILE` is never exceeded by faction fights alone.
+- No new console errors; existing `tools/qa/worldpass.mjs` and
+  `tools/qa/gameplay.mjs` still pass unmodified.
+- A real-browser pass (screenshot or short clip) showing one border-zone fight
+  actually happening.
+
+**Out of scope:** new visual assets for the factions (that's TASK-038), the
+Sheriff/police reaction to gang violence (existing `checkHeatUp` logic is
+untouched — human decision if factions should add heat).
+
+**Integration notes (for Claude):** Expose `factionWar.update(dt, npcs.living)`
+(or equivalent) called next to the existing `npcs.update(...)` call in
+`main.js`'s main loop; document the exact call signature and any new fields on
+the NPC record (`e.rivalTarget` or similar) in `AGENT_LOG.md` → Interface
+contracts before marking `REVIEW`.
+
+**Notes:**
+- `src/factions.js` implemented (`createFactionWar({ npcs, spawnZones })`).
+- `src/spawnzones.js` updated with tightened territory mix (`residential` 0.92/0.08, `urban` 0.90/0.10) and `border_strip` / `border_market` border zones with `isBorder(x, z)` check.
+- `src/npc.js` updated with `becomeHostile(e, rivalTarget)` extension, mutual rival target state, and `hitRival` combat damage execution.
+- Headless unit test suite `tools/qa/factions_test.mjs` created and passing 14/14 tests cleanly.
+- Interface contract documented in `AGENT_LOG.md` for Claude's `main.js` wiring.
+
+---
+
+### TASK-036 — Starter loadout & ammo system: baseball bat, reserve ammo, reload
+
+**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Freebuff**)
+**Files / subsystem:**
+- `src/weapons.js` (edit)
+- `src/loot.js` (edit)
+
+**Dependencies:** none. Does not touch `src/main.js` beyond a documented hook.
+
+**Context:** Today `weapons.js` hard-codes the starter weapon as an infinite-
+ammo 9mm pistol (`if (!WEAPONS[state.weapon]) state.weapon = "pistol"`); an
+empty gun falls back to the pistol, never to unarmed. `loot.js` only ever
+drops `cash` or a full `weapon` (which fully restocks the clip — see
+`rollWeapon()` / `dropFor()`). There is no reserve ammo, no reload, and no
+ammo-only pickup. This matches the "future" note already on TASK-034: *"A
+weapon model in the player's hand, reloading, ammo pickups."* The human has
+also asked separately for **no starting gun — just a baseball bat**, with
+enemies dropping currency and weapons (loot already does the currency and
+weapon side; the bat is new).
+
+**Goal:**
+1. The player starts with a `bat` weapon (melee, no ammo, always available —
+   never falls back to a gun) instead of an infinite-ammo pistol. Guns are
+   found, not given.
+2. Guns have finite reserve ammo, a clip, and a reload action; ammo can be
+   topped up by a new ammo-only pickup as well as by picking up a weapon.
+
+**Design:**
+1. Add `bat: { id: "bat", name: "Baseball bat", rarity: "starter", damage: 3,
+   cooldown: 0.55, vehicleCooldown: 0.55, range: 2.2, clip: Infinity, melee:
+   true }` to `WEAPONS`. Make it the default in `createArsenal` instead of
+   `pistol`, and make `consume()` never swap *away* from the bat (there's
+   nothing to fall back further to).
+2. Split each gun's ammo into `clip` (already exists) and a new `reserve`
+   pool (`state.reserve` next to `state.ammo`, keyed per weapon id so
+   switching weapons doesn't lose reserve — a small object is fine, e.g.
+   `state.reserve = { tec9: 0, sawnoff: 0, deerRifle: 0 }`). `give(id, rounds)`
+   on pickup adds to reserve (or clip if empty-handed) instead of instantly
+   refilling the clip.
+3. Add a reload action (new exported method on the arsenal, e.g.
+   `arsenal.reload()`): moves ammo from `state.reserve[id]` into `state.ammo`
+   up to `clip` size, over a short duration (a `state.reloading` timer is
+   fine — main.js's fire() already checks `state.fireCd`, so blocking fire
+   while `state.reloading > 0` is a one-line integration note, not a rewrite).
+   Running the clip to 0 should prompt a reload rather than silently
+   swap to the bat.
+4. In `loot.js`, add a third drop kind, `ammo` (small crate/box mesh reusing
+   the existing unlit-material pattern), rolled per faction's loot table
+   alongside `cash` / `weapon` (extend `LOOT_TABLES`). On pickup, add a
+   handful of rounds to the reserve of the player's *current* gun if they
+   have one; if unarmed (bat only), ammo pickups can be ignored or converted
+   to a small cash value — implementer's call, note the choice.
+5. Update `weaponHud` render() to show `clip / reserve` (e.g. `Tec-9 · 12/48`)
+   instead of just the clip count; show nothing for the bat's ammo field
+   (`—` or similar) since it's melee.
+
+**Acceptance criteria:**
+- New game / respawn starts unarmed except the bat; no gun is available until
+  one is picked up.
+- Firing a gun dry does not silently swap to the bat — it prompts reload
+  (or auto-reloads if reserve > 0; implementer's call, document which).
+- Reserve ammo persists across a weapon swap and across bat/gun switching.
+- Ammo pickups exist on the ground, are visually distinct from weapon and
+  cash pickups, and refill reserve rather than instantly maxing the clip.
+- HUD clearly shows clip vs. reserve for guns, and reads sensibly for the bat.
+- `tools/qa/worldpass.mjs`'s weapon-slot check will need updating for the new
+  starter weapon and reserve field — update it in this task, don't leave it
+  broken.
+- No new console errors.
+
+**Out of scope:** a visible weapon model in the player's hand or a weapon
+wheel for multiple gun slots (still future work); melee swing animation
+beyond reusing the existing `attack` sprite state main.js already plays on
+`fire()`.
+
+**Integration notes (for Claude):** `fire()` in `main.js` (~line 2230) will
+need a branch for melee weapons (short range check against `enemies`/
+`sheriffs` instead of a tracer + hitscan) and a call to `arsenal.reload()` on
+whatever key is chosen (R is free). Document the exact new arsenal methods/
+fields (`reload()`, `state.reserve`, weapon `melee` flag) in `AGENT_LOG.md` →
+Interface contracts.
+
+**Notes:** —
+
+---
+
+### TASK-020 — Police: escapable Sheriff + a real cruiser look
+
+**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Freebuff**)
+**Files / subsystem:**
+- `src/police.js` (new)
+
+**Dependencies:** none. Deliberately scoped as a **new module only** — per
+`AGENT_PROTOCOL.md` §4, `src/main.js` is orchestrator-owned, so this task does
+not touch the ~90 lines of inline Sheriff code currently living there
+(`sheriffProto` setup ~line 1449, `spawnSheriff` / `copsActive` /
+`checkHeatUp` / `updateSheriffs` ~lines 2852–2920, plus `damageVehicle`'s
+Sheriff branch and `fire()`'s Sheriff targeting). Claude will swap those call
+sites over to this module during integration.
+
+**Context — human's report, verbatim:** *"The police are too savage. It's
+kinda hard to get away from them... visually, they look kinda shitty."* This
+resolves the open question already sitting in **Blockers / Decisions
+needed**: *"how weak should the police be (spawn distance, count, give-up
+timer)?"* — answer: noticeably weaker / more escapable than today, and this
+task also fixes the model. Reading the current code confirms both complaints
+are real, not just a feel issue:
+- **Visual:** the "cruiser" is `sheriffProto = pickup.clone(true)` (the same
+  generic pickup model used for civilian traffic) painted white with a single
+  flat blue box glued on top as a "light bar" (`main.js` ~line 1449–1459). No
+  livery, no light pattern, no siren geometry — it reads as a mis-tinted
+  pickup because that's exactly what it is.
+- **Behaviour:** in `updateSheriffs` (~line 2877), every active cruiser
+  always knows the player's exact position (no line-of-sight / search logic
+  at all), turns at up to 2.4 rad/s and accelerates to 22 m/s the instant it's
+  more than 6 m away, and while within 4 m **on foot** it applies
+  `hitPlayer(dt * 14)` every frame — 14 HP/sec continuous, which empties a
+  100 HP bar in well under 10 seconds with no way to break contact. There is
+  no timer or condition anywhere that lets a chase end other than killing
+  every cruiser or waiting for `state.heat` to decay passively at
+  `dt * 0.16`–`0.3`, which the cruisers' own homing behavior prevents ever
+  happening since they never lose you.
+
+**Goal:** A Sheriff cruiser that looks like one, and a chase you can
+plausibly break off if you drive or run well — not just outgun.
+
+**Design (as a standalone module — no dependency on main.js internals; expose
+a clean interface Claude wires in):**
+1. **Visual.** Build (or load, see TASK-038 — a police-liveried vehicle may
+   already exist among the vehicle assets once that audit lands; check before
+   building one from primitives) a distinct cruiser look: two-tone paint
+   (not just a recolor of the exact civilian pickup skin players already see
+   in traffic), a proper light bar (alternating red/blue emissive strips, not
+   one flat box), and if cheap enough a push-bar / decal detail. Keep it as
+   cheap as the pickup it currently reuses — no new lights beyond what
+   `main.js` already pools (`beaconLights`); document what visual elements
+   the module expects `main.js` to attach vs. what it builds itself.
+2. **Search/give-up logic.** Replace "always knows your exact position" with
+   last-known-position pursuit: cruisers drive toward where they last saw
+   you, not your live position, and lose you if you break line-of-sight (or
+   exceed some distance) for a give-up window (a few seconds, tune by feel).
+   `state.heat` should then actually be able to decay to 0 during a
+   successful evasion, ending the chase — today it structurally can't.
+2. **Reduced savagery.** Cut the on-foot contact damage rate substantially
+   (14 HP/s is a near-instant kill; consider a knockdown/bust mechanic — the
+   game already has `busted()` at `state.bustCd > 3` for the "on top of you"
+   case — instead of pure DPS on foot), and/or increase the distance at which
+   contact triggers so a moving target isn't guaranteed to get cornered.
+   Tune `HEAT_KILLS` (currently 12), spawn count (`Math.max(0, state.wanted -
+   1)`) and turn rate/top speed (2.4 rad/s / 22 m/s) as a set — call out
+   whatever final numbers you land on plus why.
+**Acceptance criteria:**
+- A cruiser is visually distinguishable from civilian traffic at a glance,
+  even at night (existing headlight/dusk lighting).
+- A player who breaks line of sight and puts sufficient distance between
+  themselves and every active cruiser for the give-up window actually loses
+  the chase (`state.wanted` returns to 0 without killing every cruiser).
+- On-foot contact no longer drops a full-health player in under ~10 seconds;
+  document the new time-to-bust/damage numbers.
+- Module doesn't touch `src/main.js`; it's a drop-in replacement documented
+  well enough that Claude can wire it without re-deriving your design.
+- No new console errors when smoke-tested against a stub harness (a fake
+  `state`/`playerPos`/`scene`, since this can't run standalone against the
+  real game).
+
+**Out of scope:** changing `HEAT_KILLS`'s trigger source (Redneck/Hoodrat
+kills) or adding new arrest/jail gameplay beyond the existing `busted()` flow.
+
+**Integration notes (for Claude):** Document the module's exported factory
+signature, its expected inputs (what it needs from `main.js`: scene, MAP
+bounds, `playerPos`, `hitPlayer`, `registerVehicle`, `blockers`, etc. — mirror
+what the inline version already threads through) and outputs (`update(dt)`,
+`spawnSheriff()`, `copsActive()`, whatever it exposes for `fire()`'s aim-assist
+and `damageVehicle`'s cruiser-wreck bonus) in `AGENT_LOG.md` → Interface
+contracts. This is the actual extraction-into-`src/police.js` that the
+BACKLOG stub for this task called for — Claude does the `main.js` swap-over
+once the module is in `REVIEW`.
+
+**Notes:** —
+
+---
+
+### TASK-038 — Wire in the unused-but-usable assets; correct the asset audit
+
+**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Antigravity** —
+repo exploration across `assets/`, larger self-contained integration work)
+**Files / subsystem:** district/dressing modules only — `src/eastbank.js`,
+`src/westparish.js`, `src/orlearouge.js`, and/or a new `src/landmarks.js` /
+prop-kit module if that's cleaner. **Not** `src/main.js`, `src/weapons.js` (a
+new weapon model is additive there — coordinate with TASK-036 rather than
+edit the same file at once), `src/vehicles.js` definitions (propose changes,
+Claude applies if it's a shared-definition file already locked elsewhere).
+
+**Dependencies:** none, but sequence after or alongside TASK-035 rather than
+in parallel if both end up wanting `spawnzones.js` — check the lock table
+before claiming.
+
+**Context — the audit in `docs/WORLD_BUILDING.md` is stale.** It currently
+lists `Fence Pack.zip`, `abandoned_office_space.zip`, `Hoodrathavoc.zip`,
+`gangster_rifle.zip`, `City Bowels` and `Los Santos Mini Map.bbdoc` all
+together as "Unity/Unreal/Marmoset/GTA-specific formats; not safe to wire
+into Three.js." That blanket statement is wrong for at least two of them —
+checked by actually opening the archives (2026-09-14):
+
+| Archive | What's actually inside | Usable now? |
+|---|---|---|
+| `assets/gangster_rifle.zip` | `scene.gltf` + `scene.bin` + PBR textures — a real glTF, loads directly with the existing `GLTFLoader` path | **Yes.** A ready-made distinct gun model/pickup. |
+| `assets/Fence Pack.zip` | Loose `.fbx` files (`Fence.fbx`, `FenceConnector.fbx`, `Fencecorner.fbx`, `InnerFence*.fbx`) alongside a `.unitypackage` | **Yes, the FBX files.** Ignore the `.unitypackage`; load the FBX the same way `assets/models/*` FBX are already loaded. |
+| `assets/abandoned_office_space.zip` | An Unreal project (`.uproject`, `.umap`, `.uasset`) **plus** loose `.FBX` meshes (`bin.FBX`, `chair.FBX`, `flower_pot.FBX`, and more — list the full archive) | **Yes, the loose FBX meshes only.** Skip everything Unreal-specific. |
+| `assets/Hoodrathavoc.zip` | Character models as `.dff` / `.txd` (GTA/RenderWare format) | **No** — Three.js has no RenderWare loader; needs an external DFF→glTF conversion step this task should not attempt. Flag as a **Blockers / Decisions needed** item instead (see below), don't spend time on it. |
+| `assets/City assets.zip`, `assets/crayon-city-architecture-v1.1.1.zip` | Identical `.glb` sets already unpacked and in use at `assets/city/models/textured` (per `WORLD_BUILDING.md`'s existing table) | Already used; nothing to do — just confirm and note it in the corrected table. |
+
+Also note while you're in there: `assets/models/town/` (a "2 m tile kit",
+`TownTiles_003.glb` per the TASK-034 notes) is still unused, and
+`assets/models/trailerpark/chars/Character_*.fbx` (loader helpers exist per
+the audit) are still not in the ambient population.
+
+**Goal:** Make the city read as more lived-in using assets that are already
+paid for and sitting unused, and leave `docs/WORLD_BUILDING.md` accurate for
+the next agent instead of repeating the same "not safe to import" note.
+
+**Concretely, in whichever district module(s) make sense:**
+1. Wire `gangster_rifle.zip`'s glTF as a new weapon model — hand off to
+   TASK-036/Freebuff as an available asset (a model reference + rough
+   scale/orientation notes) rather than editing `weapons.js` yourself; add a
+   fence-variety pass using the Fence Pack FBX somewhere it reads as new
+   (Bayou Noir's cane fields already use fencing per TASK-034 — vary it, or
+   add fencing somewhere currently a bare edge).
+2. Add office-space clutter (the loose `bin.FBX` / `chair.FBX` /
+   `flower_pot.FBX` / etc. from `abandoned_office_space.zip`) as interior or
+   loading-dock dressing in one of the commercial/office buildings already
+   placed (Port Mercer's offices in `eastbank.js` are the obvious fit).
+3. Spot-check that every building variant in `assets/city/models/textured`
+   (cottage, apartments, school, cafe, market, hospital, offices, garage, fire
+   station, tower — ten total per the existing audit) is actually placed
+   somewhere reachable, not just some of them; add placements for any that
+   are sitting unused.
+4. Correct `docs/WORLD_BUILDING.md`'s asset inventory table with what you
+   actually verified (usable vs. not, and why), so this doesn't get
+   re-audited from scratch next time.
+
+**Acceptance criteria:**
+- At least the gangster rifle model and the office-clutter set are placed and
+  render with no console 404s/errors (FBX texture path issues are a known
+  failure mode per `AGENT_LOG.md` — check the network tab / headless console).
+- No regression in existing QA scripts (`worldpass.mjs`, `eastbank.mjs`,
+  `gameplay.mjs`) — draw calls may rise, but stay within the existing budget
+  guardrails (~20 draw calls per new static prop cluster, per the pothole
+  task's precedent) or justify why not.
+- `docs/WORLD_BUILDING.md` table reflects reality, not the old blanket
+  assumption.
+- No new console errors.
+
+**Out of scope:** `Hoodrathavoc.zip` conversion (blocked, see below);
+sourcing motorbike or airplane models — **none currently exist in
+`assets/`** despite being on the human's wishlist; that needs either new
+asset sourcing or a from-primitives build like the existing Designersoup cars,
+and is a human decision (added to Blockers below), not something to solve by
+scope-creeping this task.
+
+**Integration notes (for Claude):** None expected if everything lands inside
+already-available district modules; flag here if anything genuinely needs a
+`main.js` touch (e.g. a new vehicle type in the traffic pool).
+
+**Notes:** —
+
+---
 
 ## BACKLOG
 
@@ -618,7 +1001,6 @@ You see them, and you feel them when you drive over one.
     final elevator cinematic.
 - [ ] `TASK-017` (original scope) — **Act One's later beats**: the threatening phone call ("Your mother's house is very pretty"), Governor Bellefontaine's meeting with Mercer, the flood tunnel and the Nirbayou Nolantis descent. Needs TASK-009 and TASK-016.
 - [ ] `TASK-019` — **Weakest surfaces**: the stylised Popeyes, trailers and water towers are plain boxes. Needs their builders moved out of `main.js` into `src/landmarks.js` first (Claude). Suggested: Antigravity.
-- [ ] `TASK-020` — **Police**: make the Sheriff escapable (give-up timer) and tune `HEAT_KILLS`, spawn count and ram damage. Move the sheriff code out of `main.js` into `src/police.js` first (Claude).
 - [ ] `TASK-021` — **Minimap / waypoint arrow** (new `src/minimap.js`; Claude hooks it up). Story objectives already have world positions. Suggested: Codex.
 - [ ] `TASK-022` — **Check the taco stand's draw cost** (`Tacos.glb` was ~358 meshes) now that batching exists; swap for a stylised stand if it's still heavy.
 - [ ] `TASK-023` — **Torch sprites read as carved poles**; a bigger flame frame or a 3D torch. Suggested: Freebuff.
@@ -628,7 +1010,7 @@ You see them, and you feel them when you drive over one.
 - [ ] `TASK-027` — **Radio stations** on top of the soundtrack folder.
 - [ ] `TASK-028` — **Tune mist, beams and headlight brightness on a real GPU.** After TASK-010.
 - [ ] `TASK-029` — **Traffic headlights**: share the player's spotlight rig with the nearest oncoming car.
-- [ ] `TASK-030` — **Wire unused set dressing**: the Trailer_Park.fbx scene and the Tacos / Pizzeria props.
+- [ ] `TASK-030` — **Wire unused set dressing**: the Trailer_Park.fbx scene and the Tacos / Pizzeria props. Overlaps with TASK-038 — whoever claims TASK-038 should fold this in rather than duplicate the audit.
 
 ## BLOCKED
 
@@ -646,8 +1028,8 @@ TASK-008 (review) ──→ TASK-009 (in progress) ──┬─→ TASK-013
                                                └─→ TASK-017 ←── TASK-016 ←── human decision
 TASK-012 ──→ TASK-014
 TASK-010 ──→ TASK-028
-Claude extraction ──→ TASK-019 (landmarks.js), TASK-020 (police.js)
-TASK-011, TASK-018, TASK-021 — independent
+Claude extraction ──→ TASK-019 (landmarks.js)
+TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — independent
 ```
 
 ---
@@ -658,8 +1040,8 @@ TASK-011, TASK-018, TASK-021 — independent
 |---|---|---|---|
 | Claude | TASK-009; orchestration, review, `main.js` integration | `src/actone.js`, `src/ledgerboard.js`, `src/cinema.js`, `src/prologue.js`, `src/main.js`, `tools/qa/actone.mjs` | Active |
 | Codex | — (suggested: TASK-011, then TASK-012) | — | Available |
-| Antigravity | — (suggested: TASK-010) | — | Available |
-| Freebuff | — (suggested: TASK-018) | — | Available |
+| Antigravity | — (TASK-035 in REVIEW; suggested: TASK-038) | — | Available |
+| Freebuff | TASK-018 (REVIEW; next: TASK-036) | `tools/characters.html` | Available |
 
 > Update this table whenever ownership changes.
 
@@ -681,8 +1063,14 @@ TASK-011, TASK-018, TASK-021 — independent
 | `src/merge.js` | — | TASK-011 | Available |
 | `src/fx.js` | — | TASK-012 | Available |
 | `src/traffic.js` | — | TASK-012 / TASK-014 | Available |
-| `tools/characters.html` | — | TASK-018 | Available |
-| `src/npc.js`, `src/camera.js`, `src/spatial.js`, `src/music.js`, `src/characters.js` | — | — | Available |
+| `tools/characters.html` | — | TASK-018 (REVIEW) | Available |
+| `src/factions.js` (new) | — | TASK-035 (REVIEW) | Available |
+| `src/spawnzones.js` | — | TASK-035 (REVIEW) | Available |
+| `src/npc.js` | — | TASK-035 (REVIEW) | Available |
+| `src/weapons.js`, `src/loot.js` | — | TASK-036 | Available |
+| `src/police.js` (new) | — | TASK-020 | Available |
+| `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | — | TASK-038 | Available |
+| `src/camera.js`, `src/spatial.js`, `src/music.js`, `src/characters.js` | — | — | Available |
 | `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |
 
 ### Lock rules
@@ -705,6 +1093,11 @@ TASK-011, TASK-018, TASK-021 — independent
 Implemented and headless-tested; waiting on the real-browser pass (TASK-010)
 before `COMPLETE`.
 
+- `TASK-018` — Character viewer (`tools/characters.html`): cast presets + full
+  option controls; statically verified (module syntax + a value audit of every
+  preset and palette against the game sources). Needs one real-browser load
+  (TASK-010) before `COMPLETE`.
+- `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Tested via `tools/qa/factions_test.mjs` (14/14 tests pass).
 - `TASK-001` — Atmosphere and graphics pass: height fog / mist, light shafts,
   headlights, wet roads + mirror, speed blur (`src/fx.js`, `src/graphics.js`).
   Needs real-GPU tuning (TASK-028).
@@ -744,9 +1137,24 @@ before `COMPLETE`.
 - **Dev server restart (human).** A server started before `serve.mjs` gained
   the playlist endpoint 404s on `assets/music/playlist.json`. The game falls
   back to the theme; restart `start-game.cmd` to pick it up.
-- Open design questions carried over: how weak should the police be (spawn
-  distance, count, give-up timer)? Is the map scale right, or should the towns
-  sit closer together?
+- ~~Open design question: how weak should the police be?~~ **Answered by the
+  human (2026-09-14): too savage, hard to escape, visually shitty.** See
+  TASK-020 for the full brief; no longer open.
+- Open design question carried over: is the map scale right, or should the
+  towns sit closer together?
+- **Motorbikes / airplanes (human wishlist, 2026-09-14).** The human wants
+  vehicle variety including motorbikes and "maybe" airplanes. Checked
+  `assets/` (2026-09-14): **no motorbike or airplane assets exist in the
+  repo** — only the FBX cars in `models/cars` / `models/vehicles`. Needs a
+  decision: source new model packs, or build them from primitives the way the
+  Designersoup cars already are (`loadDsCar`)? Not assigned to a task yet.
+- **`assets/Hoodrathavoc.zip` (found during the TASK-038 asset audit,
+  2026-09-14).** Character models in `.dff`/`.txd` — GTA/RenderWare format.
+  Three.js has no loader for this; using them needs an external DFF→glTF
+  conversion step outside this repo's toolchain. Decision needed: is
+  conversion worth doing (the name suggests these were meant for the Hoodrat
+  faction specifically), or should Hoodrat character variety stay on the
+  existing sprite/`makeHoodrat` palette system? Not assigned to a task.
 
 ---
 

@@ -28,7 +28,11 @@
 | `assets/city/models/textured` | East Bank expansion | Ten supplied low-poly GLBs: cottage, apartments, school, cafe, market, hospital, offices, garage, fire station, tower |
 | `assets/models/trailerpark/chars` | Loader helpers exist | Character FBX assets are not currently used for ambient population |
 | `assets/models/swamp` source images | Sliced shroom/torch runtime sprites | Several source images remain reference-only |
-| supplied `Fence Pack.zip`, `abandoned_office_space.zip`, `Hoodrathavoc.zip`, `gangster_rifle.zip`, `City Bowels`, `Los Santos Mini Map.bbdoc` | Not imported | Unity/Unreal/Marmoset/GTA-specific formats; not safe to wire into Three.js without conversion/licensing review |
+| `assets/gangster_rifle.zip` | Not imported | **Corrected 2026-09-14 (TASK-038 audit): usable now.** Contains a real glTF (`scene.gltf` + `scene.bin` + PBR textures) — loads directly with the existing `GLTFLoader` path. Earlier "not safe to import" note was wrong for this file. |
+| `assets/Fence Pack.zip`, `assets/abandoned_office_space.zip` | Not imported | **Corrected 2026-09-14: partially usable.** Each contains loose `.fbx` meshes alongside Unity/Unreal-project-specific files (`.unitypackage`, `.uproject`/`.umap`/`.uasset`). The loose FBX (fence pieces; `bin.FBX`, `chair.FBX`, `flower_pot.FBX`, etc.) load like any other `assets/models/*` FBX — only the engine-project files are unusable. |
+| `assets/Hoodrathavoc.zip` | Not imported | Character models in `.dff`/`.txd` (GTA/RenderWare format). Confirmed still not usable — Three.js has no RenderWare loader; needs an external conversion step. See TODO.md → Blockers. |
+| `assets/City Bowels`, `Los Santos Mini Map.bbdoc` | Not imported, not tracked in git (`.gitignore`) | Large source bundles (~75MB / ~344MB); kept local only, not evaluated for runtime use. |
+| `assets/City assets.zip`, `assets/crayon-city-architecture-v1.1.1.zip` | Already used | Identical `.glb` sets already unpacked at `assets/city/models/textured` (see the East Bank row above) — the zips are just the zipped source, nothing new to extract. |
 
 ## Current expansion
 

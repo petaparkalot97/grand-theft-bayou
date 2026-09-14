@@ -59,6 +59,51 @@ setup existed (TASK-001 … TASK-009).
 - `graphics.js` `NanGuardShader`: a pass before bloom turns any NaN / Inf pixel
   black, so one bad value can never spread into a blur again.
 
+## 2026-09-14 — Freebuff
+**Type:** DISCOVERY · **Task:** TASK-018
+
+### Finding
+- The cast's looks live in four places: `CAST` in `src/prologue.js` (keseme,
+  mally, bubba, mercer, deputy), `populate()` in `src/actone.js` (emiko),
+  `src/bluelight.js` / `src/nolantis.js` (solange — identical values in both),
+  and `src/nolantis.js` (amara). The deputy's `seed` is not in the table:
+  prologue derives it at runtime as `who.length * 911` ("deputy2" → 6377).
+- The board itself moved twice while I worked (the TASK-035/036/020/038 briefs
+  appeared, and the ownership table's suggestions changed). Re-read `TODO.md`
+  before writing claims — and note that mirrored palettes can drift at any
+  time; re-diff before trusting a snapshot.
+
+### Impact
+- `tools/characters.html` mirrors these palettes **by hand** (ES-module pages
+  can't read non-exported consts like `CAST`). If a cast entry, `CREWS`,
+  `SKIN_TONES` or `DENIM` changes in `src/`, the viewer drifts silently.
+
+### Action
+- Viewer block carries source comments naming where each preset came from.
+- Anyone changing a cast look: update `tools/characters.html`'s `CAST` /
+  `CREW_TONES` blocks in the same task. A value audit is cheap to re-run
+  (regex-extract both sides and diff key-by-key).
+
+## 2026-09-14 — Antigravity
+**Type:** DISCOVERY · **Task:** TASK-035 (Faction Warfare & Territorial Zones)
+
+### Finding
+- Faction population was previously soft-blended without hard territorial boundaries, and NPCs only reacted to player provocation.
+- By tightening solid zone mixes (`residential` -> 92% Redneck / 8% Hoodrat, `urban` -> 90% Hoodrat / 10% Redneck) and defining explicit border zones (`border_strip`, `border_market` with 50/50 mix and `border: true`), gangs now have natural territories and contested battlegrounds.
+- `createFactionWar({ npcs, spawnZones })` in `src/factions.js` scans live candidate gang members on a staggered timer (~0.35s). If a Redneck and Hoodrat are within sight range (~22m) and at least one is in a border zone, both become hostile with mutual `rivalTarget`.
+- `npc.js` handles combat between rivals without hitting the player. Defeated rivals drop loot via `killEnemy` / `release` and respect `MAX_HOSTILE` (7).
+
+### Impact
+- Cross-faction skirmishes happen dynamically in border zones.
+- The player is not auto-targeted during faction battles.
+
+### Action
+- Implemented `src/factions.js` (`createFactionWar`).
+- Updated `src/spawnzones.js` with `isBorder(x, z)` check and tightened territory mixes.
+- Updated `src/npc.js` with `becomeHostile(e, rivalTarget)`, `rivalTarget` state management, and `hitRival` combat resolution.
+- Unit tested cleanly via `tools/qa/factions_test.mjs` (14/14 tests pass).
+- Interface contract added below for Claude's `main.js` integration.
+
 ## 2026-09-13 — Claude
 **Type:** DISCOVERY · **Task:** TASK-034 (churches, men's faces)
 
@@ -544,6 +589,21 @@ scripts.
 ---
 
 # 🧪 TEST RESULTS
+
+## 2026-09-14 — Freebuff
+**Type:** TEST · **Task:** TASK-018
+
+- Environment: **static verification only** — no headless browser on this
+  machine and the project carries no npm dependencies, so no automated page
+  load was possible.
+- `tools/characters.html` inline module: extracted and passed `node --check`.
+- Palette audit (temporary script, removed after the run): compared the
+  viewer's cast presets and tone palettes against the game sources — all 8
+  presets (keseme, mally, bubba, mercer, deputy, emiko, solange, amara) match
+  on every shared key; the mirrored `CREWS` red/blue tones, `SKIN_TONES` and
+  `DENIM` arrays match `src/characters.js` exactly.
+- Not yet tested: a real browser load (module resolution, WebGL render,
+  console output). Folded into TASK-010.
 
 ## 2026-09-13 — Claude
 **Type:** TEST · **Task:** TASK-034
@@ -1033,6 +1093,23 @@ makeHoodrat({ sex: "m"|"f", crew: "red"|"blue"|{cloth, chain, shoe, hat}, seed, 
   skin, top, denim, hair, headwear: "band"|"none"|"hat", beard, curly })
 // same surface as AnimatedSprite: play / update / setFlip / finished / material.opacity
 ```
+
+---
+
+# 🔌 INTERFACE CONTRACTS
+
+## 2026-09-14 — Antigravity (TASK-035: Faction Warfare)
+
+### `src/factions.js`
+- Export `createFactionWar({ npcs, spawnZones })` -> `{ update(dt, living) }`
+  - `npcs`: NPC system instance from `createNpcSystem`
+  - `spawnZones`: spawnZones instance from `createSpawnZones` (uses `spawnZones.isBorder(x, z)`)
+  - `living`: array of active NPC records (e.g. `enemies`)
+  - Call `factionWar.update(dt, enemies)` in main loop alongside `updateEnemyPopulation(dt)` / `npcs.update`.
+
+### `src/npc.js` extensions
+- `npcs.becomeHostile(e, rivalTarget = null)`: sets `e.rivalTarget`, transitions to `"hostile"` state while respecting `MAX_HOSTILE` (7).
+- `e.rivalTarget`: NPC record target when engaged in cross-faction duel (cleared when rival dies or out of range).
 
 ---
 
