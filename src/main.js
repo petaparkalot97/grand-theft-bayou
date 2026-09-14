@@ -2270,7 +2270,20 @@ function tryInteract() {
 const _tmpV = new THREE.Vector3();
 function fire() {
   if (state.fireCd > 0 || state.over || state.cinematic) return;
+  if (!state.veh && !input.isDown("aim") && !window.__qaAim) {
+    flashObjective("Hold Right Click to aim!");
+    return;
+  }
   const gun = arsenal.stats(!!state.veh);
+  if (!gun.melee && state.ammo <= 0) {
+    if (!arsenal.reload()) {
+      flashObjective(`${gun.name} is empty! Swapped to Baseball Bat.`);
+      state.weapon = "bat";
+      state.ammo = Infinity;
+      arsenal.render();
+    }
+    return;
+  }
   state.fireCd = gun.cooldown;
   crime(0.12);
   const origin = _tmpV.copy(playerPos).setY(state.veh ? 1.4 : 1.2);
@@ -2303,9 +2316,12 @@ function fire() {
   let target;
   if (bestKind === "enemy") target = best.spr.position.clone().setY(best.type === "hog" ? 0.8 : 1.1);
   else if (bestKind === "sheriff") target = best.obj.position.clone().setY(1.1);
-  else target = origin.clone().addScaledVector(_aim, 24);
-  spawnTracer(origin, target);
-  muzzleFlash(origin, target);
+  else target = origin.clone().addScaledVector(_aim, gun.melee ? 2.0 : 24);
+
+  if (!gun.melee) {
+    spawnTracer(origin, target);
+    muzzleFlash(origin, target);
+  }
   arsenal.consume();
 
   if (bestKind === "enemy") {
@@ -2508,6 +2524,7 @@ function tick() {
     }
     cine.update(dt);
     if (!cine.hasCamera) {
+      camCtl.setAiming(!state.veh && input.isDown("aim"));
       camCtl.update(dt, playerPos, state.veh, blockerGrid, playerMoveHeading);
       if (state.veh && state.veh.jolt > 0) {
         const j = state.veh.jolt;
@@ -3167,5 +3184,7 @@ boot().catch((err) => {
   loadNote.textContent = "load error: " + err.message;
 });
 
-// Space fires (edge-triggered through input.js)
+// Space / LMB fires (edge-triggered through input.js)
 input.onPress("fire", () => { if (state.running) fire(); });
+input.onPress("reload", () => { if (state.running) arsenal.reload(); });
+input.onPress("equipBat", () => { if (state.running) arsenal.give("bat"); });

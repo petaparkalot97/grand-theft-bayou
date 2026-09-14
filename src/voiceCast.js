@@ -13,21 +13,21 @@
 // ---------------------------------------------------------------------------
 
 export const VOICE_CAST = {
-  KESEME: { referenceId: "TODO-keseme", label: "Keseme Nadia" },
-  CHIMI: { referenceId: "TODO-chimi", label: "Chimi" },
-  DIXON: { referenceId: "TODO-dixon", label: "Dixon" },
-  GR33DO: { referenceId: "TODO-gr33do", label: "Gr33do" },
-  MALLY: { referenceId: "TODO-mally", label: "Mally" },
-  BUBBA: { referenceId: "TODO-bubba", label: "Bubba" },
-  MERCER: { referenceId: "TODO-mercer", label: "Sheriff Mercer" },
-  AMARA: { referenceId: "TODO-amara", label: "Dr. Amara Veaux" },
-  EMIKO: { referenceId: "TODO-emiko", label: "Emiko" },
-  SOLANGE: { referenceId: "TODO-solange", label: "Solange" },
+  KESEME: { referenceId: "001262690f2a4eea84aa764cc536df24", label: "Keseme Nadia" },
+  CHIMI: { referenceId: "48f40b307b964870b6154b437acc239c", label: "Chimi" },
+  DIXON: { referenceId: "d67524ad1936410896ad120583cb1117", label: "Dixon" },
+  GR33DO: { referenceId: "98e364e9a41c465a9d4fdafc267f84ea", label: "Gr33do" },
+  MALLY: { referenceId: "d67524ad1936410896ad120583cb1117", label: "Mally" },
+  BUBBA: { referenceId: "98e364e9a41c465a9d4fdafc267f84ea", label: "Bubba" },
+  MERCER: { referenceId: "d67524ad1936410896ad120583cb1117", label: "Sheriff Mercer" },
+  AMARA: { referenceId: "001262690f2a4eea84aa764cc536df24", label: "Dr. Amara Veaux" },
+  EMIKO: { referenceId: "001262690f2a4eea84aa764cc536df24", label: "Emiko" },
+  SOLANGE: { referenceId: "fb52b0c3c8a44e41b234da575d009d4c", label: "Solange" },
 };
 
 // Shared voice for minor/one-off speakers (GPS, radio hosts, THIEF, etc.)
 // that don't warrant their own cast entry.
-export const DEFAULT_VOICE = { referenceId: "TODO-narrator", label: "Narrator (fallback)" };
+export const DEFAULT_VOICE = { referenceId: "d67524ad1936410896ad120583cb1117", label: "Narrator (fallback)" };
 
 /** Normalizes a speaker tag (e.g. "KESEME (V.O.)" -> "KESEME") and looks up its voice. */
 export function resolveVoice(who) {

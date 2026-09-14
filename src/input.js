@@ -30,6 +30,8 @@ export const DEFAULT_BINDINGS = Object.freeze({
   gfxUp: ["BracketRight"],
   perf: ["F3"],
   debugOrientation: ["F4"],
+  reload: ["KeyR"],
+  equipBat: ["Digit1"],
 });
 
 // keys the browser must not act on (scrolling, find bar, …)

@@ -10,13 +10,15 @@
 // ---------------------------------------------------------------------------
 
 export const WEAPONS = Object.freeze({
-  pistol:    { id: "pistol",    name: "9mm",        rarity: "starter",  damage: 2,   cooldown: 0.42, vehicleCooldown: 0.3, range: 30, clip: Infinity },
-  tec9:      { id: "tec9",      name: "Tec-9",      rarity: "common",   damage: 1.5, cooldown: 0.13, vehicleCooldown: 0.13, range: 24, clip: 48 },
-  sawnoff:   { id: "sawnoff",   name: "Sawed-off",  rarity: "uncommon", damage: 6,   cooldown: 0.95, vehicleCooldown: 0.95, range: 13, clip: 10 },
-  deerRifle: { id: "deerRifle", name: "Deer rifle", rarity: "rare",     damage: 9,   cooldown: 1.15, vehicleCooldown: 1.15, range: 55, clip: 8 },
+  bat:       { id: "bat",       name: "Baseball Bat", rarity: "starter",  damage: 3,   cooldown: 0.55, vehicleCooldown: 0.55, range: 2.2, clip: Infinity, melee: true },
+  pistol:    { id: "pistol",    name: "9mm",        rarity: "common",   damage: 2,   cooldown: 0.42, vehicleCooldown: 0.3,  range: 30,  clip: 12, maxReserve: 72 },
+  tec9:      { id: "tec9",      name: "Tec-9",      rarity: "common",   damage: 1.5, cooldown: 0.13, vehicleCooldown: 0.13, range: 24,  clip: 32, maxReserve: 128 },
+  sawnoff:   { id: "sawnoff",   name: "Sawed-off",  rarity: "uncommon", damage: 6,   cooldown: 0.95, vehicleCooldown: 0.95, range: 13,  clip: 8,  maxReserve: 32 },
+  deerRifle: { id: "deerRifle", name: "Deer rifle", rarity: "rare",     damage: 9,   cooldown: 1.15, vehicleCooldown: 1.15, range: 55,  clip: 5,  maxReserve: 20 },
 });
 
 export const RARITY = Object.freeze({
+  starter:  { weight: 0,  color: 0xa0a8b0, label: "Starter" },
   common:   { weight: 65, color: 0xd9dde2, label: "Common" },
   uncommon: { weight: 27, color: 0x4fc3f7, label: "Uncommon" },
   rare:     { weight: 8,  color: 0xffd23a, label: "Rare" },
@@ -28,8 +30,9 @@ export const RARITY = Object.freeze({
  * @param {Function} o.flashObjective
  */
 export function createArsenal({ state, flashObjective }) {
-  if (!WEAPONS[state.weapon]) state.weapon = "pistol";
-  if (state.ammo == null) state.ammo = Infinity;
+  if (!WEAPONS[state.weapon]) state.weapon = "bat";
+  if (!state.reserve) state.reserve = { pistol: 0, tec9: 0, sawnoff: 0, deerRifle: 0 };
+  if (state.ammo == null) state.ammo = WEAPONS[state.weapon].clip;
 
   const hud = document.createElement("div");
   hud.id = "weaponHud";
@@ -42,42 +45,101 @@ export function createArsenal({ state, flashObjective }) {
   document.head.appendChild(css);
 
   function render() {
-    const w = WEAPONS[state.weapon];
-    const ammo = Number.isFinite(state.ammo) ? state.ammo : "∞";
+    const w = WEAPONS[state.weapon] || WEAPONS.bat;
     const tint = RARITY[w.rarity] ? "#" + RARITY[w.rarity].color.toString(16).padStart(6, "0") : "#f4f1ea";
-    hud.innerHTML = `<span style="color:${tint}">${w.name}</span> · ${ammo}`;
+    if (w.melee) {
+      hud.innerHTML = `<span style="color:${tint}">${w.name}</span> · —`;
+    } else {
+      const clip = Number.isFinite(state.ammo) ? state.ammo : "∞";
+      const res = state.reserve && state.reserve[w.id] != null ? state.reserve[w.id] : 0;
+      hud.innerHTML = `<span style="color:${tint}">${w.name}</span> · ${clip}/${res}`;
+    }
   }
   render();
 
+  function reload() {
+    const w = WEAPONS[state.weapon];
+    if (!w || w.melee || !Number.isFinite(w.clip)) return false;
+    if (state.ammo >= w.clip) return false;
+    const res = state.reserve && state.reserve[w.id] ? state.reserve[w.id] : 0;
+    if (res <= 0) {
+      flashObjective(`No reserve ammo for ${w.name}!`);
+      return false;
+    }
+    const needed = w.clip - state.ammo;
+    const take = Math.min(needed, res);
+    state.reserve[w.id] -= take;
+    state.ammo += take;
+    flashObjective(`Reloaded ${w.name} (+${take})`);
+    render();
+    return true;
+  }
+
+  function addReserve(id, rounds) {
+    const w = WEAPONS[id];
+    if (!w || w.melee) return;
+    if (!state.reserve) state.reserve = {};
+    const maxRes = w.maxReserve || 100;
+    state.reserve[id] = Math.min(maxRes, (state.reserve[id] || 0) + rounds);
+    render();
+  }
+
   return {
     WEAPONS,
-    get current() { return WEAPONS[state.weapon]; },
+    get current() { return WEAPONS[state.weapon] || WEAPONS.bat; },
     get ammo() { return state.ammo; },
+    get reserve() { return state.reserve; },
     /** The numbers fire() uses. */
     stats(inVehicle) {
-      const w = WEAPONS[state.weapon];
-      return { damage: w.damage, range: w.range, cooldown: inVehicle ? w.vehicleCooldown : w.cooldown };
+      const w = WEAPONS[state.weapon] || WEAPONS.bat;
+      return { damage: w.damage, range: w.range, cooldown: inVehicle ? w.vehicleCooldown : w.cooldown, melee: !!w.melee, name: w.name };
     },
-    /** One round spent; the 9mm never runs out. */
+    /** One round spent; bat never runs out. */
     consume() {
-      if (!Number.isFinite(state.ammo)) return;
+      const w = WEAPONS[state.weapon];
+      if (!w || w.melee || !Number.isFinite(state.ammo)) return;
       state.ammo--;
       if (state.ammo <= 0) {
-        flashObjective(`${WEAPONS[state.weapon].name} is empty. Back to the 9mm.`);
-        state.weapon = "pistol";
-        state.ammo = Infinity;
+        const res = state.reserve && state.reserve[w.id] ? state.reserve[w.id] : 0;
+        if (res > 0) {
+          reload();
+        } else {
+          flashObjective(`${w.name} is empty! Back to the Baseball Bat.`);
+          state.weapon = "bat";
+          state.ammo = Infinity;
+        }
       }
       render();
     },
-    /** Pick up a weapon: the same one adds ammo, a different one swaps. */
+    reload,
+    addReserve,
+    /** Pick up a weapon: the same one adds ammo to reserve, a different one swaps. */
     give(id, rounds) {
       const w = WEAPONS[id];
       if (!w) return;
+      if (w.melee) {
+        state.weapon = "bat";
+        state.ammo = Infinity;
+        render();
+        return;
+      }
+      if (!state.reserve) state.reserve = {};
       const n = rounds != null ? rounds : w.clip;
-      if (state.weapon === id && Number.isFinite(state.ammo)) state.ammo += n;
-      else { state.weapon = id; state.ammo = n; }
+      if (state.weapon === id) {
+        const maxRes = w.maxReserve || 100;
+        state.reserve[id] = Math.min(maxRes, (state.reserve[id] || 0) + n);
+      } else {
+        state.weapon = id;
+        state.ammo = Math.min(w.clip, n);
+        const overflow = Math.max(0, n - w.clip);
+        if (overflow > 0) {
+          const maxRes = w.maxReserve || 100;
+          state.reserve[id] = Math.min(maxRes, (state.reserve[id] || 0) + overflow);
+        }
+      }
       render();
     },
     render,
   };
 }
+

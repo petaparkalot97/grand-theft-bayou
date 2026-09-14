@@ -38,6 +38,26 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-14 — Antigravity
+**Type:** DISCOVERY · **Task:** TASK-036 (Starter loadout & reserve ammo system: Baseball Bat, Reserve Ammo & Reload)
+
+### Finding
+- Previously `weapons.js` hard-coded an infinite-ammo 9mm pistol as starter loadout, with no reserve ammo, reload mechanics, or melee starter weapon.
+- Player now starts with a `bat` (Baseball Bat: melee, 2.2m range, 3 damage, infinite durability).
+- Guns (`pistol`, `tec9`, `sawnoff`, `deerRifle`) split ammo into clip and reserve (`state.reserve = { pistol: 0, tec9: 0, sawnoff: 0, deerRifle: 0 }`).
+- Pressing `R` or exhausting clip triggers `arsenal.reload()`, moving rounds from reserve into the active clip.
+- Running out of clip and reserve ammo auto-swaps to the Baseball Bat.
+- Enemies drop `ammo` crates (amber glowing boxes) alongside cash and weapon drops. Picking up ammo refills reserve ammo for the current gun, or recycles into +$10 cash if holding the bat.
+- Pressing `1` (`Digit1`) switches back to the Baseball Bat.
+- Combat controls on foot now strictly require **holding Right Click (RMB) to aim**, which zooms in the camera into third-person aim mode; **Left Click (LMB)** while aiming attacks/fires. Pressing Left Click without holding Right Click shows `"Hold Right Click to aim!"`.
+
+### Impact
+- Firearms and melee combat now follow standard 3D action controls (Right-Click Aim + Left-Click Attack).
+
+### Action
+- Modified `src/weapons.js`, `src/loot.js`, `src/input.js`, `src/camera.js`, `src/main.js`, and `tools/qa/worldpass.mjs`.
+- Created unit test suite `tools/qa/weapons_test.mjs` (all tests pass).
+
 ## 2026-09-14 — Freebuff
 **Type:** CHANGE · **Task:** TASK-034 roadmap item "Role-specific civilian presentation and pedestrian pool" (Market Row)
 

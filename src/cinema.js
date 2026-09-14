@@ -88,16 +88,30 @@ export function createCinema({ camera, muted = () => false }) {
   loadVoiceManifest();
   function stopVoice() {
     if (activeVoice) { activeVoice.pause(); activeVoice = null; }
+    if ("speechSynthesis" in window) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
   }
   function playVoiceLine(who, text) {
     stopVoice();
-    if (muted() || skipping || !voiceManifest) return;
-    const fileName = voiceManifest[`${who}::${text}`];
-    if (!fileName) return;
-    const audioEl = new Audio(`./assets/audio/voice/${fileName}`);
-    audioEl.volume = 0.95;
-    audioEl.play().catch(() => {});
-    activeVoice = audioEl;
+    if (muted() || skipping) return;
+    if (voiceManifest) {
+      const fileName = voiceManifest[`${who}::${text}`];
+      if (fileName) {
+        const audioEl = new Audio(`./assets/audio/voice/${fileName}`);
+        audioEl.volume = 0.95;
+        audioEl.play().catch(() => {});
+        activeVoice = audioEl;
+        return;
+      }
+    }
+    if ("speechSynthesis" in window) {
+      try {
+        const u = new SpeechSynthesisUtterance(text);
+        u.volume = 0.85;
+        window.speechSynthesis.speak(u);
+      } catch (e) {}
+    }
   }
 
   // ---------------------------------------------------------------- sound

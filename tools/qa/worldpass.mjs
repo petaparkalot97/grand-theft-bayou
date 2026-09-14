@@ -76,7 +76,7 @@ async function tests(page, log) {
     g.loot.dropFor = (e) => { const r = orig(e); window.__rolls.push({ npc: e, drops: r.map((d) => d.kind) }); return r; }; return true;`);
 
   // ---- a real kill: shoot a civilian until it drops and its loot table rolls
-  await js(`g.teleport(-6, 100); return true;`);
+  await js(`window.__qaAim = true; g.teleport(-6, 100); return true;`);
   await page.waitForTimeout(2500);
   const kill = await js(`
     const p = g.player.position;
@@ -104,9 +104,9 @@ async function tests(page, log) {
   // (A kill's own drops can land at the player's feet and be collected on the spot, which is right
   // for the game but useless for a before/after check.)
   const before = await js(`g.teleport(-6, 134); g.camCtl.addYaw(-g.camCtl.yaw);
-    g.state.weapon = "pistol"; g.state.ammo = Infinity; g.arsenal.render();
+    g.state.weapon = "bat"; g.state.ammo = Infinity; g.arsenal.render();
     g.loot.dropAt("cash", -6, 130.5, { amount: 50 });
-    g.loot.dropAt("weapon", -6, 127.5, { id: "tec9" });
+    g.loot.dropAt("weapon", -6, 127.5, { id: "tec9", rounds: 48 });
     return { cash: g.state.cash, weapon: g.state.weapon };`);
   await page.waitForTimeout(400);
   const waiting = await js(`return g.loot.active.filter((d) => Math.abs(d.x + 6) < 0.1 && (Math.abs(d.z - 130.5) < 0.1 || Math.abs(d.z - 127.5) < 0.1)).length;`);
@@ -114,11 +114,11 @@ async function tests(page, log) {
     await js(`g.teleport(-6, ${z}); return true;`);
     await page.waitForTimeout(500);
   }
-  const after = await js(`return { cash: g.state.cash, weapon: g.state.weapon, ammo: g.state.ammo, hud: document.getElementById("weaponHud").textContent, cashHud: document.getElementById("cash").textContent,
+  const after = await js(`return { cash: g.state.cash, weapon: g.state.weapon, ammo: g.state.ammo, reserve: g.state.reserve.tec9, hud: document.getElementById("weaponHud").textContent, cashHud: document.getElementById("cash").textContent,
     left: g.loot.active.filter((d) => Math.abs(d.x + 6) < 0.1 && (Math.abs(d.z - 130.5) < 0.1 || Math.abs(d.z - 127.5) < 0.1)).length };`);
-  pass("walking over drops collects them: +$50 on the HUD, the Tec-9 swapped in with 48 rounds",
-    waiting === 2 && after.cash === before.cash + 50 && after.weapon === "tec9" && after.ammo === 48 && after.left === 0 &&
-    after.cashHud === "$" + after.cash.toLocaleString() && after.hud === "Tec-9 · 48",
+  pass("walking over drops collects them: +$50 on the HUD, the Tec-9 swapped in with 32/16 rounds",
+    waiting === 2 && after.cash === before.cash + 50 && after.weapon === "tec9" && after.ammo === 32 && after.reserve === 16 && after.left === 0 &&
+    after.cashHud === "$" + after.cash.toLocaleString() && after.hud === "Tec-9 · 32/16",
     { before, waiting, after });
 
   // ---- the new weapon drives fire()
@@ -130,10 +130,11 @@ async function tests(page, log) {
     await page.waitForTimeout(180);
   }
   await page.waitForTimeout(200);
-  const shot = await js(`return { ammo: g.state.ammo, hud: document.getElementById("weaponHud").textContent };`);
+  const shot = await js(`return { ammo: g.state.ammo, reserve: g.state.reserve.tec9, hud: document.getElementById("weaponHud").textContent };`);
+  await js(`window.__qaAim = false; return true;`);
   const spent = w.ammo - shot.ammo;
   pass("firing uses the picked-up weapon (six taps at 180 ms all fire, rounds spent, HUD count)",
-    w.weapon === "tec9" && w.stats.cooldown < 0.18 && spent === 6 && shot.hud === "Tec-9 · " + shot.ammo, { w, shot, spent });
+    w.weapon === "tec9" && w.stats.cooldown < 0.18 && spent === 6 && shot.hud === "Tec-9 · " + shot.ammo + "/16", { w, shot, spent });
 
   // ---- what drops look like: a showcase on the open highway at spawn, the camera north of the player
   await js(`g.teleport(-6, 134); g.camCtl.addYaw(-g.camCtl.yaw);

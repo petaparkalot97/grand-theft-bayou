@@ -620,7 +620,7 @@ contracts before marking `REVIEW`.
 
 ### TASK-036 — Starter loadout & ammo system: baseball bat, reserve ammo, reload
 
-**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Freebuff**)
+**Status:** `REVIEW` · **Agent:** `Antigravity`
 **Files / subsystem:**
 - `src/weapons.js` (edit)
 - `src/loot.js` (edit)
