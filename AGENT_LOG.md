@@ -454,6 +454,24 @@ road plane.
 # ⚠️ WARNINGS / FAILED APPROACHES
 
 ## 2026-09-13 — Claude
+**Type:** WARNING · **Task:** TASK-034 follow-up (character select, controls, Keseme)
+
+- **Keseme Nadia is back as a character.** The character-select commits (dc84b97 and
+  after) listed Peta, Chimi, Gr33do and Dixon; Peta used Keseme's model, and Keseme
+  herself was gone. She is now the first card and the default pick (main campaign),
+  in `src/playerCharacters.js`, and in `CHARACTERS` in `server/protocol.js` so
+  multiplayer accepts her. Peta still uses her model.
+- **The title buttons open the character select.** `#startBtn` and `#freeBtn` no longer
+  start the game. Headless tests must press `#confirmCharacter` before waiting for
+  `state.running`. All 14 `tools/qa` scripts now do, picking the default (Keseme).
+- **Fire moved from Space to the left mouse button** on the game canvas (`src/input.js`:
+  Space jumps, C crouches, RMB aims). Tests now fire by dispatching `mousedown` on the
+  game canvas. `input.onPress("fire")` in `main.js` has no key bound any more.
+- **The browser runner's `page.evaluate` runs in an isolated world.** `window.__game`
+  is undefined there; use the script-tag `inPage` / `js()` helper for game state. DOM
+  events dispatched from `page.evaluate` still reach the game's listeners.
+
+## 2026-09-13 — Claude
 **Type:** WARNING · **Task:** QA (all headless scripts)
 
 ### Finding

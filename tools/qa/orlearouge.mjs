@@ -44,6 +44,9 @@ export default async function run(page) {
     return b && !b.disabled;
   }, null, { timeout: 240000 });
   await page.click("#freeBtn");
+  // the title buttons open the character select: confirm the default pick (Keseme Nadia)
+  await page.waitForFunction(() => { const s = document.getElementById("characterSelect"); return !s || !s.hidden; }, null, { timeout: 20000 });
+  if (await page.$("#characterSelect:not([hidden]) #confirmCharacter")) await page.click("#confirmCharacter");
   for (let i = 0; i < 3; i++) { await page.keyboard.press("BracketRight"); await page.waitForTimeout(150); }
   await page.keyboard.press("BracketLeft");      // -> HIGH
   await page.waitForTimeout(2500);
@@ -96,7 +99,7 @@ export default async function run(page) {
   // gunfire in the city: do bystanders scatter?
   await inPage(page, `window.__game.teleport(-26, 256); return true;`);
   await page.waitForTimeout(3000);
-  for (let i = 0; i < 4; i++) { await page.keyboard.press("Space"); await page.waitForTimeout(450); }
+  for (let i = 0; i < 4; i++) { await page.evaluate(() => { const c = [...document.querySelectorAll("canvas")].sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0]; c.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true })); window.dispatchEvent(new MouseEvent("mouseup", { button: 0, bubbles: true })); }); await page.waitForTimeout(450); }
   await page.waitForTimeout(1500);
   log.afterShots = await inPage(page, SNAP);
   await page.waitForTimeout(6000);

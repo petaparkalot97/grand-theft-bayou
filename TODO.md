@@ -1173,6 +1173,8 @@ before `COMPLETE`.
 - **Money and guns:** cash is `state.cash`; the weapon slot is `state.weapon` / `state.ammo`, through `arsenal`. Drops go through `loot.dropFor(npc)` / `loot.dropAt()`.
 - **New districts:** build them with `composer.js` in stage order (road → buildings → side streets → open areas → vegetation → landmark), and plan later pieces with `site()` first.
 - **Popeyes:** only `POPEYES_LOCATIONS`. Nothing else calls `makePopeyes`.
+- **Player characters:** `src/playerCharacters.js` (Keseme Nadia first and default, then Peta, Chimi, Gr33do, Dixon). A new id must also go into `CHARACTERS` in `server/protocol.js`, or multiplayer rejects it as `INVALID_CHARACTER`.
+- **Launching the game:** `confirmCharacter` launches once (`gameLaunched`), closes `#characterSelect`, and the select keys ignore input while `state.running`. Before this fix the select stayed open under the hidden overlay, so every Enter (cutscene next line) or Space (jump) relaunched the game and re-queued the story opening. `prologue.start()` also runs only once.
 - **Palette-atlas models** (Designersoup cars): nearest filtering, no mipmaps, `realize(…, { noDerive: true, keepPixelFilter: true })`, or the swatches bleed and glitter.
 
 ---
@@ -1180,6 +1182,7 @@ before `COMPLETE`.
 # 🧪 TESTING STATUS
 
 **Last known test status:**
+- After the character-select merge (dc84b97…089983f) and Keseme restored as the default character: `controls.mjs` **32/32**, `worldpass.mjs` **7/7**, character-select probe (Keseme first and default, story mode with her, Dixon still swaps the model). All 14 `tools/qa` scripts now confirm the character select and fire with a left click on the game canvas.
 - Controls + gas cans (`tools/qa/controls.mjs`): **32/32** (re-run after TASK-034: all 5 cans reachable, 2 m on foot, driving past 2.8 m off, glow columns).
 - World pass (`tools/qa/worldpass.mjs`): **7/7** (Popeyes, loot tables, a real kill, pickups, weapon slot, world time, weather).
 - Lafourchette (`tools/qa/eastbank.mjs`): **9/9** (stage order, no building on a road, spawn zones, culling, frame time, walking and driving east).

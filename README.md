@@ -299,7 +299,10 @@ Then hit **Start the story**.
 | **WASD** | walk: **W** always goes where the camera looks · drive: **W** / **S** throttle and brake-reverse, **A** / **D** steer (the camera never changes where the car goes) |
 | **F** | get in / out of a car, enter the truck. At a car someone's driving, Keseme pulls the driver out first (it has to be going slower than ~8 m/s) |
 | **Shift** | sprint on foot · handbrake in a car |
-| **Space / left click** | shoot |
+| **Left click** | shoot |
+| **Right click** | aim |
+| **Space** | jump |
+| **C** | crouch |
 | **Mouse** | look around — click the game to capture the mouse, **Esc** releases it |
 | **Wheel** | zoom the camera in / out |
 | **Q / E** | rotate the camera (secondary) |

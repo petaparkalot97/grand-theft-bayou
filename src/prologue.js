@@ -71,6 +71,7 @@ export function createPrologue(ctx) {
   const { scene, cine, state, playerPos } = ctx;
   const say = (c, who, line) => c.say(who, line);
 
+  let started = false;          // start() runs the opening once: a second call would queue it again
   let phase = "idle";          // idle | open | drive | chase | stampede | hogs | retrieve | ledger | done
   let coupe = null, bravado = null, bubbaTruck = null;
   const cast = {};              // actors on set
@@ -713,6 +714,8 @@ export function createPrologue(ctx) {
 
     /** Start the story from the menu. */
     start() {
+      if (started) return;
+      started = true;
       runPrologue().catch((e) => { console.error(e); finish(); });
     },
 

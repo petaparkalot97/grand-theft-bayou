@@ -43,6 +43,12 @@ export default async function run(page) {
   log.menu = await page.evaluate(() => [...document.querySelectorAll("#overlay button")].map((b) => b.textContent));
 
   await page.click("#startBtn");
+
+  // the title buttons open the character select: confirm the default pick (Keseme Nadia)
+
+  await page.waitForFunction(() => { const s = document.getElementById("characterSelect"); return !s || !s.hidden; }, null, { timeout: 20000 });
+
+  if (await page.$("#characterSelect:not([hidden]) #confirmCharacter")) await page.click("#confirmCharacter");
   await page.waitForTimeout(3000);
   log.coldOpen = await inPage(page, SNAP);
   await page.screenshot({ path: out + "-1-coldopen.png" });
