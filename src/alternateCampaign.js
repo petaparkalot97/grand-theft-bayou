@@ -8,6 +8,8 @@ export function createAlternateCampaign(ctx) {
   const room = new THREE.Group();
   const actors = {};
   const origin = new THREE.Vector3(92, 0, -104);
+  let openingRunning = false;
+  let openingPlayed = false;
 
   function add(mesh) { room.add(mesh); props.push(mesh); return mesh; }
   function box(w, h, d, color, x, y, z) {
@@ -40,6 +42,12 @@ export function createAlternateCampaign(ctx) {
     playerPos.set(-6, 0, 130); flashObjective("MISSION 01 · SAVE THE HOGS");
   }
   function start() {
+    // Character confirmation can arrive from both a button click and a key
+    // event in the same interaction. Cinema deliberately queues scenes, so a
+    // duplicate start would look like the opening is looping forever.
+    if (openingRunning || openingPlayed) return;
+    openingRunning = true;
+    openingPlayed = true;
     state.cinematic = true; if (getPlayer()) getPlayer().visible = false; showActors(true);
     const run = cine.scene(async (c) => {
       c.letterbox(true);
@@ -63,9 +71,14 @@ export function createAlternateCampaign(ctx) {
       await c.title("SAVE THE HOGS", 2.2);
       await c.card("MISSION 01", "SAVE THE HOGS", "The bayou has questions. The hogs have worse answers.", { center: true, hold: 2.8 });
     });
-    run.then(finish, finish);
+    run.then(finish, finish).finally(() => { openingRunning = false; });
   }
-  return { buildSet, start, replay: start, get props() { return props; }, update(dt) {
+  function replay() {
+    if (openingRunning) return;
+    openingPlayed = false;
+    start();
+  }
+  return { buildSet, start, replay, get props() { return props; }, update(dt) {
     if (!state.cinematic) return;
     for (const a of Object.values(actors)) if (a.visible && a.update) a.update(dt);
   } };
