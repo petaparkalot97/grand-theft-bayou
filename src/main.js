@@ -917,7 +917,7 @@ const state = {
   running: false, over: false,
   hp: 100, sp: 100, cans: 0, cash: 0,
   fireCd: 0, hurtCd: 0, dusk: 0,
-  selectedCharacter: "peta", campaign: "main",
+  selectedCharacter: "keseme", campaign: "main",   // Keseme Nadia, the story's protagonist, is the default pick
   veh: null,          // vehicle the player is driving, or null (on foot)
   heat: 0,            // crime heat -> wanted stars
   wanted: 0,
@@ -1050,6 +1050,7 @@ let player, playerObj;
 const playerPos = new THREE.Vector3(ROAD_X, 0, SPAWN_Z);
 let playerFacing = new THREE.Vector3(0, 0, -1);   // last movement direction
 let beginGame = null;
+let gameLaunched = false;     // confirmCharacter launches the game once (see there)
 let pendingLaunch = "story";
 let selectionIndex = 0;
 let multiplayerMode = false;
@@ -1086,11 +1087,17 @@ function replacePlayerCharacter(id) {
 function confirmCharacter() {
   const id = characterIds[selectionIndex], cfg = getPlayerCharacter(id);
   state.selectedCharacter = id; state.campaign = cfg.campaign; state.hp = cfg.health;
-  if (id !== "peta") replacePlayerCharacter(id);
+  if (id !== "keseme" && id !== "peta") replacePlayerCharacter(id);   // the starting player is already Keseme's model
   if (multiplayerMode && multiplayer) {
     multiplayer.selectCharacter(id); characterSelect.hidden = true; multiplayerPanel.hidden = false; mpMessage.textContent = `${cfg.name} selected. Ready when you are.`; return;
   }
-  if (!beginGame) return; beginGame();
+  if (!beginGame || gameLaunched) return;
+  // Launch once. The select used to stay open under the hidden overlay, so every later Enter
+  // (next cutscene line) or Space (jump) confirmed the character again and restarted the game:
+  // the story opening queued again and again, and free roam reset on every jump.
+  gameLaunched = true;
+  characterSelect.hidden = true;
+  beginGame();
   if (cfg.campaign === "alternate") { prologue.skip(); alternate.start(); return; }
   if (pendingLaunch === "story") prologue.start();
   else { prologue.skip(); music.volume = 0.55; soundtrackReady.then((s) => s.play()); flashObjective("Click the game to look around with the mouse · Esc releases it"); }
@@ -1102,7 +1109,7 @@ for (const id of characterIds) {
 }
 confirmCharacterBtn.addEventListener("click", confirmCharacter); backCharacterBtn.addEventListener("click", closeCharacterSelect);
 addEventListener("keydown", (e) => {
-  if (characterSelect.hidden) return;
+  if (characterSelect.hidden || state.running) return;   // the select keys are dead once the game runs (Enter is the cutscene key, Space jumps)
   if (e.code === "ArrowLeft" || e.code === "ArrowUp") { e.preventDefault(); selectionIndex = (selectionIndex + characterIds.length - 1) % characterIds.length; renderCharacterSelect(); }
   else if (e.code === "ArrowRight" || e.code === "ArrowDown") { e.preventDefault(); selectionIndex = (selectionIndex + 1) % characterIds.length; renderCharacterSelect(); }
   else if (e.code === "Enter" || e.code === "Space") { e.preventDefault(); confirmCharacter(); }

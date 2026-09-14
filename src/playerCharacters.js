@@ -3,6 +3,14 @@ import * as THREE from "three";
 // Identity data is centralized so menus, save state, abilities and future
 // campaign content query the same character definition.
 export const PLAYER_CHARACTERS = Object.freeze({
+  // The story's protagonist (prologue.js CAST.keseme): first card and the default pick.
+  keseme: {
+    id: "keseme", name: "Keseme Nadia", subtitle: "SHE WANTS OUT",
+    ability: "COUNT IT DOWN",
+    description: "Doesn't want to be Dixie Beaux's greatest criminal; she wants out. Calm, sharp, and holding the one book Sheriff Mercer needs back.",
+    campaign: "main", health: 100, speed: 6.5, melee: 1, ranged: 1, abilityCooldown: 0,
+    accent: "#2f9e8f", portrait: "❀",
+  },
   peta: {
     id: "peta", name: "PetaTheParkalotPrince", subtitle: "THE CANONICAL PRINCE",
     ability: "MASTER DEBATERER",
@@ -64,7 +72,8 @@ function addSmoke(actor) {
   smoke.position.set(0.16, 1.7, 0.2); actor.add(smoke); actor.userData.smoke = smoke;
 }
 
-export function createPlayerCharacter(id, { makePeta, makeHoodrat }) {
+export function createPlayerCharacter(id, { makePeta, makeKeseme = makePeta, makeHoodrat }) {
+  if (id === "keseme") return makeKeseme();
   if (id === "peta") return makePeta();
   if (id === "chimi") return new BulbasaurActor();
   if (id === "gr33do") {

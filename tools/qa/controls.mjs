@@ -42,6 +42,9 @@ async function tests(page, log) {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.waitForFunction(() => { const b = document.getElementById("freeBtn"); return b && !b.disabled; }, null, { timeout: 240000 });
   await page.click("#freeBtn");
+  // the title buttons open the character select: confirm the default pick (Keseme Nadia)
+  await page.waitForFunction(() => { const s = document.getElementById("characterSelect"); return !s || !s.hidden; }, null, { timeout: 20000 });
+  if (await page.$("#characterSelect:not([hidden]) #confirmCharacter")) await page.click("#confirmCharacter");
   await page.waitForFunction(() => window.__game && window.__game.state.running, null, { timeout: 60000 });
   await page.waitForTimeout(1500);
   log.callsAtSpawn = await js(`return g.perf.calls;`);
@@ -201,7 +204,7 @@ async function tests(page, log) {
       const h = Math.atan2(e.spr.position.x - p.x, e.spr.position.z - p.z);
       g.camCtl.addYaw(wrap((h - Math.PI) - g.camCtl.yaw)); return true;`);
     await page.waitForTimeout(700);
-    await page.keyboard.press("Space"); await page.waitForTimeout(400); await page.keyboard.press("Space");
+    await page.evaluate(() => { const c = [...document.querySelectorAll("canvas")].sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0]; c.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true })); window.dispatchEvent(new MouseEvent("mouseup", { button: 0, bubbles: true })); }); await page.waitForTimeout(400); await page.evaluate(() => { const c = [...document.querySelectorAll("canvas")].sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0]; c.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true })); window.dispatchEvent(new MouseEvent("mouseup", { button: 0, bubbles: true })); });
     await page.waitForTimeout(1500);
     const hit = await js(`const e = window.__npc; return { state: e.state, mood: e.mood, hp: e.hp, dead: !!e.dead };`);
     pass("attacked civilian reacts (defends or flees)", hit.dead || hit.state === "hostile" || hit.state === "flee", { after: hit });

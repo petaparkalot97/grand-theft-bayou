@@ -33,6 +33,9 @@ async function tests(page, log) {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.waitForFunction(() => { const b = document.getElementById("freeBtn"); return b && !b.disabled; }, null, { timeout: 240000 });
   await page.click("#freeBtn");
+  // the title buttons open the character select: confirm the default pick (Keseme Nadia)
+  await page.waitForFunction(() => { const s = document.getElementById("characterSelect"); return !s || !s.hidden; }, null, { timeout: 20000 });
+  if (await page.$("#characterSelect:not([hidden]) #confirmCharacter")) await page.click("#confirmCharacter");
   await page.waitForFunction(() => window.__game && window.__game.state.running, null, { timeout: 60000 });
   await page.waitForTimeout(1500);
 
@@ -90,7 +93,7 @@ async function tests(page, log) {
     await js(`const e = window.__victim, p = g.player.position;
       const h = Math.atan2(e.spr.position.x - p.x, e.spr.position.z - p.z); g.camCtl.addYaw((h - Math.PI) - g.camCtl.yaw); return true;`);
     await page.waitForTimeout(250);
-    await page.keyboard.press("Space");
+    await page.evaluate(() => { const c = [...document.querySelectorAll("canvas")].sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0]; c.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true })); window.dispatchEvent(new MouseEvent("mouseup", { button: 0, bubbles: true })); });   // fire is the left mouse button now (Space jumps)
     await page.waitForTimeout(500);
     if (await js(`return !!window.__victim.dead;`)) { killed = true; break; }
   }
@@ -123,7 +126,7 @@ async function tests(page, log) {
   // cooldown, where the 9mm's 0.42 s would swallow about half of them
   const w = await js(`return { weapon: g.state.weapon, ammo: g.state.ammo, stats: g.arsenal.stats(false) };`);
   for (let i = 0; i < 6; i++) {
-    await page.keyboard.press("Space");
+    await page.evaluate(() => { const c = [...document.querySelectorAll("canvas")].sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0]; c.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true })); window.dispatchEvent(new MouseEvent("mouseup", { button: 0, bubbles: true })); });   // fire is the left mouse button now (Space jumps)
     await page.waitForTimeout(180);
   }
   await page.waitForTimeout(200);
