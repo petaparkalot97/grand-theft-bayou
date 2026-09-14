@@ -658,6 +658,55 @@ const RULES = [
 
 const EMISSIVE = /neon|emiss|\bled\b|lamp|light|glow|sign|logo|lottery|price|menu|billboard|display|bulb|marquee/i;
 
+/**
+ * Repair normals that would light as NaN. A zero-length (or non-finite) normal
+ * normalizes to NaN in the shader; bloom and the speed blur then smear those few
+ * pixels into a black, flickering blur. Seen on the Designersoup Beetle
+ * ("beetle004"). A bad normal takes its triangle's face normal, or straight up
+ * for a degenerate triangle. Runs once per geometry.
+ */
+export function sanitizeNormals(geometry) {
+  if (!geometry || !geometry.attributes || geometry.userData.gtbNormalsChecked) return 0;
+  geometry.userData.gtbNormalsChecked = true;
+  const nrm = geometry.attributes.normal, pos = geometry.attributes.position;
+  if (!nrm || !pos) return 0;
+  const index = geometry.index;
+  const tri = new Uint32Array(3);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
+  // which triangle each vertex belongs to (the first one found is enough)
+  let owner = null;
+  const triOf = (v) => {
+    if (!index) { const t = Math.floor(v / 3); tri[0] = t * 3; tri[1] = t * 3 + 1; tri[2] = t * 3 + 2; return tri[2] < pos.count; }
+    if (!owner) {
+      owner = new Int32Array(pos.count).fill(-1);
+      for (let i = 0; i < index.count; i++) { const vi = index.getX(i); if (owner[vi] < 0) owner[vi] = i - (i % 3); }
+    }
+    const t = owner[v];
+    if (t < 0 || t + 2 >= index.count) return false;
+    tri[0] = index.getX(t); tri[1] = index.getX(t + 1); tri[2] = index.getX(t + 2);
+    return true;
+  };
+  let fixed = 0;
+  for (let v = 0; v < nrm.count; v++) {
+    const x = nrm.getX(v), y = nrm.getY(v), z = nrm.getZ(v);
+    const len = Math.hypot(x, y, z);
+    if (Number.isFinite(len) && len > 1e-6) continue;
+    n.set(0, 1, 0);
+    if (triOf(v)) {
+      a.fromBufferAttribute(pos, tri[0]); b.fromBufferAttribute(pos, tri[1]); c.fromBufferAttribute(pos, tri[2]);
+      const face = b.sub(a).cross(c.sub(a));
+      if (face.lengthSq() > 1e-12) n.copy(face).normalize();
+    }
+    nrm.setXYZ(v, n.x, n.y, n.z);
+    fixed++;
+  }
+  if (fixed) {
+    nrm.needsUpdate = true;
+    geometry.userData.gtbNormalsFixed = fixed;
+  }
+  return fixed;
+}
+
 function classify(name) {
   for (const r of RULES) if (r.re.test(name)) return r;
   return null;
@@ -677,6 +726,7 @@ export function realize(root, opts) {
 
   root.traverse((node) => {
     if (!node.isMesh && !node.isInstancedMesh) return;
+    sanitizeNormals(node.geometry);                 // a zero-length normal lights as NaN (see sanitizeNormals)
     if (shadows) {
       node.castShadow = true;
       node.receiveShadow = true;
@@ -932,6 +982,29 @@ const GradeShader = {
   ].join("\n"),
 };
 
+// A NaN or +Inf pixel reaching bloom spreads into a black, flickering blur (and the
+// speed blur smears it further). Before bloom, any such pixel becomes plain black:
+// one dark pixel instead of a smear. realize() also repairs the normals behind it.
+const NanGuardShader = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: [
+    "varying vec2 vUv;",
+    "void main() {",
+    "  vUv = uv;",
+    "  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);",
+    "}",
+  ].join("\n"),
+  fragmentShader: [
+    "uniform sampler2D tDiffuse;",
+    "varying vec2 vUv;",
+    "void main() {",
+    "  vec4 c = texture2D(tDiffuse, vUv);",
+    "  bool bad = any(isnan(c)) || any(isinf(c)) || max(max(c.r, c.g), c.b) > 60000.0;",
+    "  gl_FragColor = bad ? vec4(0.0, 0.0, 0.0, 1.0) : c;",
+    "}",
+  ].join("\n"),
+};
+
 // --------------------------------------------------------------- composer
 /**
  * RenderPass -> GTAO -> bloom -> tone map -> filmic grade -> SMAA.
@@ -975,6 +1048,10 @@ export async function createComposer(renderer, scene, camera) {
       gtao = null;
     }
   }
+
+  // before bloom: no NaN / Inf pixel may spread into a black blur (NanGuardShader)
+  const nanGuard = new ShaderPass(NanGuardShader);
+  composer.addPass(nanGuard);
 
   let bloom = null;
   if (GFX.preset.bloom) {

@@ -38,6 +38,27 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-14 — Claude
+**Type:** DISCOVERY · **Task:** TASK-034 follow-up (black glitching blur)
+
+### Finding
+- A scan of every mesh, material, light and matrix in the scene found exactly one
+  invalid value: the Designersoup Beetle mesh `beetle004` has a zero-length vertex
+  normal. `normalize(vec3(0))` in the shader gives NaN on the pixels around it.
+- On BALANCED, HIGH and 4K ULTRA, `UnrealBloomPass` blurs the HDR target, so a few NaN
+  pixels spread into a black, flickering smear wherever a Beetle is on screen; the
+  speed blur in `GradeShader` smears it further. PERFORMANCE has no bloom.
+- Headless SwiftShader did not reproduce a screen-wide blur, even at 4K ULTRA (under
+  1% exact-black pixels in every burst). Software rendering is more forgiving with
+  NaN than a real GPU, so real-browser confirmation is still pending (TASK-010).
+
+### Action
+- `graphics.js` `sanitizeNormals()`: `realize()` repairs zero-length or non-finite
+  normals on every model it upgrades (the triangle's face normal, or up for a
+  degenerate triangle); `geometry.userData.gtbNormalsFixed` records how many.
+- `graphics.js` `NanGuardShader`: a pass before bloom turns any NaN / Inf pixel
+  black, so one bad value can never spread into a blur again.
+
 ## 2026-09-14 — Freebuff
 **Type:** DISCOVERY · **Task:** TASK-018
 
