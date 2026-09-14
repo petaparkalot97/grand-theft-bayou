@@ -291,6 +291,11 @@
   });
 })();
 </script>
+<script>
+  // Production multiplayer server. Local development still falls back to
+  // ws://localhost:8787 when this value is removed or overridden.
+  window.__MULTIPLAYER_URL = "wss://grand-theft-bayou.onrender.com";
+</script>
 <script type="importmap">
 {
   "imports": {
