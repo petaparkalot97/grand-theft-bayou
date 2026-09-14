@@ -446,6 +446,8 @@ export function createActOne(ctx) {
   return {
     buildSet,
     get phase() { return phase; },
+    /** Where the player should go next ({x, z}), or null: the minimap's waypoint blip. */
+    get waypoint() { return phase === "toCity" ? { x: NB.x - 20, z: STREET_Z } : phase === "door" ? DOOR : null; },
 
     /** Called when the prologue ends. */
     start() {

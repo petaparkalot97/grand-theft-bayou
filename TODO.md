@@ -34,6 +34,38 @@ Bring the script to life. Finish and verify **Act One "Welcome Home"**
 
 # 🔒 ACTIVE TASKS
 
+### TASK-034 — World cleanup + expansion pass (message 6)
+
+**Status:** `REVIEW` · **Agent:** Claude · **Order worked:** stability → clean world → loot → map expansion → system foundations
+
+**Files:** `src/main.js` (wiring), `src/loot.js`, `src/weapons.js`, `src/worldtime.js`, `src/weather.js`, `src/composer.js`, `src/eastbank.js`, `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs`, `tools/qa/controls.mjs` (gas-can checks)
+
+#### Completed (tested headless)
+- **The buggy's black flicker: fixed, not removed.** All the Designersoup cars (Beatall "the buggy", Landyroamer, docLorean, Toyoyo, Tristar) share one 256×256 palette-swatch texture. `realize()` gave it mipmaps, so neighbouring swatches (several near-black) bled across the paint as distance changed, and it derived normal / ORM maps from the swatch edges, which glittered under the clearcoat. `loadDsCar` now keeps nearest filtering with no mipmaps and skips derived maps (`noDerive`, `keepPixelFilter`, metalness 0.3, roughness 0.38). Verified with a speckle metric on parked close-ups (Beatall 37 → 26, Landyroamer 29 → 20 with black pixels 42% → 20%, docLorean 38 → 30; Kenney cars unchanged) and an 8-frame driven contact strip (`tools/qa/out/flicker-strip.png`).
+- **Popeyes: exactly two landmarks** in `POPEYES_LOCATIONS`: #1 on the US-167 strip (z 84), #2 on the OrleaRouge boulevard (18, 230), 146 m apart. The strip's other former Popeyes lot (z −34) is a storefront. Screenshot checked.
+- **NPC loot** (`src/loot.js`): hoodrats 80% cash / 16% weapon, rednecks 70% / 24%, hogs nothing. Cash comes as $5 / $10 / $20 / $50 notes; weapons roll a rarity (common 65 / uncommon 27 / rare 8). Drops are physical, pooled pickups (max 24, 90 s), collected by walking over them or rolling over slowly; cash goes into the existing `state.cash` and HUD.
+- **Weapons** (`src/weapons.js`): one slot on `state.weapon` / `state.ammo`, no parallel inventory. The 9mm keeps the old numbers; the Tec-9 (common), sawed-off (uncommon) and deer rifle (rare) set `fire()`'s damage, range and cooldown. An empty gun falls back to the 9mm. HUD line under the compass.
+- **World time** (`src/worldtime.js`): `getCurrentTime()`, `isNight()`, `dusk`, `onHour`, `setTime`. Replaces the `state.dusk += dt·0.0016` ramp at the same pace (18:30 → full night at 22:00 in about 10 minutes).
+- **Weather** (`src/weather.js`): `clear / cloudy / rain / storm / fog` profiles blended into fog, mist, light, wetness, grip and wind multipliers. Fog, mist and light are applied today; the default is clear, so nothing looks different yet.
+- **Map expansion: Lafourchette** (`src/eastbank.js`, laid out by `src/composer.js`). `MAP.maxX` 136 → 380. South Tusouxroe's street continues as Lafourche Road: 14 storefronts; Levee Street, Pelican Street, Boudin Row and Cane Street with 54 shotgun houses; the water tower lot, a parking lot, the Saturday market, a ball field, the bayou band carried east, 1,115 pines on what was left, and St. Jude of the Levee closing the view. It has culling clusters, spawn zones, minimap shapes and two traffic lanes.
+- **Gas cans easier to get to** (the human's report). The Popeyes → storefront swap had buried the can at (11, −42) inside the new building's collision; it now sits at (3, −50). Pickup is measured flat, 2.4 m on foot and 3.4 m in a car (it was 1.5 m in 3D against a bobbing can). `settleCans()` moves any can found inside collision at load, and each can has a glow column.
+- **Churches** (`src/church.js`): `Buildings.glb` part 9, used as both the Bayou Noir church and the first St. Jude, is an apartment block with shops. `makeChurch()` builds a white clapboard church: nave, shingle roof, steeple and cross over red doors, steps, windows down both sides. St. Jude of the Levee has stained glass; Bayou Noir Baptist has plain lit windows. Both screenshot-checked, and walking into Bayou Noir's front stops at the steps.
+- **Men's eyes** (`src/characters.js`): every man's hair, bandana, do-rag or crop was a full sphere centred near eye height, which buried the eyes. They are now crown caps (`capGeo`) following the skull down to a rim just above the eyebrows, with brow bands on the rim, as on the reference sheet.
+
+#### Future
+- Rain and storm particles, thunder, wet-road reflections, `weather.grip` in vehicle handling, and a weather schedule.
+- A full day cycle (sunrise, daylight): `worldTime` already runs 24 hours, but the renderer only lights dusk → night.
+- NPC schedules and shop hours that read `worldTime`.
+- A weapon model in the player's hand, reloading, ammo pickups; a weapon wheel if more slots are wanted.
+- Lafourchette: parked cars in the lot, story use, a bridge or ferry over the bayou band. Reuse `composer.js` for the next district.
+- `TownTiles_003.glb` (a 2 m tile kit) is still unused.
+
+#### Testing performed
+- `tools/qa/worldpass.mjs` 7/7, `tools/qa/eastbank.mjs` 9/9, the flicker probe before and after (parked and driven), `tools/qa/controls.mjs` (see Testing Status).
+
+#### Known issues
+- The real-browser feel is still unverified (TASK-010).
+
 ### TASK-033 — Core gameplay rework: orientation, controls, camera, vehicles, NPCs, spawning
 
 **Status:** `REVIEW`. All 10 phases are implemented and headless-tested. Still
@@ -190,6 +222,54 @@ After each phase: run the game and its QA scripts.
   the OrleaRouge end of Hwy 9 comes into view (headless). It looks like shader
   compilation. The game loop caps dt at 0.1 s, so a stall like this freezes
   movement instead of teleporting the car.
+- **GTA-style radar (minimap) added.** `src/minimap.js` (new), wired into
+  `main.js` via `.claude/wire/minimap-wire.mjs`.
+  - Waypoint getters added to `prologue.js`, `actone.js` and `bluelight.js`.
+  - `orlea.grid` and `westParish.dirtSamples` / `water` are exposed for the
+    base map.
+  - The F4 debug panel moved above the radar.
+  - **`tools/qa/minimap.mjs`: 8 / 8** (twice):
+    - builds and draws;
+    - N at the top facing north, at the left facing east;
+    - arrow 0° after walking forward, −90° after the camera turns right;
+    - blips for 5 cans plus the truck;
+    - Blue Light's waypoint pins to the rim;
+    - zoom 1.7 → 1.0 px/m at 23 m/s.
+  - Screenshots checked: Chatboro, the strip, Hwy 9, OrleaRouge's grid.
+  - **Regressions:** Blue Light Special and gameplay pass.
+- **Crash steering tuned.** A controls run failed "head-on, then W+D": the car
+  turned 1.44 rad and moved 0.5 m. Now steering keeps 60% authority while
+  touching something, and the nose follows the slide from 0.3 m/s (was 1).
+  In the next run, W+D breaks free in both parallel runs (moved 8.7–9.3 m,
+  12 m/s).
+  - The scrape test once ended slow; the frame trace showed street 330's cross
+    traffic hitting the car mid-run. The crash tests now clear traffic within
+    80 m, settle after teleporting, and log `worstFrameMs`.
+  - **Final `controls.mjs`, run alone: 30 / 30.**
+    - scrape 40.3 m, 18.5 m/s;
+    - head-on, then S: 11.7 m;
+    - head-on, then W+D: 11.6 m at 13 m/s.
+  - One earlier 10 / 30 run was machine load, not a regression; see the
+    AGENT_LOG warning.
+- **Car-jacking added.** `src/hijack.js` (new) plus
+  `traffic.releaseVehicle(v)`, wired via `.claude/wire/hijack-wire.mjs`.
+  - **How it plays:** F at a car someone's driving walks Keseme to the driver's
+    door and pulls the driver out.
+    - The driver flees or fights, depending on temperament.
+    - Then Keseme takes the seat.
+    - It adds 0.4 heat, and a car above 8 m/s can't be jacked.
+  - **Seats:** marked "player" / null. Empty cars are entered straight away.
+  - **`tools/qa/hijack.mjs`: 9 / 9.**
+    - It's a real jack, not an instant teleport in.
+    - The car stays put during the jack (0.37 m).
+    - The driver is pulled out and reacts: a timid one ran 9.5–11.7 m, a brave
+      one came back hostile.
+    - The jacked car drives.
+    - Getting out empties the seat, and getting back in is instant.
+    - "Too fast to jack" at 18.7 m/s.
+  - Screenshots checked: driver pulled out at the left door; the jack line on
+    screen afterwards.
+  - Regressions: controls 30 / 30, gameplay passes.
 
 **Acceptance criteria:** section 42 of the spec. Tests from sections 30–35 go
 in `tools/qa/controls.mjs`:
@@ -319,7 +399,23 @@ in `tools/qa/controls.mjs`:
 
 ### TASK-010 — Real-browser playtest pass
 **Status:** `IN PROGRESS` · **Agent:** `Claude` (driving the human's real Chrome through the Claude in Chrome extension)
-**Progress (2026-09-13):**
+**Progress (2026-09-13, after commit a021b3f):**
+- Reloaded the extension's tab. The game **fully loads in real Chrome while the
+  tab is hidden** ("ready.", Free roam enabled), so the `paint()` timer
+  fallback works.
+- **Still blocked:** `document.visibilityState` is "hidden", and
+  `requestAnimationFrame` fired 1 frame in 2 s, so the game loop doesn't run.
+  Resizing the window didn't help. Needs the human to bring the Chrome window
+  holding the "Grand Theft Bayou" tab to the foreground (not minimized, not
+  covered).
+- Not yet done (all need the visible tab):
+  - fps and draw calls on a real GPU;
+  - pointer lock / Esc;
+  - camera and recentring feel;
+  - crash handling feel;
+  - the Hwy 9 → OrleaRouge first-view stall;
+  - soundtrack.
+**Earlier progress (2026-09-13):**
 - Chrome: 1920×1080 at DPR 1; the game auto-picked HIGH.
 - First load **never booted**: it sat on "loading assets…" for 90+ s with no
   error. One CDN module import stalled; a clean reload fetched all 24 three.js
@@ -473,8 +569,35 @@ You see them, and you feel them when you drive over one.
       casino → storm drain). Getting wasted or busted respawns you at the last
       checkpoint.
     - The flood-tunnel cutscene ends at the crown-over-waves door.
-  - **Part B, Nirbayou Nolantis:** the elevator descent, the city reveal, Amara
-    Veaux, the tour, the archive ("the truth").
+  - **Part B, Nirbayou Nolantis** (`src/nolantis.js`): **REVIEW.** Wired via
+    `.claude/wire/nolantis-wire.mjs`.
+    - **Handoff:** Blue Light Special's flood tunnel hands straight on to it
+      (`ctx.startNext`).
+    - **The set:** a sealed cavern at x −720, z 110.
+      - Descent: rock, submerged ruins, a glass waterway with fish, then the
+        reveal.
+      - The city: shell and coral towers, gardens, a monorail with trams, a
+        fountain plaza, citizens and children.
+      - Arrival terminal with Amara and the Civic Guardians.
+    - **Played tour, four stops:** housing terraces, health garden, public
+      kitchen and vertical farm, the live public-ledger board.
+    - **The Truth:** in the archive, projected onto the radar's Dixie Beaux map
+      with a Pelican Crown network overlay.
+    - **Exit:** the elevator back to OrleaRouge.
+    - **Script:** follows the human's script word for word. Tour-stop banter
+      that the script doesn't have is kept short and in character.
+    - **`tools/qa/nolantis.mjs`: 5 / 5.**
+      - All 20 story steps run.
+      - The player walks outside `MAP` down there.
+      - The radar hides below and comes back on the surface.
+      - Draw calls: 411–477 in the city, 161 back on the surface.
+    - **Screenshots checked.**
+      - The first run caught the city not rendering: the root group was never
+        added to the scene.
+      - Also fixed: a black shaft, the sky showing through the water band, a bad
+        "We died" angle, the canopy blocking the tour start, and an upside-down
+        archive map.
+    - **Blue Light Special regression** passes and ends in the Nolantis tour.
   - **Part C:** Governor Bellefontaine and Mercer at the Chatboro Sheriff's
     Office, the observation platform with Solange, the montage + V.O., the
     threatening phone call, "MISSION UNLOCKED: WELCOME BACK TO DIXIE", and the
@@ -623,12 +746,22 @@ before `COMPLETE`.
   excluded from `batchStatic`; never add or toggle lights mid-game.
 - Several files are CRLF in the working tree (see protocol §6).
 - Headless fps is meaningless (SwiftShader). Measure draw calls / CPU ms.
+- **Time of day:** read `worldTime` (`getCurrentTime()`, `isNight()`, `dusk`). Never keep a private timer; `state.dusk` is a copy for older code.
+- **Weather:** read the blended multipliers (`weather.fogMultiplier`, `weather.grip`, …), not `weather.type`.
+- **Money and guns:** cash is `state.cash`; the weapon slot is `state.weapon` / `state.ammo`, through `arsenal`. Drops go through `loot.dropFor(npc)` / `loot.dropAt()`.
+- **New districts:** build them with `composer.js` in stage order (road → buildings → side streets → open areas → vegetation → landmark), and plan later pieces with `site()` first.
+- **Popeyes:** only `POPEYES_LOCATIONS`. Nothing else calls `makePopeyes`.
+- **Palette-atlas models** (Designersoup cars): nearest filtering, no mipmaps, `realize(…, { noDerive: true, keepPixelFilter: true })`, or the swatches bleed and glitter.
 
 ---
 
 # 🧪 TESTING STATUS
 
 **Last known test status:**
+- Controls + gas cans (`tools/qa/controls.mjs`): **32/32** (re-run after TASK-034: all 5 cans reachable, 2 m on foot, driving past 2.8 m off, glow columns).
+- World pass (`tools/qa/worldpass.mjs`): **7/7** (Popeyes, loot tables, a real kill, pickups, weapon slot, world time, weather).
+- Lafourchette (`tools/qa/eastbank.mjs`): **9/9** (stage order, no building on a road, spawn zones, culling, frame time, walking and driving east).
+- The buggy's flicker: before/after probe (parked speckle metric, 8-frame driven contact strip).
 - Free roam (`tools/qa/gameplay.mjs`): **pass** (re-run after the map grew south).
 - Prologue (`tools/qa/prologue.mjs`): **pass** (re-run; hands off to Act One).
 - Act One (`tools/qa/actone.mjs`): **pass** (re-run; all 12 steps).
@@ -636,7 +769,7 @@ before `COMPLETE`.
 
 **Last tested by:** Claude (headless Chromium / SwiftShader)
 
-**Last tested at:** 2026-09-12
+**Last tested at:** 2026-09-13
 
 **Known regressions:** none recorded. Still unverified: real-browser items (TASK-010).
 
@@ -654,6 +787,7 @@ Headless Chromium (SwiftShader), HIGH tier, 1280×720. CPU-side timings; fps not
 | Sim / AI per frame | 0.88 / 0.55 ms | 0.45 / 0.14 ms | collision grid + NPC LOD |
 | Render submit | 15.8 ms | 10–16 ms | on foot |
 | Load | 6 console 404s | 0 errors, 0 failed requests | FBX URL modifier |
+| Frame time, Lafourchette vs the strip | — | 16.6 vs 16.5 ms avg, worst 33 ms | eastbank.mjs, 3 s rAF sample |
 
 Full history: `AGENT_LOG.md` → Performance investigations.
 

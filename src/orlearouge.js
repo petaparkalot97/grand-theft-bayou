@@ -460,6 +460,8 @@ export function createOrleaRouge(ctx) {
 
   return {
     buildSet,
+    /** The street grid, for the minimap: north–south avenues at x, east–west streets at z. */
+    grid: { avenues: AVENUES, streets: STREETS, width: STREET_W, city: CITY, causeway: CAUSEWAY },
     get pois() { return pois; },
     get occluders() { return occluders; },
     get entered() { return entered; },

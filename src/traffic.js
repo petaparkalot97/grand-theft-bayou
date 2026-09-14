@@ -231,6 +231,12 @@ export function createTraffic(o) {
   return {
     get cars() { return cars; },
 
+    /** Stop treating `vehicle` as traffic (it's being jacked, or story-owned). */
+    releaseVehicle(vehicle) {
+      const car = cars.find((c) => c.v === vehicle);
+      if (car) release(car);
+    },
+
     /**
      * @param {number} dt
      * @param {{x:number, z:number}} focus       usually the player position

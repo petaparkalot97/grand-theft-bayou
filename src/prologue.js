@@ -702,6 +702,12 @@ export function createPrologue(ctx) {
   return {
     buildSet,
     get phase() { return phase; },
+    /** Where the player should go next ({x, z}), or null: the minimap's waypoint blip. */
+    get waypoint() {
+      if ((phase === "chase" || phase === "retrieve") && bravado) return { x: bravado.obj.position.x, z: bravado.obj.position.z };
+      if (phase === "hogs") return CRASH;
+      return null;
+    },
     get props() { return props; },
     get vehicles() { return [coupe, bravado].filter(Boolean); },
 

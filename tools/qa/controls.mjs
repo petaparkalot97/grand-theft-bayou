@@ -272,6 +272,46 @@ async function tests(page, log) {
       }
       pass(`gas can ${c.i} at (${c.x}, ${c.z}) can be picked up`, c.inside.length === 0 && from, { blockersOverlapping: c.inside, reachedFrom: from });
     }
+
+    // The human's report: "The gas cans need to be easier to get to". Reach is measured flat and
+    // is generous: standing 2 m away picks one up, and a car rolling past ~3 m off grabs it too.
+    const reach = await js(`const c = g.cans[0]; c.userData.taken = false; c.visible = true; g.state.cans = 0;
+      g.teleport(c.position.x + 2.0, c.position.z); return { onFoot: g.CAN_REACH, inCar: g.CAN_REACH_VEHICLE };`);
+    await page.waitForTimeout(600);
+    const onFoot = await js(`return g.cans[0].userData.taken;`);
+    // In a car: drive past a can 2.8 m to one side (beyond on-foot reach). The can is borrowed onto
+    // OrleaRouge's avenue x = 114 (no traffic lane) so the car's path is known to be clear; a car
+    // dropped next to a can in a strip lot gets shoved by the parked cars and proves nothing.
+    const home = await js(`const c = g.cans[1]; const was = [c.position.x, c.position.z];
+      c.position.x = 114; c.position.z = 300; c.userData.taken = false; c.visible = true; g.state.cans = 0;
+      const v = g.vehicles.find((x) => !x.traffic && x.def);
+      g.teleport(116.8, 312);
+      v.obj.position.x = 116.8; v.obj.position.z = 312; v.heading = Math.PI; v.obj.rotation.y = Math.PI; v.speed = 0; v.inContact = false;
+      v.blocker.x = 116.8; v.blocker.z = 312;
+      g.state.veh = v; g.player.visible = false; window.__canCar = v;
+      for (const t of g.traffic.cars) {
+        if (!t.active || Math.hypot(t.obj.position.x - 116, t.obj.position.z - 300) > 80) continue;
+        t.active = false; t.obj.visible = false; t.v.blocker.x = t.v.blocker.z = 1e5; t.obj.position.set(1e5, t.obj.position.y, 1e5);
+      }
+      return was;`);
+    await page.waitForTimeout(500);
+    await page.keyboard.down("KeyW");
+    let inCar = false;
+    for (let i = 0; i < 12 && !inCar; i++) {
+      await page.waitForTimeout(250);
+      inCar = await js(`return g.cans[1].userData.taken;`);
+    }
+    await page.keyboard.up("KeyW");
+    const car = await js(`const v = window.__canCar, c = g.cans[1];
+      const r = { x: +v.obj.position.x.toFixed(1), z: +v.obj.position.z.toFixed(1), speed: +v.speed.toFixed(1), stillDriving: g.state.veh === v };
+      c.position.x = ${home[0]}; c.position.z = ${home[1]};
+      g.teleport(${home[0]} + 6, ${home[1]} + 6);
+      return r;`);
+    pass("gas cans are easy to grab: 2 m away on foot, driving past 2.8 m off in a car",
+      reach.onFoot >= 2.2 && reach.inCar >= 3.2 && onFoot && inCar, { reach, onFoot, inCar, car });
+    const beams = await js(`return g.cans.map((c) => c.children.some((m) => m.material && m.material.blending === 2 && m.geometry.type === "CylinderGeometry"));`);
+    pass("every gas can has its glow column", beams.every(Boolean), { beams });
+
     await js(`for (const c of g.cans) { c.userData.taken = false; c.visible = true; } g.state.cans = 0; return true;`);
   }
 
@@ -285,9 +325,24 @@ async function tests(page, log) {
       g.teleport(${x}, ${z});
       v.obj.position.x = ${x}; v.obj.position.z = ${z}; v.heading = ${h}; v.obj.rotation.y = ${h}; v.speed = 0; v.inContact = false;
       v.blocker.x = ${x}; v.blocker.z = ${z};
-      g.state.veh = v; g.player.visible = false; return true;`);
+      g.state.veh = v; g.player.visible = false;
+      // this tests walls, not traffic: street 330's cross-traffic used to T-bone the scrape run
+      for (const c of g.traffic.cars) {
+        if (!c.active || Math.hypot(c.obj.position.x - ${x}, c.obj.position.z - ${z}) > 80) continue;
+        c.active = false; c.obj.visible = false;
+        c.v.blocker.x = c.v.blocker.z = 1e5; c.obj.position.set(1e5, c.obj.position.y, 1e5);
+      }
+      return true;`);
     const carState = () => js(`const v = window.__testCar; return { x: v.obj.position.x, z: v.obj.position.z, h: v.heading, speed: v.speed };`);
-    const hold = async (keys, ms) => { for (const k of keys) await page.keyboard.down(k); await page.waitForTimeout(ms); for (const k of keys) await page.keyboard.up(k); };
+    // hold keys, and report the worst frame while they were held (a long frame eats simulated time: dt is capped at 0.1 s)
+    const hold = async (keys, ms) => {
+      await js(`window.__hf = []; window.__hlast = performance.now(); window.__hon = true;
+        (function f() { const n = performance.now(); window.__hf.push(n - window.__hlast); window.__hlast = n; if (window.__hon) requestAnimationFrame(f); })(); return true;`);
+      for (const k of keys) await page.keyboard.down(k);
+      await page.waitForTimeout(ms);
+      for (const k of keys) await page.keyboard.up(k);
+      return js(`window.__hon = false; return Math.round(Math.max(0, ...window.__hf));`);
+    };
     const wall = (points) => js(`window.__wall = (window.__wall || []).concat(${JSON.stringify(points)}.map(([x, z]) => { const b = { x, z, r: 0.8 }; g.blockerGrid.addStatic(b); return b; })); return window.__wall.length;`);
     const clearWall = () => js(`for (const b of window.__wall || []) g.blockerGrid.remove(b); window.__wall = []; return true;`);
 
@@ -295,33 +350,35 @@ async function tests(page, log) {
     const side = []; for (let z = 372; z > 260; z -= 1.5) side.push([118, z]);
     await wall(side);
     await placeCar(112, 368, Math.PI - 0.2);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(1500);                // the first view of downtown can stall a frame for seconds
     const g0 = await carState();
-    await hold(["KeyW"], 2600);
+    const hitchG = await hold(["KeyW"], 2600);
     const g1 = await carState();
     pass("scraping along a wall keeps the car moving (slides instead of sticking)", g0.z - g1.z > 25 && g1.speed > 10 && g1.x < 117,
-      { travelledNorth: +(g0.z - g1.z).toFixed(1), speedAfter: +g1.speed.toFixed(1), x: +g1.x.toFixed(1) });
+      { travelledNorth: +(g0.z - g1.z).toFixed(1), speedAfter: +g1.speed.toFixed(1), x: +g1.x.toFixed(1), worstFrameMs: hitchG });
     await clearWall();
 
     // head-on: a wall across the avenue at z = 330
     const across = []; for (let x = 104; x <= 124; x += 1.5) across.push([x, 330]);
     await wall(across);
     await placeCar(114, 356, Math.PI);
+    await page.waitForTimeout(800);                 // settle after the teleport before timing anything
     await hold(["KeyW"], 2000);
     const h0 = await carState();
-    await hold(["KeyS"], 1200);
+    const hitchS = await hold(["KeyS"], 1200);
     const h1 = await carState();
     pass("after a head-on crash, S backs straight out", h0.z < 334 && h1.z - h0.z > 4,
-      { stoppedAtZ: +h0.z.toFixed(1), backedOut: +(h1.z - h0.z).toFixed(1) });
+      { stoppedAtZ: +h0.z.toFixed(1), backedOut: +(h1.z - h0.z).toFixed(1), worstFrameMs: hitchS });
 
     await placeCar(114, 345, Math.PI);
+    await page.waitForTimeout(800);
     await hold(["KeyW"], 1500);
     const t0 = await carState();
-    await hold(["KeyW", "KeyD"], 2200);
+    const hitchT = await hold(["KeyW", "KeyD"], 2200);
     const t1 = await carState();
     const turned = t0.h - t1.h, moved = Math.hypot(t1.x - t0.x, t1.z - t0.z);
     pass("after a head-on crash, W+D turns away and drives off", turned > 0.6 && moved > 4 && t1.speed > 3,
-      { turnedRad: +turned.toFixed(2), moved: +moved.toFixed(1), speedAfter: +t1.speed.toFixed(1), x: +t1.x.toFixed(1) });
+      { turnedRad: +turned.toFixed(2), moved: +moved.toFixed(1), speedAfter: +t1.speed.toFixed(1), x: +t1.x.toFixed(1), worstFrameMs: hitchT });
     await clearWall();
     await js(`window.__testCar.speed = 0; return true;`);
   }

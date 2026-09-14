@@ -117,6 +117,7 @@ export function createBlueLight(ctx) {
   const movers = [];
   let door = null, doorGlow = null, marker = null, wash = null;
   let talk = Promise.resolve();
+  let handedOff = false;       // the tunnel scene went straight on into Nolantis (ctx.startNext)
 
   // ---------------------------------------------------------------- helpers
   function mesh(geo, mat, x, y, z, { cast: c = true, parent = scene } = {}) {
@@ -432,6 +433,16 @@ export function createBlueLight(ctx) {
     await say(c, "SOLANGE", "Where does that go?");
     await c.caption("Far beneath them, golden lights glow.");
     await say(c, "KESEME", "Not a sewer.");
+    if (ctx.startNext) {
+      // Act One goes on underground (nolantis.js): the next chapter takes over from black
+      await c.black(true, 0.6);
+      for (const a of [cast.solange, cast.mally, cast.bubba]) a.visible = false;
+      ctx.camera.far = far;
+      ctx.camera.updateProjectionMatrix();
+      k.baseY = 0;
+      handedOff = true;
+      return;
+    }
     await c.card("TO BE CONTINUED", "NIRBAYOU NOLANTIS", "", { center: true, hold: 2.6 });
 
     // back up at the drain, on the promenade
@@ -471,6 +482,7 @@ export function createBlueLight(ctx) {
     ctx.setFail(null);
     ctx.clearPolice();
     ctx.setObjective(null);
+    if (handedOff) { ctx.startNext(); return; }
     ctx.flashObjective("Beneath OrleaRouge, a door is open. (Nirbayou Nolantis is next.)");
   }
 
@@ -478,6 +490,8 @@ export function createBlueLight(ctx) {
     buildSet,
     get props() { return props; },
     get phase() { return phase; },
+    /** Where the player should go next ({x, z}), or null: the minimap's waypoint blip. */
+    get waypoint() { return phase === "toMeet" ? MEET : phase === "run" ? CPS[cp] : null; },
     get checkpoint() { return cp; },
 
     /** Called when Act One ("Welcome Home") ends. */

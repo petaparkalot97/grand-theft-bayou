@@ -106,7 +106,8 @@ export const DRIVE = Object.freeze({
   grip: 1.7,            // rad/s of steering at full lock
   brakeGrip: 2.6,       // handbrake turns tighter
   fullSteerSpeed: 7,    // m/s at which steering reaches full authority
-  throttleSteer: 0.3,   // steering authority kept at a standstill while on the throttle (turn out of a wall)
+  throttleSteer: 0.3,   // steering authority kept at a standstill while on the throttle
+  contactSteer: 0.6,    // …and while touching something, so a car nosed into a wall turns out of it quickly
   impactLoss: 0.35,     // share of speed lost on the first frame of a head-on hit
   scrapeFriction: 0.6,  // per second, while sliding along something
   wallAlign: 5,         // per second: how fast the nose swings round to follow a wall
@@ -128,7 +129,8 @@ export function stepArcadeVehicle(v, { throttle, steer, brake }, dt) {
   // With the throttle down you keep a little steering even at a standstill, so a
   // car nosed into a wall can turn out of it instead of grinding.
   const grip = brake ? DRIVE.brakeGrip : DRIVE.grip;
-  const authority = Math.max(Math.min(1, Math.abs(v.speed) / DRIVE.fullSteerSpeed), throttle ? DRIVE.throttleSteer : 0);
+  const floor = throttle ? (v.inContact ? DRIVE.contactSteer : DRIVE.throttleSteer) : 0;
+  const authority = Math.max(Math.min(1, Math.abs(v.speed) / DRIVE.fullSteerSpeed), floor);
   v.heading -= steer * grip * dt * Math.sign(v.speed || throttle || 1) * authority;
 }
 
@@ -166,7 +168,7 @@ export function collisionResponse(v, intendedX, intendedZ, resolvedX, resolvedZ,
         if (-into > 6) v.jolt = Math.min(1, (v.jolt || 0) + Math.min(0.8, -into / 25));
       }
       // the nose follows the slide (the tail, when reversing)
-      if (slide > 1) {
+      if (slide > 0.3) {
         const target = Math.atan2(dir * vx, dir * vz);
         v.heading += wrapAngle(target - v.heading) * Math.min(1, dt * DRIVE.wallAlign);
       }

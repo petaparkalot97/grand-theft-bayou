@@ -21,6 +21,7 @@
 
 import * as THREE from "three";
 import { headingFromVector } from "./world.js";
+import { makeChurch } from "./church.js";
 
 export const PARISH_MIN_X = -440;
 const REGION_EAST_X = -150;        // west of this is the parish proper
@@ -351,18 +352,9 @@ export function createWestParish(ctx) {
       for (const [ox, oz] of [[-4, -3], [4, -3], [-4, 3], [4, 3]]) ctx.addBlocker(-272 + ox, -2 + oz, 3.5);
     }
     pois.push({ x: -272, z: -13, r: 6 });
-    // the church, north of the road, facing it (south), with a steeple
-    if (ctx.placeGlbLandmark(parts[9 % Math.max(1, parts.length)], -246, -46, 0, 14, "Bayou Noir Baptist", 0xfff0c8)) {
-      for (const [ox, oz] of [[-3.5, -3], [3.5, -3], [-3.5, 3], [3.5, 3]]) ctx.addBlocker(-246 + ox, -46 + oz, 3.2);
-      const whiteWood = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.8, name: "painted wood" });
-      const tower = new THREE.Mesh(new THREE.BoxGeometry(3, 7, 3), whiteWood);
-      tower.position.set(-246, 12.5, -44);
-      tower.castShadow = true;
-      const spire = new THREE.Mesh(new THREE.ConeGeometry(2.2, 5, 4), whiteWood);
-      spire.position.set(-246, 18.5, -44);
-      spire.rotation.y = Math.PI / 4;
-      scene.add(tower, spire);
-    }
+    // the church, north of the road, facing it (south): built by church.js, since Buildings.glb's
+    // part 9 (used here before) is an apartment block with shops
+    makeChurch(ctx, { x: -246, z: -40, rot: 0, length: 13, stainedGlass: false, name: "Bayou Noir Baptist" });
     pois.push({ x: -246, z: -34, r: 7 });
     // shacks, a barn and the junk that collects around them
     for (const [x, z, ry, w, d] of [[-300, -12, 0.2, 9, 7], [-226, 6, -0.3, 8, 6], [-318, -60, 1.4, 8, 6]]) {
@@ -531,8 +523,14 @@ export function createWestParish(ctx) {
     get pois() { return pois; },
     get props() { return props; },
     get trees() { return treeCount; },
-    /** Sampled centreline, for QA: [{x, z}], every STEP metres. */
+    /** Sampled centreline, for QA and the minimap: [{x, z}], every STEP metres. */
     samples: PTS.map((p) => ({ x: p.x, z: p.z })),
+    width: HWY_WIDTH,
+    /** The dirt road to Bayou Noir, sampled like `samples`. */
+    dirtSamples: DIRT_PTS.map((p) => ({ x: p.x, z: p.z })),
+    dirtWidth: DIRT_WIDTH,
+    /** Swamp water patches: [{ x, z, w, d }] (centre and size). */
+    water: WATER,
 
     buildSet() {
       buildHighway();                        // never culled: you see the road from afar

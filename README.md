@@ -120,7 +120,19 @@ straight to the open strip.
    cemetery, a brass-band parade and the riverfront, down into the storm drain.
    Getting wasted mid-run puts you back at the last checkpoint. It ends in a
    flood tunnel at a door marked with a crown over three waves.
-   *Nirbayou Nolantis is next.*
+7. **Nirbayou Nolantis** (`src/nolantis.js`).
+   - **The descent:** the door opens onto a glass elevator that drops past rock,
+     submerged ruins and waterways full of fish. It clears the rock above a
+     hidden city beneath the Gulf: shell and coral towers, gardens under an
+     artificial sun, a silent monorail, children in the plaza, no billboards.
+   - **The arrival:** Dr. Amara Veaux and the Civic Guardians meet you ("Man,
+     even Atlantis disrespect me.").
+   - **The tour:** walk it with Amara: the housing terraces, the health garden,
+     the public kitchen and vertical farm, and the public ledger with every
+     expenditure ticking live.
+   - **The Truth:** a projection of Dixie Beaux in the archive, where Pelican
+     Crown's reach lights up.
+   - **The return:** the elevator takes you back up to OrleaRouge.
 
 In cutscenes, **Enter** skips a line and **Esc** skips the scene.
 
@@ -150,9 +162,21 @@ US-167 runs north–south through the whole map:
   - A dirt road leads to **Bayou Noir** (pop. 212): a general store, the
     Baptist church, shacks, a barn, the water tower, and fenced sugar-cane
     fields. Hogs live out here, not downtown.
+- **Lafourchette, the east bank** (`src/eastbank.js`). South Tusouxroe's street
+  keeps going east as Lafourche Road: storefronts, three side streets of
+  shotgun houses with porches, a parking lot, the Saturday market, a ball
+  field, pines, and St. Jude of the Levee at the end of the road. It's laid out
+  by `src/composer.js` in a fixed order (road → buildings → side streets →
+  open areas → vegetation → landmark), so it reads as a place rather than a
+  scatter.
 
 The strip mixes what's actually in `assets/`: gas stations, 6twelves, BurgerPiz,
-Tacos, storefronts from `Buildings.glb`, and just two Popeyes.
+Tacos, storefronts from `Buildings.glb`, and one Popeyes; the other stands on the
+OrleaRouge boulevard (`POPEYES_LOCATIONS`).
+
+People you put down drop what they carried: cash in $5 to $50 notes, and
+sometimes a gun (a Tec-9, a sawed-off, or rarely a deer rifle) that replaces
+your 9mm until it runs dry. Walk over a drop to take it.
 
 North is −z and east is +x everywhere in the code (`src/world.js`); see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). OrleaRouge is built in
@@ -196,6 +220,17 @@ and WEBM all work.
   - It pulls in when a building gets between you and it.
 - **Vehicles** (`src/vehicles.js`). Every model's nose is corrected once, by
   definition, so cars drive the way they face.
+- **Car-jacking** (`src/hijack.js`). Traffic cars have drivers. Press F by a
+  slow or stopped one and Keseme walks to the driver's door and hauls the
+  driver out. Timid drivers run; brave ones swing at you. Then the car is
+  yours. It's a small crime, so the Sheriff notices if he's already on to you.
+- **Radar** (`src/minimap.js`). A GTA San Andreas-style minimap, bottom-left.
+  - It turns with the camera, with an N on the rim; your arrow shows which way
+    you face.
+  - Blips: the story waypoint (pinned to the rim when it's off-radar), gas
+    cans, the escape truck, cops and anyone hostile.
+  - It zooms out as you drive faster, and is drawn from the level's real roads,
+    water and buildings.
 - **Distance culling.** The western parish hides detail past 300 m, where the
   fog has already swallowed it.
 - **F3** shows fps, frame time, simulation / AI / render cost and draw calls.
@@ -233,7 +268,7 @@ Then hit **Start the story**.
 | | |
 |---|---|
 | **WASD** | walk: **W** always goes where the camera looks · drive: **W** / **S** throttle and brake-reverse, **A** / **D** steer (the camera never changes where the car goes) |
-| **F** | jack a car / get out / enter the truck |
+| **F** | get in / out of a car, enter the truck. At a car someone's driving, Keseme pulls the driver out first (it has to be going slower than ~8 m/s) |
 | **Shift** | sprint on foot · handbrake in a car |
 | **Space / left click** | shoot |
 | **Mouse** | look around — click the game to capture the mouse, **Esc** releases it |

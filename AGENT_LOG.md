@@ -39,6 +39,61 @@ setup existed (TASK-001 … TASK-009).
 # 🧠 DISCOVERIES
 
 ## 2026-09-13 — Claude
+**Type:** DISCOVERY · **Task:** TASK-034 (churches, men's faces)
+
+### Finding
+- `Buildings.glb` part 9 is a three-storey apartment block with shopfronts. The
+  west parish used it as "Bayou Noir Baptist" with a steeple on the roof, and the
+  first St. Jude of the Levee did the same.
+- Every man's head covering in `characters.js` (crew bandana wrap, cornrows,
+  do-rag, cropped hair) was a full sphere centred near eye height. The eyes
+  (y ≈ 0.062) and eyebrows (to y ≈ 0.095) sat inside it, so men had no visible
+  eyes. The first hoodrat screenshots showed it.
+
+### Action
+- `src/church.js` `makeChurch()` builds both churches from primitives.
+- Men's hair and cloth are crown caps (`capGeo`: the top of a sphere scaled like
+  the skull, rim at y ≈ 0.105). Brow bands sit on the rim, and the knot and tails
+  moved up with it.
+
+## 2026-09-13 — Claude
+**Type:** DISCOVERY · **Task:** TASK-034 (the buggy's black flicker)
+
+### Finding
+The flicker was on every Designersoup car, not only the Beatall ("the buggy").
+They share one 256×256 palette-swatch texture: flat colour squares, several of
+them near-black. `realize()` treated it like a photo texture. It forced
+trilinear mipmaps, so neighbouring swatches bled into the paint as distance
+changed, and it derived normal / ORM maps from the swatch edges, which
+glittered under the clearcoat. The Kenney cars use 128×128 atlases with large
+flat regions and were unaffected.
+
+### Impact
+Any palette-atlas model (one texel colour per face) must skip derived maps and
+keep nearest filtering without mipmaps.
+
+### Action
+`loadDsCar` sets nearest filtering and no mipmaps, and calls `realize` with
+`noDerive`, `keepPixelFilter`, metalness 0.3 and roughness 0.38. Measured with a
+Laplacian speckle metric on parked close-ups (Beatall 37 → 26, Landyroamer
+29 → 20, docLorean 38 → 30; Kenney cars unchanged) and an 8-frame driven contact
+strip. The buggy stays; removing it was not needed.
+
+## 2026-09-13 — Claude
+**Type:** DISCOVERY · **Task:** TASK-034 (gas cans)
+
+### Finding
+Swapping the strip's second Popeyes (z −34) for a storefront put the can at
+(11, −42) inside the new building's corner blocker (2.2 m from the centre of a
+4.5 m circle), so it could never be collected. Pickup also used a 3D distance of
+1.5 m against a can bobbing 0.43–0.67 m up, about 1.3 m in practice.
+
+### Action
+The can moved to (3, −50). Pickup reach is flat: 2.4 m on foot, 3.4 m in a
+car. `settleCans()` relocates any can found inside collision at load. Each can
+has a glow column.
+
+## 2026-09-13 — Claude
 **Type:** DISCOVERY · **Task:** TASK-033 (core gameplay audit)
 
 ### Finding
@@ -398,6 +453,36 @@ road plane.
 
 # ⚠️ WARNINGS / FAILED APPROACHES
 
+## 2026-09-13 — Claude
+**Type:** WARNING · **Task:** QA (all headless scripts)
+
+### Finding
+The headless QA scripts time things against the wall clock ("hold W for 900 ms",
+then measure distance). They run on SwiftShader, on the human's everyday
+machine.
+- One `controls.mjs` run failed 10 / 30. Walking covered 0.65–2.6 m instead
+  of ~5.9, cars moved 3.6 m instead of ~18, and the crash tests saw no frames
+  at all.
+- Page load took 297 s (normally 50–150).
+- Sampling live CPU showed other apps busy: Edge WebView2 about 18%, Brave 9%,
+  Discord 5%. Our Chrome tab used 0.5%.
+- The next run, with the machine quieter, passed **30 / 30** (load 152 s, worst
+  frame 28–44 ms).
+- Two scripts running at once cause the same kind of failure.
+
+### Impact
+A failing headless run isn't a regression until you've checked the environment.
+
+### Action
+Before debugging a failure:
+1. Look at the `load` time at the top of the log.
+2. Look at the `worstFrameMs` details: the crash tests and `westparish.mjs`
+   drives log them.
+3. Re-run alone.
+
+Only then treat a failure as real. Run one browser at a time for timing-based
+scripts.
+
 ## 2026-09-12 — Claude
 **Type:** WARNING
 
@@ -420,6 +505,47 @@ road plane.
 ---
 
 # 🧪 TEST RESULTS
+
+## 2026-09-13 — Claude
+**Type:** TEST · **Task:** TASK-034
+
+- `controls.mjs` 32/32. The first run failed only the in-car gas-can check: the test
+  dropped a car beside a parked car in a strip lot, and collision shoved it out of
+  reach. The check now drives past a can borrowed onto OrleaRouge's avenue x = 114
+  (collected at ~20 m/s, 2.8 m off to the side).
+- `worldpass.mjs` 7/7. Two earlier failures were test design: a kill's drops landed
+  at the player's feet and were collected before the "before" snapshot, and fire
+  is one shot per key press (holding Space fires once).
+- `eastbank.mjs` 9/9. Frame time 16.6 ms in Lafourchette vs 16.5 ms on the strip
+  (headless, 3 s rAF sample).
+- Flicker probe before/after: see the TASK-034 discovery entry.
+- Visual checks: Popeyes #2, the loot pickups, Lafourchette (road, Pelican Street,
+  aerial), a gas can's glow column, St. Jude of the Levee. The first look at St.
+  Jude showed `Buildings.glb` part 9 is an apartment block with shops, not a
+  church; St. Jude is now built from primitives.
+- Headless camera quirk: the first `cine.shot` right after `releaseCamera` can be
+  swallowed. The QA helpers ask twice.
+
+## 2026-09-13 — Claude
+**Type:** TEST · **Task:** car-jacking, radar, TASK-017 part B (Nolantis)
+
+- **`tools/qa/hijack.mjs`** (new): **9 / 9**, run alone.
+  - The first run failed one check that was the test's fault, not the game's.
+    "The driver" was the nearest NPC, and new spawns confused that. Then a
+    brave driver standing 2.4 m away tripped a minimum distance.
+  - The test now uses `hijacker.lastDriver`, and only a fleeing driver has to
+    be clear of the car.
+- **`tools/qa/minimap.mjs`** (new): **8 / 8** (twice).
+- **`tools/qa/nolantis.mjs`** (new): **5 / 5**, all 20 steps.
+  - **Rendering bug:** the first screenshot pass showed only characters on a
+    flat plane under the surface sky. `createNolantis` never called
+    `scene.add(root)`, and the flow checks still passed.
+  - **Lesson:** for any new set, look at the screenshots; pass/fail checks
+    don't see missing geometry.
+- **Regressions:**
+  - `controls.mjs` 30 / 30 (run alone);
+  - `gameplay.mjs` passes;
+  - `bluelight.mjs` passes, and its tunnel now ends in the Nolantis tour.
 
 ## 2026-09-13 — Claude
 **Type:** TEST · **Task:** TASK-033 (driving collisions)
@@ -788,6 +914,38 @@ createCompass().update(cameraHeading);
 ```
 - `npc.js`: `DEFAULT_AGGRESSION = 0`. `provoke(e)` is the only way into
   `hostile`, and `noise()` only makes NPCs flee.
+
+### `src/hijack.js` (car-jacking)
+```js
+const hijacker = createHijacker({ state, getPlayerPos, getPlayer, releaseFromTraffic, spawnDriver, provoke, enterVehicle, flashObjective, crime });
+hijacker.start(v);      // false (with a message) if not occupied, or moving faster than HIJACK.maxSpeed
+hijacker.update(dt);    // approach → pull → enter; while .active, main.js freezes on-foot input
+hijacker.active; hijacker.phase; hijacker.lastDriver;
+traffic.releaseVehicle(v);   // stop treating v as traffic
+```
+
+### `src/nolantis.js` (TASK-017 part B)
+```js
+const nolantis = createNolantis({ scene, camera, cine, state, playerPos, MAP, makeHoodrat, makeCastMember, addBlocker,
+  poolLight, surface, flashObjective, getPlayer, setObjective, setCameraYaw, setPopulation, getMapCanvas, returnTo, exitVehicle, teleport, startNext? });
+nolantis.buildSet(); nolantis.start(); nolantis.update(dt);
+nolantis.phase;      // idle | descent | arrival | tour | archive | truth | done | returning | left
+nolantis.inside;     // player in the cavern: main.js lifts the MAP clamp and hides the radar
+nolantis.waypoint; nolantis.stop; nolantis.debug("stop" | "archive" | "elevator");
+```
+
+### `src/minimap.js` (radar)
+```js
+const minimap = createMinimap({ MAP, size = 190 });
+minimap.build({ roads: [{ points: [[x, z]…], width, color? }], areas, water, buildings /* [{ x0, x1, z0, z1, color? }] */ });
+minimap.update({ player, playerHeading, cameraHeading, speed, blips, dt });  // blips: [{ kind: waypoint|truck|can|cop|hostile, x, z }]
+minimap.state;   // QA: { built, zoom, rot, north: [x, y], arrow, blips, pinned }
+```
+- Story modules expose `get waypoint()`: `{x, z}` or `null`. `main.js`
+  checks Blue Light, then Act One, then the prologue.
+- `orlea.grid` = `{ avenues, streets, width, city, causeway }`.
+  `westParish.samples`, `.width`, `.dirtSamples`, `.dirtWidth`, `.water`,
+  `.fields`.
 
 ### `src/bluelight.js` (TASK-017 part A)
 ```js

@@ -22,8 +22,17 @@ import { createPotholes } from "./potholes.js";
 import { createBlueLight } from "./bluelight.js";
 import { headingFromVector, forwardFromHeading } from "./world.js";
 import { createInput } from "./input.js";
-import { VEHICLE_DEFS, vehicleDef, normalizeVehicleModel, createSeats, exitOffset, stepArcadeVehicle, collisionResponse } from "./vehicles.js";
+import { VEHICLE_DEFS, vehicleDef, normalizeVehicleModel, createSeats, exitOffset, stepArcadeVehicle, collisionResponse, canHijack } from "./vehicles.js";
 import { createOrientationDebug, createCompass } from "./debug.js";
+import { createMinimap } from "./minimap.js";
+import { createHijacker } from "./hijack.js";
+import { createArsenal } from "./weapons.js";
+import { createLoot } from "./loot.js";
+import { createWorldTime } from "./worldtime.js";
+import { createWeather } from "./weather.js";
+import { createEastBank, EAST_MAX_X } from "./eastbank.js";
+import { createNolantis } from "./nolantis.js";
+import { ROUTE_EAST, CRASH } from "./prologue.js";
 import { createSpawnZones } from "./spawnzones.js";
 import { createWestParish, onParishHighway, PARISH_MIN_X } from "./westparish.js";
 
@@ -34,9 +43,12 @@ const WORLD = 136;           // half-width of the map (x), and its northern exte
 // The map grew south to fit OrleaRouge, then west for Parish Highway 9 and the
 // rural parish (westparish.js). z runs from the Tusouxroe city limits (north, −z)
 // past Chatboro and the bayou causeway to the OrleaRouge riverfront (south, +z);
-// x from the parish's west edge to ±WORLD in the east. Use MAP for every bound.
-const MAP = { minX: PARISH_MIN_X, maxX: WORLD, minZ: -WORLD, maxZ: 382 };
+// x from the parish's west edge (westparish.js) to Lafourchette's east edge
+// (eastbank.js). Use MAP for every bound.
+const MAP = { minX: PARISH_MIN_X, maxX: EAST_MAX_X, minZ: -WORLD, maxZ: 382 };
 const CAN_GOAL = 4;
+const CAN_REACH = 2.4;          // on foot, measured flat (x/z): the can bobs half a metre off the ground
+const CAN_REACH_VEHICLE = 3.4;  // in a car: drive through one to grab it
 const ROAD_X = -6;           // the highway runs N/S along this line
 const ROAD_HALF = 5;         // half road width
 const LOT_X = 24;            // how far off the centre line a lot's building sits
@@ -48,7 +60,7 @@ const SIGN_Z = 126;          // Louisiana sign, just north (in front) of the spa
 // which is the player's RIGHT heading north (−z) from the spawn.
 // A mix of what's actually in assets/: the GAS·N·GEAUX station (Gas_station.fbx),
 // 6twelve (6twelve.fbx), BurgerPiz and Tacos (GLB), storefronts from
-// Buildings.glb (variant = which building), and just two Popeyes.
+// Buildings.glb (variant = which building). Popeyes: see POPEYES_LOCATIONS.
 const LANDMARKS = [
   ["burgerpiz",  -1, 126],   // immediate LEFT of spawn
   ["gasstation", +1, 108],   // gas station — player's RIGHT, just past the sign
@@ -61,12 +73,22 @@ const LANDMARKS = [
   ["shop",       +1,  30, 5],
   ["gasstation", +1,   6],
   ["shop",       -1, -14, 7],
-  ["popeyes",    +1, -34],
+  ["shop",       +1, -34, 1],
   ["sixtwelve",  -1, -54],
   ["shop",       +1, -74, 8],
   ["taco",       -1, -94],
 ];
 const landmarkPos = (side, z) => [ROAD_X + side * LOT_X, z];
+
+// Popeyes are landmarks, not a building type that repeats: exactly these two, a
+// region apart. #1 is a lot on the US-167 strip at the Chatboro end (its entry in
+// LANDMARKS builds it); #2 stands on the OrleaRouge boulevard, reached by driving
+// south over the causeway. Nothing else may call makePopeyes.
+const POPEYES_LOCATIONS = [
+  { name: "Popeyes #1 · US-167 strip, Chatboro end", lot: { side: +1, z: 84 } },
+  { name: "Popeyes #2 · OrleaRouge boulevard", x: ROAD_X + LOT_X, z: 230, rot: -Math.PI / 2 },
+];
+const popeyesPlaced = [];        // every makePopeyes call records itself (QA checks the count)
 
 const KEEPOUT = [
   ...LANDMARKS.map(([, side, z]) => {
@@ -514,6 +536,12 @@ function loadDsCar(name) {
     const tex = texLoader.load(
       `./assets/models/cars/${name}.fbm/387359c5580f06c08c266126b3b46db47e48ba44.png`);
     tex.colorSpace = THREE.SRGBColorSpace;
+    // A palette sheet of flat colour swatches: every face samples one swatch.
+    // Filtering or mipmapping it bleeds neighbouring swatches (some near-black)
+    // across the paint as distance changes, which read as black flicker.
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
     fbxLoader.load(`./assets/models/cars/${encodeURIComponent(name)}.fbx`, (obj) => {
       const size = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3());
       obj.scale.setScalar(4.2 / Math.max(size.x, size.y, size.z));
@@ -523,7 +551,9 @@ function loadDsCar(name) {
           o.material = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5, metalness: 0.25 });
         }
       });
-      realize(obj, { hint: "vehicle carpaint " + name });
+      // no derived normal/ORM maps (they turned swatch edges into glitter) and a
+      // calmer metal; keepPixelFilter leaves the swatch filtering above alone
+      realize(obj, { hint: "vehicle carpaint " + name, noDerive: true, keepPixelFilter: true, metalness: 0.3, roughness: 0.38 });
       res(normalizeVehicleModel(obj, vehicleDef(name)));
     }, undefined, () => res(normalizeVehicleModel(fallbackCar(null), VEHICLE_DEFS.fallback)));
   });
@@ -652,10 +682,42 @@ function makeCan(x, z) {
     new THREE.MeshStandardMaterial({ color: 0x333333 }));
   spout.position.set(0.22, 0.5, 0); spout.rotation.z = 0.5;
   g.add(body, spout);
+  // a faint glow column, so a can reads from across a lot and not just on the radar
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: 0xff7a2a, transparent: true, opacity: 0.13, depthWrite: false,
+    blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  });
+  beamMat.userData.gtbRealized = true;
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 7, 12, 1, true), beamMat);
+  beam.position.y = 3.5 - 0.55;
+  g.add(beam);
   g.position.set(x, 0.55, z);
   g.userData = { taken: false, baseY: 0.55 };
   scene.add(g);
   cans.push(g);
+}
+
+/**
+ * Keep every can reachable. A can whose spot ended up inside something's
+ * collision (a building added or swapped later, a parked car) moves to the
+ * nearest clear ground around it. Runs once, when every blocker exists.
+ */
+function settleCans() {
+  const clear = (x, z) => blockers.every((b) => Math.hypot(b.x - x, b.z - z) > b.r + 0.9);
+  for (const c of cans) {
+    const { x, z } = c.position;
+    if (clear(x, z)) continue;
+    search: for (let r = 1; r <= 10; r += 0.75) {
+      for (let a = 0; a < 16; a++) {
+        const nx = x + Math.cos((a / 16) * Math.PI * 2) * r, nz = z + Math.sin((a / 16) * Math.PI * 2) * r;
+        if (!clear(nx, nz)) continue;
+        c.position.x = nx;
+        c.position.z = nz;
+        console.info(`[cans] a can at (${x.toFixed(1)}, ${z.toFixed(1)}) was inside collision; moved to (${nx.toFixed(1)}, ${nz.toFixed(1)})`);
+        break search;
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------- Popeyes (everywhere)
@@ -720,6 +782,7 @@ function carParkTexture() {
 let parkTex;
 
 function makePopeyes(x, z, rot = 0) {
+  popeyesPlaced.push({ x, z });
   const g = new THREE.Group();
   g.position.set(x, 0, z);
   g.rotation.y = rot;
@@ -898,7 +961,9 @@ let orlea = null;              // the causeway + OrleaRouge, the south of the ma
 let potholes = null;           // Tusouxroe's potholes (potholes.js)
 let blueLight = null;          // Act One continued: Solange, the raid, the flood tunnel (bluelight.js)
 let storyFail = null;
-let westParish = null;         // Parish Highway 9 and the rural west (westparish.js)          // a story chapter can catch WASTED / BUSTED and respawn instead
+let westParish = null;         // Parish Highway 9 and the rural west (westparish.js)
+let eastBank = null;           // Lafourchette, the east bank (eastbank.js, laid out by composer.js)
+let nolantis = null;           // Act One continued underground: Nirbayou Nolantis (nolantis.js)          // a story chapter can catch WASTED / BUSTED and respawn instead
 const buildingOccluders = [];  // tall buildings the camera must stay in front of
 let mainStreetWest = -73;      // Main Street runs from US-167 west to the last shopfront
 const camCtl = createCameraController({
@@ -907,6 +972,46 @@ const camCtl = createCameraController({
 // F4: world axes and every system's idea of forward (debug.js); the HUD compass
 const orientDebug = createOrientationDebug({ scene });
 const compass = createCompass();
+// GTA-style radar (minimap.js): the base map is built once the level exists
+const minimap = createMinimap({ MAP });
+// the player's weapon slot (weapons.js) and what NPCs drop (loot.js)
+const arsenal = createArsenal({ state, flashObjective });
+const loot = createLoot({
+  scene, state, arsenal, flashObjective,
+  getPlayerPos: () => playerPos,
+  syncHUD: () => syncHUD(),
+});
+// the one clock and the current weather (worldtime.js, weather.js)
+const worldTime = createWorldTime();
+const weather = createWeather({ initial: "clear" });
+// GTA-style car-jacking (hijack.js): F at a car someone's driving pulls them out first.
+// Getters, not values: playerPos, enemies and npcs are declared further down.
+const hijacker = createHijacker({
+  state,
+  getPlayerPos: () => playerPos,
+  getPlayer: () => player,
+  releaseFromTraffic: (v) => { if (traffic) traffic.releaseVehicle(v); },
+  spawnDriver: (x, z) => { spawnEnemy(Math.random() < 0.55 ? "hoodrat" : "redneck", x, z); return enemies[enemies.length - 1]; },
+  provoke: (e) => npcs.provoke(e),
+  enterVehicle: (v) => { state.veh = v; playerPos.copy(v.obj.position); player.visible = false; },
+  flashObjective,
+  crime,
+});
+const _blips = [];
+function minimapBlips() {
+  _blips.length = 0;
+  const wp = (blueLight && blueLight.waypoint) || (actOne && actOne.waypoint) || (prologue && prologue.waypoint);
+  if (wp) _blips.push({ kind: "waypoint", x: wp.x, z: wp.z });
+  if (!storyObjective) {
+    // free roam: the escape plan (the cans, then the truck)
+    if (state.cans >= CAN_GOAL) _blips.push({ kind: "waypoint", x: truckPos.x, z: truckPos.z });
+    else for (const c of cans) if (!c.userData.taken) _blips.push({ kind: "can", x: c.position.x, z: c.position.z });
+  }
+  _blips.push({ kind: "truck", x: truckPos.x, z: truckPos.z });
+  for (const s of sheriffs) if (!s.dead) _blips.push({ kind: "cop", x: s.obj.position.x, z: s.obj.position.z });
+  for (const e of enemies) if (!e.dead && e.state === "hostile") _blips.push({ kind: "hostile", x: e.spr.position.x, z: e.spr.position.z });
+  return _blips;
+}
 input.onPress("debugOrientation", () => orientDebug.toggle());
 renderer.domElement.addEventListener("mousedown", (e) => {
   if (state.running && e.button === 0) fire();
@@ -988,7 +1093,7 @@ const npcEnv = { player: playerPos, driving: false, others: enemies };
 const spawnZones = createSpawnZones({
   MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea: () => orlea,
   residential: [{ x: -48, z: 116, r: 24 }, { x: 48, z: 100, r: 20 }],   // trailer park, junkyard
-  extraZone: (x, z) => (westParish ? westParish.zoneAt(x, z) : null),     // Parish Highway 9, Bayou Noir
+  extraZone: (x, z) => (westParish && westParish.zoneAt(x, z)) || (eastBank && eastBank.zoneAt(x, z)) || null,   // Hwy 9, Bayou Noir, Lafourchette
   coreMinX: -WORLD - 4,                                                   // town / city zones end at the old west edge
 });
 
@@ -1298,6 +1403,12 @@ async function buildLevel() {
     cine, state, playerPos, ROAD_X, ROAD_HALF,
   });
   orlea.buildSet();
+  // Popeyes #2, on the OrleaRouge boulevard (#1 is a LANDMARKS lot on the strip)
+  for (const p of POPEYES_LOCATIONS) {
+    if (p.lot) continue;
+    makePopeyes(p.x, p.z, p.rot);
+    NPC_POIS.push({ x: p.x - 11, z: p.z, r: 8 });
+  }
   NPC_POIS.push(...orlea.pois);          // npcs holds this same array
   // the overpass deck, OrleaRouge's buildings, and Tusouxroe's shopfronts
   camCtl.setOccluders([...orlea.occluders, ...buildingOccluders]);
@@ -1382,6 +1493,7 @@ async function buildLevel() {
     },
     revive: () => { state.hp = 100; state.hurtCd = 1; syncHUD(); },
     setFail: (fn) => { storyFail = fn; },
+    startNext: () => { if (nolantis) nolantis.start(); },
   });
   blueLight.buildSet();
 
@@ -1395,6 +1507,43 @@ async function buildLevel() {
   westParish.buildSet();
   NPC_POIS.push(...westParish.pois);
 
+  // ---- Lafourchette: the east bank, composed road → buildings → side streets → open areas → vegetation → landmark ----
+  eastBank = createEastBank({
+    scene, camera, surface, addBlocker, flashObjective, shopParts,
+    roadMaterial: () => asphalt.material(1, { envMapIntensity: 0.9 }),
+    addLitSpot: (spot) => litSpots.push(spot),
+    makeShed, makeFence, makeBarrel, makePallet, makeWaterTower, placeGlbLandmark,
+  });
+  eastBank.buildSet();
+  NPC_POIS.push(...eastBank.pois);
+
+  // ---- Nirbayou Nolantis: a sealed cavern set well west of the map ----
+  nolantis = createNolantis({
+    scene, camera, cine, state, playerPos, MAP, makeHoodrat, addBlocker, poolLight, surface, flashObjective,
+    getPlayer: () => player,
+    makeCastMember: (who) => makeCastMember(makeHoodrat, who),
+    setObjective: setStoryObjective,
+    setCameraYaw: (yaw) => camCtl.addYaw(yaw - camCtl.yaw),
+    setPopulation: (on) => { populationOn = on; },
+    getMapCanvas: () => minimap.baseCanvas,
+    returnTo: { x: 120, z: 372, heading: Math.PI },          // up the ladder by the storm drain
+    exitVehicle: () => {
+      if (!state.veh) return;
+      state.veh.speed = 0;
+      state.veh = null;
+      player.visible = true;
+    },
+    teleport: (x, z, heading = 0) => {
+      const v = state.veh;
+      if (v) { v.speed = 0; state.veh = null; }
+      playerPos.set(x, 0, z);
+      player.position.set(x, 0, z);
+      player.visible = true;
+      if (player._last) player._last.copy(player.position);
+    },
+  });
+  nolantis.buildSet();
+
   // ---- ambient traffic: both lanes of US-167 ----
   traffic = createTraffic({
     scene, registerVehicle,
@@ -1404,6 +1553,7 @@ async function buildLevel() {
       { name: "southbound", points: [[ROAD_X - 2.4, MAP.minZ + 2], [ROAD_X - 2.4, MAP.maxZ - 2]], cruise: [12, 19] },
       ...(orlea ? orlea.lanes : []),
       ...(westParish ? westParish.lanes : []),
+      ...(eastBank ? eastBank.lanes : []),
     ],
     perLane: 4,
     maxCars: 16,
@@ -1425,7 +1575,7 @@ async function buildLevel() {
   makeCan(...landmarkPos(1, 100), true);        // at the 6twelve pumps
   makeCan(-16, 41, true);                       // out front of the storefront lot (z 52), clear of its walls
   makeCan(30, 66, true);                        // by a shack
-  makeCan(11, -42, true);                       // by the Popeyes (z -34), beside its car park; landmarkPos(1, -40) was inside the walls
+  makeCan(3, -50, true);                        // out front of the storefront lot (z -34), by the road: (11, -42) ended up inside that building's collision
   makeCan(ROAD_X - 2, -100, true);              // near the truck
 
   const be = ROAD_X + ROAD_HALF + 8;
@@ -1952,7 +2102,8 @@ function tryInteract() {
 const _tmpV = new THREE.Vector3();
 function fire() {
   if (state.fireCd > 0 || state.over || state.cinematic) return;
-  state.fireCd = state.veh ? 0.3 : 0.42;
+  const gun = arsenal.stats(!!state.veh);
+  state.fireCd = gun.cooldown;
   crime(0.12);
   const origin = _tmpV.copy(playerPos).setY(state.veh ? 1.4 : 1.2);
 
@@ -1966,7 +2117,7 @@ function fire() {
     if (e.dead) continue;
     const dx = e.spr.position.x - playerPos.x, dz = e.spr.position.z - playerPos.z;
     const d = Math.hypot(dx, dz);
-    if (d > 30 || d < 1e-3) continue;
+    if (d > gun.range || d < 1e-3) continue;
     const facing = (dx * _aim.x + dz * _aim.z) / d;       // 1 = dead ahead
     const hostile = e.state === "hostile";
     if (!hostile && facing < 0.93) continue;
@@ -1977,7 +2128,7 @@ function fire() {
   for (const s of sheriffs) {
     if (s.dead) continue;
     const d = s.obj.position.distanceTo(playerPos);
-    if (d < 30 && d * 0.6 < bestScore) { bestScore = d * 0.6; best = s; bestKind = "sheriff"; }
+    if (d < gun.range && d * 0.6 < bestScore) { bestScore = d * 0.6; best = s; bestKind = "sheriff"; }
   }
   npcs.noise(playerPos.x, playerPos.z, 26);     // gunfire carries
 
@@ -1987,16 +2138,17 @@ function fire() {
   else target = origin.clone().addScaledVector(_aim, 24);
   spawnTracer(origin, target);
   muzzleFlash(origin, target);
+  arsenal.consume();
 
   if (bestKind === "enemy") {
-    best.hp -= 2;
+    best.hp -= gun.damage;
     npcs.provoke(best);
     if (best.type !== "hog") { best.spr.play("hurt", { loop: false, force: true }); best.t = 0; }
     else best.spr.position.addScaledVector(best.spr.position.clone().sub(playerPos).setY(0).normalize(), 0.4);
     if (best.hp <= 0) { killEnemy(best); if (best.type !== "hog") crime(1.2); }
   } else if (bestKind === "sheriff") {
     crime(0.4);
-    damageVehicle(best, 4);
+    damageVehicle(best, gun.damage * 2);
   }
 }
 
@@ -2020,6 +2172,7 @@ function killEnemy(e) {
   e.t = 0;
   kills[e.type] = (kills[e.type] || 0) + 1;
   if (e.type !== "hog") e.spr.play("death", { fps: 9, loop: false, force: true });
+  loot.dropFor(e);
   flashObjective(`${e.T.label} down.  ${EMOJI.hog} ${kills.hog}   ${EMOJI.redneck} ${kills.redneck}   ${EMOJI.hoodrat} ${kills.hoodrat}`);
   checkHeatUp();
 }
@@ -2170,6 +2323,9 @@ function tick() {
     if (orlea) orlea.update(dt);
     if (blueLight) blueLight.update(dt);
     if (westParish) westParish.update(dt, playerPos);
+    if (eastBank) eastBank.update(dt, playerPos);
+    hijacker.update(dt);
+    if (nolantis) nolantis.update(dt);
     cine.update(dt);
     if (!cine.hasCamera) {
       camCtl.update(dt, playerPos, state.veh, blockerGrid, playerMoveHeading);
@@ -2180,6 +2336,15 @@ function tick() {
       }
     }
     compass.update(camCtl.heading);
+    minimap.visible = !(nolantis && nolantis.inside);
+    minimap.update({
+      dt,
+      player: state.veh ? state.veh.obj.position : playerPos,
+      playerHeading: state.veh ? state.veh.heading : (player && player._yaw != null ? player._yaw : 0),
+      cameraHeading: camCtl.heading,
+      speed: state.veh ? Math.abs(state.veh.speed) : 0,
+      blips: minimapBlips(),
+    });
     orientDebug.update({ pos: playerPos, playerHeading: player && player._yaw != null ? player._yaw : 0, camera: camCtl, veh: state.veh });
     perf._sim += performance.now() - t0;
   }
@@ -2276,15 +2441,17 @@ let lastElev = -1.8;
 function simulate(dt) {
   state.fireCd = Math.max(0, state.fireCd - dt);
   state.hurtCd = Math.max(0, state.hurtCd - dt);
-  state.dusk = Math.min(1, state.dusk + dt * 0.0016);
+  worldTime.update(dt);
+  weather.update(dt);
+  state.dusk = worldTime.dusk;
   if (objTimer > 0) { objTimer -= dt; if (objTimer <= 0) objEl.textContent = defaultObjective(); }
 
   // Night deepens: the sun sinks further below the horizon, which drains the
   // blue out of the sky probe, so the whole scene's ambient goes with it.
-  const f = 1 - state.dusk * 0.4;
+  const f = (1 - state.dusk * 0.4) * weather.lightMultiplier;
   moon.intensity = 2.8 * f;
-  scene.fog.density = 0.0072 + state.dusk * 0.004;
-  MIST.y = 0.04 + state.dusk * 0.025;   // the mist thickens as the night goes on
+  scene.fog.density = (0.0072 + state.dusk * 0.004) * weather.fogMultiplier;
+  MIST.y = (0.04 + state.dusk * 0.025) * weather.mistMultiplier;   // the mist thickens as the night goes on
   const elev = -1.8 - state.dusk * 4.2;
   // re-baking the PMREM probe is expensive — only when it would actually show
   if (Math.abs(elev - lastElev) > 0.4) {
@@ -2317,7 +2484,9 @@ function simulate(dt) {
   // ---- cans ----
   for (const c of cans) {
     if (c.userData.taken) continue;
-    if (playerPos.distanceTo(c.position) < 1.5) {
+    const at = state.veh ? state.veh.obj.position : playerPos;
+    const reach = state.veh ? CAN_REACH_VEHICLE : CAN_REACH;
+    if (Math.hypot(at.x - c.position.x, at.z - c.position.z) < reach) {
       c.userData.taken = true;
       c.visible = false;
       state.cans = Math.min(CAN_GOAL, state.cans + 1);
@@ -2341,6 +2510,9 @@ function simulate(dt) {
       flashObjective("Popeyes. That's a spicy heal. +28 HP");
     }
   }
+
+  // ---- loot on the ground ----
+  loot.update(dt);
 
   // ---- truck proximity / auto win ----
   if (state.cans >= CAN_GOAL && playerPos.distanceTo(truckPos) < 4.2) win();
@@ -2389,6 +2561,12 @@ function hitPlayer(dmg) {
 
 // ============================================================ ON FOOT
 function onFootUpdate(dt) {
+  // mid car-jack, hijack.js moves the player; on-foot input waits
+  if (hijacker.active) {
+    attackTimer = Math.max(0, attackTimer - dt);
+    player.update(dt, camera);
+    return;
+  }
   // Camera-relative: W walks where the camera looks (flattened), D to its right.
   // (This used to rotate the keys by −yaw, which inverted them facing east/west.)
   const fwdIn = input.axis("back", "forward");
@@ -2410,8 +2588,10 @@ function onFootUpdate(dt) {
     const next = _step.copy(playerPos).addScaledVector(mv, speed * dt);
     resolveCollision(playerPos, next, 0.6);
   }
-  playerPos.x = THREE.MathUtils.clamp(playerPos.x, MAP.minX + 4, MAP.maxX - 4);
-  playerPos.z = THREE.MathUtils.clamp(playerPos.z, MAP.minZ + 4, MAP.maxZ - 4);
+  if (!(nolantis && nolantis.inside)) {
+    playerPos.x = THREE.MathUtils.clamp(playerPos.x, MAP.minX + 4, MAP.maxX - 4);
+    playerPos.z = THREE.MathUtils.clamp(playerPos.z, MAP.minZ + 4, MAP.maxZ - 4);
+  }
   player.position.copy(playerPos);
   player.visible = true;
 
@@ -2500,12 +2680,13 @@ function nearestVehicle(pos, maxD) {
 }
 
 function enterExitVehicle() {
-  if (!state.running || state.cinematic) return;
+  if (!state.running || state.cinematic || hijacker.active) return;
   if (state.veh) {
     // step out
     const v = state.veh;
     state.veh = null;
     v.speed = 0;
+    if (v.seats) v.seats[0].occupant = null;
     const side = exitOffset(v, _fwd);          // out of the driver's door
     playerPos.copy(v.obj.position).add(side);
     player.position.copy(playerPos);
@@ -2514,8 +2695,13 @@ function enterExitVehicle() {
     return;
   }
   const v = nearestVehicle(playerPos, 4.2);
+  if (v && canHijack(v)) {
+    hijacker.start(v);                         // someone's driving it: pull them out first
+    return;
+  }
   if (v) {
     state.veh = v;
+    if (v.seats) v.seats[0].occupant = "player";
     if (v.sheriff) { crime(0.8); flashObjective("You jacked a Sheriff cruiser. Bold."); }
     else flashObjective("Jacked it. Floor it.");
   } else {
@@ -2706,6 +2892,8 @@ async function boot() {
     ...(prologue ? prologue.props : []),
     ...(blueLight ? blueLight.props : []),
     ...(westParish ? westParish.props : []),
+    ...(eastBank ? eastBank.props : []),
+    ...(nolantis ? nolantis.props : []),
   ]);
   const batch = batchStatic(scene, { exclude: (root) => moving.has(root) });
   console.info(`[gfx] static batching: ${batch.meshes} meshes -> ${batch.meshes - batch.removed} (${batch.batches} batches)`);
@@ -2718,16 +2906,56 @@ async function boot() {
   window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
-    get player() { return player; }, get prologue() { return prologue; }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; },
+    get player() { return player; }, get prologue() { return prologue; }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, CAN_REACH, CAN_REACH_VEHICLE,
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
       playerPos.set(x, 0, z);
       player.position.set(x, 0, z);
       player.visible = true;
       if (player._last) player._last.copy(player.position);
-    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug,
+    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug, minimap, hijacker, arsenal, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, get nolantis() { return nolantis; },
     get playerMoveHeading() { return playerMoveHeading; },
     get soundtrack() { return soundtrackReady; } };
+  // the radar's base map, from the level as built
+  {
+    const roads = [
+      { points: [[ROAD_X, MAP.minZ], [ROAD_X, MAP.maxZ]], width: ROAD_HALF * 2 + 2, color: "#cfcab8" },   // US-167
+      { points: [[mainStreetWest, -78], [ROAD_X, -78]], width: 9 },                                      // Main Street
+      { points: [[31, -106], [122, -106]], width: 8 },                                                   // South Tusouxroe
+      { points: [[ROAD_X + ROAD_HALF, 43], ...ROUTE_EAST, [CRASH.x, CRASH.z]], width: 5, color: "#8a7a5a" },   // the prologue's dirt road
+    ];
+    const areas = [], water = [], buildings = [];
+    for (const [, side, z] of LANDMARKS) {
+      const [bx] = landmarkPos(side, z);
+      buildings.push({ x0: bx - 8, x1: bx + 8, z0: z - 8, z1: z + 8 });
+    }
+    for (const o of buildingOccluders) buildings.push({ x0: o.minX, x1: o.maxX, z0: o.minZ, z1: o.maxZ });
+    for (const p of POPEYES_LOCATIONS) if (!p.lot) buildings.push({ x0: p.x - 6, x1: p.x + 6, z0: p.z - 7, z1: p.z + 7 });
+    if (orlea) {
+      const G = orlea.grid;
+      areas.push({ x0: G.city.minX, x1: G.city.maxX, z0: G.city.minZ, z1: G.city.maxZ });
+      water.push({ x0: -140, x1: ROAD_X - ROAD_HALF - 2, z0: G.causeway.minZ - 4, z1: G.causeway.maxZ + 4 });
+      water.push({ x0: ROAD_X + ROAD_HALF + 2, x1: 140, z0: G.causeway.minZ - 4, z1: G.causeway.maxZ + 4 });
+      for (const o of orlea.occluders) if (o.minY < 1) buildings.push({ x0: o.minX, x1: o.maxX, z0: o.minZ, z1: o.maxZ });
+      for (const x of G.avenues) roads.push({ points: [[x, G.city.minZ], [x, G.city.maxZ]], width: G.width });
+      for (const z of G.streets) roads.push({ points: [[G.city.minX, z], [G.city.maxX, z]], width: G.width });
+    }
+    if (westParish) {
+      roads.push({ points: westParish.samples.map((p) => [p.x, p.z]), width: westParish.width, color: "#dcd7c4" });
+      roads.push({ points: westParish.dirtSamples.map((p) => [p.x, p.z]), width: westParish.dirtWidth, color: "#8a7a5a" });
+      for (const f of westParish.fields) areas.push({ ...f, color: "#4d4a26" });
+      for (const w of westParish.water) water.push({ x0: w.x - w.w / 2, x1: w.x + w.w / 2, z0: w.z - w.d / 2, z1: w.z + w.d / 2 });
+    }
+    if (eastBank) {
+      const m = eastBank.minimap;
+      roads.push(...m.roads);
+      areas.push(...m.areas);
+      water.push(...m.water);
+      buildings.push(...m.buildings);
+    }
+    minimap.build({ roads, areas, water, buildings });
+  }
+  settleCans();                  // every blocker exists now: no can may sit inside one
   loadNote.textContent = "ready.";
   startBtn.disabled = false;
   freeBtn.disabled = false;

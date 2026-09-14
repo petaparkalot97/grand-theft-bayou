@@ -18,7 +18,7 @@ export function createOrientationDebug({ scene }) {
   const panel = document.createElement("div");
   panel.id = "orientDebug";
   panel.hidden = true;
-  panel.style.cssText = "position:fixed;left:16px;bottom:40px;z-index:30;pointer-events:none;" +
+  panel.style.cssText = "position:fixed;left:16px;bottom:240px;z-index:30;pointer-events:none;" +   // above the minimap
     "font:12px/1.5 Consolas,monospace;color:#dfe9ff;background:rgba(0,0,0,.65);padding:8px 10px;border-radius:6px;white-space:pre";
   document.body.appendChild(panel);
 

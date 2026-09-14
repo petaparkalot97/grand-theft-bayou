@@ -1,9 +1,16 @@
 // ---------------------------------------------------------------------------
 // characters.js — the HOODRATS.
 //
-// Two crews, red and blue, built to the reference photos: bandana (do-rag on
-// the men, tied headband on the women), white ribbed tank, crew-coloured belt
-// or leggings, matching high-tops, a chain at the neck.
+// Two crews, red and blue, built to the GTA San Andreas-style reference sheets:
+//   men    paisley crew bandana (over the crown for red, a brow band over
+//          cornrows for blue), goatee, white tank, leather belt, the crew
+//          bandana hanging long from a front pocket, baggy stacked jeans, arm
+//          tattoos; all-white low-tops (red) or white-and-navy high-tops (blue)
+//   women  paisley headband, long hair (straight for red, spiral curls for
+//          blue), gold hoops and a cross on a gold chain, white cropped tank,
+//          bright crew leggings, colour-blocked crew high-tops
+// Story characters pass their own palette object (opts.crew = {...}) and keep
+// the classic look, so the cast doesn't change with the crew sheets.
 //
 // Built procedurally rather than loaded: the packs have no character that looks
 // anything like this, and code lets one builder cover both sexes, both crews
@@ -20,8 +27,10 @@ import { mergeRigid } from "./merge.js";
 
 // --------------------------------------------------------------- palette
 export const CREWS = {
-  red:  { name: "Red",  cloth: 0x9e1f27, accent: 0xd2434b, chain: 0xd4af37, shoe: 0xb3242c },
-  blue: { name: "Blue", cloth: 0x1d3a86, accent: 0x3a63c6, chain: 0xcfd3da, shoe: 0x24357f },
+  red:  { name: "Red",  cloth: 0xb3242c, accent: 0xd2434b, chain: 0xd4af37, shoe: 0xc0282e, legging: 0xc4292d,
+          belt: 0x4a2c1c, maleShoe: "low", headStyle: "wrap", pocket: -1 },
+  blue: { name: "Blue", cloth: 0x223f94, accent: 0x3a63c6, chain: 0xd4af37, shoe: 0x223f94, legging: 0x2946b8,
+          belt: 0x141414, maleShoe: "high", headStyle: "cornrows", pocket: 1 },
 };
 export const CREW_NAMES = Object.keys(CREWS);
 
@@ -41,6 +50,8 @@ const box = (w, h, d) => geo(`b${w}|${h}|${d}`, () => new THREE.BoxGeometry(w, h
 const cyl = (rt, rb, h, seg = 10) =>
   geo(`c${rt}|${rb}|${h}|${seg}`, () => new THREE.CylinderGeometry(rt, rb, h, seg));
 const sph = (r, w = 12, h = 10) => geo(`s${r}|${w}|${h}`, () => new THREE.SphereGeometry(r, w, h));
+/** The top of a sphere, down to polar angle `theta` (a skull cap with a level rim). */
+const capGeo = (r, theta) => geo(`cap${r}|${theta}`, () => new THREE.SphereGeometry(r, 14, 10, 0, Math.PI * 2, 0, theta));
 const torus = (r, t, seg = 10, rings = 16) =>
   geo(`t${r}|${t}|${seg}|${rings}`, () => new THREE.TorusGeometry(r, t, seg, rings));
 
@@ -76,6 +87,92 @@ function mat(kind, color) {
   }
   m.userData.gtbRealized = true;
   matCache.set(key, m);
+  return m;
+}
+
+// Paisley bandana print, per crew colour: white teardrops with a dot, rings of
+// small dots, thin black outlines. Tiled twice across each bandana part.
+const printCache = new Map();
+function paisleyMat(color) {
+  if (printCache.has(color)) return printCache.get(color);
+  const S = 256;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const g = c.getContext("2d");
+  const base = "#" + new THREE.Color(color).getHexString();
+  g.fillStyle = base;
+  g.fillRect(0, 0, S, S);
+  const drop = (x, y, s, rot) => {
+    g.save();
+    g.translate(x, y); g.rotate(rot); g.scale(s, s);
+    g.beginPath();
+    g.moveTo(0, -18);
+    g.bezierCurveTo(17, -15, 18, 9, 0, 18);
+    g.bezierCurveTo(-13, 14, -11, -2, 4, -6);
+    g.bezierCurveTo(8, -9, 4, -16, 0, -18);
+    g.closePath();
+    g.fillStyle = "#f4efe6"; g.fill();
+    g.lineWidth = 2; g.strokeStyle = "#101010"; g.stroke();
+    g.beginPath(); g.arc(3, 7, 5, 0, Math.PI * 2); g.fillStyle = base; g.fill();
+    g.restore();
+  };
+  const dots = (x, y, r) => {
+    g.fillStyle = "#f4efe6";
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      g.beginPath(); g.arc(x + Math.cos(a) * r, y + Math.sin(a) * r, 2.2, 0, Math.PI * 2); g.fill();
+    }
+  };
+  for (const [x, y, s, r] of [[44, 48, 1.3, 0.4], [178, 70, 1.1, -0.9], [108, 160, 1.4, 2.2], [226, 196, 1.0, 1.1], [30, 214, 1.0, -2.4]]) drop(x, y, s, r);
+  for (const [x, y, r] of [[120, 50, 14], [60, 130, 11], [200, 130, 12], [150, 232, 10]]) dots(x, y, r);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(2, 2);
+  const m = new THREE.MeshStandardMaterial({ name: "cloth", map: t, roughness: 0.92, envMapIntensity: 0.55 });
+  m.userData.gtbRealized = true;
+  printCache.set(color, m);
+  return m;
+}
+
+// Arm-sleeve tattoos: dark ink drawn on white, multiplied by the skin tone, so
+// one texture works on every skin. Script, a rose, praying hands, stars.
+let tattooTex = null;
+const inkCache = new Map();
+function tattooMat(skinColor) {
+  if (inkCache.has(skinColor)) return inkCache.get(skinColor);
+  if (!tattooTex) {
+    const c = document.createElement("canvas");
+    c.width = 256; c.height = 512;
+    const g = c.getContext("2d");
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, 256, 512);
+    g.strokeStyle = g.fillStyle = "rgba(34,26,22,.88)";
+    g.lineWidth = 5;
+    g.font = "italic bold 40px Georgia, serif";
+    g.fillText("Family", 20, 70); g.fillText("First", 60, 118);
+    g.font = "italic bold 30px Georgia, serif";
+    g.fillText("Good Men", 20, 300); g.fillText("Still Exist", 30, 338);
+    // a rose: spiral petals and two leaves
+    g.beginPath();
+    for (let a = 0; a < Math.PI * 6; a += 0.2) g.lineTo(150 + Math.cos(a) * a * 3.2, 200 + Math.sin(a) * a * 3.2);
+    g.stroke();
+    for (const s of [-1, 1]) { g.beginPath(); g.ellipse(150 + s * 50, 240, 26, 10, s * 0.6, 0, Math.PI * 2); g.fill(); }
+    // praying hands, simplified
+    g.beginPath(); g.ellipse(90, 430, 22, 60, -0.15, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(118, 430, 22, 60, 0.15, 0, Math.PI * 2); g.fill();
+    // stars
+    for (const [x, y] of [[210, 40], [30, 170], [220, 440], [200, 380]]) {
+      g.beginPath();
+      for (let i = 0; i < 10; i++) { const r = i % 2 ? 7 : 16, a = (i / 10) * Math.PI * 2 - Math.PI / 2; g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); }
+      g.closePath(); g.fill();
+    }
+    tattooTex = new THREE.CanvasTexture(c);
+    tattooTex.colorSpace = THREE.SRGBColorSpace;
+  }
+  const m = mat("skin", skinColor).clone();
+  m.map = tattooTex;
+  m.userData.gtbRealized = true;
+  inkCache.set(skinColor, m);
   return m;
 }
 
@@ -137,6 +234,9 @@ class Hoodrat extends THREE.Object3D {
     this.female = female;
     this.crew = typeof opts.crew === "object" ? "custom" : opts.crew || "red";
     this.crewInfo = crew;
+    // crew members follow the reference sheets; story characters (a palette
+    // object) keep the classic look, and their seeds build the same bodies
+    const styled = typeof opts.crew !== "object";
 
     // draw both tones even when overridden, so a seed builds the same body
     const skinTone = SKIN_TONES[(rnd() * SKIN_TONES.length) | 0];
@@ -144,8 +244,8 @@ class Hoodrat extends THREE.Object3D {
     const skin = mat("skin", opts.skin != null ? opts.skin : skinTone);
     const white = mat("cloth", opts.top != null ? opts.top : 0xeceae4);
     const denim = mat("denim", opts.denim != null ? opts.denim : denimTone);
-    const band = mat("cloth", crew.cloth);
-    const legging = mat("lycra", crew.cloth);
+    const band = styled ? paisleyMat(crew.cloth) : mat("cloth", crew.cloth);
+    const legging = mat("lycra", styled && crew.legging != null ? crew.legging : crew.cloth);
     const chainMat = mat("metal", crew.chain);
     const hairMat = mat("hair", opts.hair != null ? opts.hair : 0x16100d);
     const shoeWhite = mat("leather", 0xf2f0ec);
@@ -193,18 +293,23 @@ class Hoodrat extends THREE.Object3D {
         const strap = add(torso, box(0.05, 0.18, 0.032), white, side * 0.115 * bulk, 0.5, 0.015);
         strap.rotation.z = side * 0.17;
       }
-      const belt = add(torso, cyl(0.19 * bulk, 0.19 * bulk, 0.075, 12), band, 0, -0.02, 0);
+      // the reference belts are plain leather with a silver buckle
+      const belt = add(torso, cyl(0.19 * bulk, 0.19 * bulk, 0.07, 12), styled ? mat("leather", crew.belt) : band, 0, -0.02, 0);
       belt.scale.z = 0.74;
-      add(torso, box(0.085, 0.06, 0.03), chainMat, 0, -0.02, 0.14 * bulk);
+      add(torso, box(0.085, 0.06, 0.03), styled ? mat("metal", 0xcfd3da) : chainMat, 0, -0.02, 0.14 * bulk);
     }
 
-    // chain at the neck
-    const chain = add(torso, torus(0.082, 0.011, 6, 18), chainMat, 0, 0.49, 0.055);
-    chain.rotation.x = Math.PI / 2 - 0.42;
-    chain.scale.z = 0.7;
-    // the crucifix / pendant both references wear
-    add(torso, box(0.022, 0.05, 0.012), chainMat, 0, 0.415, 0.135 * bulk);
-    add(torso, box(0.042, 0.016, 0.012), chainMat, 0, 0.428, 0.135 * bulk);
+    // chain at the neck: the women's sheet has a gold chain and cross; the men's
+    // mostly go without (a third wear a plain chain)
+    if (!styled || female || rnd() < 0.35) {
+      const chain = add(torso, torus(0.082, 0.011, 6, 18), chainMat, 0, 0.49, 0.055);
+      chain.rotation.x = Math.PI / 2 - 0.42;
+      chain.scale.z = 0.7;
+      if (!styled || female) {
+        add(torso, box(0.022, 0.05, 0.012), chainMat, 0, 0.415, 0.135 * bulk);
+        add(torso, box(0.042, 0.016, 0.012), chainMat, 0, 0.428, 0.135 * bulk);
+      }
+    }
 
     // ---- head ----------------------------------------------------------
     const neck = add(torso, cyl(0.055, 0.06, 0.1, 8), skin, 0, 0.58, 0);
@@ -247,7 +352,8 @@ class Hoodrat extends THREE.Object3D {
       const cap = add(head, sph(0.126), hairMat, 0, 0.045, -0.012);
       cap.scale.set(1.02, 1.06, 1.05);
       let y = -0.03;
-      for (let i = 0; i < 4; i++) {
+      const lengths = styled ? 5 : 4;             // the sheet's hair falls to the lower back
+      for (let i = 0; i < lengths; i++) {
         const w = curly ? 0.2 - i * 0.012 : 0.17 - i * 0.018;
         const seg = add(head, box(w, 0.15, curly ? 0.075 : 0.055), hairMat,
           curly ? Math.sin(i * 2.3) * 0.016 : 0, y, -0.085 - i * 0.006);
@@ -259,24 +365,70 @@ class Hoodrat extends THREE.Object3D {
         strand.rotation.z = side * 0.05;
         if (curly) strand.scale.x = 1.3;
       }
+      if (styled && curly) {
+        // spiral curls: bumps down the back and over the shoulders
+        for (let i = 0; i < 16; i++) {
+          add(head, sph(0.032, 6, 5), hairMat, ((i % 4) - 1.5) * 0.05, -0.02 - i * 0.042, -0.125 - (i % 3) * 0.012);
+        }
+        for (const side of [-1, 1]) {
+          for (let i = 0; i < 5; i++) add(head, sph(0.03, 6, 5), hairMat, side * (0.115 + (i % 2) * 0.012), -0.04 - i * 0.07, 0.01);
+        }
+      }
       add(head, torus(0.042, 0.008, 6, 14), chainMat, 0.115, -0.01, 0.01);
       add(head, torus(0.042, 0.008, 6, 14), chainMat, -0.115, -0.01, 0.01);
     } else {
-      if (headwear === "band") {
-        // do-rag: skull cap with the two tails hanging down the back
-        const cap = add(head, sph(0.121, 12, 8), band, 0, 0.062, -0.006);
-        cap.scale.set(1, 0.92, 1.05);
-        const knot = add(head, sph(0.04), band, 0, 0.055, -0.115);
+      // Hair and cloth cover the crown only. The skull tops out at y ≈ 0.184 and the
+      // eyebrows reach y ≈ 0.095, so every cap follows the skull's shape down to a level
+      // rim at y ≈ 0.105: the eyes and brows stay visible, as on the reference sheet.
+      // (Full spheres centred at eye height used to bury the eyes.)
+      const crown = (m, r) => {
+        const c = add(head, capGeo(r, 1.2), m, 0, 0.055, 0);
+        c.scale.set(1, 1.12, 1.04);
+        return c;
+      };
+      if (headwear === "band" && styled) {
+        // the men's sheet: a paisley bandana either over the whole crown
+        // (red's usual) or folded into a brow band over cornrows (blue's usual)
+        const style = rnd() < 0.7 ? crew.headStyle : crew.headStyle === "wrap" ? "cornrows" : "wrap";
+        if (style === "cornrows") {
+          crown(hairMat, 0.121);
+          for (let i = -2; i <= 2; i++) {
+            const row = add(head, box(0.02, 0.026, 0.25), hairMat, i * 0.04, 0.188 - Math.abs(i) * 0.03, -0.018);
+            row.rotation.z = i * 0.3;
+            row.rotation.x = 0.1;
+          }
+          const brow = add(head, cyl(0.096, 0.117, 0.042, 16), band, 0, 0.124, 0);   // high on the forehead
+          brow.scale.z = 1.05;
+        } else {
+          crown(band, 0.124);
+          const brow = add(head, cyl(0.1, 0.119, 0.04, 16), band, 0, 0.12, 0);       // the folded edge at the rim
+          brow.scale.z = 1.05;
+        }
+        // knot and short tails at the back, just off-centre
+        const knot = add(head, sph(0.034), band, -0.045, 0.12, -0.11);
+        knot.scale.set(1, 0.8, 0.9);
+        for (let i = 0; i < 2; i++) {
+          const tail = add(head, box(0.045, 0.12, 0.014), band, -0.06 + i * 0.03, 0.06, -0.12);
+          tail.rotation.z = -0.35 + i * 0.5;
+          tail.rotation.x = -0.25;
+        }
+        if (rnd() < 0.5) {
+          // small stud earrings
+          for (const side of [-1, 1]) add(head, sph(0.011, 6, 5), mat("metal", 0xe8e2d0), side * 0.118, 0.02, 0.01);
+        }
+      } else if (headwear === "band") {
+        // do-rag: a crown cap with the two tails hanging down the back
+        crown(band, 0.122);
+        const knot = add(head, sph(0.04), band, 0, 0.1, -0.11);
         knot.scale.set(0.9, 0.8, 1);
         for (const side of [-1, 1]) {
-          const tail = add(head, box(0.055, 0.2, 0.016), band, side * 0.035, -0.05, -0.125);
+          const tail = add(head, box(0.055, 0.2, 0.016), band, side * 0.035, 0.0, -0.12);
           tail.rotation.z = side * 0.18;
           tail.rotation.x = -0.22;
         }
       } else {
         // close-cropped hair
-        const crop = add(head, sph(0.12, 12, 8), hairMat, 0, 0.072, -0.012);
-        crop.scale.set(1.02, 0.78, 1.06);
+        crown(hairMat, 0.119);
       }
       if (opts.beard !== false) {
         // short beard / goatee
@@ -294,18 +446,20 @@ class Hoodrat extends THREE.Object3D {
     }
 
     // ---- arms ----------------------------------------------------------
+    // most crew men have both arms sleeved in ink, like the sheet
+    const inked = styled && !female && rnd() < 0.8 ? tattooMat(opts.skin != null ? opts.skin : skinTone) : null;
     this.arms = [];
     for (const side of [-1, 1]) {
       const pivot = new THREE.Object3D();
       pivot.position.set(side * shoulder * bulk, 0.47, 0);
       torso.add(pivot);
-      const upper = add(pivot, cyl(0.052 * bulk, 0.045 * bulk, 0.26, 8), skin, 0, -0.13, 0);
+      const upper = add(pivot, cyl(0.052 * bulk, 0.045 * bulk, 0.26, 8), inked || skin, 0, -0.13, 0);
       const delt = add(pivot, sph(0.072 * bulk), skin, 0, 0.012, 0);   // deltoid
       delt.scale.set(1, 1.15, 1);
       const elbow = new THREE.Object3D();
       elbow.position.y = -0.26;
       pivot.add(elbow);
-      add(elbow, cyl(0.042 * bulk, 0.036 * bulk, 0.24, 8), skin, 0, -0.12, 0);
+      add(elbow, cyl(0.042 * bulk, 0.036 * bulk, 0.24, 8), inked || skin, 0, -0.12, 0);
       add(elbow, sph(0.045), skin, 0, -0.25, 0);               // fist
       this.arms.push({ pivot, elbow, side });
     }
@@ -331,21 +485,48 @@ class Hoodrat extends THREE.Object3D {
         add(knee, cyl(0.126 * bulk, 0.134 * bulk, 0.46, 10), denim, 0, -0.22, 0);
       }
 
-      // high-top sneaker: white upper, crew-coloured panel, pale sole
       const foot = new THREE.Object3D();
       foot.position.y = -0.44;
       knee.add(foot);
-      add(foot, box(0.115, 0.09, 0.135), shoeWhite, 0, 0.045, 0.005);   // collar
-      add(foot, box(0.12, 0.07, 0.26), shoeWhite, 0, -0.015, 0.045);    // upper
-      add(foot, box(0.124, 0.035, 0.1), shoeAccent, 0, -0.012, -0.035); // heel panel
-      add(foot, box(0.128, 0.042, 0.27), sole, 0, -0.052, 0.05);        // midsole
+      const shoe = !styled ? "classic" : female ? "high" : crew.maleShoe;
+      if (shoe === "low") {
+        // all-white low-tops (the red sheet)
+        add(foot, box(0.115, 0.05, 0.12), shoeWhite, 0, 0.02, -0.005);   // low collar
+        add(foot, box(0.12, 0.07, 0.26), shoeWhite, 0, -0.015, 0.045);   // upper
+        add(foot, box(0.128, 0.042, 0.27), sole, 0, -0.052, 0.05);       // midsole
+      } else if (shoe === "high") {
+        // colour-blocked high-tops: crew collar, heel and side stripe on a white toe
+        add(foot, box(0.118, 0.1, 0.13), shoeAccent, 0, 0.05, 0.005);   // collar
+        add(foot, box(0.12, 0.07, 0.26), shoeWhite, 0, -0.015, 0.045);  // upper
+        add(foot, box(0.124, 0.05, 0.11), shoeAccent, 0, -0.005, -0.03); // heel panel
+        for (const s of [-1, 1]) {
+          const stripe = add(foot, box(0.006, 0.026, 0.15), shoeAccent, s * 0.062, 0, 0.06);
+          stripe.rotation.x = -0.35;                                     // the side stripe, roughly
+        }
+        add(foot, box(0.128, 0.042, 0.27), sole, 0, -0.052, 0.05);
+      } else {
+        // high-top sneaker: white upper, crew-coloured panel, pale sole
+        add(foot, box(0.115, 0.09, 0.135), shoeWhite, 0, 0.045, 0.005);   // collar
+        add(foot, box(0.12, 0.07, 0.26), shoeWhite, 0, -0.015, 0.045);    // upper
+        add(foot, box(0.124, 0.035, 0.1), shoeAccent, 0, -0.012, -0.035); // heel panel
+        add(foot, box(0.128, 0.042, 0.27), sole, 0, -0.052, 0.05);        // midsole
+      }
       this.legs.push({ pivot, knee, foot, side });
     }
 
     // the bandana hanging off the back pocket, as in the reference
     if (!female && headwear === "band") {
-      const rag = add(hips, box(0.11, 0.3, 0.02), band, 0.16 * bulk, -0.16, -0.055);
-      rag.rotation.z = 0.14;
+      if (styled) {
+        // hanging long from a front pocket: left for red, right for blue
+        const s = crew.pocket || 1;
+        // outside the baggy jeans (their radius is ~0.13 at the thigh), hanging to mid-thigh
+        const rag = add(hips, box(0.11, 0.4, 0.02), band, s * 0.215 * bulk, -0.24, 0.05);
+        rag.rotation.z = s * 0.08;
+        rag.rotation.y = s * 0.45;
+      } else {
+        const rag = add(hips, box(0.11, 0.3, 0.02), band, 0.16 * bulk, -0.16, -0.055);
+        rag.rotation.z = 0.14;
+      }
     }
 
     // ---- finish --------------------------------------------------------

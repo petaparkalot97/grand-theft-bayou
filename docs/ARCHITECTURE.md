@@ -81,10 +81,18 @@ KEYBOARD ─→ vehicle controls ─→ vehicle heading ─→ vehicle movement 
 - **Record** (`registerVehicle`): `{ obj, heading, speed, def, seats, … }`.
   `seats[0]` is the driver.
   - Traffic cars have an `"npc"` driver.
-  - `canHijack(v)` is the hook for the future GTA-style hijack (open door, pull
-    the NPC out, take the seat).
-  - Entering / exiting today is `enterExitVehicle()` in `main.js`, and the
-    player steps out of the driver's (left) door via `exitOffset()`.
+  - **Car-jacking** is `src/hijack.js`. In `enterExitVehicle()`, a vehicle
+    where `canHijack(v)` is true (a driver who isn't the player) goes to
+    `hijacker.start(v)` instead of being entered.
+    - The sequence runs approach → pull → enter: the player steps to the
+      driver's door (`exitOffset`), the driver is spawned there and dragged
+      clear, `npcs.provoke()` makes them flee or fight, and then the player
+      takes the seat.
+    - Empty cars (parked, or jacked and left) are entered straight away.
+    - Seats: `"player"` on entering, `null` on exiting.
+    - `traffic.releaseVehicle(v)` stops a car being traffic.
+    - While `hijacker.active`, on-foot input is frozen and the car can't move.
+  - The player steps out of the driver's (left) door via `exitOffset()`.
 
 ## NPCs (`src/npc.js`)
 
@@ -139,10 +147,54 @@ appears:
   - **Culling:** the hamlet, the rest stop and each forest chunk are culling
     clusters, hidden more than 300 m from the camera. Keep new parish detail
     inside a `cluster()` so it stays culled.
-- **Bounds:** the `MAP` object in `main.js` (x −440 … 136, z −136 … 382). Use it,
+- **Lafourchette, the east bank** (`src/eastbank.js`; x 136 … 380):
+  - South Tusouxroe's street continues east as Lafourche Road to St. Jude of
+    the Levee. Three side streets and Cane Street with shotgun houses, a
+    parking lot, the Saturday market, a ball field, pines, and the bayou band
+    (z 136 … 192) carried east.
+  - **Composition** (`src/composer.js`): an occupancy grid and six stages in a
+    fixed order: road → buildings → side streets → open areas → vegetation →
+    landmark. `site()` holds ground for a later stage; an out-of-order stage
+    warns. The composer also provides culling clusters (300 m), spawn zones
+    (`building` cells spawn nobody), minimap shapes and `report()` for QA.
+- **Popeyes:** exactly the two in `POPEYES_LOCATIONS`: the strip at z 84 and the
+  OrleaRouge boulevard at (18, 230).
+- **Churches:** `src/church.js` `makeChurch(ctx, { x, z, rot, length, stainedGlass })`
+  builds St. Jude of the Levee and Bayou Noir Baptist. `Buildings.glb` has no
+  church (its part 9 is an apartment block with shops).
+- **Bounds:** the `MAP` object in `main.js` (x −440 … 380, z −136 … 382). Use it,
   not `WORLD`, for any bound.
 - Story chapters live in their own modules (`prologue.js`, `actone.js`,
-  `bluelight.js`) and are phase machines: `buildSet / start / update / phase / debug`.
+  `bluelight.js`, `nolantis.js`) and are phase machines:
+  `buildSet / start / update / phase / waypoint / debug`.
+  - Each one's end calls `ctx.startNext`: prologue → Act One → Blue Light
+    Special → Nolantis → (Part C).
+- **Nirbayou Nolantis** is a sealed cavern set at `NOLANTIS` (x −720, z 110),
+  outside `MAP`.
+  - **Rendering:** everything hangs off one root group, which is kept out of
+    `batchStatic` and drawn only when the camera is within 340 m.
+  - **While `nolantis.inside`:** the on-foot map clamp is lifted, the radar
+    hides, and spawning is off (`setPopulation(false)`).
+  - **Lighting:** the pool picks lights by x/z only, so anything high up (the
+    elevator shaft) must light itself with emissive materials.
+
+## Loot, weapons, time and weather
+
+- **Loot** (`src/loot.js`): `killEnemy` calls `loot.dropFor(npc)`, which rolls
+  `LOOT_TABLES` by NPC type (cash notes, weapons by rarity). Drops are pooled
+  pickups collected by walking over them; cash adds to `state.cash`.
+- **Weapons** (`src/weapons.js`): one slot, `state.weapon` / `state.ammo`.
+  `fire()` takes damage, range and cooldown from `arsenal.stats()`. Running dry
+  returns the 9mm.
+- **World time** (`src/worldtime.js`): the one clock. `getCurrentTime()`,
+  `isNight()`, `dusk` (0 day … 1 night), `onHour(fn)`, `setTime(h)`. It drives
+  `state.dusk`, and through it the sky, fog and mist.
+- **Weather** (`src/weather.js`): `WEATHER_TYPES` clear / cloudy / rain / storm /
+  fog. `weather.set(type, { seconds })` blends the multipliers (fog, mist,
+  light, wetness, grip, wind); fog, mist and light are applied today.
+- **Gas cans:** pickup reach is measured flat: `CAN_REACH` 2.4 m on foot,
+  `CAN_REACH_VEHICLE` 3.4 m in a car. `settleCans()` moves any can found inside
+  collision once loading finishes.
 
 ## Debug tools
 
@@ -155,6 +207,18 @@ appears:
   - red: vehicle.
 - **F3:** performance overlay (fps, frame ms, draw calls).
 - **HUD compass:** under the wanted stars, shows the camera's bearing.
+- **Radar** (`src/minimap.js`, bottom-left):
+  - **Base map:** built once at boot from level data. Roads are US-167, Main
+    Street, South Tusouxroe, the prologue dirt road, the OrleaRouge grid
+    (`orlea.grid`), Hwy 9 and the dirt road (`westParish.samples` /
+    `dirtSamples`); also water, buildings and fields.
+  - **Rotation:** turns so the camera's forward is up. The N on the rim uses
+    `bearingDegrees`. The arrow is player (or car) bearing minus camera bearing.
+  - **Blips:** come from `minimapBlips()` in `main.js`. Story modules expose
+    `get waypoint()` ({x, z} or null): `prologue.js`, `actone.js`,
+    `bluelight.js`. Give any new story module one too.
+  - **Cost:** draws only the patch of the base image under the circle, at most
+    30 times a second.
 - **`window.__game`:** QA access (`teleport`, `camCtl`, `vehicles`, `spawnZones`,
   `input`, story modules).
 
@@ -167,3 +231,7 @@ appears:
   - Aerial shots of the strip.
 - Regressions: `gameplay.mjs`, `prologue.mjs`, `actone.mjs`, `bluelight.mjs`,
   `orlearouge.mjs`, `potholes.mjs`.
+- `tools/qa/worldpass.mjs`: the Popeyes count and spacing, loot tables over 2,000
+  rolls, a real kill's roll, pickups and the weapon slot, world time and weather.
+- `tools/qa/eastbank.mjs`: Lafourchette's stage order, no building on a road,
+  spawn zones, culling, frame time against the strip, walking and driving east.
