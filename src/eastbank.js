@@ -148,7 +148,7 @@ export function createEastBank(ctx) {
       placeOfficeClutter(ctx, r.x0 + 4, r.z0 + 5);
       ctx.addLitSpot({ x: c.x, y: 8.5, z: c.z, warm: 0xffbf74, power: 150, range: 30, pole: true });
     } });
-    C.openArea("market", { color: "#6b5a44", build: (r, c) => {
+    C.openArea("market", { color: "#6b5a44", zoneName: "market_row", build: (r, c) => {
       const dirt = ctx.surface("dirt", 512).material(1);
       C.plane(c.w, c.d, C.tiled(dirt, c.w, c.d, 8), c.x, 0.021, c.z);
       makeDecorativeFence(ctx, r.x0 + 1, r.z0 + 1, r.x1 - 1, r.z0 + 1);

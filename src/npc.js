@@ -21,6 +21,9 @@ import * as THREE from "three";
 const rand = (lo, hi) => lo + (hi - lo) * Math.random();
 const NEAR = 55, FAR = 110;
 const MAX_HOSTILE = 7;             // never let the whole map pile onto the player
+// Market Row keeps Saturday hours: bustling trade 09:00–18:00, but only from
+// day 2 on — the game opens at 18:30 on day 1, so the first evening is quiet.
+const MARKET_OPEN = 9, MARKET_CLOSE = 18;
 
 // Nobody attacks unprovoked. Temperament only matters once the player hurts an
 // NPC: "brave" people and "territorial" hogs defend themselves, the rest run.
@@ -32,7 +35,7 @@ function temperament(type) {
   return r < 0.35 ? "brave" : "timid";
 }
 
-export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
+export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, worldTime = null }) {
   const events = [];               // recent violence: { x, z, r, t }
   let now = 0, frame = 0, hostiles = 0, nextId = 1;
   const vel = new THREE.Vector3();
@@ -45,6 +48,13 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
       if (d < bd) { bd = d; best = p; }
     }
     return best;
+  }
+
+  /** Market Row's Saturday hours right now (npc.js is created with worldTime). */
+  function marketTrading() {
+    if (!worldTime) return false;
+    const h = worldTime.hours, d = worldTime.day;
+    return h >= MARKET_OPEN && h < MARKET_CLOSE && d >= 2;
   }
 
   function setState(e, s, time) {
@@ -66,8 +76,10 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
       if (options.length) base = e.home = options[(Math.random() * options.length) | 0];
     }
     // `wanderR` comes from the spawn zone (spawnzones.js WANDER): city blocks
-    // keep trips short, out in the parish they stretch out
-    const a = Math.random() * Math.PI * 2, r = Math.random() * (base.r || 10) * (e.wanderR || 1);
+    // keep trips short, out in the parish they stretch out, and market day
+    // crowds keep to the stalls
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.random() * (base.r || 10) * (e.wanderR || 1) * (e.marketSaturday ? 0.5 : 1);
     e.goal.set(base.x + Math.cos(a) * r, 0, base.z + Math.sin(a) * r);
   }
 
@@ -119,6 +131,10 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
     const p = e.spr.position;
     const interval = e.lod ? 1 : 0.3;
 
+    // keep market hours fresh (cheap, and the staggered think tick already
+    // runs well under once a second per NPC)
+    if (e.wanderSpeed < 1) e.marketSaturday = marketTrading();
+
     if (e.state === "hostile") {
       if (e.rivalTarget) {
         if (e.rivalTarget.dead || e.rivalTarget.state === "dead") {
@@ -168,8 +184,9 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
     }
     if (e.stateT <= 0) {
       const r = Math.random();
-      // pedestrians walk more than they stand: ~3/4 of decisions start a stroll
-      if (r < 0.74) { setState(e, "wander", 0); pickGoal(e); }
+      // pedestrians walk more than they stand: ~3/4 of decisions start a stroll,
+      // and the market crowd is here to browse, so almost always
+      if (r < (e.marketSaturday ? 0.88 : 0.74)) { setState(e, "wander", 0); pickGoal(e); }
       else {
         setState(e, "loiter", rand(3, 8));
         // face whoever is standing nearest, so groups read as conversations
@@ -238,8 +255,9 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
       const d = Math.hypot(gx, gz);
       if (d > 0.5) {
         // zone sets the pace (spawnzones.js WANDER): city folk hurry, the
-        // parish ambles; hogs are untouched
-        const s = (hog ? 1.3 : 1.7 * (e.wanderSpeed || 1)) * e.pace;
+        // parish ambles, and Market Row's Saturday crowd weaves between the
+        // stalls; hogs are untouched
+        const s = (hog ? 1.3 : 1.7 * (e.wanderSpeed || 1) * (e.marketSaturday ? 1.4 : 1)) * e.pace;
         vel.set((gx / d) * s, 0, (gz / d) * s);
         anim = "walk"; fps = 6;
       }
@@ -298,6 +316,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
       e.pace = rand(0.8, 1.2);
       e.wanderR = e.wanderR || 1;          // zone profile, set by the spawner
       e.wanderSpeed = e.wanderSpeed || 1;
+      e.marketSaturday = e.wanderSpeed < 1 && marketTrading();
       e.think = Math.random() * 0.6;        // stagger: never all on the same frame
       e.calm = e.stare = 0;
       e.provoked = false;

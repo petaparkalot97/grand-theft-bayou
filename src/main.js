@@ -1221,7 +1221,7 @@ const NPC_POIS = [
 for (let z = MAP.maxZ - 16; z > MAP.minZ + 16; z -= 24) {
   NPC_POIS.push({ x: ROAD_X + (z % 48 ? 9 : -9), z, r: 4 });
 }
-const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, bounds: MAP });
+const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, bounds: MAP, worldTime });
 const npcEnv = { player: playerPos, driving: false, others: enemies };
 // What spawns where comes from the world context (spawnzones.js): no hogs in
 // town or on the highway, an occasional one in the woods.
@@ -1230,6 +1230,14 @@ const spawnZones = createSpawnZones({
   residential: [{ x: -48, z: 116, r: 24 }, { x: 48, z: 100, r: 20 }],   // trailer park, junkyard
   extraZone: (x, z) => (westParish && westParish.zoneAt(x, z)) || (eastBank && eastBank.zoneAt(x, z)) || null,   // Hwy 9, Bayou Noir, Lafourchette
   coreMinX: -WORLD - 4,                                                   // town / city zones end at the old west edge
+  // crowd sinks pull spawns onto small busy places the sample ring would miss
+  get gatherPois() {
+    return eastBank && eastBank.zoneRects
+      ? eastBank.zoneRects.filter(([n]) => n === "market_row")
+          // r stays inside the square so scattered spawns keep to it
+          .map(([, r]) => ({ x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2, r: Math.min(r.x1 - r.x0, r.z1 - r.z0) / 4 }))
+      : [];
+  },
 });
 
 function spawnEnemy(typeName, x, z, spot = null) {
@@ -1660,6 +1668,16 @@ async function buildLevel() {
   });
   eastBank.buildSet();
   NPC_POIS.push(...eastBank.pois);
+  // the Saturday market on Market Row gets a POI ring of its own — the crowd
+  // keeps to the square, weaving between the stalls (npc.js marketSaturday)
+  if (eastBank.zoneRects) {
+    for (const [zoneName, rect] of eastBank.zoneRects) {
+      if (zoneName !== "market_row") continue;
+      const cx = (rect.x0 + rect.x1) / 2, cz = (rect.z0 + rect.z1) / 2;
+      NPC_POIS.push({ x: cx, z: cz, r: Math.min(rect.x1 - rect.x0, rect.z1 - rect.z0) / 4 });
+      NPC_POIS.push({ x: rect.x0 + 6, z: cz, r: 4 }, { x: rect.x1 - 6, z: cz, r: 4 });
+    }
+  }
 
   // ---- Nirbayou Nolantis: a sealed cavern set well west of the map ----
   nolantis = createNolantis({

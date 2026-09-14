@@ -25,6 +25,9 @@ export const ZONE_MIX = Object.freeze({
   border_strip: { hoodrat: 0.5, redneck: 0.5, border: true },
   border_market: { hoodrat: 0.5, redneck: 0.5, border: true },
   residential: { redneck: 0.92, hoodrat: 0.08 },
+  // Lafourchette's Saturday market: everyone comes in to trade — families,
+  // folks from across the parish — so the hoodrat share dips way down
+  market_row: { hoodrat: 0.25, redneck: 0.75 },
   rural: { redneck: 0.6, hoodrat: 0.15, hog: 0.25 },
   forest: { hog: 0.5, redneck: 0.5 },
   highway: null,
@@ -43,6 +46,8 @@ export const WANDER = Object.freeze({
   border_strip: { r: 0.85, speed: 1.05 },
   border_market:{ r: 0.85, speed: 1.05 },
   residential:  { r: 1.0,  speed: 1.0 },
+  // market day: a slow, tight crowd weaving between the stalls
+  market_row:   { r: 0.45, speed: 0.9 },
   rural:        { r: 1.6,  speed: 0.85 },
   forest:       { r: 1.6,  speed: 0.85 },
   highway:      null,
@@ -58,8 +63,10 @@ const DEFAULT_WANDER = { r: 1, speed: 1 };
  * @param {Array}  o.residential [{ x, z, r }] patches of homes
  * @param {Function} o.extraZone (x, z) => zone name or null, checked first
  * @param {number} o.coreMinX    the original map's west edge: town / city zones stop here
+ * @param {Array}  o.gatherPois  [{ x, z, r }] crowd sinks (Market Row's square): a
+ *   sample that lands near one is pulled onto it, so small busy places actually fill
  */
-export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, residential = [], extraZone = null, coreMinX = -Infinity }) {
+export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, residential = [], extraZone = null, coreMinX = -Infinity, gatherPois = [] }) {
   const rand = (lo, hi) => lo + (hi - lo) * Math.random();
 
   function zoneAt(x, z) {
@@ -139,6 +146,17 @@ export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, resi
         const p = spots[(Math.random() * spots.length) | 0];
         x = p.x + rand(-p.r, p.r);
         z = p.z + rand(-p.r, p.r);
+      } else {
+        // crowd sinks: the Saturday market, and places like it, are too small
+        // for the spawn ring to hit on its own — pull nearby samples onto them
+        for (const p of gatherPois) {
+          if (Math.hypot(p.x - x, p.z - z) < 55 + (p.r || 0)) {
+            const a = Math.random() * Math.PI * 2, rr = Math.random() * (p.r || 5) * 0.8;
+            x = p.x + Math.cos(a) * rr;
+            z = p.z + Math.sin(a) * rr;
+            break;
+          }
+        }
       }
       const zone = zoneAt(x, z);
       const kind = pickKind(zone, hogs);

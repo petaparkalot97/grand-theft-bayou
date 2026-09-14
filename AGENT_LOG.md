@@ -39,6 +39,20 @@ setup existed (TASK-001 … TASK-009).
 # 🧠 DISCOVERIES
 
 ## 2026-09-14 — Freebuff
+**Type:** CHANGE · **Task:** TASK-034 roadmap item "Role-specific civilian presentation and pedestrian pool" (Market Row)
+
+### Finding
+The human asked for Lafourchette's Saturday market to feel distinct from plain town. Two structural gaps: the composer could only return "town"/"forest"/"highway"/"water"/"building" from `zoneAt` (no named sub-zone for the market square, 316–348 × −99…−73), and the spawn ring (65–105 m around the player) can never reliably land inside a 26 m square, so even a correct zone would have stayed empty.
+
+### Action
+- `src/composer.js`: `openArea(site, { zoneName })` claims the area as its own spawn zone (checked before the core/wild rects); exposed as `zoneRects` for wiring and QA. eastbank's market passes `zoneName: "market_row"`.
+- `src/spawnzones.js`: `market_row` added to `ZONE_MIX` (75% redneck / 25% hoodrat — parish folk come in to trade) and `WANDER` (r 0.45, speed 0.9 — tight and slow between the stalls). New `gatherPois` option: crowd sinks that pull a passing sample onto them (within `55 + r` m), the same relocation idea the city already had via `orlea.pois`.
+- `src/npc.js`: `createNpcSystem` takes `worldTime`. Records in slow zones (`wanderSpeed < 1`) get `marketSaturday = trading()` — 09:00–18:00 from day 2 on (the game opens 18:30 day 1, so the first evening is quiet). Saturday mode: stroll ×1.4, wander radius ×0.5, and 88% of decisions start a stroll (vs 74%). Refreshed on each think tick, so the crowd packs up at 18:00. Flee/hostile/chase speeds untouched.
+- `src/main.js`: `worldTime` passed to the NPC system; `gatherPois` feeds Market Row's square (sink r = rect/4 so scattered spawns stay on it); a POI ring at the square (centre + west/east edges) so loiter targets exist there.
+- `tools/qa/factions_test.mjs`: +10 assertions (31/31, 3 runs stable) — mix and wander profile, sink relocation landing *inside* the rect with the market profile, people-only spawns, and market-hours on/off at noon day 2 / 19:30 day 2 / day 1 evening / non-market zones.
+- Gotcha for the next agent writing zone tests: `pick()` clamps samples to MAP bounds before the zone check — a test map of ±200 silently clamps Lafourchette's x 316–348 to 192 and the zone never matches.
+
+## 2026-09-14 — Freebuff
 **Type:** CHANGE · **Task:** TASK-034 roadmap item "Role-specific civilian presentation and pedestrian pool"
 
 ### Finding
