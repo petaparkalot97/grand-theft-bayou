@@ -1,36 +1,79 @@
 // ---------------------------------------------------------------------------
-// voiceCast.js — per-speaker Fish Audio voice mapping for cutscene dialogue.
+// voiceCast.js — per-speaker Fish Audio voice mapping for cutscenes & dialogue.
 //
-// tools/voiceover-gen.mjs reads this to know which Fish Audio voice
-// (`reference_id`) to use for each `c.say("WHO", ...)` speaker tag. Fill in
-// the real reference_id values from your Fish Audio account (a stock voice
-// or one you cloned) — entries still starting with "TODO" are skipped with
-// a warning instead of generating audio, so it's safe to run the pipeline
-// before every voice is cast.
-//
-// Speaker tags with no entry here (one-off radio/PA lines, etc.) fall back
-// to DEFAULT_VOICE.
+//   - KESEM NADIA & PETAPARKALOT : f1b549768da341069e84d25c5b354d50
+//   - CHIMI                     : 9bfcd2342af343dc92e659628aaafcd7
+//   - DIXON                     : 7e6821ce331e4394a59736f12fdb4cd1
+//   - GREEDO                    : 0bb73a55b11e4d7eb41336be61c5abf3
+//   - RADIO HOST                : 1f7da7179c324f3e8b3603094cd12cbd
+//   - POLICE RADIO / PURSUIT    : 504f3f5d6567435aad64c130fb448c2f
+//   - STREET NPCs               : pool of 8 Fish Audio model IDs
 // ---------------------------------------------------------------------------
 
 export const VOICE_CAST = {
-  KESEME: { referenceId: "001262690f2a4eea84aa764cc536df24", label: "Keseme Nadia" },
-  CHIMI: { referenceId: "48f40b307b964870b6154b437acc239c", label: "Chimi" },
-  DIXON: { referenceId: "d67524ad1936410896ad120583cb1117", label: "Dixon" },
-  GR33DO: { referenceId: "98e364e9a41c465a9d4fdafc267f84ea", label: "Gr33do" },
-  MALLY: { referenceId: "d67524ad1936410896ad120583cb1117", label: "Mally" },
-  BUBBA: { referenceId: "98e364e9a41c465a9d4fdafc267f84ea", label: "Bubba" },
-  MERCER: { referenceId: "d67524ad1936410896ad120583cb1117", label: "Sheriff Mercer" },
-  AMARA: { referenceId: "001262690f2a4eea84aa764cc536df24", label: "Dr. Amara Veaux" },
-  EMIKO: { referenceId: "001262690f2a4eea84aa764cc536df24", label: "Emiko" },
-  SOLANGE: { referenceId: "fb52b0c3c8a44e41b234da575d009d4c", label: "Solange" },
+  KESEME: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Keseme Nadia" },
+  KESEM: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Keseme Nadia" },
+  NADIA: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Keseme Nadia" },
+  PETA: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Petaparkalot" },
+  PETAPARKALOT: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Petaparkalot" },
+
+  CHIMI: { referenceId: "9bfcd2342af343dc92e659628aaafcd7", label: "Chimi" },
+
+  DIXON: { referenceId: "7e6821ce331e4394a59736f12fdb4cd1", label: "Dixon" },
+
+  GR33DO: { referenceId: "0bb73a55b11e4d7eb41336be61c5abf3", label: "Greedo" },
+  GREEDO: { referenceId: "0bb73a55b11e4d7eb41336be61c5abf3", label: "Greedo" },
+
+  RADIO: { referenceId: "1f7da7179c324f3e8b3603094cd12cbd", label: "Radio Host" },
+  RADIO_HOST: { referenceId: "1f7da7179c324f3e8b3603094cd12cbd", label: "Radio Host" },
+  "RADIO HOST": { referenceId: "1f7da7179c324f3e8b3603094cd12cbd", label: "Radio Host" },
+  "SECOND HOST": { referenceId: "1f7da7179c324f3e8b3603094cd12cbd", label: "Radio Host" },
+  HOST: { referenceId: "1f7da7179c324f3e8b3603094cd12cbd", label: "Radio Host" },
+
+  POLICE: { referenceId: "504f3f5d6567435aad64c130fb448c2f", label: "Police Radio" },
+  POLICE_RADIO: { referenceId: "504f3f5d6567435aad64c130fb448c2f", label: "Police Radio" },
+  DISPATCH: { referenceId: "504f3f5d6567435aad64c130fb448c2f", label: "Police Radio" },
+  MERCER: { referenceId: "504f3f5d6567435aad64c130fb448c2f", label: "Sheriff Mercer / Police Radio" },
+  LOUDSPEAKER: { referenceId: "504f3f5d6567435aad64c130fb448c2f", label: "Police Radio" },
+  COP: { referenceId: "504f3f5d6567435aad64c130fb448c2f", label: "Police Radio" },
+
+  MALLY: { referenceId: "7e6821ce331e4394a59736f12fdb4cd1", label: "Mally" },
+  BUBBA: { referenceId: "0bb73a55b11e4d7eb41336be61c5abf3", label: "Bubba" },
+  AMARA: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Dr. Amara Veaux" },
+  EMIKO: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Emiko" },
+  SOLANGE: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Solange" },
 };
 
-// Shared voice for minor/one-off speakers (GPS, radio hosts, THIEF, etc.)
-// that don't warrant their own cast entry.
-export const DEFAULT_VOICE = { referenceId: "d67524ad1936410896ad120583cb1117", label: "Narrator (fallback)" };
+export const STREET_NPC_VOICE_IDS = [
+  "54e995c017564b558940e09ba3572d76",
+  "7eaed20411484921bc031de079a44712",
+  "43f6dcf7d39f4b90bed118f8355c0f73",
+  "f3d40c731a48406685f60703f789a758",
+  "119fb68dbeef4f519189705f0a3461f4",
+  "21606ca3d28e48d09217cbdcda0d75f2",
+  "cce0e63f4ea54349b209be6ef35d6922",
+  "6a6e507ba6cd46e7aa03c7acf0eafc47",
+];
 
-/** Normalizes a speaker tag (e.g. "KESEME (V.O.)" -> "KESEME") and looks up its voice. */
+export const POLICE_RADIO_VOICE_ID = "504f3f5d6567435aad64c130fb448c2f";
+
+export const DEFAULT_VOICE = { referenceId: "54e995c017564b558940e09ba3572d76", label: "Street NPC Fallback" };
+
+export function getRandomStreetNpcVoiceId(seed = Math.random()) {
+  const index = Math.floor(seed * STREET_NPC_VOICE_IDS.length);
+  return STREET_NPC_VOICE_IDS[index % STREET_NPC_VOICE_IDS.length];
+}
+
+/** Normalizes a speaker tag and looks up its Fish Audio voice. */
 export function resolveVoice(who) {
   const key = String(who || "").replace(/\s*\(V\.O\.\)\s*$/i, "").trim().toUpperCase();
-  return VOICE_CAST[key] || DEFAULT_VOICE;
+  if (VOICE_CAST[key]) return VOICE_CAST[key];
+  if (key.includes("POLICE") || key.includes("COP") || key.includes("DISPATCH") || key.includes("LOUDSPEAKER")) {
+    return { referenceId: POLICE_RADIO_VOICE_ID, label: "Police Radio" };
+  }
+  if (key.includes("RADIO") || key.includes("HOST")) {
+    return VOICE_CAST.RADIO_HOST;
+  }
+  const refId = getRandomStreetNpcVoiceId();
+  return { referenceId: refId, label: `Street NPC Voice (${refId.slice(0, 6)})` };
 }

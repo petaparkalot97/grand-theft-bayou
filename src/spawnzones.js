@@ -66,7 +66,7 @@ const DEFAULT_WANDER = { r: 1, speed: 1 };
  * @param {Array}  o.gatherPois  [{ x, z, r }] crowd sinks (Market Row's square): a
  *   sample that lands near one is pulled onto it, so small busy places actually fill
  */
-export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, residential = [], extraZone = null, coreMinX = -Infinity, gatherPois = [] }) {
+export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, residential = [], extraZone = null, coreMinX = -Infinity, gatherPois = [], worldTime = null }) {
   const rand = (lo, hi) => lo + (hi - lo) * Math.random();
 
   function zoneAt(x, z) {
@@ -159,7 +159,12 @@ export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, resi
         }
       }
       const zone = zoneAt(x, z);
-      const kind = pickKind(zone, hogs);
+      let kind = pickKind(zone, hogs);
+      if (kind === "hoodrat" && worldTime && (worldTime.isNight() || worldTime.dusk >= 0.6) && Math.random() < 0.35) {
+        if (["urban", "commercial", "border_strip", "border_market", "town"].includes(zone)) {
+          kind = "prostitute";
+        }
+      }
       const border = isBorder(x, z);
       // the wander profile rides along so npc.js doesn't re-derive the zone
       const w = WANDER[zone] || DEFAULT_WANDER;

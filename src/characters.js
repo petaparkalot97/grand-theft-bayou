@@ -862,3 +862,25 @@ export function makeDeputy(opts = {}) {
     ...opts,
   });
 }
+
+const PROSTITUTE_TOPS = [0xe62b7e, 0x9b27b0, 0xff5722, 0xe91e63, 0x00bcd4, 0xffeb3b];
+const PROSTITUTE_BOTTOMS = [0x111111, 0x881144, 0x221144, 0xcc2277];
+
+/** A random prostitute walking the streets at night. */
+export function randomProstitute(rng = Math.random, height, opts = {}) {
+  const top = PROSTITUTE_TOPS[(rng() * PROSTITUTE_TOPS.length) | 0];
+  const denim = PROSTITUTE_BOTTOMS[(rng() * PROSTITUTE_BOTTOMS.length) | 0];
+  return new Hoodrat({
+    sex: "f",
+    seed: (rng() * 1e9) | 0,
+    yaw: rng() * Math.PI * 2,
+    skin: SKIN_TONES[(rng() * SKIN_TONES.length) | 0],
+    top,
+    denim,
+    headwear: "band",
+    curly: rng() < 0.5,
+    crew: { cloth: top, chain: 0xd4af37, shoe: top, legging: denim },
+    height,
+    ...opts,
+  });
+}

@@ -24,6 +24,8 @@
 - [x] East Bank connected expansion: Cypress Heights, Market Row, Port Mercer
 - [x] District roads, parking/service areas, landmarks and environmental stories
 - [x] East Bank traffic lanes and district-aware spawn classification
+- [x] Traffic circuits: lane-end handover + mist-hidden wraps — cars never vanish (TASK-039)
+- [x] Sky-sign ghost fix: child clones kept their offsets and floated at double height (TASK-039)
 - [ ] Role-specific civilian presentation and pedestrian pool
 - [ ] Time-of-day activity weights for shops, residents and Port Mercer
 - [ ] Selective interiors for the new civic/commercial buildings
@@ -54,6 +56,62 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 ---
 
 # 🔒 ACTIVE TASKS
+
+### TASK-039 — Traffic circuits + the sky-sign fix (message 7)
+
+**Status:** `REVIEW` · **Agent:** Freebuff
+**Files:** `src/traffic.js`, `src/main.js`, `tools/qa/traffic_test.mjs`, `src/stateWorld.js` + `src/tusouxroeNorth.js` (cross-agent bug fix, see AGENT_LOG)
+
+#### What changed
+- **Cars no longer vanish at lane ends** (the human's report). A traffic car
+  used to `park()` — teleport to (1e5, 1e5) and go invisible — the moment it
+  ran off the end of its lane polyline, and despawned at 155 m while the fog
+  hides things out to ~240 m, so cars visibly popped out of existence.
+  Now: every direction pair is a **mutual circuit** (`lane.next`, auto-paired
+  in `main.js` over US-167's lanes plus every region's lanes — return
+  carriageways preferred, one-way loops as fallback); a car that reaches its
+  lane end **hands over to the return lane** when beyond `WRAP_HIDE` = 165 m
+  (in the mist), or **pulls up and waits** when in view (reads as a car paused
+  at the junction, not a glitch). `DESPAWN` is 235 m — past the fog edge, so a
+  despawn is never on screen.
+- **The sky signs fixed** (the human's screenshot). `makePopeyes`,
+  `makeGasStation` and `makePizzeria` each cloned a sign and parented the clone
+  to the *original* (`board.add(board.clone())`); the clone kept the parent's
+  world position as a **local** offset, so the back-face copy rendered at
+  double height and double offset — a fleet of Popeyes / GAS·N·GEAUX / 6twelve
+  signs hanging at 30–38 m. All four back-faces now sit at (0, 0, −0.02) in
+  their parent's space: readable from behind, no z-fighting.
+- **Cross-agent fix:** `stateWorld.js` and `tusouxroeNorth.js` passed an
+  options object `{ points: [...] }` to `composer.road()`, which wants the
+  points array directly — every composer road in both districts was building
+  zero geometry (and "Red Dust Pass" was a diagonal, which the composer
+  rejects). All five calls fixed; the diagonal split into two legs.
+- **Withdrew** my own north-shore district module: the other agent wired
+  `tusouxroeNorth.js` + `stateWorld.js` over the same northern band while I
+  was building. No territory conflict kept.
+
+#### Testing performed
+- `tools/qa/traffic_test.mjs` **11/11** (twice): pool build-up, spawn on both
+  lanes, lane-end handover beyond the mist, no vanish, handover lands in-lane,
+  visible-end car waits in place (1.0 m from the end), 230 m car still
+  simulated (no on-screen despawn). Headless Node + the project three stub
+  (extended additively: `Scene`, `Sprite(SMaterial)`, `MathUtils.damp`,
+  `Vector2.distanceTo`).
+- `node --check` clean on traffic.js, main.js, stateWorld.js,
+  tusouxroeNorth.js, spawnzones.js, npc.js.
+- Regressions: `factions_test` (31/31), `weapons_test`, `pausemenu_test`,
+  `dressing_test` all pass. `police_test` fails in `police.js` — pre-existing
+  (also fails with my changes stashed), reported in AGENT_LOG.
+
+#### Known issues
+- Wrapped cars keep their cruise speed through the U-turn (it happens at
+  165+ m, in mist — invisible). If a region ever gets a lit junction at a lane
+  end, give that lane a real loop polyline instead.
+- `stateWorld.js` builds manual `PlaneGeometry` roads alongside the composer
+  roads; with the fix the two overlap on the same lines. Claude should pick
+  one system per road during integration.
+
+---
 
 ### TASK-034 — World cleanup + expansion pass (message 6)
 
@@ -1067,7 +1125,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/graphics.js`, `index.html`, `serve.mjs`, `package.json` | Claude | Serial files: ask first | Locked |
 | `src/merge.js` | — | TASK-011 | Available |
 | `src/fx.js` | — | TASK-012 | Available |
-| `src/traffic.js` | — | TASK-012 / TASK-014 | Available |
+| `src/traffic.js` | Freebuff | TASK-039 (REVIEW) — TASK-012/014 changes go through review | Locked |
 | `tools/characters.html` | — | TASK-018 (REVIEW) | Available |
 | `src/factions.js` (new) | — | TASK-035 (REVIEW) | Available |
 | `src/spawnzones.js` | — | TASK-035 (REVIEW) | Available |
@@ -1078,6 +1136,8 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Antigravity | TASK-038 | Locked |
 | `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
 | `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |
+| `src/stateWorld.js`, `src/tusouxroeNorth.js` | Antigravity (unclaimed — see AGENT_LOG) | State-wide expansion | Unclaimed, fixes by Freebuff applied |
+| `tools/qa/traffic_test.mjs` | Freebuff | TASK-039 | Locked |
 
 ### Lock rules
 - `LOCKED` means another agent is actively making changes there.
@@ -1099,6 +1159,10 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 Implemented and headless-tested; waiting on the real-browser pass (TASK-010)
 before `COMPLETE`.
 
+- `TASK-039` — Traffic circuits + sky-sign fix (Freebuff): `src/traffic.js`
+  (lane-end handover, `next` pairing, DESPAWN 235 m past WRAP_HIDE 165 m),
+  `src/main.js` (auto-pairer over every region's lanes, the four sign clones
+  zeroed). Tested via `tools/qa/traffic_test.mjs` (11/11).
 - `TASK-020` — Police: escapable Sheriff, cruiser visuals & on-foot 3D deputies (`src/police.js`, `src/characters.js`). Tested via `tools/qa/police_test.mjs` (11/11 tests pass).
 - `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Tested via `tools/qa/factions_test.mjs` (14/14 tests pass).
 - `TASK-018` — Character viewer (`tools/characters.html`): cast presets + full

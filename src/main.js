@@ -13,7 +13,7 @@ import { batchStatic } from "./merge.js";
 import { createNpcSystem } from "./npc.js";
 import { createCameraController } from "./camera.js";
 import { createTraffic } from "./traffic.js";
-import { randomHoodrat, makeHoodrat } from "./characters.js";
+import { randomHoodrat, randomProstitute, makeHoodrat } from "./characters.js";
 import { createCinema } from "./cinema.js";
 import { createPrologue, makeCastMember, PROLOGUE_KEEPOUT } from "./prologue.js";
 import { createActOne } from "./actone.js";
@@ -27,6 +27,7 @@ import { createOrientationDebug, createCompass } from "./debug.js";
 import { createMinimap } from "./minimap.js";
 import { createHijacker } from "./hijack.js";
 import { createArsenal } from "./weapons.js";
+import { createPauseMenu } from "./pauseMenu.js";
 import { createLoot } from "./loot.js";
 import { createWorldTime } from "./worldtime.js";
 import { createWeather } from "./weather.js";
@@ -34,21 +35,19 @@ import { createEastBank, EAST_MAX_X } from "./eastbank.js";
 import { createNolantis } from "./nolantis.js";
 import { ROUTE_EAST, CRASH } from "./prologue.js";
 import { createSpawnZones } from "./spawnzones.js";
+import { createTusouxroeNorth, NORTH_MIN_Z } from "./tusouxroeNorth.js";
 import { createWestParish, onParishHighway, PARISH_MIN_X } from "./westparish.js";
 import { createPlayerCharacter, getPlayerCharacter, PLAYER_CHARACTERS } from "./playerCharacters.js";
 import { createAlternateCampaign } from "./alternateCampaign.js";
 import { createMultiplayer } from "./multiplayer.js";
+import { createStateWorld, STATE_BOUNDS } from "./stateWorld.js";
 
 // ---------------------------------------------------------------- config
 // Dixie Beaux, a Gulf Coast state that isn't Louisiana, honest: US-167 runs from
 // Chatboro (south, the swamp and the trailer park) up the Tusouxroe strip (north).
 const WORLD = 136;           // half-width of the map (x), and its northern extent
-// The map grew south to fit OrleaRouge, then west for Parish Highway 9 and the
-// rural parish (westparish.js). z runs from the Tusouxroe city limits (north, −z)
-// past Chatboro and the bayou causeway to the OrleaRouge riverfront (south, +z);
-// x from the parish's west edge (westparish.js) to Lafourchette's east edge
-// (eastbank.js). Use MAP for every bound.
-const MAP = { minX: PARISH_MIN_X, maxX: EAST_MAX_X, minZ: -WORLD, maxZ: 382 };
+// State-Wide GTA San Andreas scale map bounds (~5 km x 5 km)
+const MAP = { minX: STATE_BOUNDS.minX, maxX: STATE_BOUNDS.maxX, minZ: STATE_BOUNDS.minZ, maxZ: STATE_BOUNDS.maxZ };
 const CAN_GOAL = 4;
 const CAN_REACH = 2.4;          // on foot, measured flat (x/z): the can bobs half a metre off the ground
 const CAN_REACH_VEHICLE = 3.4;  // in a car: drive through one to grab it
@@ -830,8 +829,12 @@ function makePopeyes(x, z, rot = 0) {
   const board = new THREE.Mesh(new THREE.BoxGeometry(12, 6, 0.6), signMat());
   board.position.set(9, 19, 7);
   board.castShadow = true;
-  const board2 = board.clone();        // double-sided readability
+  // double-sided readability: the back face is its own mesh, NOT a child of the
+  // original — a clone keeps the parent's position as a local offset, which
+  // used to fling a ghost sign to twice the height and offset (the sky signs).
+  const board2 = board.clone();
   board2.rotation.y = Math.PI;
+  board2.position.set(0, 0, -0.02);   // 2 cm behind: readable, and no z-fight
   board.add(board2);
   // a glowing bulb strip on the pylon instead of a real light (light budget)
   const glowBar = new THREE.Mesh(new THREE.BoxGeometry(12.4, 6.4, 0.2),
@@ -841,7 +844,10 @@ function makePopeyes(x, z, rot = 0) {
   // ---- rooftop sign ----
   const roofSign = new THREE.Mesh(new THREE.BoxGeometry(9, 2.6, 0.5), signMat());
   roofSign.position.set(0, 7.2, 0);
-  const roofSignB = roofSign.clone(); roofSignB.rotation.y = Math.PI; roofSign.add(roofSignB);
+  const roofSignB = roofSign.clone();
+  roofSignB.rotation.y = Math.PI;
+  roofSignB.position.set(0, 0, -0.02);   // 2 cm behind: readable, and no z-fight
+  roofSign.add(roofSignB);
 
   // ---- wall sign over the door ----
   const wsign = new THREE.Mesh(new THREE.PlaneGeometry(8, 2.6), signMat());
@@ -1004,6 +1010,7 @@ const compass = createCompass();
 const minimap = createMinimap({ MAP });
 // the player's weapon slot (weapons.js) and what NPCs drop (loot.js)
 const arsenal = createArsenal({ state, flashObjective });
+const pauseMenu = createPauseMenu({ MAP, state, getPlayerPos: () => playerPos, minimap, arsenal, kills });
 const loot = createLoot({
   scene, state, arsenal, flashObjective,
   getPlayerPos: () => playerPos,
@@ -1028,6 +1035,9 @@ const hijacker = createHijacker({
 const _blips = [];
 function minimapBlips() {
   _blips.length = 0;
+  if (pauseMenu && pauseMenu.customWaypoint) {
+    _blips.push({ kind: "waypoint", x: pauseMenu.customWaypoint.x, z: pauseMenu.customWaypoint.z });
+  }
   const wp = (blueLight && blueLight.waypoint) || (actOne && actOne.waypoint) || (prologue && prologue.waypoint);
   if (wp) _blips.push({ kind: "waypoint", x: wp.x, z: wp.z });
   if (!storyObjective) {
@@ -1162,11 +1172,11 @@ let playerMoveHeading = null;   // heading the player is walking (null standing)
 let attackTimer = 0;
 
 // ---------------------------------------------------------------- enemies
-// Bayou trouble: Feral Hogs, Rednecks, Hoodrats.
+// Bayou trouble: Feral Hogs, Rednecks, Hoodrats, Prostitutes.
 const enemies = [];
 const atlases = {};   // name -> loaded atlas
-const kills = { hog: 0, redneck: 0, hoodrat: 0 };
-const EMOJI = { hog: "🐗", redneck: "🧢", hoodrat: "🎧" };
+const kills = { hog: 0, redneck: 0, hoodrat: 0, prostitute: 0 };
+const EMOJI = { hog: "🐗", redneck: "🧢", hoodrat: "🎧", prostitute: "💋" };
 
 const ENEMY_TYPES = {
   // player uses the 'redneck' sheet untinted; the Redneck ENEMY gets a hard red
@@ -1178,6 +1188,8 @@ const ENEMY_TYPES = {
   // updateEnemy() has to care which they are.
   hoodrat: { label: "Hoodrat", kind: "actor", tint: 0x6d95d6,
              h: 1.92, hp: 4, speed: 4.7, aggro: 24, melee: 1.8, dmg: 8, atkGap: 0.85 },
+  prostitute: { label: "Prostitute", kind: "prostitute", tint: 0xe62b7e,
+               h: 1.8, hp: 4, speed: 3.4, aggro: 24, melee: 1.8, dmg: 5, atkGap: 1.0 },
   hog:     { label: "Feral Hog", kind: "hog", tint: 0x000000,
              h: 1.0, hp: 6, speed: 2.3, aggro: 18, melee: 1.7, dmg: 20, atkGap: 1.6 },
 };
@@ -1222,14 +1234,22 @@ for (let z = MAP.maxZ - 16; z > MAP.minZ + 16; z -= 24) {
   NPC_POIS.push({ x: ROAD_X + (z % 48 ? 9 : -9), z, r: 4 });
 }
 const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, bounds: MAP, worldTime });
-const npcEnv = { player: playerPos, driving: false, others: enemies };
+const npcEnv = {
+  player: playerPos,
+  get veh() { return state.veh; },
+  state,
+  syncHUD,
+  flashObjective,
+  others: enemies,
+};
 // What spawns where comes from the world context (spawnzones.js): no hogs in
 // town or on the highway, an occasional one in the woods.
 const spawnZones = createSpawnZones({
   MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea: () => orlea,
   residential: [{ x: -48, z: 116, r: 24 }, { x: 48, z: 100, r: 20 }],   // trailer park, junkyard
-  extraZone: (x, z) => (westParish && westParish.zoneAt(x, z)) || (eastBank && eastBank.zoneAt(x, z)) || null,   // Hwy 9, Bayou Noir, Lafourchette
+  extraZone: (x, z) => (stateWorld && stateWorld.zoneAt(x, z)) || (tusouxroeNorth && tusouxroeNorth.zoneAt(x, z)) || (westParish && westParish.zoneAt(x, z)) || (eastBank && eastBank.zoneAt(x, z)) || null,   // Hwy 9, Bayou Noir, Lafourchette
   coreMinX: -WORLD - 4,                                                   // town / city zones end at the old west edge
+  worldTime,
   // crowd sinks pull spawns onto small busy places the sample ring would miss
   get gatherPois() {
     return eastBank && eastBank.zoneRects
@@ -1245,6 +1265,8 @@ function spawnEnemy(typeName, x, z, spot = null) {
   let view;
   if (T.kind === "hog") {
     view = buildHog();
+  } else if (typeName === "prostitute") {
+    view = randomProstitute(rng, T.h);
   } else if (T.kind === "actor") {
     view = randomHoodrat(rng, T.h);
   } else {
@@ -1654,7 +1676,7 @@ async function buildLevel() {
     scene, camera, surface, addBlocker, flashObjective, shopParts,
     roadMaterial: () => asphalt.material(1, { envMapIntensity: 0.9 }),
     addLitSpot: (spot) => litSpots.push(spot),
-    makeShed, makeFence, makeBarrel, makePallet, makeWaterTower, makeBillboard, makeGasStation, placeGlbLandmark,
+    makeShed, makeFence, makeBarrel, makePallet, makeWaterTower, makeBillboard, makeGasStation, placeGlbLandmark, loadGLB,
   });
   westParish.buildSet();
   NPC_POIS.push(...westParish.pois);
@@ -1664,7 +1686,7 @@ async function buildLevel() {
     scene, camera, surface, addBlocker, flashObjective, shopParts,
     roadMaterial: () => asphalt.material(1, { envMapIntensity: 0.9 }),
     addLitSpot: (spot) => litSpots.push(spot),
-    makeShed, makeFence, makeBarrel, makePallet, makeWaterTower, placeGlbLandmark,
+    makeShed, makeFence, makeBarrel, makePallet, makeWaterTower, placeGlbLandmark, loadGLB,
   });
   eastBank.buildSet();
   NPC_POIS.push(...eastBank.pois);
@@ -1678,6 +1700,26 @@ async function buildLevel() {
       NPC_POIS.push({ x: rect.x0 + 6, z: cz, r: 4 }, { x: rect.x1 - 6, z: cz, r: 4 });
     }
   }
+
+  // ---- North Tusouxroe: Commercial & Civic District (composed 6-stage lifecycle) ----
+  tusouxroeNorth = createTusouxroeNorth({
+    scene, camera, surface, addBlocker, flashObjective,
+    roadMaterial: () => asphalt.material(1, { envMapIntensity: 0.9 }),
+    addLitSpot: (spot) => litSpots.push(spot),
+    placeGlbLandmark, loadGLB,
+  });
+  tusouxroeNorth.buildSet();
+  NPC_POIS.push(...tusouxroeNorth.pois);
+  // ---- State-Wide Expansion: Port Calypso Docks, Cypress Badlands, Lakeshore Marsh ----
+  stateWorld = createStateWorld({
+    scene, camera, surface, addBlocker, flashObjective,
+    roadMaterial: () => asphalt.material(1, { envMapIntensity: 0.9 }),
+    addLitSpot: (spot) => litSpots.push(spot),
+    placeGlbLandmark, loadGLB,
+  });
+  stateWorld.buildSet();
+  NPC_POIS.push(...stateWorld.pois);
+  camCtl.setOccluders([...orlea.occluders, ...buildingOccluders, ...tusouxroeNorth.occluders, ...stateWorld.occluders]);
 
   // ---- Nirbayou Nolantis: a sealed cavern set well west of the map ----
   nolantis = createNolantis({
@@ -1710,13 +1752,32 @@ async function buildLevel() {
   traffic = createTraffic({
     scene, registerVehicle,
     models: [carR, carB, carY, van, pickup, beetle, landy, tristar, toyoyo],
-    lanes: [
-      { name: "northbound", points: [[ROAD_X + 2.4, MAP.maxZ - 2], [ROAD_X + 2.4, MAP.minZ + 2]], cruise: [12, 19] },
-      { name: "southbound", points: [[ROAD_X - 2.4, MAP.minZ + 2], [ROAD_X - 2.4, MAP.maxZ - 2]], cruise: [12, 19] },
-      ...(orlea ? orlea.lanes : []),
-      ...(westParish ? westParish.lanes : []),
-      ...(eastBank ? eastBank.lanes : []),
-    ],
+    lanes: (() => {
+      // Circuits, not dead ends: pair every lane with the lane that starts
+      // where it ends (the return carriageway — all roads here run both ways).
+      // A car that runs out of lane hands over instead of vanishing
+      // (traffic.js "next"); lanes with no partner just wait at the end.
+      const all = [
+        { name: "northbound", points: [[ROAD_X + 2.4, MAP.maxZ - 2], [ROAD_X + 2.4, MAP.minZ + 2]], cruise: [12, 19] },
+        { name: "southbound", points: [[ROAD_X - 2.4, MAP.minZ + 2], [ROAD_X - 2.4, MAP.maxZ - 2]], cruise: [12, 19] },
+        ...(orlea ? orlea.lanes : []),
+        ...(westParish ? westParish.lanes : []),
+        ...(eastBank ? eastBank.lanes : []),
+        ...(tusouxroeNorth ? tusouxroeNorth.lanes : []),
+        ...(stateWorld ? stateWorld.lanes : []),
+      ];
+      const start = (l) => l.points[0], end = (l) => l.points[l.points.length - 1];
+      const near = (p, q, tol = 15) => Math.hypot(p[0] - q[0], p[1] - q[1]) < tol;
+      for (const a of all) {
+        if (a.next) continue;
+        // Prefer a true return carriageway: starts where a ends AND ends where
+        // a starts. Fall back to any lane starting at a's end (a one-way loop).
+        const b = all.find((o) => o !== a && near(end(o), start(a), 20) && near(start(o), end(a)))
+               || all.find((o) => o !== a && near(start(o), end(a)));
+        if (b) a.next = b.name;
+      }
+      return all;
+    })(),
     perLane: 4,
     maxCars: 16,
   });
@@ -1864,7 +1925,10 @@ function makeGasStation(x, z, rot = 0, o = {}) {
   pole.position.set(7, 8, 13);
   const pylon = new THREE.Mesh(new THREE.BoxGeometry(6, 3.4, 0.5), sign());
   pylon.position.set(7, 15, 13);
-  const pylonB = pylon.clone(); pylonB.rotation.y = Math.PI; pylon.add(pylonB);
+  const pylonB = pylon.clone();
+  pylonB.rotation.y = Math.PI;
+  pylonB.position.set(0, 0, -0.02);      // 2 cm behind: readable, and no z-fight
+  pylon.add(pylonB);
   poolLight(0xffe6b0, 24, 26, 7, 14, 13, g);
 
   g.add(shop, stripe, wsign, canopy, cstripe, pole, pylon);
@@ -1997,7 +2061,10 @@ function makePizzeria(x, z, rot = 0) {
   const sign = makeNeonSign("TONY'S PIZZA", "#e8402c", "#f4e6c8");
   const board = new THREE.Mesh(new THREE.BoxGeometry(9, 3, 0.4), sign);
   board.position.set(0, 6.6, 0.2);
-  const b2 = board.clone(); b2.rotation.y = Math.PI; board.add(b2);
+  const b2 = board.clone();
+  b2.rotation.y = Math.PI;
+  b2.position.set(0, 0, -0.02);          // 2 cm behind: readable, and no z-fight
+  board.add(b2);
   const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 14),
     new THREE.MeshStandardMaterial({ color: 0x222 }));
   pole.position.set(6.5, 7, 5);
@@ -2497,7 +2564,7 @@ function tick() {
     const t0 = performance.now();
     // fixed-size steps: collision and AI stay stable at any frame rate
     // (a cutscene pauses the simulation; the story drives its own actors)
-    if (!state.cinematic) {
+    if (!state.cinematic && !state.paused) {
       for (let left = dt; left > 1e-4 && !state.over; left -= 1 / 30) {
         simulate(Math.min(left, 1 / 30));
       }
@@ -3100,6 +3167,8 @@ async function boot() {
     ...(eastBank ? eastBank.props : []),
     ...(nolantis ? nolantis.props : []),
     ...(alternate ? alternate.props : []),
+    ...(tusouxroeNorth ? tusouxroeNorth.props : []),
+    ...(stateWorld ? stateWorld.props : []),
   ]);
   const batch = batchStatic(scene, { exclude: (root) => moving.has(root) });
   console.info(`[gfx] static batching: ${batch.meshes} meshes -> ${batch.meshes - batch.removed} (${batch.batches} batches)`);
@@ -3112,7 +3181,7 @@ async function boot() {
   window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
-    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, CAN_REACH, CAN_REACH_VEHICLE,
+    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; }, CAN_REACH, CAN_REACH_VEHICLE,
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
       playerPos.set(x, 0, z);
@@ -3159,6 +3228,18 @@ async function boot() {
       water.push(...m.water);
       buildings.push(...m.buildings);
     }
+    if (tusouxroeNorth) {
+      const m = tusouxroeNorth.minimap;
+      roads.push(...m.roads);
+      areas.push(...m.areas);
+      buildings.push(...m.buildings);
+    }
+    if (stateWorld) {
+      const m = stateWorld.minimap;
+      roads.push(...m.roads);
+      areas.push(...m.areas);
+      buildings.push(...m.buildings);
+    }
     minimap.build({ roads, areas, water, buildings });
   }
   settleCans();                  // every blocker exists now: no can may sit inside one
@@ -3184,7 +3265,84 @@ boot().catch((err) => {
   loadNote.textContent = "load error: " + err.message;
 });
 
+let carHornAudioCtx = null;
+function playCarHorn(volume = 0.5) {
+  try {
+    if (!carHornAudioCtx) {
+      carHornAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (carHornAudioCtx.state === "suspended") {
+      carHornAudioCtx.resume().catch(() => {});
+    }
+    const a = carHornAudioCtx;
+    const t = a.currentTime;
+    const gain = a.createGain();
+    gain.gain.setValueAtTime(0.2 * volume, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+
+    const osc1 = a.createOscillator();
+    osc1.type = "sawtooth";
+    osc1.frequency.setValueAtTime(440, t);
+
+    const osc2 = a.createOscillator();
+    osc2.type = "sawtooth";
+    osc2.frequency.setValueAtTime(370, t);
+
+    const filter = a.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(1200, t);
+
+    osc1.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(a.destination);
+
+    osc1.start(t);
+    osc2.start(t);
+    osc1.stop(t + 0.38);
+    osc2.stop(t + 0.38);
+  } catch (err) {
+    // audio context issue
+  }
+}
+
+function honkHorn() {
+  if (!state.veh) return;
+  playCarHorn(0.5);
+
+  const carPos = state.veh.obj.position;
+  let solicitTarget = null;
+  let minDist = Infinity;
+  for (const e of enemies) {
+    if (e.dead || e.type !== "prostitute") continue;
+    if (e.state === "in_car" || e.state === "approaching_car") continue;
+    const d = e.spr.position.distanceTo(carPos);
+    if (d < 20 && d < minDist) {
+      minDist = d;
+      solicitTarget = e;
+    }
+  }
+
+  if (solicitTarget) {
+    solicitTarget.solicitVeh = state.veh;
+    solicitTarget.state = "approaching_car";
+    solicitTarget.solicitTimer = 15;
+    flashObjective("HONK! Prostitute approaching your vehicle...");
+  }
+}
+
 // Space / LMB fires (edge-triggered through input.js)
 input.onPress("fire", () => { if (state.running) fire(); });
 input.onPress("reload", () => { if (state.running) arsenal.reload(); });
 input.onPress("equipBat", () => { if (state.running) arsenal.give("bat"); });
+input.onPress("horn", () => { if (state.running) honkHorn(); });
+
+window.addEventListener("keydown", (e) => {
+  if (e.code === "Escape") {
+    if (state.running && !state.cinematic && (!characterSelect || characterSelect.hidden)) {
+      e.preventDefault();
+      pauseMenu.toggle();
+    }
+  }
+});
+

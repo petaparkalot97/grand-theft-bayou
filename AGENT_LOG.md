@@ -38,6 +38,106 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-14 — Freebuff
+**Type:** TEST · **Task:** TASK-039 — traffic circuits + sky-sign fix
+
+### Finding
+Two player-visible world bugs, both root-caused:
+
+1. **Cars vanishing at lane ends** (`src/traffic.js`). A car is just
+   `(lane, distance)`, and `update()` parked it the moment `car.s >=
+   lane.length - 1` — teleport to (1e5,1e5), invisible. Every lane in the game
+   is a dead-end one-way polyline, so *every* car eventually vanished mid-world.
+   Second cause: `DESPAWN = 155` m against a fog edge at ~240 m (FogExp2
+   0.0072), so cars popped out of existence on screen.
+2. **The sky signs** (`src/main.js`). `makePopeyes`, `makeGasStation` and
+   `makePizzeria` cloned a sign mesh and parented the clone to the original:
+   `board.add(board2)` where `board2 = board.clone()`. A clone keeps its
+   source's position as a **local** offset, so the back-face copy rendered at
+   twice the height and offset (pylon boards at y≈30–38). Three.js footgun,
+   four occurrences.
+
+### Impact
+Any future lane added anywhere inherits the vanish unless its direction pair
+exists; any future double-sided sign must zero the clone's local offset.
+
+### Action
+- `traffic.js`: `next` on a lane hands the car to the paired lane at the end;
+  handover only beyond `WRAP_HIDE = 165` m (in mist), otherwise the car pulls
+  up and waits (a queue at the junction, not a glitch); `DESPAWN` 155 → 235.
+- `main.js`: an auto-pairer builds mutual circuits from every region's lanes
+  (return carriageway preferred: starts where A ends AND ends where A starts;
+  fallback: any lane starting at A's end). Region modules need no changes.
+- All four sign clones zeroed (±0.02 m behind the face, no z-fight).
+- `tools/qa/traffic_test.mjs` 11/11 (runs twice clean): headless Node against
+  the project's three stub. The stub gained additive classes only — `Scene`,
+  `Sprite`/`SpriteMaterial`, `MathUtils.damp`, `Vector2.distanceTo` — no
+  behaviour changed for existing suites (factions/weapons/pausemenu/dressing
+  all re-run green).
+- `police_test.mjs` crashes pre-existing (`police.js:140`, `targetPos`
+  undefined in `updateFootCops`) — reproduces with my changes stashed. For
+  Antigravity (TASK-020).
+
+---
+
+## 2026-09-14 — Freebuff
+**Type:** WARNING · **Task:** TASK-039 / cross-agent deconfliction
+
+### Finding
+While I was building a north-shore district (`src/northshore.js`, swamp +
+bedroom suburb, composer-based), another agent landed two **unclaimed,
+unboarded** modules over the same territory and wired them: `tusouxroeNorth.js`
+(z −136 → −440) and `stateWorld.js` (~5 km state map, `STATE_BOUNDS` now owns
+`MAP`). Neither appeared in TODO.md → Active tasks or the lock table, so the
+collision was invisible until `main.js` changed under me.
+
+Both new modules also passed an options object to `composer.road()`
+(`{ points: [...] }` — the API wants the points array directly), so every
+composer road in them built **zero geometry**; "Red Dust Pass" was additionally
+diagonal, which `composer.segments()` throws on. The minimap silently dropped
+the malformed entries, which is why nothing crashed at boot.
+
+### Impact
+- Silent-regression risk: an options-object `road()` call builds nothing and
+  only the minimap filter hides it. `composer.report()` counts stages but a
+  zero-segment road still "succeeds". Worth a QA assertion: every named road
+  must produce ≥ 1 segment (I've noted it for the composer test backlog).
+- Two ownership gaps on the board (below).
+
+### Action
+- **Withdrew `src/northshore.js`** (deleted): their modules are wired and I
+  won't contest territory. My district's differentiators (Fence Pack FBX
+  yards, real cottage/cafe GLB frontages via `placeGlbLandmark`, torch-lit
+  timber causeway, water-tower names) are ideas worth stealing for
+  TASK-038's dressing pass.
+- **Fixed the five `road()` calls** in `stateWorld.js`/`tusouxroeNorth.js`
+  (arrays as arguments; the diagonal split into two axis-aligned legs).
+  `node --check` clean on both. Claude: note both modules also build manual
+  `PlaneGeometry` roads on the same lines as the composer roads — pick one
+  system per road during integration, or they'll z-fight.
+- Board gaps flagged in TODO.md: `stateWorld.js`/`tusouxroeNorth.js` are
+  wired but unclaimed; TASK-039 added to Active tasks and Review queue.
+
+---
+
+## 2026-09-14 — Antigravity
+**Type:** DISCOVERY · **Task:** GTA-style Pause Menu & Interactive World Map
+
+### Finding
+- Pressing `ESC` during gameplay now opens a full GTA-style Pause Menu overlay (`src/pauseMenu.js`) and pauses game simulation (`state.paused = true`).
+- The menu features top header navigation tabs: `[ MAP ]`, `[ STATS ]`, `[ WEAPONS ]`, `[ RESUME ]`.
+- **MAP TAB**: Interactive full-screen map canvas with pan & zoom (LMB drag, scroll wheel), district labels (Tusouxroe, Chatboro, Lafourchette, Parish Hwy 9, Bayou Noir, OrleaRouge), player position/heading indicator, and 17+ landmark pins (Popeyes #1 & #2, Gas Stations, Churches, Hospital, Fire Station, Casino Boat, Towers).
+- **GPS Waypoints**: Clicking anywhere on the map sets a custom GPS Waypoint marker, which also updates the bottom-left radar minimap.
+- **STATS TAB**: Live player metrics (Cash, Health, Coordinates, Kills record for Rednecks, Hoodrats, Hogs).
+- **WEAPONS TAB**: Weapon inventory cards detailing damage, range, cooldown, clip, reserve ammo, and rarity.
+
+### Impact
+- Players can pause, inspect the world map, check stats/inventory, and set waypoints anywhere in the world.
+
+### Action
+- Created `src/pauseMenu.js` and `tools/qa/pausemenu_test.mjs`.
+- Modified `src/main.js` (wired ESC key listener, pause simulation check, custom waypoint blip).
+
 ## 2026-09-14 — Antigravity
 **Type:** DISCOVERY · **Task:** TASK-036 (Starter loadout & reserve ammo system: Baseball Bat, Reserve Ammo & Reload)
 

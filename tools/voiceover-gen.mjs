@@ -71,8 +71,8 @@ function slug(who) {
   return who.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "line";
 }
 
-function fileNameFor(who, text) {
-  const hash = createHash("sha1").update(`${who}::${text}`).digest("hex").slice(0, 10);
+function fileNameFor(who, text, referenceId = "") {
+  const hash = createHash("sha1").update(`${who}::${text}::${referenceId}`).digest("hex").slice(0, 10);
   return `${slug(who)}-${hash}.mp3`;
 }
 
@@ -115,7 +115,7 @@ async function main() {
       continue;
     }
 
-    const fileName = fileNameFor(who, text);
+    const fileName = fileNameFor(who, text, voice.referenceId);
     const filePath = path.join(OUT_DIR, fileName);
     if (existsSync(filePath)) {
       manifest[key] = fileName;

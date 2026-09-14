@@ -17,6 +17,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
+import { vehicleRight } from "./vehicles.js";
 
 const rand = (lo, hi) => lo + (hi - lo) * Math.random();
 const NEAR = 55, FAR = 110;
@@ -130,6 +131,20 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
   function decide(e, dist, env) {
     const p = e.spr.position;
     const interval = e.lod ? 1 : 0.3;
+
+    if (e.state === "approaching_car" || e.state === "in_car") {
+      if (e.provoked) {
+        if (e.solicitVeh && e.solicitVeh.seats && e.solicitVeh.seats[1] && e.solicitVeh.seats[1].occupant === e) {
+          e.solicitVeh.seats[1].occupant = null;
+        }
+        if (e.solicitVeh && e.solicitVeh.obj) e.solicitVeh.obj.rotation.z = 0;
+        e.solicitVeh = null;
+        e.provoked = false;
+        if (e.spr) e.spr.visible = true;
+        flee(e, env.player.x, env.player.z);
+      }
+      return;
+    }
 
     // keep market hours fresh (cheap, and the staggered think tick already
     // runs well under once a second per NPC)
@@ -266,6 +281,75 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
       else if (e.face != null && e.spr._yaw != null) {
         e.spr._yaw += (e.face - e.spr._yaw) * Math.min(1, dt * 3);
       }
+    } else if (e.state === "approaching_car") {
+      const v = e.solicitVeh;
+      if (!v || v.dead || !v.obj) {
+        e.solicitVeh = null;
+        setState(e, "wander", 0);
+        pickGoal(e);
+        return;
+      }
+      e.solicitTimer = (e.solicitTimer || 15) - dt;
+      const doorOffset = new THREE.Vector3();
+      vehicleRight(v, doorOffset);
+      doorOffset.multiplyScalar(2.2);
+      const doorPos = doorOffset.add(v.obj.position);
+      e.goal.copy(doorPos);
+      const gx = doorPos.x - p.x, gz = doorPos.z - p.z;
+      const d = Math.hypot(gx, gz);
+
+      if (d < 2.2 && Math.abs(v.speed || 0) < 2.5 && v.seats && v.seats[1] && !v.seats[1].occupant) {
+        e.state = "in_car";
+        v.seats[1].occupant = e;
+        e.inCarTimer = 3.5;
+        if (e.spr) e.spr.visible = false;
+        if (typeof env.flashObjective === "function") {
+          env.flashObjective("Prostitute entered vehicle ($50 for health)");
+        }
+      } else if (e.solicitTimer <= 0 || d > 28) {
+        e.solicitVeh = null;
+        setState(e, "wander", 0);
+        pickGoal(e);
+      } else {
+        const s = T.speed * 1.1;
+        vel.set((gx / (d || 1)) * s, 0, (gz / (d || 1)) * s);
+        anim = "walk"; fps = 8;
+      }
+    } else if (e.state === "in_car") {
+      const v = e.solicitVeh;
+      if (e.spr) e.spr.visible = false;
+      if (!v || v.dead || env.veh !== v) {
+        if (v && v.seats && v.seats[1] && v.seats[1].occupant === e) v.seats[1].occupant = null;
+        if (v && v.obj) v.obj.rotation.z = 0;
+        e.solicitVeh = null;
+        if (e.spr) e.spr.visible = true;
+        setState(e, "wander", 0);
+        pickGoal(e);
+        return;
+      }
+      if (v.obj) v.obj.rotation.z = Math.sin(e.t * 14) * 0.035;
+      e.inCarTimer = (e.inCarTimer || 3.5) - dt;
+      if (e.inCarTimer <= 0) {
+        if (v.obj) v.obj.rotation.z = 0;
+        if (env.state) {
+          env.state.money = Math.max(0, (env.state.money || 0) - 50);
+          env.state.hp = Math.min(100, (env.state.hp || 100) + 50);
+          if (typeof env.syncHUD === "function") env.syncHUD();
+        }
+        if (typeof env.flashObjective === "function") {
+          env.flashObjective("Full service complete! +50 HP (-$50)");
+        }
+        const doorOffset = new THREE.Vector3();
+        vehicleRight(v, doorOffset);
+        doorOffset.multiplyScalar(2.4);
+        e.spr.position.copy(v.obj.position).add(doorOffset);
+        if (e.spr) e.spr.visible = true;
+        if (v.seats && v.seats[1]) v.seats[1].occupant = null;
+        e.solicitVeh = null;
+        setState(e, "wander", 0);
+        pickGoal(e);
+      }
+      return;
     }
 
     // presentation
@@ -294,6 +378,14 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
 
   function release(e) {
     if (e.state === "hostile") hostiles--;
+    if (e.solicitVeh) {
+      if (e.solicitVeh.seats && e.solicitVeh.seats[1] && e.solicitVeh.seats[1].occupant === e) {
+        e.solicitVeh.seats[1].occupant = null;
+      }
+      if (e.solicitVeh.obj) e.solicitVeh.obj.rotation.z = 0;
+      e.solicitVeh = null;
+    }
+    if (e.spr) e.spr.visible = true;
     e.rivalTarget = null;
     e.state = "dead";
   }
