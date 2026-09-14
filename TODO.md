@@ -767,6 +767,7 @@ before `COMPLETE`.
 - **Popeyes:** only `POPEYES_LOCATIONS`. Nothing else calls `makePopeyes`.
 - **Player characters:** `src/playerCharacters.js` (Keseme Nadia first and default, then Peta, Chimi, Gr33do, Dixon). A new id must also go into `CHARACTERS` in `server/protocol.js`, or multiplayer rejects it as `INVALID_CHARACTER`.
 - **Launching the game:** `confirmCharacter` launches once (`gameLaunched`), closes `#characterSelect`, and the select keys ignore input while `state.running`. Before this fix the select stayed open under the hidden overlay, so every Enter (cutscene next line) or Space (jump) relaunched the game and re-queued the story opening. `prologue.start()` also runs only once.
+- **NaN pixels:** a zero-length normal lights as NaN, and bloom spreads NaN into a black, flickering blur. `realize()` repairs bad normals on every model (`sanitizeNormals`), and `NanGuardShader` runs before bloom so a bad pixel stays one black pixel. Headless SwiftShader does not reproduce the blur; check it on a real GPU (TASK-010).
 - **Palette-atlas models** (Designersoup cars): nearest filtering, no mipmaps, `realize(…, { noDerive: true, keepPixelFilter: true })`, or the swatches bleed and glitter.
 
 ---
