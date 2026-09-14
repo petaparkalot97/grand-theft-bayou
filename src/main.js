@@ -1213,12 +1213,13 @@ function buildHog() {
 // Home turf NPCs hang around: every lot on the strip, the trailer park, the
 // junkyard, the shack, Ruston's main street and the shoulders in between.
 const NPC_POIS = [
-  ...LANDMARKS.map(([, side, z]) => ({ x: ROAD_X + side * (LOT_X - 11), z, r: 9 })),
-  { x: -48, z: 116, r: 16 }, { x: 48, z: 100, r: 12 }, { x: 34, z: 88, r: 6 },
-  ...[-60, -40, -20, 0, 20, 40].map((x) => ({ x, z: -78, r: 8 })),
+  // the strip is a row of storefronts: small radii keep loiterers out front
+  ...LANDMARKS.map(([, side, z]) => ({ x: ROAD_X + side * (LOT_X - 11), z, r: 6 })),
+  { x: -48, z: 116, r: 12 }, { x: 48, z: 100, r: 9 }, { x: 34, z: 88, r: 5 },
+  ...[-60, -40, -20, 0, 20, 40].map((x) => ({ x, z: -78, r: 6 })),
 ];
 for (let z = MAP.maxZ - 16; z > MAP.minZ + 16; z -= 24) {
-  NPC_POIS.push({ x: ROAD_X + (z % 48 ? 9 : -9), z, r: 6 });
+  NPC_POIS.push({ x: ROAD_X + (z % 48 ? 9 : -9), z, r: 4 });
 }
 const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, bounds: MAP });
 const npcEnv = { player: playerPos, driving: false, others: enemies };
@@ -1231,7 +1232,7 @@ const spawnZones = createSpawnZones({
   coreMinX: -WORLD - 4,                                                   // town / city zones end at the old west edge
 });
 
-function spawnEnemy(typeName, x, z) {
+function spawnEnemy(typeName, x, z, spot = null) {
   const T = ENEMY_TYPES[typeName];
   let view;
   if (T.kind === "hog") {
@@ -1248,6 +1249,10 @@ function spawnEnemy(typeName, x, z) {
     type: typeName, T, spr: view, hp: T.hp, t: rand(0, 3),
     atkCd: 0, dead: false, fade: 1, charge: 0, chargeCd: 0,
   };
+  // the zone's wander profile (spawnzones.js WANDER): city blocks keep people
+  // on short, quick trips, the parish lets them spread out. `spot` is the
+  // spawnzones.pick() result; spawners without one get the neutral default.
+  if (spot && spot.wanderR != null) { rec.wanderR = spot.wanderR; rec.wanderSpeed = spot.wanderSpeed; }
   npcs.init(rec);
   enemies.push(rec);
 }
@@ -1544,6 +1549,11 @@ async function buildLevel() {
     NPC_POIS.push({ x: p.x - 11, z: p.z, r: 8 });
   }
   NPC_POIS.push(...orlea.pois);          // npcs holds this same array
+  // OrleaRouge needs pockets of people, not one wide field: corner hangouts on
+  // the avenues (the boulevard POIs come from orlea.pois)
+  for (const z of [225, 255, 285, 315, 345]) {
+    NPC_POIS.push({ x: -46, z, r: 7 }, { x: 34, z, r: 7 });
+  }
   // the overpass deck, OrleaRouge's buildings, and Tusouxroe's shopfronts
   camCtl.setOccluders([...orlea.occluders, ...buildingOccluders]);
 
@@ -1722,13 +1732,13 @@ async function buildLevel() {
   // seed a starting mob down the whole highway...
   for (let placed = 0, tries = 0; placed < 40 && tries < 500; tries++) {
     const spot = spawnZones.pick({ x: ROAD_X, z: rand(-110, SPAWN_Z - 4) }, enemies, { minDist: 0, maxDist: 30 });
-    if (spot) { spawnEnemy(spot.kind, spot.x, spot.z); placed++; }
+    if (spot) { spawnEnemy(spot.kind, spot.x, spot.z, spot); placed++; }
   }
   // ...and give OrleaRouge a crowd before the player ever arrives (the boulevard
   // and cross streets; more pour in from the top-up spawner once you're there)
   for (let placed = 0, tries = 0; placed < 10 && tries < 200; tries++) {
     const spot = spawnZones.pick({ x: 18, z: rand(215, 350) }, enemies, { minDist: 0, maxDist: 40 });
-    if (spot) { spawnEnemy(spot.kind, spot.x, spot.z); placed++; }
+    if (spot) { spawnEnemy(spot.kind, spot.x, spot.z, spot); placed++; }
   }
 }
 // ...and top it back up forever, out of sight of the player.
@@ -1747,7 +1757,7 @@ function updateEnemyPopulation(dt) {
   // spawn out of sight; the zone decides who (spawnzones.js)
   const spot = spawnZones.pick(playerPos, enemies);
   if (!spot) return;
-  spawnEnemy(spot.kind, spot.x, spot.z);
+  spawnEnemy(spot.kind, spot.x, spot.z, spot);
 
   // cull enemies that wandered absurdly far, then compact the list
   for (const e of enemies) {

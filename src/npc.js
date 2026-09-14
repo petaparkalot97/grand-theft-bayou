@@ -65,7 +65,9 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
         Math.hypot(p.x - e.home.x, p.z - e.home.z) < 70);
       if (options.length) base = e.home = options[(Math.random() * options.length) | 0];
     }
-    const a = Math.random() * Math.PI * 2, r = Math.random() * (base.r || 10);
+    // `wanderR` comes from the spawn zone (spawnzones.js WANDER): city blocks
+    // keep trips short, out in the parish they stretch out
+    const a = Math.random() * Math.PI * 2, r = Math.random() * (base.r || 10) * (e.wanderR || 1);
     e.goal.set(base.x + Math.cos(a) * r, 0, base.z + Math.sin(a) * r);
   }
 
@@ -235,7 +237,9 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
       const gx = e.goal.x - p.x, gz = e.goal.z - p.z;
       const d = Math.hypot(gx, gz);
       if (d > 0.5) {
-        const s = (hog ? 1.3 : 1.7) * e.pace;
+        // zone sets the pace (spawnzones.js WANDER): city folk hurry, the
+        // parish ambles; hogs are untouched
+        const s = (hog ? 1.3 : 1.7 * (e.wanderSpeed || 1)) * e.pace;
         vel.set((gx / d) * s, 0, (gz / d) * s);
         anim = "walk"; fps = 6;
       }
@@ -292,6 +296,8 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
       e.threat = new THREE.Vector3();
       e.chargeDir = new THREE.Vector3();
       e.pace = rand(0.8, 1.2);
+      e.wanderR = e.wanderR || 1;          // zone profile, set by the spawner
+      e.wanderSpeed = e.wanderSpeed || 1;
       e.think = Math.random() * 0.6;        // stagger: never all on the same frame
       e.calm = e.stare = 0;
       e.provoked = false;

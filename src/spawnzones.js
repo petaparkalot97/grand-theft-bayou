@@ -32,6 +32,24 @@ export const ZONE_MIX = Object.freeze({
 });
 export const HOG_CAP = 4;
 
+// How NPCs cover ground, per zone: `r` scales the radius they wander around
+// their hangout (multiplied into the POI's own radius), `speed` scales their
+// stroll. Downtown blocks are tight and busy — short trips, quick steps —
+// while the parish spreads out: nobody hurries, and a trip is a long one.
+export const WANDER = Object.freeze({
+  urban:        { r: 0.55, speed: 1.25 },
+  town:         { r: 0.8,  speed: 1.1 },
+  commercial:   { r: 0.9,  speed: 1.05 },
+  border_strip: { r: 0.85, speed: 1.05 },
+  border_market:{ r: 0.85, speed: 1.05 },
+  residential:  { r: 1.0,  speed: 1.0 },
+  rural:        { r: 1.6,  speed: 0.85 },
+  forest:       { r: 1.6,  speed: 0.85 },
+  highway:      null,
+  water:        null,
+});
+const DEFAULT_WANDER = { r: 1, speed: 1 };
+
 /**
  * @param {object} o
  * @param {object} o.MAP         { minX, maxX, minZ, maxZ }
@@ -125,7 +143,9 @@ export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, resi
       const zone = zoneAt(x, z);
       const kind = pickKind(zone, hogs);
       const border = isBorder(x, z);
-      return kind ? { x, z, kind, zone, border } : null;
+      // the wander profile rides along so npc.js doesn't re-derive the zone
+      const w = WANDER[zone] || DEFAULT_WANDER;
+      return kind ? { x, z, kind, zone, border, wanderR: w.r, wanderSpeed: w.speed } : null;
     },
   };
 }
