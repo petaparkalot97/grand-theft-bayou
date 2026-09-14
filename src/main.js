@@ -1720,14 +1720,20 @@ async function buildLevel() {
 
   // ================= ENEMIES =================  Rednecks, Hoodrats, Feral Hogs
   // seed a starting mob down the whole highway...
-  for (let placed = 0, tries = 0; placed < 22 && tries < 300; tries++) {
+  for (let placed = 0, tries = 0; placed < 40 && tries < 500; tries++) {
     const spot = spawnZones.pick({ x: ROAD_X, z: rand(-110, SPAWN_Z - 4) }, enemies, { minDist: 0, maxDist: 30 });
+    if (spot) { spawnEnemy(spot.kind, spot.x, spot.z); placed++; }
+  }
+  // ...and give OrleaRouge a crowd before the player ever arrives (the boulevard
+  // and cross streets; more pour in from the top-up spawner once you're there)
+  for (let placed = 0, tries = 0; placed < 10 && tries < 200; tries++) {
+    const spot = spawnZones.pick({ x: 18, z: rand(215, 350) }, enemies, { minDist: 0, maxDist: 40 });
     if (spot) { spawnEnemy(spot.kind, spot.x, spot.z); placed++; }
   }
 }
 // ...and top it back up forever, out of sight of the player.
 const ENEMY_KINDS = ["hog", "redneck", "hoodrat"];
-const ENEMY_CAP = 30;         // living NPCs to maintain
+const ENEMY_CAP = 48;         // living NPCs to maintain (off-screen ones are hidden, npc.js)
 let enemyRespawnCd = 0;
 let populationOn = true;      // missions switch spawning off during set pieces
 function updateEnemyPopulation(dt) {
@@ -1736,7 +1742,7 @@ function updateEnemyPopulation(dt) {
   for (const e of enemies) if (!e.dead) alive++;
   enemyRespawnCd -= dt;
   if (enemyRespawnCd > 0 || alive >= ENEMY_CAP) return;
-  enemyRespawnCd = alive < ENEMY_CAP * 0.5 ? 0.6 : 2.0;
+  enemyRespawnCd = alive < ENEMY_CAP * 0.5 ? 0.5 : 1.1;
 
   // spawn out of sight; the zone decides who (spawnzones.js)
   const spot = spawnZones.pick(playerPos, enemies);

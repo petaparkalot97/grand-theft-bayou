@@ -161,12 +161,13 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
       return;
     }
     if (e.state === "wander") {
-      if ((e.goal.x - p.x) ** 2 + (e.goal.z - p.z) ** 2 < 1.5 || e.stateT < -12) setState(e, "idle", rand(2, 6));
+      if ((e.goal.x - p.x) ** 2 + (e.goal.z - p.z) ** 2 < 1.5 || e.stateT < -14) setState(e, "idle", rand(0.5, 3));
       return;
     }
     if (e.stateT <= 0) {
       const r = Math.random();
-      if (r < 0.62) { setState(e, "wander", 0); pickGoal(e); }
+      // pedestrians walk more than they stand: ~3/4 of decisions start a stroll
+      if (r < 0.74) { setState(e, "wander", 0); pickGoal(e); }
       else {
         setState(e, "loiter", rand(3, 8));
         // face whoever is standing nearest, so groups read as conversations
@@ -238,8 +239,11 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
         vel.set((gx / d) * s, 0, (gz / d) * s);
         anim = "walk"; fps = 6;
       }
-    } else if (e.state === "loiter" && e.face != null && e.spr._yaw != null) {
-      e.spr._yaw += (e.face - e.spr._yaw) * Math.min(1, dt * 3);
+    } else if (e.state === "loiter") {
+      if (e.stateT <= 0) { setState(e, "wander", 0); pickGoal(e); }   // nobody loiters forever
+      else if (e.face != null && e.spr._yaw != null) {
+        e.spr._yaw += (e.face - e.spr._yaw) * Math.min(1, dt * 3);
+      }
     }
 
     // presentation

@@ -38,6 +38,20 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-14 — Freebuff
+**Type:** CHANGE · **Task:** TASK-034 roadmap item "Role-specific civilian presentation and pedestrian pool" (density half)
+
+### Finding
+The human asked for more pedestrian NPCs walking around. The population levers:
+- `main.js` `ENEMY_CAP = 30` and a slow top-up (2.0 s between spawns once past half cap) kept streets sparse; the build-time seed was only 22 NPCs, and OrleaRouge was seeded with nobody until the player got close.
+- `npc.js` `decide()` sent NPCs back to `wander` only 62% of the time, wanderers who reached their goal idled 2–6 s, and loiterers never timed out (stateT only gates the decide() path; a loitering NPC with no `e.face` update stayed put until the next decide tick).
+
+### Action
+- `main.js`: `ENEMY_CAP` 30 → 48; refill cooldown 2.0 → 1.1 s (0.5 s under half cap); build seed 22 → 40 along the strip plus a new 10-NPC OrleaRouge seed around (18, 215–350).
+- `npc.js`: `decide()` wander chance 0.62 → 0.74; wander-goal idle 2–6 s → 0.5–3 s; loiter now times out into a fresh wander (`act()` checks `stateT <= 0` each frame while loitering).
+- LOD/`lod` pausing, the hostile cap and the cull radius are untouched; cost is mostly a slightly longer spawn list, not per-frame AI. Perf headroom numbers in TASK-033 (AI 0.55 ms) suggest no risk, but the F3 draw-call check in a real browser (TASK-010) is still the gate.
+- Verified: `node --check` on both files; `tools/qa/factions_test.mjs` 14/14 (drives npc.js's state machine directly). The full headless browser harness lives outside this repo; `tools/qa/gameplay.mjs` needs it plus `node serve.mjs`. `tools/qa/police_test.mjs` fails at HEAD too (pre-existing, `updateFootCops` on an undefined target — untouched by this change).
+
 ## 2026-09-14 — Claude
 **Type:** DISCOVERY · **Task:** TASK-034 follow-up (black glitching blur)
 
