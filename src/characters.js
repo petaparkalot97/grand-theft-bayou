@@ -12,6 +12,12 @@
 // Story characters pass their own palette object (opts.crew = {...}) and keep
 // the classic look, so the cast doesn't change with the crew sheets.
 //
+// The same rig also dresses Rednecks (`randomRedneck`): flannel (`opts.plaid`),
+// a trucker cap (`headwear: "cap"`) and work boots (`opts.shoe = "boots"`)
+// instead of the crew's paisley / high-tops. It's one body builder shared by
+// both factions plus the police (`makeDeputy`) and every named story
+// character — only the palette and props change.
+//
 // Built procedurally rather than loaded: the packs have no character that looks
 // anything like this, and code lets one builder cover both sexes, both crews
 // and per-spawn variation (skin tone, build, hair) from a seed.
@@ -135,6 +141,43 @@ function paisleyMat(color) {
   return m;
 }
 
+// Flannel/plaid print for redneck-styled shirts: a crosshatch of two accent
+// lines over a base colour, the same tiling trick as the paisley bandana.
+const plaidCache = new Map();
+function plaidMat(base, line) {
+  const key = `${base}:${line}`;
+  if (plaidCache.has(key)) return plaidCache.get(key);
+  const S = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const g = c.getContext("2d");
+  g.fillStyle = "#" + new THREE.Color(base).getHexString();
+  g.fillRect(0, 0, S, S);
+  g.strokeStyle = "#" + new THREE.Color(line).getHexString();
+  g.globalAlpha = 0.85;
+  for (const w of [10, 3]) {
+    g.lineWidth = w;
+    for (const off of [0, 64]) {
+      g.beginPath(); g.moveTo(0, off); g.lineTo(S, off); g.stroke();
+      g.beginPath(); g.moveTo(off, 0); g.lineTo(off, S); g.stroke();
+    }
+  }
+  g.globalAlpha = 0.35;
+  g.lineWidth = 1;
+  for (const off of [32, 96]) {
+    g.beginPath(); g.moveTo(0, off); g.lineTo(S, off); g.stroke();
+    g.beginPath(); g.moveTo(off, 0); g.lineTo(off, S); g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(3, 3);
+  const m = new THREE.MeshStandardMaterial({ name: "cloth", map: t, roughness: 0.9, envMapIntensity: 0.55 });
+  m.userData.gtbRealized = true;
+  plaidCache.set(key, m);
+  return m;
+}
+
 // Arm-sleeve tattoos: dark ink drawn on white, multiplied by the skin tone, so
 // one texture works on every skin. Script, a rose, praying hands, stars.
 let tattooTex = null;
@@ -229,7 +272,7 @@ class Hoodrat extends THREE.Object3D {
     const crew = typeof opts.crew === "object"
       ? { ...CREWS.red, ...opts.crew }
       : CREWS[opts.crew] || CREWS.red;
-    const headwear = opts.headwear || "band";      // "band" | "none" | "hat"
+    const headwear = opts.headwear || "band";      // "band" | "none" | "hat" | "cap"
 
     this.female = female;
     this.crew = typeof opts.crew === "object" ? "custom" : opts.crew || "red";
@@ -242,7 +285,10 @@ class Hoodrat extends THREE.Object3D {
     const skinTone = SKIN_TONES[(rnd() * SKIN_TONES.length) | 0];
     const denimTone = DENIM[(rnd() * DENIM.length) | 0];
     const skin = mat("skin", opts.skin != null ? opts.skin : skinTone);
-    const white = mat("cloth", opts.top != null ? opts.top : 0xeceae4);
+    // opts.plaid: a redneck-styled flannel shirt instead of a flat tank colour
+    const white = opts.plaid
+      ? plaidMat(opts.plaidBase != null ? opts.plaidBase : 0x8a2e2e, opts.plaidLine != null ? opts.plaidLine : 0x2c2c2c)
+      : mat("cloth", opts.top != null ? opts.top : 0xeceae4);
     const denim = mat("denim", opts.denim != null ? opts.denim : denimTone);
     const band = styled ? paisleyMat(crew.cloth) : mat("cloth", crew.cloth);
     const legging = mat("lycra", styled && crew.legging != null ? crew.legging : crew.cloth);
@@ -309,6 +355,17 @@ class Hoodrat extends THREE.Object3D {
         add(torso, box(0.022, 0.05, 0.012), chainMat, 0, 0.415, 0.135 * bulk);
         add(torso, box(0.042, 0.016, 0.012), chainMat, 0, 0.428, 0.135 * bulk);
       }
+    }
+
+    if (opts.police) {
+      const badgeGold = mat("metal", 0xd4af37);
+      add(torso, box(0.04, 0.045, 0.015), badgeGold, -0.075 * bulk, 0.38, 0.12 * bulk);
+      const dutyBeltMat = mat("leather", 0x181818);
+      const holsterMat = mat("leather", 0x101010);
+      const radioMat = mat("rubber", 0x1f1f1f);
+      add(torso, cyl(0.20 * bulk, 0.20 * bulk, 0.08, 12), dutyBeltMat, 0, -0.02, 0);
+      add(torso, box(0.065, 0.11, 0.05), holsterMat, 0.16 * bulk, -0.04, 0);
+      add(torso, box(0.04, 0.09, 0.035), radioMat, -0.15 * bulk, -0.02, 0);
     }
 
     // ---- head ----------------------------------------------------------
@@ -443,6 +500,22 @@ class Hoodrat extends THREE.Object3D {
       brim.scale.z = 1.08;
       add(head, cyl(0.105, 0.13, 0.12, 16), felt, 0, 0.2, 0);
       add(head, cyl(0.133, 0.133, 0.03, 16), band, 0, 0.155, 0);
+      if (opts.police) {
+        const badgeGold = mat("metal", 0xd4af37);
+        add(head, box(0.028, 0.032, 0.012), badgeGold, 0, 0.165, 0.138);
+      }
+    }
+
+    if (headwear === "cap") {
+      // redneck-styled trucker/baseball cap: a rounded crown and a flat brim
+      // over the front only (unlike "hat"'s full 360° brim)
+      const capMat = mat("cloth", opts.capColor != null ? opts.capColor : 0x2c2c2c);
+      const dome = add(head, capGeo(0.128, 1.25), capMat, 0, 0.06, 0);
+      dome.scale.set(1.03, 1.05, 1.06);
+      const brim = add(head, box(0.16, 0.014, 0.11), capMat, 0, 0.09, 0.165);
+      brim.rotation.x = -0.12;
+      // a small snapback strap at the back
+      add(head, box(0.06, 0.03, 0.012), mat("leather", 0x3a3a3a), 0, 0.045, -0.135);
     }
 
     // ---- arms ----------------------------------------------------------
@@ -488,8 +561,14 @@ class Hoodrat extends THREE.Object3D {
       const foot = new THREE.Object3D();
       foot.position.y = -0.44;
       knee.add(foot);
-      const shoe = !styled ? "classic" : female ? "high" : crew.maleShoe;
-      if (shoe === "low") {
+      const shoe = opts.shoe || (!styled ? "classic" : female ? "high" : crew.maleShoe);
+      if (shoe === "boots") {
+        // plain work boots: a taller leather shaft over a thick heel
+        const bootMat = mat("leather", opts.bootColor != null ? opts.bootColor : 0x3d2b1c);
+        add(foot, cyl(0.098, 0.11, 0.22, 10), bootMat, 0, 0.06, 0.01);   // shaft
+        add(foot, box(0.12, 0.07, 0.26), bootMat, 0, -0.015, 0.045);    // upper/toe
+        add(foot, box(0.128, 0.05, 0.27), sole, 0, -0.056, 0.05);       // thick heel
+      } else if (shoe === "low") {
         // all-white low-tops (the red sheet)
         add(foot, box(0.115, 0.05, 0.12), shoeWhite, 0, 0.02, -0.005);   // low collar
         add(foot, box(0.12, 0.07, 0.26), shoeWhite, 0, -0.015, 0.045);   // upper
@@ -734,5 +813,52 @@ export function randomHoodrat(rng = Math.random, height) {
     seed: (rng() * 1e9) | 0,
     yaw: rng() * Math.PI * 2,
     height,
+  });
+}
+
+const PLAID_PAIRS = [
+  [0x8a2e2e, 0x2c2c2c], [0x2e4a2e, 0x1c1c1c], [0x2e3a6a, 0xd8d0c0],
+  [0x6a4a2e, 0x2c2c2c], [0x3a3a3a, 0xb02020],
+];
+const REDNECK_DENIM = [0x3a3428, 0x4a4436, 0x2c281f];
+const REDNECK_SKIN = [0xd8a878, 0xc79a74, 0xe0b48e, 0xb08258];
+
+/**
+ * A random redneck: same rig as `Hoodrat`, dressed for the other faction —
+ * a flannel shirt, work jeans, a trucker cap or bare head, and boots.
+ * Distinct clothing set, not a distinct class; palette overrides win, so
+ * story characters (Mally, Bubba) can still take a specific look.
+ */
+export function randomRedneck(rng = Math.random, height, opts = {}) {
+  const [plaidBase, plaidLine] = PLAID_PAIRS[(rng() * PLAID_PAIRS.length) | 0];
+  return new Hoodrat({
+    sex: rng() < 0.25 ? "f" : "m",
+    crew: { cloth: 0x5a4a34, chain: 0xaaaaaa, shoe: 0x3d2b1c, hat: 0x4a3a28 },
+    seed: (rng() * 1e9) | 0,
+    yaw: rng() * Math.PI * 2,
+    skin: REDNECK_SKIN[(rng() * REDNECK_SKIN.length) | 0],
+    denim: REDNECK_DENIM[(rng() * REDNECK_DENIM.length) | 0],
+    plaid: true,
+    plaidBase, plaidLine,
+    headwear: rng() < 0.6 ? "cap" : "none",
+    shoe: "boots",
+    height,
+    ...opts,
+  });
+}
+
+/** Build a 3D Parish Deputy / Police Officer on foot. */
+export function makeDeputy(opts = {}) {
+  return new Hoodrat({
+    sex: "m",
+    seed: opts.seed != null ? opts.seed : 911,
+    skin: opts.skin || 0xc79a74,
+    top: 0x9c8660,           // khaki / tan deputy uniform shirt
+    denim: 0x3d3a34,         // dark brown/navy trousers
+    headwear: "hat",         // campaign hat
+    police: true,            // star badge + duty belt + holster + radio
+    beard: false,
+    crew: { cloth: 0x2e2a22, chain: 0xaaaaaa, shoe: 0x1a1917, hat: 0x6b5a3e },
+    ...opts,
   });
 }
