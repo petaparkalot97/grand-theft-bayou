@@ -50,7 +50,7 @@ export function createCinema({ camera, muted = () => false }) {
   addEventListener("keydown", (e) => {
     if (!inScene) return;
     if (e.code === "Enter" || e.code === "NumpadEnter") { e.preventDefault(); flush(true); }
-    if (e.code === "Escape") { skipping = true; flush(false); finishShot(); }
+    if (e.code === "Escape") { skipping = true; flush(false); finishShot(); stopVoice(); }
   });
 
   // ---------------------------------------------------------------- camera
@@ -67,6 +67,37 @@ export function createCinema({ camera, muted = () => false }) {
     if (!shotState) return;
     shotState.t = shotState.dur;
     applyShot();
+  }
+
+  // ------------------------------------------------------------- voiceover
+  // Lines are generated offline by `npm run voiceover` (tools/voiceover-gen.mjs)
+  // via the Fish Audio API, keyed by "WHO::text" in assets/audio/voice/manifest.json.
+  // Missing/offline just means no voice audio — subtitles still work standalone.
+  let voiceManifest = null;
+  let voiceManifestPromise = null;
+  let activeVoice = null;
+  function loadVoiceManifest() {
+    if (!voiceManifestPromise) {
+      voiceManifestPromise = fetch("./assets/audio/voice/manifest.json", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : {}))
+        .catch(() => ({}))
+        .then((m) => (voiceManifest = m));
+    }
+    return voiceManifestPromise;
+  }
+  loadVoiceManifest();
+  function stopVoice() {
+    if (activeVoice) { activeVoice.pause(); activeVoice = null; }
+  }
+  function playVoiceLine(who, text) {
+    stopVoice();
+    if (muted() || skipping || !voiceManifest) return;
+    const fileName = voiceManifest[`${who}::${text}`];
+    if (!fileName) return;
+    const audioEl = new Audio(`./assets/audio/voice/${fileName}`);
+    audioEl.volume = 0.95;
+    audioEl.play().catch(() => {});
+    activeVoice = audioEl;
   }
 
   // ---------------------------------------------------------------- sound
@@ -219,12 +250,15 @@ export function createCinema({ camera, muted = () => false }) {
 
     /** One subtitle line. Duration scales with its length; Enter skips it. */
     async say(who, text, seconds) {
+      await loadVoiceManifest();
+      playVoiceLine(who, text);
       const dur = seconds != null ? seconds : Math.min(6, Math.max(1.7, 1.1 + text.length * 0.055));
       el.sub.classList.remove("action");
       el.sub.querySelector("em").textContent = who || "";
       el.sub.querySelector("span").textContent = text;
       el.sub.classList.add("on");
       await wait(dur, true);
+      stopVoice();
       el.sub.classList.remove("on");
       await wait(0.12);
     },
@@ -277,6 +311,7 @@ export function createCinema({ camera, muted = () => false }) {
           await fn(api);
         } finally {
           flush(false);
+          stopVoice();
           inScene = false;
           skipping = false;
           shotState = null;
