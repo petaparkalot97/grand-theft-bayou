@@ -10,6 +10,11 @@ _extracted/
 *.blend1
 
 # tooling / editor
+.env
+# External/source asset bundles are kept locally, not shipped in Git.
+/assets/City Bowels
+/assets/Los Santos Mini Map.bbdoc
+/assets/city/
 .claude/
 node_modules/
 *.log

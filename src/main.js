@@ -35,6 +35,9 @@ import { createNolantis } from "./nolantis.js";
 import { ROUTE_EAST, CRASH } from "./prologue.js";
 import { createSpawnZones } from "./spawnzones.js";
 import { createWestParish, onParishHighway, PARISH_MIN_X } from "./westparish.js";
+import { createPlayerCharacter, getPlayerCharacter, PLAYER_CHARACTERS } from "./playerCharacters.js";
+import { createAlternateCampaign } from "./alternateCampaign.js";
+import { createMultiplayer } from "./multiplayer.js";
 
 // ---------------------------------------------------------------- config
 // Dixie Beaux, a Gulf Coast state that isn't Louisiana, honest: US-167 runs from
@@ -119,6 +122,29 @@ const spFill = document.getElementById("spFill");
 const cansEl = document.getElementById("cans");
 const objEl = document.getElementById("objective");
 const crosshair = document.getElementById("crosshair");
+const introPanel = document.getElementById("introPanel");
+const characterSelect = document.getElementById("characterSelect");
+const characterCards = document.getElementById("characterCards");
+const characterPortrait = document.getElementById("characterPortrait");
+const characterName = document.getElementById("characterName");
+const characterSubtitle = document.getElementById("characterSubtitle");
+const characterAbility = document.getElementById("characterAbility");
+const characterDescription = document.getElementById("characterDescription");
+const confirmCharacterBtn = document.getElementById("confirmCharacter");
+const backCharacterBtn = document.getElementById("backCharacter");
+const multiplayerBtn = document.getElementById("multiplayerBtn");
+const multiplayerPanel = document.getElementById("multiplayerPanel");
+const mpConnection = document.getElementById("mpConnection");
+const mpCreate = document.getElementById("mpCreate");
+const mpJoin = document.getElementById("mpJoin");
+const mpRoomInput = document.getElementById("mpRoomInput");
+const mpCode = document.getElementById("mpCode");
+const mpPlayers = document.getElementById("mpPlayers");
+const mpPick = document.getElementById("mpPick");
+const mpReady = document.getElementById("mpReady");
+const mpStart = document.getElementById("mpStart");
+const mpBack = document.getElementById("mpBack");
+const mpMessage = document.getElementById("mpMessage");
 
 // ---------------------------------------------------------------- renderer / scene
 GFX.tier = autoTier();
@@ -891,6 +917,7 @@ const state = {
   running: false, over: false,
   hp: 100, sp: 100, cans: 0, cash: 0,
   fireCd: 0, hurtCd: 0, dusk: 0,
+  selectedCharacter: "peta", campaign: "main",
   veh: null,          // vehicle the player is driving, or null (on foot)
   heat: 0,            // crime heat -> wanted stars
   wanted: 0,
@@ -964,6 +991,7 @@ let storyFail = null;
 let westParish = null;         // Parish Highway 9 and the rural west (westparish.js)
 let eastBank = null;           // Lafourchette, the east bank (eastbank.js, laid out by composer.js)
 let nolantis = null;           // Act One continued underground: Nirbayou Nolantis (nolantis.js)          // a story chapter can catch WASTED / BUSTED and respawn instead
+let alternate = null;
 const buildingOccluders = [];  // tall buildings the camera must stay in front of
 let mainStreetWest = -73;      // Main Street runs from US-167 west to the last shopfront
 const camCtl = createCameraController({
@@ -1021,6 +1049,105 @@ renderer.domElement.addEventListener("mousedown", (e) => {
 let player, playerObj;
 const playerPos = new THREE.Vector3(ROAD_X, 0, SPAWN_Z);
 let playerFacing = new THREE.Vector3(0, 0, -1);   // last movement direction
+let beginGame = null;
+let pendingLaunch = "story";
+let selectionIndex = 0;
+let multiplayerMode = false;
+let multiplayer = null;
+const remotePlayers = new Map();
+let networkInputTimer = 0;
+const characterIds = Object.keys(PLAYER_CHARACTERS);
+
+function renderCharacterSelect() {
+  const id = characterIds[selectionIndex], cfg = getPlayerCharacter(id);
+  state.selectedCharacter = id; state.campaign = cfg.campaign;
+  characterName.textContent = cfg.name;
+  characterSubtitle.textContent = cfg.subtitle;
+  characterAbility.textContent = cfg.ability;
+  characterDescription.textContent = cfg.description;
+  characterPortrait.textContent = cfg.portrait;
+  characterPortrait.style.setProperty("--accent", cfg.accent);
+  for (const card of characterCards.querySelectorAll("button")) {
+    const active = card.dataset.id === id;
+    card.classList.toggle("selected", active); card.setAttribute("aria-pressed", String(active));
+  }
+}
+function openCharacterSelect(mode = "story") {
+  pendingLaunch = mode; introPanel.hidden = true; characterSelect.hidden = false;
+  selectionIndex = Math.max(0, characterIds.indexOf(state.selectedCharacter)); renderCharacterSelect();
+}
+function closeCharacterSelect() { characterSelect.hidden = true; introPanel.hidden = false; }
+function replacePlayerCharacter(id) {
+  const next = createPlayerCharacter(id, {
+    makePeta: () => makeCastMember(makeHoodrat, "keseme", { height: 1.74 }), makeHoodrat,
+  });
+  if (player) scene.remove(player); player = next; player.position.copy(playerPos); scene.add(player);
+}
+function confirmCharacter() {
+  const id = characterIds[selectionIndex], cfg = getPlayerCharacter(id);
+  state.selectedCharacter = id; state.campaign = cfg.campaign; state.hp = cfg.health;
+  if (id !== "peta") replacePlayerCharacter(id);
+  if (multiplayerMode && multiplayer) {
+    multiplayer.selectCharacter(id); characterSelect.hidden = true; multiplayerPanel.hidden = false; mpMessage.textContent = `${cfg.name} selected. Ready when you are.`; return;
+  }
+  if (!beginGame) return; beginGame();
+  if (cfg.campaign === "alternate") { prologue.skip(); alternate.start(); return; }
+  if (pendingLaunch === "story") prologue.start();
+  else { prologue.skip(); music.volume = 0.55; soundtrackReady.then((s) => s.play()); flashObjective("Click the game to look around with the mouse · Esc releases it"); }
+}
+for (const id of characterIds) {
+  const cfg = PLAYER_CHARACTERS[id], b = document.createElement("button");
+  b.type = "button"; b.dataset.id = id; b.textContent = cfg.name; b.style.setProperty("--accent", cfg.accent);
+  b.addEventListener("click", () => { selectionIndex = characterIds.indexOf(id); renderCharacterSelect(); }); characterCards.appendChild(b);
+}
+confirmCharacterBtn.addEventListener("click", confirmCharacter); backCharacterBtn.addEventListener("click", closeCharacterSelect);
+addEventListener("keydown", (e) => {
+  if (characterSelect.hidden) return;
+  if (e.code === "ArrowLeft" || e.code === "ArrowUp") { e.preventDefault(); selectionIndex = (selectionIndex + characterIds.length - 1) % characterIds.length; renderCharacterSelect(); }
+  else if (e.code === "ArrowRight" || e.code === "ArrowDown") { e.preventDefault(); selectionIndex = (selectionIndex + 1) % characterIds.length; renderCharacterSelect(); }
+  else if (e.code === "Enter" || e.code === "Space") { e.preventDefault(); confirmCharacter(); }
+  else if (e.code === "Escape") { e.preventDefault(); closeCharacterSelect(); }
+});
+
+function drawMultiplayerRoom(room) {
+  if (!room) return;
+  mpCode.textContent = room.code || "—";
+  mpPlayers.replaceChildren(...room.players.map((p) => {
+    const el = document.createElement("div"); el.className = `mp-player${p.ready ? " ready" : ""}`;
+    el.innerHTML = `<b>${p.character || "CHOOSING..."}</b><br><span class="mp-status">${p.id === multiplayer?.playerId ? "YOU · " : ""}${p.ready ? "READY" : "NOT READY"}${p.id === room.hostId ? " · HOST" : ""}</span>`; return el;
+  }));
+  const me = room.players.find((p) => p.id === multiplayer?.playerId);
+  mpReady.disabled = !me?.character; mpReady.textContent = me?.ready ? "Unready" : "Ready";
+  mpStart.disabled = multiplayer?.playerId !== room.hostId || room.players.some((p) => !p.character || !p.ready);
+}
+function openMultiplayer() {
+  multiplayerMode = true; introPanel.hidden = true; characterSelect.hidden = true; multiplayerPanel.hidden = false;
+  if (!multiplayer) multiplayer = createMultiplayer({ onConnection: (status, ping) => { mpConnection.textContent = `SERVER · ${status}${ping ? ` · ${Math.round(ping)}ms` : ""}`; }, onRoom: (room) => { drawMultiplayerRoom(room); if (room.phase === "PLAYING" && beginGame && !state.running) { multiplayerPanel.hidden = true; beginGame(); prologue.skip(); flashObjective("Multiplayer bayou loaded · watch your six"); } }, onSnapshot: applyNetworkSnapshot, onError: (code) => { mpMessage.textContent = code.replaceAll("_", " "); } });
+  multiplayer.connect();
+}
+function applyNetworkSnapshot(snapshot) {
+  for (const data of snapshot.players || []) {
+    if (data.id === multiplayer?.playerId) continue;
+    let view = remotePlayers.get(data.id);
+    if (!view) {
+      view = createPlayerCharacter(data.character || "peta", { makePeta: () => makeCastMember(makeHoodrat, "keseme", { height: 1.74 }), makeHoodrat });
+      view.position.set(data.x, data.y, data.z); scene.add(view); remotePlayers.set(data.id, view);
+    }
+    view.userData.netTarget = { x: data.x, y: data.y, z: data.z, yaw: data.yaw || 0, state: data.state };
+  }
+  const live = new Set((snapshot.players || []).map((p) => p.id));
+  for (const [id, view] of remotePlayers) if (!live.has(id)) { scene.remove(view); remotePlayers.delete(id); }
+}
+function updateRemotePlayers(dt) {
+  for (const view of remotePlayers.values()) { const target = view.userData.netTarget; if (!target) continue; view.position.lerp(new THREE.Vector3(target.x, target.y, target.z), Math.min(1, dt * 12)); view._yaw = target.yaw; if (view.play && view.userData.netLastState !== target.state) { view.play(target.state === "IDLE" ? "idle" : "walk"); view.userData.netLastState = target.state; } }
+}
+multiplayerBtn.addEventListener("click", openMultiplayer);
+mpCreate.addEventListener("click", () => multiplayer?.createRoom());
+mpJoin.addEventListener("click", () => multiplayer?.joinRoom(mpRoomInput.value));
+mpPick.addEventListener("click", () => { multiplayerPanel.hidden = true; openCharacterSelect("multiplayer"); });
+mpReady.addEventListener("click", () => { const me = multiplayer?.room?.players.find((p) => p.id === multiplayer.playerId); multiplayer?.ready(!me?.ready); });
+mpStart.addEventListener("click", () => multiplayer?.startGame());
+mpBack.addEventListener("click", () => { multiplayerMode = false; multiplayer?.leave(); multiplayerPanel.hidden = true; introPanel.hidden = false; });
 // scratch vectors, so movement doesn't allocate every frame
 const _mv = new THREE.Vector3(), _step = new THREE.Vector3(), _aim = new THREE.Vector3();
 const _camFwd = new THREE.Vector3(), _camRight = new THREE.Vector3();
@@ -2326,6 +2453,18 @@ function tick() {
     if (eastBank) eastBank.update(dt, playerPos);
     hijacker.update(dt);
     if (nolantis) nolantis.update(dt);
+    if (alternate) alternate.update(dt);
+    updateRemotePlayers(dt);
+    if (multiplayerMode && multiplayer?.connected && state.running) {
+      networkInputTimer += dt;
+      if (networkInputTimer >= 1 / 20) {
+        networkInputTimer = 0;
+        multiplayer.sendInput({
+          forward: input.isDown("forward"), backward: input.isDown("back"), left: input.isDown("left"), right: input.isDown("right"),
+          sprint: input.isDown("sprint"), crouch: input.isDown("crouch"), jump: input.isDown("jump"), yaw: player?._yaw || 0,
+        });
+      }
+    }
     cine.update(dt);
     if (!cine.hasCamera) {
       camCtl.update(dt, playerPos, state.veh, blockerGrid, playerMoveHeading);
@@ -2867,6 +3006,14 @@ async function boot() {
   loadNote.textContent = "building the parish…";
   await paint();
   await buildLevel();
+  alternate = createAlternateCampaign({
+    scene, cine, state, playerPos, getPlayer: () => player,
+    makeActor: (id) => createPlayerCharacter(id, {
+      makePeta: () => makeCastMember(makeHoodrat, "keseme", { height: 1.74 }), makeHoodrat,
+    }),
+    flashObjective,
+  });
+  alternate.buildSet();
 
   // Final sweep: the hand-built landmarks (Popeyes, trailers, water towers,
   // sheds) are plain coloured boxes straight out of the builders. Everything
@@ -2894,6 +3041,7 @@ async function boot() {
     ...(westParish ? westParish.props : []),
     ...(eastBank ? eastBank.props : []),
     ...(nolantis ? nolantis.props : []),
+    ...(alternate ? alternate.props : []),
   ]);
   const batch = batchStatic(scene, { exclude: (root) => moving.has(root) });
   console.info(`[gfx] static batching: ${batch.meshes} meshes -> ${batch.meshes - batch.removed} (${batch.batches} batches)`);
@@ -2906,7 +3054,7 @@ async function boot() {
   window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
-    get player() { return player; }, get prologue() { return prologue; }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, CAN_REACH, CAN_REACH_VEHICLE,
+    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, CAN_REACH, CAN_REACH_VEHICLE,
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
       playerPos.set(x, 0, z);
@@ -2965,17 +3113,9 @@ async function boot() {
     state.running = true;
     clock.start();
   };
-  startBtn.onclick = () => {
-    begin();
-    prologue.start();              // the cold open starts the music on its brass-band cue
-  };
-  freeBtn.onclick = () => {
-    begin();
-    prologue.skip();
-    music.volume = 0.55;
-    soundtrackReady.then((s) => s.play());
-    flashObjective("Click the game to look around with the mouse · Esc releases it");
-  };
+  beginGame = begin;
+  startBtn.onclick = () => openCharacterSelect("story");
+  freeBtn.onclick = () => openCharacterSelect("free");
 }
 
 startBtn.disabled = true;

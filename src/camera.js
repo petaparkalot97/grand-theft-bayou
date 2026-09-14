@@ -34,6 +34,7 @@ export const CAMERA_CONFIG = {
     cameraHeight: 1.4, cameraFollowStrength: 15,
     // walking forward-ish with the mouse left alone swings the camera back behind you
     cameraRecenteringSpeed: 0.9, recenterAfter: 2.5, recenterCone: 1.75,
+    aimDistance: 10, aimHeight: 1.25,
   },
   driving: {
     cameraDistance: 14, cameraPitch: 0.5, minDistance: 8, maxDistance: 34,
@@ -48,6 +49,7 @@ export function createCameraController({ camera, dom, canCapture }) {
   let pitch = C.onFoot.cameraPitch, targetPitch = C.onFoot.cameraPitch;
   let footDist = C.onFoot.cameraDistance, driveDist = C.driving.cameraDistance, dist = footDist;
   let wasDriving = false;
+  let aiming = false;
   let lastMouse = -1e9;
   let locked = false;
   let dragging = false, lastX = 0, lastY = 0;
@@ -120,6 +122,7 @@ export function createCameraController({ camera, dom, canCapture }) {
     release() { if (locked) document.exitPointerLock(); },
     /** Overhead structures the camera must stay in front of. */
     setOccluders(list) { occluders = list || []; },
+    setAiming(value) { aiming = !!value; },
 
     /**
      * @param {number} dt
@@ -162,7 +165,7 @@ export function createCameraController({ camera, dom, canCapture }) {
 
       // collision: pull in when a building stands between the focus and the camera;
       // only matters for low angles — from above the strip, roofs sit under the lens
-      let want = driving ? driveDist : footDist;
+      let want = driving ? driveDist : (aiming ? Math.min(footDist, M.aimDistance) : footDist);
       const cosP = Math.cos(pitch), sinP = Math.sin(pitch);
       const ox = Math.sin(yaw), oz = Math.cos(yaw);       // from the focus out to the camera
       if (grid && want * sinP < 8) {
@@ -194,7 +197,7 @@ export function createCameraController({ camera, dom, canCapture }) {
         Math.max(focus.y + 1.2, focus.y + M.cameraHeight + sinP * dist),
         focus.z + oz * cosP * dist,
       );
-      look.set(focus.x, focus.y + M.cameraHeight, focus.z);
+      look.set(focus.x, focus.y + (aiming && !driving ? M.aimHeight : M.cameraHeight), focus.z);
       if (driving) {
         // look a little ahead of the car, so the road you're heading into is framed
         look.x += Math.sin(veh.heading) * C.driving.lookAhead;

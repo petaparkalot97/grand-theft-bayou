@@ -19,6 +19,20 @@
 - `COMPLETE` — reviewed and tested
 - `CANCELLED` — intentionally abandoned
 
+## 🌆 WORLD-BUILDING ROADMAP
+
+- [x] East Bank connected expansion: Cypress Heights, Market Row, Port Mercer
+- [x] District roads, parking/service areas, landmarks and environmental stories
+- [x] East Bank traffic lanes and district-aware spawn classification
+- [ ] Role-specific civilian presentation and pedestrian pool
+- [ ] Time-of-day activity weights for shops, residents and Port Mercer
+- [ ] Selective interiors for the new civic/commercial buildings
+- [ ] More bridge, dock and bayou shortcuts / discovery encounters
+- [ ] External-browser exploration pass: navigation, blockers, repetition, draw calls
+
+See [`docs/WORLD_BUILDING.md`](docs/WORLD_BUILDING.md) for the asset audit and
+district design notes.
+
 ---
 
 # 🧭 CURRENT OBJECTIVE

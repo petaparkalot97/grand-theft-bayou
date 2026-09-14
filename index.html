@@ -103,6 +103,32 @@
   #overlay button.alt { background: linear-gradient(180deg, #3a3f46, #22262b); border-color: #8a93a0; }
   #overlay.hidden { display: none; }
   #loadNote { font-size: 12px; opacity: .6; font-family: Arial, sans-serif; }
+  #introPanel { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  #characterSelect { width: min(1080px, 96vw); min-height: min(650px, 88vh); display: flex; flex-direction: column; gap: 18px; text-align: left; }
+  #characterSelect[hidden] { display: none; }
+  #multiplayerPanel[hidden] { display:none; }
+  #multiplayerPanel { width:min(760px,94vw); padding:28px; background:rgba(10,12,10,.9); border:1px solid rgba(220,165,78,.45); box-shadow:0 20px 80px #000b; text-align:left; }
+  .mp-code { font-size:clamp(25px,5vw,48px); letter-spacing:.16em; color:#ffd28b; text-align:center; margin:18px 0; }
+  .mp-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:14px 0; }
+  .mp-row input { flex:1; min-width:180px; background:#111914; border:1px solid #82633b; color:#ffe9bd; padding:12px; font:inherit; text-transform:uppercase; }
+  #mpPlayers { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin:18px 0; }
+  .mp-player { padding:13px; min-height:54px; border:1px solid #493b2b; background:#171710; }
+  .mp-player.ready { border-color:#72ba62; } .mp-status { color:#b8a88c; font-size:12px; }
+  .select-kicker { color: #e8a13a; letter-spacing: .3em; font: 700 12px Arial, sans-serif; text-transform: uppercase; }
+  .select-title { font-size: clamp(30px, 5vw, 64px); line-height: .9; text-shadow: 0 4px 0 #101c10, 0 0 30px rgba(120,200,120,.4); }
+  .select-stage { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(300px, 1.3fr); gap: clamp(18px, 5vw, 64px); align-items: center; flex: 1; }
+  #characterPortrait { --accent: #d99a3a; min-height: 290px; display: grid; place-items: center; font-size: clamp(130px, 20vw, 260px); color: var(--accent); text-shadow: 0 10px 0 rgba(0,0,0,.4), 0 0 50px var(--accent); background: radial-gradient(circle, color-mix(in srgb, var(--accent) 26%, transparent), transparent 65%); border-bottom: 2px solid var(--accent); transition: color .25s, background .25s; }
+  #characterInfo { background: rgba(4,6,4,.66); border-left: 3px solid var(--accent, #d99a3a); padding: 22px 26px; backdrop-filter: blur(4px); }
+  #characterName { font-size: clamp(24px, 4vw, 52px); line-height: .92; text-transform: uppercase; }
+  #characterSubtitle { color: #e8a13a; letter-spacing: .14em; font: 700 12px Arial, sans-serif; margin: 8px 0 24px; }
+  .ability-label { color: #a6c997; letter-spacing: .18em; font: 700 11px Arial, sans-serif; }
+  #characterAbility { font-size: clamp(18px, 2.5vw, 30px); color: #f3d58e; margin: 5px 0 10px; }
+  #characterDescription { font: 15px/1.55 Arial, sans-serif; color: #e6e8da; max-width: 580px; }
+  #characterCards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  #characterCards button { padding: 12px 8px; border-color: color-mix(in srgb, var(--accent) 60%, #777); font-size: 11px; min-height: 48px; }
+  #characterCards button.selected { color: #111; background: var(--accent); border-color: #fff1c5; box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 55%, transparent); transform: translateY(-3px); }
+  .select-actions { display: flex; justify-content: flex-end; gap: 10px; }
+  @media (max-width: 700px) { #characterSelect { min-height: 0; } .select-stage { grid-template-columns: 1fr; gap: 8px; } #characterPortrait { min-height: 150px; font-size: 120px; } #characterInfo { padding: 14px; } #characterSubtitle { margin-bottom: 10px; } #characterCards { grid-template-columns: repeat(2, 1fr); } }
   #mute {
     position: fixed; bottom: 14px; right: 14px; z-index: 15; pointer-events: auto; cursor: pointer;
     background: rgba(6,10,8,.6); border: 1px solid rgba(160,190,150,.25); color: #f2efe6;
@@ -196,20 +222,47 @@
 <div id="mute" title="mute music (M)">♪</div>
 
 <div id="overlay">
-  <img id="coverArt" src="./assets/cover.png" alt="Grand Theft Bayou: Louisiana Stories" />
-  <h1></h1>
-  <p><b>Dixie Beaux.</b> Eighty-nine degrees, ninety-eight percent humidity. Keseme Nadia
-     doesn't want to be the state's greatest criminal &mdash; she wants <b>out</b>.
-     From <b>Chatboro</b> up US&nbsp;167 to <b>Tusouxroe</b>, every <b>Feral Hog</b>,
-     <b>Redneck</b> and <b>Hoodrat</b> in the piney woods has other plans, and Sheriff
-     Mercer wants his book back.</p>
-  <p class="keys"><b>WASD</b> drive / walk &nbsp;·&nbsp; <b>F</b> jack &amp; exit vehicle &nbsp;·&nbsp;
-     <b>Shift</b> sprint / handbrake &nbsp;·&nbsp; <b>Space / Click</b> shoot &nbsp;·&nbsp;
-     <b>Mouse</b> look (click to capture, Esc releases) &nbsp;·&nbsp; <b>Wheel</b> zoom &nbsp;·&nbsp; <b>Q / E</b> rotate &nbsp;·&nbsp; <b>M</b> mute &nbsp;·&nbsp; <b>N</b> next track &nbsp;·&nbsp; <b>[ ]</b> graphics</p>
-  <div class="btns">
-    <button id="startBtn">Start the prologue</button>
-    <button id="freeBtn" class="alt">Free roam</button>
+  <div id="introPanel">
+    <img id="coverArt" src="./assets/cover.png" alt="Grand Theft Bayou: Louisiana Stories" />
+    <h1></h1>
+    <p><b>Dixie Beaux.</b> Eighty-nine degrees, ninety-eight percent humidity. Keseme Nadia
+       doesn't want to be the state's greatest criminal &mdash; she wants <b>out</b>.
+       From <b>Chatboro</b> up US&nbsp;167 to <b>Tusouxroe</b>, every <b>Feral Hog</b>,
+       <b>Redneck</b> and <b>Hoodrat</b> in the piney woods has other plans, and Sheriff
+       Mercer wants his book back.</p>
+    <p class="keys"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> sprint / handbrake &nbsp;·&nbsp;
+       <b>Space</b> jump &nbsp;·&nbsp; <b>C</b> crouch &nbsp;·&nbsp; <b>RMB</b> aim &nbsp;·&nbsp; <b>LMB</b> attack / fire &nbsp;·&nbsp; <b>F</b> jack &amp; exit vehicle &nbsp;·&nbsp;
+       <b>Mouse</b> look (click to capture, Esc releases) &nbsp;·&nbsp; <b>Wheel</b> zoom &nbsp;·&nbsp; <b>Q / E</b> rotate &nbsp;·&nbsp; <b>M</b> mute &nbsp;·&nbsp; <b>N</b> next track &nbsp;·&nbsp; <b>[ ]</b> graphics</p>
+    <div class="btns">
+      <button id="startBtn">Choose character · Story</button>
+      <button id="freeBtn" class="alt">Choose character · Free roam</button>
+      <button id="multiplayerBtn" class="alt">Multiplayer · Create / Join</button>
+    </div>
   </div>
+  <section id="multiplayerPanel" hidden aria-label="Multiplayer lobby">
+    <div class="select-kicker">Grand Theft Bayou · Shared Bayou</div>
+    <div class="select-title">Bring the whole damn crew.</div>
+    <div id="mpConnection">Not connected</div>
+    <div class="mp-row"><button id="mpCreate">Create game</button><input id="mpRoomInput" placeholder="BAYOU-7K3F" maxlength="10"><button id="mpJoin" class="alt">Join game</button></div>
+    <div class="mp-code" id="mpCode">—</div>
+    <div id="mpPlayers"></div>
+    <div class="mp-row"><button id="mpPick">Choose character</button><button id="mpReady" disabled>Ready</button><button id="mpStart" class="alt" disabled>Start game</button><button id="mpBack" class="alt">Back</button></div>
+    <div id="mpMessage" class="mp-status">Create a room or join a friend's code.</div>
+  </section>
+  <section id="characterSelect" hidden aria-label="Player character select">
+    <div class="select-kicker">Grand Theft Bayou · Dixie Beaux</div>
+    <div class="select-title">Choose your problem.</div>
+    <div class="select-stage">
+      <div id="characterPortrait" aria-hidden="true">♛</div>
+      <div id="characterInfo">
+        <div id="characterName"></div><div id="characterSubtitle"></div>
+        <div class="ability-label">SPECIAL ABILITY</div><div id="characterAbility"></div>
+        <div id="characterDescription"></div>
+      </div>
+    </div>
+    <div id="characterCards" role="listbox" aria-label="Characters"></div>
+    <div class="select-actions"><button id="backCharacter" class="alt">Back</button><button id="confirmCharacter">Select character</button></div>
+  </section>
   <div id="loadNote">loading assets…</div>
 </div>
 

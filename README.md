@@ -136,6 +136,35 @@ straight to the open strip.
 
 In cutscenes, **Enter** skips a line and **Esc** skips the scene.
 
+## Multiplayer foundation
+
+The game includes a real, server-authoritative four-player WebSocket foundation.
+The browser remains responsible for Three.js rendering; the Node server owns
+rooms, character reservations, ready state, player input and 20 Hz movement
+snapshots. Static world assets are never sent over the network.
+
+Run the client and server in separate terminals:
+
+```text
+npm install
+npm run server          # ws://localhost:8787, /health is available
+npm start               # http://localhost:8899
+```
+
+Open the game in up to four browser windows. Choose **Multiplayer · Create /
+Join**, create a room, share its `BAYOU-XXXX` code, select distinct characters,
+ready everyone, and let the host start. The server rejects full rooms,
+duplicate characters and invalid room/player messages. A disconnected player is
+removed and the host is reassigned. The client interpolates other players and
+shows connection/ping state in the lobby.
+
+For deployment, run `npm run server` as a Node Web Service (Render or another
+host), expose its port through `PORT`, and set `window.__MULTIPLAYER_URL` to the
+production `wss://...` endpoint before loading the client. The current server
+keeps room state in memory intentionally; a restart ends active rooms. Combat,
+vehicles, NPC relevance and mission authority have protocol integration points
+but remain the next multiplayer milestones.
+
 ## The map
 
 US-167 runs north–south through the whole map:

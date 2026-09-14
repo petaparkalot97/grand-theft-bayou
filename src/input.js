@@ -22,7 +22,8 @@ export const DEFAULT_BINDINGS = Object.freeze({
   orbitLeft: ["KeyQ", "ArrowLeft"],        // keyboard camera orbit, secondary to the mouse
   orbitRight: ["KeyE", "ArrowRight"],
   interact: ["KeyF"],                      // enter / exit a vehicle, use things (Enter is the cutscene key)
-  fire: ["Space"],
+  jump: ["Space"],
+  crouch: ["KeyC"],
   mute: ["KeyM"],
   nextTrack: ["KeyN"],
   gfxDown: ["BracketLeft"],
@@ -36,6 +37,7 @@ const SWALLOW = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Spa
 
 export function createInput({ bindings = DEFAULT_BINDINGS, target = window } = {}) {
   const held = new Set();                  // key codes currently down
+  const mouseHeld = new Set();             // 0 = LMB, 2 = RMB
   const byCode = new Map();                // code -> [actions]
   for (const [action, codes] of Object.entries(bindings)) {
     for (const code of codes) {
@@ -54,10 +56,23 @@ export function createInput({ bindings = DEFAULT_BINDINGS, target = window } = {
     }
   });
   target.addEventListener("keyup", (e) => held.delete(e.code));
+  target.addEventListener("mousedown", (e) => {
+    mouseHeld.add(e.button);
+    if (e.button === 2) {
+      for (const fn of handlers.get("aim") || []) fn(e);
+    } else if (e.button === 0) {
+      for (const fn of handlers.get("attack") || []) fn(e);
+    }
+  });
+  target.addEventListener("mouseup", (e) => mouseHeld.delete(e.button));
   // alt-tab or a lost pointer lock must not leave W stuck down
-  target.addEventListener("blur", () => held.clear());
+  target.addEventListener("blur", () => { held.clear(); mouseHeld.clear(); });
 
-  const isDown = (action) => (bindings[action] || []).some((c) => held.has(c));
+  const isDown = (action) => action === "aim"
+    ? mouseHeld.has(2)
+    : action === "attack"
+      ? mouseHeld.has(0)
+      : (bindings[action] || []).some((c) => held.has(c));
 
   return {
     bindings,
@@ -68,6 +83,6 @@ export function createInput({ bindings = DEFAULT_BINDINGS, target = window } = {
       if (!handlers.has(action)) handlers.set(action, []);
       handlers.get(action).push(fn);
     },
-    clear: () => held.clear(),
+    clear: () => { held.clear(); mouseHeld.clear(); },
   };
 }
