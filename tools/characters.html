@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Hoodrats — character viewer</title>
+<title>Characters — cast &amp; crews viewer</title>
 <style>
   :root { color-scheme: dark; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -12,15 +12,16 @@
   canvas { display: block; }
   #bar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 5;
-    display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
-    padding: 10px 16px; background: rgba(8, 11, 14, .72);
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+    padding: 8px 16px; background: rgba(8, 11, 14, .78);
     border-bottom: 1px solid rgba(150, 180, 150, .18); backdrop-filter: blur(4px);
+    max-height: 46vh; overflow-y: auto;
   }
   #bar h1 { font-size: 14px; letter-spacing: .16em; text-transform: uppercase; font-weight: 900; }
   #bar h1 b { color: #d2434b; }
   #bar h1 i { color: #3a63c6; font-style: normal; }
-  .grp { display: flex; gap: 6px; align-items: center; }
-  .grp span { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .5; }
+  .grp { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .grp > span { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .5; }
   button {
     cursor: pointer; font: inherit; font-size: 11px; letter-spacing: .06em;
     text-transform: uppercase; padding: 5px 11px; border-radius: 5px;
@@ -28,6 +29,17 @@
   }
   button:hover { background: rgba(255,255,255,.12); }
   button.on { background: #2f5a2a; border-color: #6fbf5a; color: #f2fbe8; }
+  .sw { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .sw span { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; opacity: .55; }
+  .sw input[type="color"] {
+    width: 30px; height: 20px; padding: 0; border: 1px solid rgba(160,190,160,.35);
+    border-radius: 4px; background: none; cursor: pointer;
+  }
+  .sw.dim { opacity: .3; pointer-events: none; }
+  input[type="number"] {
+    font: inherit; font-size: 11px; width: 88px; padding: 4px 6px; border-radius: 5px;
+    border: 1px solid rgba(160, 190, 160, .28); background: rgba(255,255,255,.05); color: #e8e6df;
+  }
   #labels { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
   #labels div {
     position: absolute; transform: translate(-50%, 0); text-align: center;
@@ -42,15 +54,31 @@
 </head>
 <body>
 <div id="bar">
-  <h1>Hoodrats &mdash; <b>Red</b> / <i>Blue</i> crews</h1>
+  <h1>Characters &mdash; <b>cast</b> / <i>crews</i></h1>
+  <div class="grp" id="castGrp"><span>Cast</span></div>
+  <div class="grp"><span>Body</span>
+    <button data-body="sex" data-val="m">M</button>
+    <button data-body="sex" data-val="f">F</button>
+    <button data-body="headwear" data-val="band">Band</button>
+    <button data-body="headwear" data-val="none">No hat</button>
+    <button data-body="headwear" data-val="hat">Hat</button>
+    <button data-body="beard" data-val="1">Beard</button>
+    <button data-body="curly" data-val="1">Curly</button>
+  </div>
+  <div class="grp" id="crewGrp"><span>Crew</span></div>
+  <div class="grp" id="colorGrp"><span>Colors</span></div>
+  <div class="grp"><span>Seed / height</span>
+    <input type="number" id="seed" min="0" step="1" />
+    <button id="reroll">Reroll</button>
+    <input type="number" id="height" min="1.2" max="2.2" step="0.01" title="metres; empty = auto" />
+  </div>
   <div class="grp"><span>Anim</span><span id="anims"></span></div>
   <div class="grp"><span>View</span>
     <button id="spin" class="on">Turntable</button>
-    <button id="reroll">Reroll</button>
   </div>
 </div>
 <div id="labels"></div>
-<div id="hint">drag to orbit &middot; scroll to zoom</div>
+<div id="hint">drag to orbit &middot; scroll to zoom &middot; editing any control leaves the preset</div>
 
 <script type="importmap">
 {
@@ -102,31 +130,238 @@ floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
 
-// --------------------------------------------------------------- the roster
-const ROSTER = [
-  { sex: "m", crew: "red",  label: "Red crew · male" },
-  { sex: "m", crew: "blue", label: "Blue crew · male" },
-  { sex: "f", crew: "red",  label: "Red crew · female" },
-  { sex: "f", crew: "blue", label: "Blue crew · female" },
-];
+// --------------------------------------------------------------- the cast
+// Palette snapshots, kept in sync by hand with the game sources:
+//   keseme/mally/bubba/mercer/deputy -> CAST in src/prologue.js
+//   emiko                            -> populate() in src/actone.js
+//   solange                          -> populate() in src/bluelight.js (same values in nolantis.js)
+//   amara                            -> populate() in src/nolantis.js
+// Keseme's height 1.74 and the deputy's seed follow main.js / prologue.js
+// ("deputy"+n uses who.length * 911; 6377 = "deputy2".length * 911).
+const CAST = {
+  keseme:  { label: "Keseme (player)", height: 1.74, opts: { sex: "f", seed: 7021, skin: 0x8d6446, top: 0x2f6f6a, hair: 0x0f0b09, headwear: "none", curly: false, crew: { cloth: 0x23262b, chain: 0xcfd3da, shoe: 0x2b2f36 } } },
+  mally:   { label: "Mally",   opts: { sex: "m", seed: 3301, skin: 0x5e3a26, top: 0xf0eee6, headwear: "none", crew: { cloth: 0x2f9e44, chain: 0xd4af37, shoe: 0x2f9e44 } } },
+  bubba:   { label: "Bubba",   opts: { sex: "m", seed: 5150, skin: 0xd6a57c, top: 0x6a6f3c, denim: 0x5b5a3c, hair: 0x6b4a2c, headwear: "none", crew: { cloth: 0x4b5230, chain: 0x8a8a8a, shoe: 0x4a3a28 } } },
+  mercer:  { label: "Mercer",  opts: { sex: "m", seed: 1952, skin: 0xe0b48e, top: 0xb89d6e, denim: 0x4e4234, hair: 0x9a9a9a, headwear: "hat", beard: false, crew: { cloth: 0x3c3226, chain: 0xd4af37, shoe: 0x2a2018, hat: 0xcbb58a } } },
+  deputy:  { label: "Deputy",  opts: { sex: "m", seed: 6377, skin: 0xc79a74, top: 0x9c8660, denim: 0x3d3a34, headwear: "hat", beard: false, crew: { cloth: 0x2e2a22, chain: 0xaaaaaa, shoe: 0x201a14, hat: 0x6b5a3e } } },
+  emiko:   { label: "Emiko",   height: 1.62, opts: { sex: "f", seed: 1966, skin: 0xe6c3a2, top: 0x6f5e7e, denim: 0x3f3a46, hair: 0x2b2b2b, headwear: "none", crew: { cloth: 0x3f3a46, chain: 0xcfd3da, shoe: 0x2b2b2b } } },
+  solange: { label: "Solange", height: 1.76, opts: { sex: "f", seed: 1997, skin: 0xb5835e, top: 0x4a2c5a, denim: 0x1f1f24, hair: 0x241610, headwear: "none", curly: true, crew: { cloth: 0x1f1f24, chain: 0xd4af37, shoe: 0x7a1f2a } } },
+  amara:   { label: "Amara",   height: 1.7,  opts: { sex: "f", seed: 6161, skin: 0x6b4630, top: 0xf2f0ea, denim: 0x3a4a52, hair: 0xd6d3cc, headwear: "none", curly: true, beard: false, crew: { cloth: 0x2f7f7a, chain: 0xe9c46a, shoe: 0x2a2f33 } } },
+};
+
+// Crew tones mirrored from CREWS in src/characters.js (defaults for the
+// custom palette; the hat default is the builder's own 0x8a6a44).
+const CREW_TONES = {
+  red:  { cloth: 0xb3242c, chain: 0xd4af37, shoe: 0xc0282e, legging: 0xc4292d },
+  blue: { cloth: 0x223f94, chain: 0xd4af37, shoe: 0x223f94, legging: 0x2946b8 },
+};
+const SKIN_TONES = [0x7a4f35, 0x633d28, 0x8b6044, 0x512f1f, 0x946c4c, 0x452718];
+const DENIM_TONES = [0x5d7ea6, 0x53718f, 0x6b8cb2, 0x47607d];
+
+// ------------------------------------------------------------------ state
+// mode: "crew" = the four-crew roster; "preset" = a named cast member;
+// "draft" = single figure driven by the controls below.
+const draft = {
+  sex: "m", seed: 20260912, headwear: "band", beard: true, curly: false,
+  crewMode: "red", height: 0,            // 0 = builder default (m 1.95 / f 1.82)
+  colors: {
+    skin: "#7a4f35", top: "#eceae4", denim: "#5d7ea6", hair: "#16100d",
+    cloth: "#b3242c", chain: "#d4af37", shoe: "#c0282e", hat: "#8a6a44", legging: "#c4292d",
+  },
+};
+let mode = "crew";
+let presetId = "keseme";
+
+const hex = (s) => parseInt(s.slice(1), 16);
+const css = (n) => "#" + n.toString(16).padStart(6, "0");
+
+function draftOpts() {
+  const o = {
+    sex: draft.sex, seed: draft.seed, headwear: draft.headwear,
+    beard: draft.beard, curly: draft.curly,
+    skin: hex(draft.colors.skin), top: hex(draft.colors.top),
+    denim: hex(draft.colors.denim), hair: hex(draft.colors.hair),
+  };
+  if (draft.height > 0) o.height = draft.height;
+  if (draft.crewMode === "custom") {
+    o.crew = {
+      cloth: hex(draft.colors.cloth), chain: hex(draft.colors.chain),
+      shoe: hex(draft.colors.shoe), hat: hex(draft.colors.hat),
+      legging: hex(draft.colors.legging),
+    };
+  } else {
+    o.crew = draft.crewMode;
+  }
+  return o;
+}
+
+// --------------------------------------------------------------- the scene
 const SPACING = 1.45;
 const ANIMS = ["idle", "walk", "attack", "hurt", "death"];
-let cast = [];
+let cast = [];        // displayed models
+let labels = [];      // one label div per displayed model
 let current = "idle";
 
-function build(seedBase) {
-  for (const c of cast) scene.remove(c);
-  cast = ROSTER.map((r, i) => {
-    const h = makeHoodrat({ sex: r.sex, crew: r.crew, seed: seedBase + i * 7919 });
-    h.position.x = (i - (ROSTER.length - 1) / 2) * SPACING;
-    h.play(current, { force: true });
-    scene.add(h);
-    return h;
-  });
+const labelBox = document.getElementById("labels");
+function clearLabels() { labelBox.replaceChildren(); labels = []; }
+
+function spawn(opts, label, x) {
+  const h = makeHoodrat(opts);
+  h.position.x = x;
+  h.play(current, { force: true });
+  scene.add(h);
+  const d = document.createElement("div");
+  d.textContent = label;
+  labelBox.appendChild(d);
+  labels.push(d);
+  return h;
 }
-build(20260912);
+
+function build() {
+  for (const c of cast) scene.remove(c);
+  clearLabels();
+  cast = [];
+  if (mode === "crew") {
+    const roster = [
+      { sex: "m", crew: "red",  label: "Red crew · male" },
+      { sex: "m", crew: "blue", label: "Blue crew · male" },
+      { sex: "f", crew: "red",  label: "Red crew · female" },
+      { sex: "f", crew: "blue", label: "Blue crew · female" },
+    ];
+    roster.forEach((r, i) => {
+      cast.push(spawn({ sex: r.sex, crew: r.crew, seed: draft.seed + i * 7919 }, r.label,
+        (i - (roster.length - 1) / 2) * SPACING));
+    });
+  } else if (mode === "preset") {
+    const p = CAST[presetId];
+    const opts = { ...p.opts };
+    if (p.height) opts.height = p.height;
+    cast.push(spawn(opts, p.label, 0));
+  } else {
+    cast.push(spawn(draftOpts(), "Custom draft", 0));
+  }
+}
 
 // --------------------------------------------------------------- controls
+function setOn(container, match) {
+  [...container.querySelectorAll("button")].forEach((b) => {
+    b.classList.toggle("on", match(b.dataset));
+  });
+}
+
+// Cast buttons: every preset, plus the four-figure crew roster.
+const castGrp = document.getElementById("castGrp");
+for (const [id, p] of Object.entries(CAST)) {
+  const b = document.createElement("button");
+  b.textContent = p.label.replace(/ \(.*\)/, "");
+  b.onclick = () => { mode = "preset"; presetId = id; refresh(); };
+  b.dataset.preset = id;
+  castGrp.appendChild(b);
+}
+const crewBtn = document.createElement("button");
+crewBtn.textContent = "Crews";
+crewBtn.onclick = () => { mode = "crew"; refresh(); };
+crewBtn.dataset.crews = "1";
+castGrp.appendChild(crewBtn);
+
+// Body buttons (sex / headwear / beard / curly). Any edit leaves the preset.
+const bodyButtons = [...document.querySelectorAll("button[data-body]")];
+bodyButtons.forEach((b) => {
+  b.onclick = () => {
+    const k = b.dataset.body;
+    if (k === "beard" || k === "curly") draft[k] = !draft[k];
+    else draft[k] = b.dataset.val;
+    mode = "draft";
+    refresh();
+  };
+});
+
+// Crew mode: red / blue / custom palette.
+const crewGrp = document.getElementById("crewGrp");
+for (const m of ["red", "blue", "custom"]) {
+  const b = document.createElement("button");
+  b.textContent = m;
+  b.dataset.crewMode = m;
+  b.onclick = () => {
+    if (m !== "custom") {        // switching to a named crew adopts its tones
+      for (const [k, v] of Object.entries(CREW_TONES[m])) draft.colors[k] = css(v);
+      draft.colors.hat = css(0x8a6a44);
+    }
+    draft.crewMode = m;
+    mode = "draft";
+    refresh();
+  };
+  crewGrp.appendChild(b);
+}
+
+// Colour swatches. Hat & legging only matter for the custom palette.
+const colorGrp = document.getElementById("colorGrp");
+const COLOR_DEFS = [
+  ["skin", "Skin"], ["top", "Top"], ["denim", "Denim"], ["hair", "Hair"],
+  ["cloth", "Cloth"], ["chain", "Chain"], ["shoe", "Shoe"], ["hat", "Hat"], ["legging", "Leg"],
+];
+for (const [key, name] of COLOR_DEFS) {
+  const wrap = document.createElement("label");
+  wrap.className = "sw";
+  wrap.dataset.color = key;
+  const input = document.createElement("input");
+  input.type = "color";
+  input.value = draft.colors[key];
+  input.oninput = () => {
+    draft.colors[key] = input.value;
+    if (key === "cloth" || key === "shoe" || key === "legging" || key === "chain") {
+      draft.crewMode = "custom";   // repainting a crew tone makes it custom
+    }
+    mode = "draft";
+    refresh();
+  };
+  const span = document.createElement("span");
+  span.textContent = name;
+  wrap.append(input, span);
+  colorGrp.appendChild(wrap);
+}
+
+// Seed + height.
+const seedInput = document.getElementById("seed");
+const heightInput = document.getElementById("height");
+seedInput.value = draft.seed;
+heightInput.value = "";
+seedInput.onchange = () => {
+  draft.seed = Math.max(0, (parseFloat(seedInput.value) || 0) | 0);
+  mode = "draft";
+  refresh();
+};
+heightInput.onchange = () => {
+  draft.height = Math.max(0, parseFloat(heightInput.value) || 0);
+  mode = "draft";
+  refresh();
+};
+document.getElementById("reroll").onclick = () => {
+  draft.seed = (Math.random() * 1e9) | 0;
+  mode = "draft";
+  refresh();
+};
+
+function refresh() {
+  setOn(castGrp, (d) => (mode === "crew" ? d.crews : d.preset === presetId));
+  setOn(crewGrp, (d) => d.crewMode === draft.crewMode);
+  bodyButtons.forEach((b) => {
+    const k = b.dataset.body;
+    const on = (k === "beard" || k === "curly") ? !!draft[k] : draft[k] === b.dataset.val;
+    b.classList.toggle("on", on && mode === "draft");
+  });
+  for (const wrap of colorGrp.querySelectorAll(".sw")) {
+    const k = wrap.dataset.color;
+    wrap.querySelector("input").value = draft.colors[k];
+    wrap.classList.toggle("dim", mode === "draft" && draft.crewMode !== "custom"
+      && (k === "hat" || k === "legging"));
+  }
+  seedInput.value = draft.seed;
+  heightInput.value = draft.height > 0 ? draft.height : "";
+  build();
+}
+
+// Anim buttons.
 const animBox = document.getElementById("anims");
 ANIMS.forEach((a) => {
   const b = document.createElement("button");
@@ -145,7 +380,6 @@ document.getElementById("spin").onclick = (e) => {
   spinning = !spinning;
   e.target.className = spinning ? "on" : "";
 };
-document.getElementById("reroll").onclick = () => build((Math.random() * 1e9) | 0);
 
 // orbit
 let yaw = 0, pitch = 0.1, dist = 6.4, drag = false, lx = 0, ly = 0;
@@ -166,15 +400,6 @@ addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
-});
-
-// --------------------------------------------------------------- labels
-const labelBox = document.getElementById("labels");
-const labels = ROSTER.map((r) => {
-  const d = document.createElement("div");
-  d.textContent = r.label;
-  labelBox.appendChild(d);
-  return d;
 });
 
 // --------------------------------------------------------------- loop
@@ -210,6 +435,7 @@ function tick() {
   camera.lookAt(focus);
 
   cast.forEach((c, i) => {
+    if (!labels[i]) return;
     probe.set(c.position.x, 2.15, c.position.z).project(camera);
     const vis = probe.z < 1;
     labels[i].style.display = vis ? "block" : "none";
@@ -219,6 +445,8 @@ function tick() {
 
   renderer.render(scene, camera);
 }
+
+refresh();
 tick();
 </script>
 </body>

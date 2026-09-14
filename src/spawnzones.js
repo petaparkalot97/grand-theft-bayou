@@ -19,10 +19,12 @@
 // ---------------------------------------------------------------------------
 
 export const ZONE_MIX = Object.freeze({
-  urban: { hoodrat: 0.7, redneck: 0.3 },
-  town: { hoodrat: 0.6, redneck: 0.4 },
+  urban: { hoodrat: 0.9, redneck: 0.1 },
+  town: { hoodrat: 0.7, redneck: 0.3 },
   commercial: { hoodrat: 0.45, redneck: 0.55 },
-  residential: { redneck: 0.75, hoodrat: 0.25 },
+  border_strip: { hoodrat: 0.5, redneck: 0.5, border: true },
+  border_market: { hoodrat: 0.5, redneck: 0.5, border: true },
+  residential: { redneck: 0.92, hoodrat: 0.08 },
   rural: { redneck: 0.6, hoodrat: 0.15, hog: 0.25 },
   forest: { hog: 0.5, redneck: 0.5 },
   highway: null,
@@ -51,8 +53,18 @@ export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, resi
     if (Math.abs(x - ROAD_X) < ROAD_HALF + 4) return "highway";
     if (z < -50 && x >= coreMinX) return "town";
     for (const r of residential) if (Math.hypot(x - r.x, z - r.z) < r.r) return "residential";
-    if (Math.abs(x - ROAD_X) < LOT_X + 14) return "commercial";
+    if (Math.abs(x - ROAD_X) < LOT_X + 14) {
+      if (z >= -40 && z <= 40) return "border_strip";
+      return "commercial";
+    }
+    if (x >= 115 && x <= 180 && z >= -30 && z <= 50) return "border_market";
     return "forest";
+  }
+
+  function isBorder(x, z) {
+    const zName = zoneAt(x, z);
+    const mix = ZONE_MIX[zName];
+    return !!(mix && mix.border);
   }
 
   function pickKind(zone, hogsAlive) {
@@ -60,19 +72,21 @@ export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, resi
     if (!mix) return null;
     let r = Math.random(), kind = null;
     for (const [k, w] of Object.entries(mix)) {
+      if (k === "border") continue;
       if (r < w) { kind = k; break; }
       r -= w;
     }
-    kind = kind || Object.keys(mix)[0];
+    kind = kind || Object.keys(mix).find(k => k !== "border");
     if (kind === "hog" && hogsAlive >= HOG_CAP) kind = mix.redneck ? "redneck" : null;
     return kind;
   }
 
   return {
     zoneAt,
+    isBorder,
 
     /**
-     * A spawn { x, z, kind, zone } near `focus` (out of sight, between minDist
+     * A spawn { x, z, kind, zone, border } near `focus` (out of sight, between minDist
      * and maxDist), or null if this attempt landed somewhere nobody should
      * appear. `living`: current NPC records.
      */
@@ -110,7 +124,8 @@ export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, resi
       }
       const zone = zoneAt(x, z);
       const kind = pickKind(zone, hogs);
-      return kind ? { x, z, kind, zone } : null;
+      const border = isBorder(x, z);
+      return kind ? { x, z, kind, zone, border } : null;
     },
   };
 }
