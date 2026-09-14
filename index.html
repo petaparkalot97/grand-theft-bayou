@@ -70,7 +70,7 @@
     position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 14px; text-align: center;
     background: #05070a url("./assets/cover.png") center/cover no-repeat;
-    padding: 22px;
+    padding: 22px; overflow-y: auto; overflow-x: hidden;
   }
   #overlay::before {
     content: ""; position: absolute; inset: 0;
@@ -104,9 +104,8 @@
   #overlay.hidden { display: none; }
   #loadNote { font-size: 12px; opacity: .6; font-family: Arial, sans-serif; }
   #introPanel { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  #introPanel[hidden], #characterSelect[hidden], #multiplayerPanel[hidden] { display: none !important; }
   #characterSelect { width: min(1080px, 96vw); min-height: min(650px, 88vh); display: flex; flex-direction: column; gap: 18px; text-align: left; }
-  #characterSelect[hidden] { display: none; }
-  #multiplayerPanel[hidden] { display:none; }
   #multiplayerPanel { width:min(760px,94vw); padding:28px; background:rgba(10,12,10,.9); border:1px solid rgba(220,165,78,.45); box-shadow:0 20px 80px #000b; text-align:left; }
   .mp-code { font-size:clamp(25px,5vw,48px); letter-spacing:.16em; color:#ffd28b; text-align:center; margin:18px 0; }
   .mp-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:14px 0; }
