@@ -34,11 +34,15 @@ export function createAlternateCampaign(ctx) {
     room.add(actors.chimi, actors.dixon, actors.gr33do);
     for (const a of Object.values(actors)) a.visible = false;
     scene.add(room);
+    // The room stands on the South Tusouxroe street, right in front of Keseme's (the Nadia)
+    // house, so it is only on screen while this opening plays; the rest of the time it
+    // would read as a black block over her street.
+    room.visible = false;
   }
   function local(v) { return [origin.x + v[0], v[1], origin.z + v[2]]; }
   function showActors(on) { for (const a of Object.values(actors)) a.visible = on; }
   function finish() {
-    showActors(false); if (getPlayer()) getPlayer().visible = true; state.cinematic = false; cine.releaseCamera();
+    showActors(false); room.visible = false; if (getPlayer()) getPlayer().visible = true; state.cinematic = false; cine.releaseCamera();
     playerPos.set(-6, 0, 130); flashObjective("MISSION 01 · SAVE THE HOGS");
   }
   function start() {
@@ -48,6 +52,7 @@ export function createAlternateCampaign(ctx) {
     if (openingRunning || openingPlayed) return;
     openingRunning = true;
     openingPlayed = true;
+    room.visible = true;
     state.cinematic = true; if (getPlayer()) getPlayer().visible = false; showActors(true);
     const run = cine.scene(async (c) => {
       c.letterbox(true);
