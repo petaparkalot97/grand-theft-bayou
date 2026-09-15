@@ -10,6 +10,8 @@ import { addLamp, createHeadlights, createWetRoads, updateFx } from "./fx.js";
 import { BlockerGrid } from "./spatial.js";
 import { createSoundtrack } from "./music.js";
 import { batchStatic } from "./merge.js";
+import { initAudio, createCarAudio } from "./audio.js";
+import { initWeapons3D, updateWeapon3D, playFireAnim3D } from "./weapons_3d.js";
 import { createNpcSystem } from "./npc.js";
 import { createCameraController } from "./camera.js";
 import { createTraffic } from "./traffic.js";
@@ -948,6 +950,7 @@ function toggleMute() {
 function registerVehicle(obj, r = 1.8, opts = {}) {
   if (!obj) return null;
   const v = {
+    audio: createCarAudio(obj),
     obj, heading: obj.rotation.y, speed: 0, hp: opts.hp || 40,
     sheriff: !!opts.sheriff, blocker: { x: obj.position.x, z: obj.position.z, r },
     r, wob: 0,
@@ -1012,6 +1015,7 @@ const compass = createCompass();
 const minimap = createMinimap({ MAP });
 // the player's weapon slot (weapons.js) and what NPCs drop (loot.js)
 const arsenal = createArsenal({ state, flashObjective });
+  initWeapons3D(scene);
 const kills = { hog: 0, redneck: 0, hoodrat: 0, prostitute: 0 };
 const EMOJI = { hog: "🐗", redneck: "🧢", hoodrat: "🎧", prostitute: "💋" };
 const pauseMenu = createPauseMenu({ MAP, state, getPlayerPos: () => playerPos, minimap, arsenal, kills });
@@ -1159,6 +1163,46 @@ function applyNetworkSnapshot(snapshot) {
   const live = new Set((snapshot.players || []).map((p) => p.id));
   for (const [id, view] of remotePlayers) if (!live.has(id)) { scene.remove(view); remotePlayers.delete(id); }
 }
+
+function explodeCar(v) {
+  if (v.exploded) return;
+  v.exploded = true;
+  v.speed = 0;
+  if (v.audio) v.audio.destroy();
+  
+  // Turn it black
+  v.obj.traverse(o => {
+    if (o.isMesh && o.material) {
+      if (Array.isArray(o.material)) {
+        o.material.forEach(m => m.color.setHex(0x111111));
+      } else {
+        o.material.color.setHex(0x111111);
+      }
+    }
+  });
+
+  // Spawn explosion effect
+  const ex = new AnimatedSprite(atlases.muzzle, 8.0);
+  ex.position.copy(v.obj.position).setY(1.5);
+  scene.add(ex);
+  ex.play("flash", { fps: 12, loop: false });
+  setTimeout(() => scene.remove(ex), 500);
+
+  // Play sound if possible
+  // Kick occupants out
+  if (v.seats) {
+    for (const seat of v.seats) {
+      if (seat.occupant === "player") {
+        state.veh = null;
+        playerPos.copy(v.obj.position);
+        playerPos.x += 2.5;
+        player.position.copy(playerPos);
+        player.visible = true;
+      }
+    }
+  }
+}
+
 function updateRemotePlayers(dt) {
   for (const view of remotePlayers.values()) { const target = view.userData.netTarget; if (!target) continue; view.position.lerp(new THREE.Vector3(target.x, target.y, target.z), Math.min(1, dt * 12)); view._yaw = target.yaw; if (view.play && view.userData.netLastState !== target.state) { view.play(target.state === "IDLE" ? "idle" : "walk"); view.userData.netLastState = target.state; } }
 }
@@ -2358,7 +2402,7 @@ function fire() {
   crime(0.12);
   const origin = _tmpV.copy(playerPos).setY(state.veh ? 1.4 : 1.2);
 
-  if (!state.veh) { attackTimer = 0.42; player.play("attack", { fps: 12, loop: false, force: true }); }
+  if (!state.veh) { attackTimer = 0.42; player.play("attack", { fps: 12, loop: false, force: true }); playFireAnim3D(gun.melee); }
 
   // Aim assist: hostile NPCs and cruisers first; a bystander is only hit if
   // the camera is pointed right at them. Used to snap to whoever was nearest.
@@ -2380,6 +2424,17 @@ function fire() {
     if (s.dead) continue;
     const d = s.obj.position.distanceTo(playerPos);
     if (d < gun.range && d * 0.6 < bestScore) { bestScore = d * 0.6; best = s; bestKind = "sheriff"; }
+  }
+
+  for (const v of vehicles) {
+    if (v === state.veh) continue;
+    const dx = v.obj.position.x - playerPos.x, dz = v.obj.position.z - playerPos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > gun.range || d < 1e-3) continue;
+    const facing = (dx * _aim.x + dz * _aim.z) / d;
+    if (facing < 0.8) continue;
+    const score = d * 1.5 * (1.6 - facing);
+    if (score < bestScore) { bestScore = score; best = v; bestKind = "vehicle"; }
   }
   npcs.noise(playerPos.x, playerPos.z, 26);     // gunfire carries
 
@@ -2905,6 +2960,11 @@ function drivingUpdate(dt) {
       v.potholesHit = (v.potholesHit || 0) + 1;
     }
     v.lastHole = hit ? hit.hole : null;
+  }
+  if (v.lastImpact > 10) {
+    v.hp -= v.lastImpact * 1.5;
+    v.lastImpact = 0;
+    if (v.hp <= 0 && !v.exploded) { crime(0.5); explodeCar(v); }
   }
   if (v.jolt > 0) {
     v.jolt = Math.max(0, v.jolt - dt * 3.2);
