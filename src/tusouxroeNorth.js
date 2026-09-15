@@ -94,7 +94,6 @@ export function createTusouxroeNorth(ctx) {
     }
 
     // ================= STAGE 2: FRONTAGE BUILDINGS =================
-    C.buildings(() => {
       // 1. Harborlight Hospital (West Commercial Frontage)
       placeCityBuilding(ctx, "hospital", -65, BLVD_Z + 22, Math.PI);
       addOccluder(-65, BLVD_Z + 22, 28, 22, 16);
@@ -114,10 +113,8 @@ export function createTusouxroeNorth(ctx) {
       placeCityBuilding(ctx, "cafe", 45, -180, 0);
       addOccluder(45, -180, 14, 12, 7);
       pois.push({ x: 45, z: -180, r: 8, label: "Cornerleaf Cafe" });
-    });
 
     // ================= STAGE 3: CIVIC & CORPORATE HUB =================
-    C.sideStreets(() => {
       // 1. Ember Fire Station (Civic Center Way North)
       placeCityBuilding(ctx, "fire_station", WEST_STREET_X - 18, -210, Math.PI / 2);
       addOccluder(WEST_STREET_X - 18, -210, 18, 15, 10);
@@ -147,10 +144,8 @@ export function createTusouxroeNorth(ctx) {
       addOccluder(-145, -260, 12, 10, 6);
       addOccluder(145, -260, 12, 10, 6);
       pois.push({ x: -145, z: -260, r: 6 }, { x: 145, z: -260, r: 6 });
-    });
 
     // ================= STAGE 4: OPEN AREAS & PARKING =================
-    C.openAreas(() => {
       // Market & Hospital Parking Aprons
       const parkMat = new THREE.MeshStandardMaterial({ color: 0x4a4d52, roughness: 0.85 });
       parkMat.userData.gtbRealized = true;
@@ -175,10 +170,8 @@ export function createTusouxroeNorth(ctx) {
       placeStreetClutter(ctx, EAST_STREET_X + 6, -180, Math.PI);
       placeStreetClutter(ctx, 60, BLVD_Z - 20, Math.PI / 2);
       placeStreetClutter(ctx, -65, BLVD_Z - 22, -Math.PI / 2);
-    });
 
     // ================= STAGE 5: VEGETATION =================
-    C.vegetation(() => {
       // Natural tree clusters framing the district boundaries
       const pineGeo = new THREE.ConeGeometry(2.2, 7.5, 5);
       const pineMat = new THREE.MeshStandardMaterial({ color: 0x2d4a2b, roughness: 0.9 });
@@ -204,7 +197,6 @@ export function createTusouxroeNorth(ctx) {
         scene.add(g);
         if (addBlocker) addBlocker(tx, tz, 1.2);
       }
-    });
 
     // ================= STAGE 6: LANDMARK ANCHOR =================
     C.landmark("Cloudline Tower", () => {

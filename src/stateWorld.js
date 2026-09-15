@@ -68,32 +68,29 @@ export function createStateWorld(ctx) {
     scene.add(dockDr);
 
     // Warehouse & Container Yard Buildings
-    C.buildings(() => {
-      // 1. Cargo Warehouse Alpha
-      placeCityBuilding(ctx, "garage", 620, -720, 0);
-      addOccluder(620, -720, 18, 16, 8);
-      pois.push({ x: 620, z: -720, r: 14, label: "Calypso Cargo Alpha" });
+    // 1. Cargo Warehouse Alpha
+    placeCityBuilding(ctx, "garage", 620, -720, 0);
+    addOccluder(620, -720, 18, 16, 8);
+    pois.push({ x: 620, z: -720, r: 14, label: "Calypso Cargo Alpha" });
 
-      // 2. Shipping Terminal Offices
-      placeCityBuilding(ctx, "offices", 880, -720, Math.PI / 2);
-      addOccluder(880, -720, 22, 18, 20);
-      placeOfficeClutter(ctx, 880, -710, 0);
-      pois.push({ x: 880, z: -720, r: 12, label: "Port Terminal HQ" });
+    // 2. Shipping Terminal Offices
+    placeCityBuilding(ctx, "offices", 880, -720, Math.PI / 2);
+    addOccluder(880, -720, 22, 18, 20);
+    placeOfficeClutter(ctx, 880, -710, 0);
+    pois.push({ x: 880, z: -720, r: 12, label: "Port Terminal HQ" });
 
-      // 3. Port Calypso Supermarket / Supply Depot
-      placeCityBuilding(ctx, "market", 620, -480, Math.PI);
-      addOccluder(620, -480, 20, 16, 8);
-      pois.push({ x: 620, z: -480, r: 10, label: "Dockside Supply Co." });
+    // 3. Port Calypso Supermarket / Supply Depot
+    placeCityBuilding(ctx, "market", 620, -480, Math.PI);
+    addOccluder(620, -480, 20, 16, 8);
+    pois.push({ x: 620, z: -480, r: 10, label: "Dockside Supply Co." });
 
-      // 4. Harbor Fire Station
-      placeCityBuilding(ctx, "fire_station", 880, -480, -Math.PI / 2);
-      addOccluder(880, -480, 18, 15, 10);
-      makeDecorativeFence(ctx, 860, -495, 900, -495);
-      pois.push({ x: 880, z: -480, r: 10, label: "Port Fire Station" });
-    });
+    // 4. Harbor Fire Station
+    placeCityBuilding(ctx, "fire_station", 880, -480, -Math.PI / 2);
+    addOccluder(880, -480, 18, 15, 10);
+    makeDecorativeFence(ctx, 860, -495, 900, -495);
+    pois.push({ x: 880, z: -480, r: 10, label: "Port Fire Station" });
 
     // Shipping Container Stacks & Docks
-    C.openAreas(() => {
       // Large maritime cargo stacks
       placeMaritimeCargo(ctx, 520, -850, 0);
       placeMaritimeCargo(ctx, 640, -880, Math.PI / 4);
@@ -107,7 +104,6 @@ export function createStateWorld(ctx) {
       placeStreetClutter(ctx, 620, -700, 0);
       placeStreetClutter(ctx, 880, -700, Math.PI);
       placeStreetClutter(ctx, 750, -620, Math.PI / 2);
-    });
 
     // Harbor Lighting & Streetlamps
     for (let x = 450; x <= 1000; x += 40) {
@@ -178,7 +174,6 @@ export function createStateWorld(ctx) {
     scene.add(canyonTrail);
 
     // Hilltop Cabins & Quarry Outpost
-    C.sideStreets(() => {
       placeCityBuilding(ctx, "cottage", -750, -850, 0.4);
       addOccluder(-750, -850, 12, 10, 6);
       pois.push({ x: -750, z: -850, r: 8, label: "Red Dust Ridge Cabin" });
@@ -194,10 +189,8 @@ export function createStateWorld(ctx) {
       // Warning Billboards & Clutter
       placeBillboard(ctx, -550, -620, -0.3, "DANGER: QUARRY AREA");
       placeStreetClutter(ctx, -920, -630, 0);
-    });
 
     // Dense Pine Ridges
-    C.vegetation(() => {
       const pineGeo = new THREE.ConeGeometry(2.5, 8.5, 5);
       const pineMat = new THREE.MeshStandardMaterial({ color: 0x1f3b1d, roughness: 0.9 });
       pineMat.userData.gtbRealized = true;
@@ -213,7 +206,6 @@ export function createStateWorld(ctx) {
         scene.add(tree);
         if (addBlocker) addBlocker(tx, tz, 1.4);
       }
-    });
 
     C.landmark("Summit Radio Tower", () => {
       const towerMat = new THREE.MeshStandardMaterial({ color: 0xd6402a, metalness: 0.8, roughness: 0.3 });
@@ -266,7 +258,6 @@ export function createStateWorld(ctx) {
     scene.add(causewayMesh);
 
     // Fishing Outpost & Airboat Camp
-    C.sideStreets(() => {
       placeCityBuilding(ctx, "cottage", -680, 820, 0);
       addOccluder(-680, 820, 12, 10, 6);
       pois.push({ x: -680, z: 820, r: 8, label: "Captain Thibodeaux Shacks" });
@@ -282,7 +273,6 @@ export function createStateWorld(ctx) {
       // Causeway Advertisements & Fishing Clutter
       placeBillboard(ctx, -600, 730, Math.PI / 2, "MARSH AIRBOAT TOURS");
       placeStreetClutter(ctx, -920, 800, 0);
-    });
 
     // Causeway Lighting
     for (let x = -450; x >= -1000; x -= 40) {
