@@ -57,6 +57,50 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-040 — Wire the car audio + 3D weapons commit into the game (message 8 follow-up)
+
+**Status:** `IN PROGRESS` · **Agent:** Freebuff
+**Files:** `src/audio.js`, `src/weapons_3d.js` (both new in commit edca422), `src/main.js` (wiring only — Claude-owned, wiring is additive and listed in Integration notes)
+
+#### What's wrong right now
+Commit edca422 added `src/audio.js` (engine loops, tire squeal, startup) and
+`src/weapons_3d.js` (view-model bat/pistol/rifle), but the wiring was never
+finished, so both are dead code:
+- `initAudio(camera)` is imported in `main.js` but never called, so
+  `createCarAudio()` returns early for every vehicle — no engine sounds at all.
+- `updateWeapon3D()` is never called per frame — the 3D weapon never appears.
+- `weapons_3d.js` maps `smg`/`shotgun`/`rifle`; the game's weapon ids are
+  `bat`/`pistol`/`tec9`/`sawnoff`/`deerRifle` — everything would fall back to
+  the boxy pistol proxy.
+- The rifle's texture fix sets `.encoding`, removed in three r152+ (game is
+  r160) — needs `.colorSpace = SRGBColorSpace`.
+- `fire()` gained a vehicle-targeting branch (`bestKind === "vehicle"`) but no
+  damage branch — shooting a car does nothing.
+- `drivingUpdate` keys crash damage off `v.lastImpact`, which nothing ever
+  sets — car damage/explosions from crashes are dead code.
+- Engine audio is created for *every* registered vehicle (traffic pool
+  included) and plays unconditionally — will be gated to the player's vehicle
+  for cost and sanity.
+
+#### Integration notes (for Claude)
+All `main.js` changes are small additive hooks (documented in AGENT_LOG →
+Interface contracts when done):
+1. `initAudio(camera)` right after `soundtrackReady` creation; a one-line
+   `resumeAudio()` on the existing `confirmCharacter` click.
+2. `updateWeapon3D(playerPos, aimDir, state.weapon, dt, aiming)` in `tick()`
+   next to `camCtl.update`, skipped during cinematics.
+3. In `fire()`: a `bestKind === "vehicle"` branch calling
+   `damageVehicle(best, gun.damage * 1.5)`.
+4. In `drivingUpdate`: read the impact magnitude `collisionResponse` now
+   returns and apply crash damage + `explodeCar` at hp ≤ 0 (replaces the
+   `v.lastImpact` dead code).
+5. `audio.update()` called for the player's vehicle only.
+
+#### Testing performed
+- (in progress)
+
+---
+
 ### TASK-039 — Traffic circuits + the sky-sign fix (message 7)
 
 **Status:** `REVIEW` · **Agent:** Freebuff
@@ -1104,7 +1148,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | Claude | TASK-009; orchestration, review, `main.js` integration | `src/actone.js`, `src/ledgerboard.js`, `src/cinema.js`, `src/prologue.js`, `src/main.js`, `tools/qa/actone.mjs` | Active |
 | Codex | — (suggested: TASK-011, then TASK-012) | — | Available |
 | Antigravity | TASK-038 (TASK-020 & TASK-035 in REVIEW) | `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Active |
-| Freebuff | TASK-018 (REVIEW; next: TASK-036) | `tools/characters.html` | Available |
+| Freebuff | TASK-040 (wiring the audio/weapons commit); TASK-018 (REVIEW) | `tools/characters.html`, `src/audio.js`, `src/weapons_3d.js` | Active |
 
 > Update this table whenever ownership changes.
 
@@ -1127,6 +1171,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/fx.js` | — | TASK-012 | Available |
 | `src/traffic.js` | Freebuff | TASK-039 (REVIEW) — TASK-012/014 changes go through review | Locked |
 | `tools/characters.html` | — | TASK-018 (REVIEW) | Available |
+| `src/audio.js`, `src/weapons_3d.js` | Freebuff | TASK-040 | Locked |
 | `src/factions.js` (new) | — | TASK-035 (REVIEW) | Available |
 | `src/spawnzones.js` | — | TASK-035 (REVIEW) | Available |
 | `src/npc.js` | — | TASK-035 (REVIEW) | Available |
