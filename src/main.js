@@ -1226,19 +1226,26 @@ const atlases = {};   // name -> loaded atlas
 
 
 const ENEMY_TYPES = {
-  // player uses the 'redneck' sheet untinted; the Redneck ENEMY gets a hard red
-  // recolour so he never reads as the player. Hoodrat is the 'oldman' sheet, cool.
   redneck: { label: "Redneck", kind: "sprite", atlas: "redneck", tint: 0xd6402a,
              h: 2.0, hp: 5, speed: 3.9, aggro: 22, melee: 1.9, dmg: 11, atkGap: 1.1 },
-  // Hoodrats are 3D actors now (src/characters.js) — red and blue crews, both
-  // sexes. They satisfy the same interface as an AnimatedSprite, so nothing in
-  // updateEnemy() has to care which they are.
   hoodrat: { label: "Hoodrat", kind: "actor", tint: 0x6d95d6,
              h: 1.92, hp: 4, speed: 4.7, aggro: 24, melee: 1.8, dmg: 8, atkGap: 0.85 },
   prostitute: { label: "Prostitute", kind: "prostitute", tint: 0xe62b7e,
                h: 1.8, hp: 4, speed: 3.4, aggro: 24, melee: 1.8, dmg: 5, atkGap: 1.0 },
   hog:     { label: "Feral Hog", kind: "hog", tint: 0x000000,
              h: 1.0, hp: 6, speed: 2.3, aggro: 18, melee: 1.7, dmg: 20, atkGap: 1.6 },
+             
+  // New NPCS
+  dockworker: { label: "Dockworker", kind: "sprite", atlas: "redneck", tint: 0xffa500, // orange vest
+                h: 2.05, hp: 7, speed: 3.5, aggro: 22, melee: 2.0, dmg: 14, atkGap: 1.3 },
+  mechanic: { label: "Mechanic", kind: "sprite", atlas: "redneck", tint: 0x444488, // blue overalls
+              h: 1.95, hp: 5, speed: 4.0, aggro: 23, melee: 1.9, dmg: 10, atkGap: 1.1 },
+  suit: { label: "Suit", kind: "sprite", atlas: "redneck", tint: 0x222222, // dark suit
+          h: 1.9, hp: 4, speed: 4.2, aggro: 22, melee: 1.8, dmg: 7, atkGap: 1.2 },
+  tourist: { label: "Tourist", kind: "sprite", atlas: "oldman", tint: 0x88ccff, // bright shirt
+             h: 1.85, hp: 3, speed: 3.6, aggro: 20, melee: 1.8, dmg: 4, atkGap: 1.4 },
+  thug: { label: "Thug", kind: "actor", tint: 0x333333, // dark hoodrat 3D actor
+          h: 1.98, hp: 8, speed: 4.5, aggro: 25, melee: 2.0, dmg: 12, atkGap: 0.9 },
 };
 
 function buildHog() {
@@ -1868,7 +1875,7 @@ async function buildLevel() {
   }
 }
 // ...and top it back up forever, out of sight of the player.
-const ENEMY_KINDS = ["hog", "redneck", "hoodrat"];
+const ENEMY_KINDS = ["hog", "redneck", "hoodrat", "prostitute", "dockworker", "mechanic", "suit", "tourist", "thug"];
 const ENEMY_CAP = 48;         // living NPCs to maintain (off-screen ones are hidden, npc.js)
 let enemyRespawnCd = 0;
 let populationOn = true;      // missions switch spawning off during set pieces
@@ -2789,6 +2796,13 @@ function simulate(dt) {
   if (state.veh) drivingUpdate(dt);
   else onFootUpdate(dt);
 
+  for (const v of vehicles) {
+    if (v.audio) {
+      const isSkidding = v === state.veh ? (input.isDown("brake") && Math.abs(v.speed) > 5) || (Math.abs(input.axis("left", "right")) > 0.5 && Math.abs(v.speed) > 25) : false;
+      v.audio.update(Math.abs(v.speed * 3.6), isSkidding);
+    }
+  }
+
   // keep the moon's shadow box over the player
   moon.position.set(playerPos.x - 40, 60, playerPos.z - 20);
   moon.target.position.set(playerPos.x, 0, playerPos.z);
@@ -2920,6 +2934,7 @@ function onFootUpdate(dt) {
   attackTimer = Math.max(0, attackTimer - dt);
   if (attackTimer <= 0) player.play(moving ? "walk" : "idle", { fps: moving ? 10 : 5 });
   player.update(dt, camera);
+  updateWeapon3D(playerPos, _camFwd, state.weapon, dt, input.isDown("aim"));
 }
 
 // ============================================================ DRIVING
@@ -3388,6 +3403,8 @@ function honkHorn() {
 input.onPress("fire", () => { if (state.running) fire(); });
 input.onPress("reload", () => { if (state.running) arsenal.reload(); });
 input.onPress("equipBat", () => { if (state.running) arsenal.give("bat"); });
+input.onPress("nextWeapon", () => { if (state.running) arsenal.cycleWeapon(1); });
+input.onPress("prevWeapon", () => { if (state.running) arsenal.cycleWeapon(-1); });
 input.onPress("horn", () => { if (state.running) honkHorn(); });
 
 window.addEventListener("keydown", (e) => {

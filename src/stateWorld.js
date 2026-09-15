@@ -309,9 +309,9 @@ export function createStateWorld(ctx) {
     lanes,
     minimap: minimapLayers,
     zoneAt(x, z) {
-      if (x > 380 && z < -380) return "commercial";  // Port Calypso Docks
-      if (x < -380 && z < -380) return "rural";       // Cypress Hills Badlands
-      if (x < -380 && z > 380) return "rural";        // Lakeshore Marsh
+      if (x > 380 && z < -380) return "industrial";  // Port Calypso Docks
+      if (x < -380 && z < -380) return "industrial";       // Cypress Hills Badlands (Quarry)
+      if (x < -380 && z > 380) return "resort";        // Lakeshore Marsh (Stilts / tourists)
       return null;
     },
     buildSet,

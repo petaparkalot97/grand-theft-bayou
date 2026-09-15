@@ -25,13 +25,15 @@ export const ZONE_MIX = Object.freeze({
   border_strip: { hoodrat: 0.5, redneck: 0.5, border: true },
   border_market: { hoodrat: 0.5, redneck: 0.5, border: true },
   residential: { redneck: 0.92, hoodrat: 0.08 },
-  // Lafourchette's Saturday market: everyone comes in to trade — families,
-  // folks from across the parish — so the hoodrat share dips way down
   market_row: { hoodrat: 0.25, redneck: 0.75 },
   rural: { redneck: 0.6, hoodrat: 0.15, hog: 0.25 },
   forest: { hog: 0.5, redneck: 0.5 },
   highway: null,
   water: null,
+  // New Zones
+  industrial: { dockworker: 0.7, mechanic: 0.2, thug: 0.1 },
+  corporate: { suit: 0.8, tourist: 0.1, hoodrat: 0.1 },
+  resort: { tourist: 0.7, suit: 0.2, redneck: 0.1 }
 });
 export const HOG_CAP = 4;
 
@@ -46,12 +48,15 @@ export const WANDER = Object.freeze({
   border_strip: { r: 0.85, speed: 1.05 },
   border_market:{ r: 0.85, speed: 1.05 },
   residential:  { r: 1.0,  speed: 1.0 },
-  // market day: a slow, tight crowd weaving between the stalls
   market_row:   { r: 0.45, speed: 0.9 },
   rural:        { r: 1.6,  speed: 0.85 },
   forest:       { r: 1.6,  speed: 0.85 },
   highway:      null,
   water:        null,
+  // New Zones
+  industrial:   { r: 0.6,  speed: 1.0 },
+  corporate:    { r: 0.4,  speed: 1.3 },
+  resort:       { r: 0.8,  speed: 0.8 }
 });
 const DEFAULT_WANDER = { r: 1, speed: 1 };
 

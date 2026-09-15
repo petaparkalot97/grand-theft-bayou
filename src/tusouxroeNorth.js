@@ -225,8 +225,8 @@ export function createTusouxroeNorth(ctx) {
     ],
     zoneAt(x, z) {
       if (x < BOUNDS.x0 || x > BOUNDS.x1 || z < BOUNDS.z0 || z > BOUNDS.z1) return null;
-      if (Math.abs(z - BLVD_Z) < 25) return "commercial";
-      if (Math.abs(x - WEST_STREET_X) < 35 || Math.abs(x - EAST_STREET_X) < 35) return "town";
+      if (Math.abs(z - BLVD_Z) < 25) return "corporate";
+      if (Math.abs(x - WEST_STREET_X) < 35 || Math.abs(x - EAST_STREET_X) < 35) return "industrial";
       if (Math.hypot(x - ROAD_X, z - (-400)) < 40) return "urban";
       return "forest";
     },
