@@ -8,7 +8,8 @@
     "build": "node tools/music-playlist.mjs",
     "start": "node serve.mjs 8899",
     "server": "node server/index.js",
-    "dev:server": "node server/index.js"
+    "dev:server": "node server/index.js",
+    "voiceover": "node tools/voiceover-gen.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"

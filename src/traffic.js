@@ -19,7 +19,7 @@ function makeLane(def) {
   const pts = def.points.map(([x, z]) => new THREE.Vector2(x, z));
   const acc = [0];
   for (let i = 1; i < pts.length; i++) acc.push(acc[i - 1] + pts[i].distanceTo(pts[i - 1]));
-  return { name: def.name, pts, acc, length: acc[acc.length - 1], cruise: def.cruise || [13, 20] };
+  return { name: def.name, pts, acc, length: acc[acc.length - 1], cruise: def.cruise || [13, 20], next: def.next || null };
 }
 
 /** Position at distance `s` along `lane` into `out` ({x, z}); returns the heading. */
@@ -85,7 +85,11 @@ function lampMaterial(kind) {
 /**
  * @param {object}   o
  * @param {THREE.Scene} o.scene
- * @param {Array}    o.lanes            [{ name, points: [[x, z], ...], cruise: [min, max] }]
+ * @param {Array}    o.lanes            [{ name, points: [[x, z], ...], cruise: [min, max],
+ *                                          next: name of the lane to run when this one
+ *                                          runs out — pair a lane with its return lane and
+ *                                          traffic becomes a circuit instead of vanishing
+ *                                          at the lane ends }]
  * @param {Array}    o.models           loaded car Object3Ds to clone
  * @param {Function} o.registerVehicle  (obj, radius, opts) => vehicle record
  * @param {Function} o.unregisterVehicle(vehicle) — optional, for dead cars
@@ -93,11 +97,15 @@ function lampMaterial(kind) {
  */
 export function createTraffic(o) {
   const lanes = o.lanes.map(makeLane);
+  // resolve "next" names into lane objects so a car can hand itself over at the end
+  const byName = new Map(lanes.map((l) => [l.name, l]));
+  for (const l of lanes) if (l.next) l.next = byName.get(l.next) || null;
   const perLane = o.perLane || 4;
   const maxCars = o.maxCars || o.lanes.length * perLane;   // pool size
   const SPAWN_MIN = o.spawnMin || 75;
   const SPAWN_MAX = o.spawnMax || 130;
-  const DESPAWN = o.despawn || 155;
+  const DESPAWN = o.despawn || 235;   // past the ~240 m fog edge: a despawn is never on screen
+  const WRAP_HIDE = o.wrapHide || 165; // a lane-end U-turn happens only beyond this (in the mist)
   const cars = [];
   const tmp = { x: 0, z: 0 };
   let spawnCd = 0;
@@ -264,7 +272,7 @@ export function createTraffic(o) {
 
         const dx = car.obj.position.x - focus.x, dz = car.obj.position.z - focus.z;
         const dist = Math.hypot(dx, dz);
-        if (dist > DESPAWN || car.s >= car.lane.length - 1) { park(car); continue; }
+        if (dist > DESPAWN) { park(car); continue; }   // the pool recycles; circuits make this rare
 
         // Decisions at a rate that depends on distance: close cars react
         // quickly, far ones (hidden in the mist anyway) barely think.
@@ -273,6 +281,23 @@ export function createTraffic(o) {
           car.think = dist < 60 ? 0.15 : dist < 110 ? 0.45 : 1.0;
           const gap = clearance(car, obstacles);
           car.target = gap < 7 ? 0 : gap < 24 ? car.cruise * (gap - 7) / 17 : car.cruise;
+        }
+        // Lane end: hand over to the paired return lane (a circuit, never a
+        // vanish) — but only when the swap happens in the mist. In view, the car
+        // pulls up at the end and waits instead, which reads as a car paused at
+        // the junction, not a glitch.
+        if (car.s >= car.lane.length - 1) {
+          if (car.lane.next && dist > WRAP_HIDE) {
+            car.lane = car.lane.next;
+            car.s = 1;                       // the return lane starts where this one ended
+            car.think = 0;                   // re-decide speed for the new lane at once
+          } else {
+            car.s = car.lane.length - 1;
+            car.speed = 0;
+            car.target = 0;
+          }
+          apply(car);
+          continue;
         }
         // brake hard, accelerate gently
         const rate = car.target < car.speed ? 7 : 1.6;

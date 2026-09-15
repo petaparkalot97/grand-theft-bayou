@@ -1,0 +1,104 @@
+{
+  "characters": {
+    "radio_host": {
+      "voice_id": "1f7da7179c324f3e8b3603094cd12cbd",
+      "voice_title": "Radio Host",
+      "model": "s2.1-pro-free"
+    },
+    "second_host": {
+      "voice_id": "1f7da7179c324f3e8b3603094cd12cbd",
+      "voice_title": "Radio Host",
+      "model": "s2.1-pro-free"
+    },
+    "emiko": {
+      "voice_id": "f1b549768da341069e84d25c5b354d50",
+      "voice_title": "Emiko",
+      "model": "s2.1-pro-free"
+    },
+    "keseme": {
+      "voice_id": "f1b549768da341069e84d25c5b354d50",
+      "voice_title": "Keseme Nadia",
+      "model": "s2.1-pro-free"
+    },
+    "mally": {
+      "voice_id": "7e6821ce331e4394a59736f12fdb4cd1",
+      "voice_title": "Mally",
+      "model": "s2.1-pro-free"
+    },
+    "bubba": {
+      "voice_id": "0bb73a55b11e4d7eb41336be61c5abf3",
+      "voice_title": "Bubba",
+      "model": "s2.1-pro-free"
+    },
+    "chimi": {
+      "voice_id": "9bfcd2342af343dc92e659628aaafcd7",
+      "voice_title": "Chimi",
+      "model": "s2.1-pro-free"
+    },
+    "dixon": {
+      "voice_id": "7e6821ce331e4394a59736f12fdb4cd1",
+      "voice_title": "Dixon",
+      "model": "s2.1-pro-free"
+    },
+    "gr33do": {
+      "voice_id": "0bb73a55b11e4d7eb41336be61c5abf3",
+      "voice_title": "Greedo",
+      "model": "s2.1-pro-free"
+    },
+    "solange": {
+      "voice_id": "f1b549768da341069e84d25c5b354d50",
+      "voice_title": "Solange",
+      "model": "s2.1-pro-free"
+    },
+    "loudspeaker": {
+      "voice_id": "504f3f5d6567435aad64c130fb448c2f",
+      "voice_title": "Police Radio",
+      "model": "s2.1-pro-free"
+    },
+    "computer_voice": {
+      "voice_id": "21606ca3d28e48d09217cbdcda0d75f2",
+      "voice_title": "Street NPC Voice (21606c)",
+      "model": "s2.1-pro-free"
+    },
+    "amara": {
+      "voice_id": "f1b549768da341069e84d25c5b354d50",
+      "voice_title": "Dr. Amara Veaux",
+      "model": "s2.1-pro-free"
+    },
+    "thief": {
+      "voice_id": "f3d40c731a48406685f60703f789a758",
+      "voice_title": "Street NPC Voice (f3d40c)",
+      "model": "s2.1-pro-free"
+    },
+    "radio_announcer": {
+      "voice_id": "1f7da7179c324f3e8b3603094cd12cbd",
+      "voice_title": "Radio Host",
+      "model": "s2.1-pro-free"
+    },
+    "preacher": {
+      "voice_id": "21606ca3d28e48d09217cbdcda0d75f2",
+      "voice_title": "Street NPC Voice (21606c)",
+      "model": "s2.1-pro-free"
+    },
+    "talk_radio_host": {
+      "voice_id": "1f7da7179c324f3e8b3603094cd12cbd",
+      "voice_title": "Radio Host",
+      "model": "s2.1-pro-free"
+    },
+    "woman_caller": {
+      "voice_id": "119fb68dbeef4f519189705f0a3461f4",
+      "voice_title": "Street NPC Voice (119fb6)",
+      "model": "s2.1-pro-free"
+    },
+    "gps": {
+      "voice_id": "119fb68dbeef4f519189705f0a3461f4",
+      "voice_title": "Street NPC Voice (119fb6)",
+      "model": "s2.1-pro-free"
+    },
+    "mercer": {
+      "voice_id": "504f3f5d6567435aad64c130fb448c2f",
+      "voice_title": "Sheriff Mercer / Police Radio",
+      "model": "s2.1-pro-free"
+    }
+  }
+}

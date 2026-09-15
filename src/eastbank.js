@@ -22,6 +22,7 @@
 import * as THREE from "three";
 import { createComposer } from "./composer.js";
 import { makeChurch } from "./church.js";
+import { makeDecorativeFence, placeOfficeClutter, placeCityBuilding } from "./landmarks.js";
 
 export const EAST_MAX_X = 380;
 const CORE = { x0: 121, x1: 376, z0: -134, z1: 60 };            // streets and buildings: a "town" zone
@@ -61,16 +62,16 @@ export function createEastBank(ctx) {
   /** World position of a point given in a building's local frame (front = local +z). */
   const local = (slot, lx, lz) => [slot.x + Math.cos(slot.rot) * lx + Math.sin(slot.rot) * lz, slot.z - Math.sin(slot.rot) * lx + Math.cos(slot.rot) * lz];
 
-  // ---------------------------------------------------------------- builders
   const STORE_VARIANTS = [0, 2, 4, 6, 7, 3, 5, 1];
+  const STORE_TYPES = ["market", "offices", "cafe", "garage", "fire_station", "school"];
   function storefront(slot) {
     const part = parts.length ? parts[STORE_VARIANTS[slot.index % STORE_VARIANTS.length] % parts.length] : null;
     if (ctx.placeGlbLandmark(part, slot.x, slot.z, slot.rot, 14, "Lafourchette storefront", 0xffd9a0)) {
       for (const [lx, lz] of [[-4.5, -4], [4.5, -4], [-4.5, 3], [4.5, 3]]) ctx.addBlocker(...local(slot, lx, lz), 3.2);
       return true;
     }
-    box(12, 5, 11, std(0x8a5a44, 0.9, "brick wall"), slot.x, 2.5, slot.z, slot.rot);   // no Buildings.glb: a plain brick shopfront
-    ctx.addBlocker(slot.x, slot.z, 6);
+    const bType = STORE_TYPES[slot.index % STORE_TYPES.length];
+    placeCityBuilding(ctx, bType, slot.x, slot.z, slot.rot);
     return true;
   }
 
@@ -144,11 +145,13 @@ export function createEastBank(ctx) {
         C.plane(0.14, 5, line, x, 0.03, r.z0 + 4);
         C.plane(0.14, 5, line, x, 0.03, r.z1 - 4);
       }
+      placeOfficeClutter(ctx, r.x0 + 4, r.z0 + 5);
       ctx.addLitSpot({ x: c.x, y: 8.5, z: c.z, warm: 0xffbf74, power: 150, range: 30, pole: true });
     } });
-    C.openArea("market", { color: "#6b5a44", build: (r, c) => {
+    C.openArea("market", { color: "#6b5a44", zoneName: "market_row", build: (r, c) => {
       const dirt = ctx.surface("dirt", 512).material(1);
       C.plane(c.w, c.d, C.tiled(dirt, c.w, c.d, 8), c.x, 0.021, c.z);
+      makeDecorativeFence(ctx, r.x0 + 1, r.z0 + 1, r.x1 - 1, r.z0 + 1);
       const canvas = [0xc0392b, 0x2e86c1, 0xf1c40f, 0x27ae60, 0xe67e22, 0x8e44ad].map((h) => std(h, 0.9, "canvas awning"));
       const table = std(0x7a5a3a, 0.9, "wood table");
       let i = 0;

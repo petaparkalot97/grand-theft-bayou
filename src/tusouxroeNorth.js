@@ -1,0 +1,259 @@
+// ---------------------------------------------------------------------------
+// tusouxroeNorth.js — North Tusouxroe Commercial & Civic District.
+//
+// Expands the world map north from z = −136 up to NORTH_MIN_Z (−440).
+// Follows the composer.js 6-stage lifecycle for intentional world composition:
+//
+//   1 road          North US-167 Highway, Tusouxroe Boulevard arterial (z = -260),
+//                   Civic Center Way (west), Industrial Drive (east).
+//   2 buildings     Commercial frontage: Harborlight Hospital, Freshfield Market,
+//                   Mossline Garage, Cornerleaf Cafe along the main avenues.
+//   3 side streets  Civic & Corporate Hub: Ember Fire Station, Willowbrook School,
+//                   Sageworks Offices, Meadow Apartments.
+//   4 open areas    Hospital plaza, Supermarket parking lot, Fire Station yard,
+//                   School athletic field, and parking aprons.
+//   5 vegetation    Pines & cypress trees clustering naturally along boundaries.
+//   6 landmark      Cloudline Tower at (x = -6, z = -400) closing the north view.
+// ---------------------------------------------------------------------------
+
+import * as THREE from "three";
+import { createComposer } from "./composer.js";
+import { placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeBillboard } from "./landmarks.js";
+
+export const NORTH_MIN_Z = -440;
+const BOUNDS = { x0: -240, x1: 240, z0: -440, z1: -134 };
+const CORE = { x0: -180, x1: 180, z0: -410, z1: -140 };
+const WILD = { x0: -235, x1: 235, z0: -435, z1: -135 };
+
+export function createTusouxroeNorth(ctx) {
+  const { scene, surface, roadMaterial, addBlocker, addLitSpot } = ctx;
+  const C = createComposer(ctx, {
+    name: "TusouxroeNorth",
+    bounds: BOUNDS,
+    zones: { core: CORE, wild: WILD },
+    seed: 90210,
+  });
+
+  const ROAD_X = -6;
+  const BLVD_Z = -260;
+  const WEST_STREET_X = -110;
+  const EAST_STREET_X = 110;
+
+  const occluders = [];
+  const pois = [];
+  const props = [];
+  ctx.props = props;
+
+  function addOccluder(x, z, w, d, h = 18) {
+    occluders.push({
+      minX: x - w / 2, maxX: x + w / 2,
+      minY: 0, maxY: h,
+      minZ: z - d / 2, maxZ: z + d / 2,
+    });
+  }
+
+  function buildSet() {
+    // ================= STAGE 1: ROAD NETWORK =================
+    // (composer.road takes the points array directly; an options object builds nothing)
+    C.road("North US-167", [[ROAD_X, -136], [ROAD_X, -420]], { width: 11 });
+    C.road("Tusouxroe Blvd", [[-190, BLVD_Z], [190, BLVD_Z]], { width: 11 });
+    C.road("Civic Center Way", [[WEST_STREET_X, -380], [WEST_STREET_X, -160]], { width: 9 });
+    C.road("Industrial Drive", [[EAST_STREET_X, -380], [EAST_STREET_X, -160]], { width: 9 });
+
+    // Road PBR Meshes
+    const roadMat = typeof roadMaterial === "function" ? roadMaterial() : new THREE.MeshStandardMaterial({ color: 0x3a3a40 });
+    
+    // US-167 Extension
+    const hwyMesh = new THREE.Mesh(new THREE.PlaneGeometry(10, 284), roadMat);
+    hwyMesh.rotation.x = -Math.PI / 2;
+    hwyMesh.position.set(ROAD_X, 0.02, -278);
+    hwyMesh.receiveShadow = true;
+    scene.add(hwyMesh);
+    props.push(hwyMesh);
+
+    // Tusouxroe Blvd
+    const blvdMesh = new THREE.Mesh(new THREE.PlaneGeometry(380, 9), roadMat);
+    blvdMesh.rotation.x = -Math.PI / 2;
+    blvdMesh.position.set(0, 0.021, BLVD_Z);
+    blvdMesh.receiveShadow = true;
+    scene.add(blvdMesh);
+
+    // Side Streets
+    for (const sx of [WEST_STREET_X, EAST_STREET_X]) {
+      const sideMesh = new THREE.Mesh(new THREE.PlaneGeometry(9, 220), roadMat);
+      sideMesh.rotation.x = -Math.PI / 2;
+      sideMesh.position.set(sx, 0.0205, -270);
+      sideMesh.receiveShadow = true;
+      scene.add(sideMesh);
+    }
+
+    // Street Lamps along North US-167 & Tusouxroe Blvd
+    for (let z = -150; z >= -410; z -= 24) {
+      addLitSpot({ x: ROAD_X + 6.5, y: 4.5, z, warm: 0xffd9a0, power: 95, range: 24, pole: true });
+    }
+    for (let x = -170; x <= 170; x += 30) {
+      if (Math.abs(x - ROAD_X) < 12) continue;
+      addLitSpot({ x, y: 4.5, z: BLVD_Z + 6, warm: 0xffe0b0, power: 90, range: 22, pole: true });
+    }
+
+    // ================= STAGE 2: FRONTAGE BUILDINGS =================
+      // 1. Harborlight Hospital (West Commercial Frontage)
+      placeCityBuilding(ctx, "hospital", -65, BLVD_Z + 22, Math.PI);
+      addOccluder(-65, BLVD_Z + 22, 28, 22, 16);
+      pois.push({ x: -65, z: BLVD_Z + 22, r: 12, label: "Harborlight Hospital" });
+
+      // 2. Freshfield Market (East Commercial Frontage)
+      placeCityBuilding(ctx, "market", 60, BLVD_Z + 20, Math.PI);
+      addOccluder(60, BLVD_Z + 20, 20, 16, 8);
+      pois.push({ x: 60, z: BLVD_Z + 20, r: 10, label: "Freshfield Market" });
+
+      // 3. Mossline Garage & Auto Repair (Southwest Corridor)
+      placeCityBuilding(ctx, "garage", -45, -180, 0);
+      addOccluder(-45, -180, 16, 14, 7);
+      pois.push({ x: -45, z: -180, r: 8, label: "Mossline Garage" });
+
+      // 4. Cornerleaf Cafe (Southeast Corridor)
+      placeCityBuilding(ctx, "cafe", 45, -180, 0);
+      addOccluder(45, -180, 14, 12, 7);
+      pois.push({ x: 45, z: -180, r: 8, label: "Cornerleaf Cafe" });
+
+    // ================= STAGE 3: CIVIC & CORPORATE HUB =================
+      // 1. Ember Fire Station (Civic Center Way North)
+      placeCityBuilding(ctx, "fire_station", WEST_STREET_X - 18, -210, Math.PI / 2);
+      addOccluder(WEST_STREET_X - 18, -210, 18, 15, 10);
+      makeDecorativeFence(ctx, WEST_STREET_X - 30, -222, WEST_STREET_X - 6, -222);
+      pois.push({ x: WEST_STREET_X - 18, z: -210, r: 9, label: "Fire Station" });
+
+      // 2. Willowbrook School & Campus (Civic Center Way South)
+      placeCityBuilding(ctx, "school", WEST_STREET_X - 22, -320, Math.PI / 2);
+      addOccluder(WEST_STREET_X - 22, -320, 24, 18, 9);
+      makeDecorativeFence(ctx, WEST_STREET_X - 38, -335, WEST_STREET_X - 6, -335);
+      pois.push({ x: WEST_STREET_X - 22, z: -320, r: 12, label: "Willowbrook School" });
+
+      // 3. Sageworks Offices & Clutter (Industrial Drive North)
+      placeCityBuilding(ctx, "offices", EAST_STREET_X + 20, -210, -Math.PI / 2);
+      addOccluder(EAST_STREET_X + 20, -210, 22, 18, 20);
+      placeOfficeClutter(ctx, EAST_STREET_X + 10, -200, 0);
+      pois.push({ x: EAST_STREET_X + 20, z: -210, r: 11, label: "Sageworks Offices" });
+
+      // 4. Meadow Apartments (Industrial Drive South)
+      placeCityBuilding(ctx, "apartments", EAST_STREET_X + 18, -320, -Math.PI / 2);
+      addOccluder(EAST_STREET_X + 18, -320, 16, 12, 14);
+      pois.push({ x: EAST_STREET_X + 18, z: -320, r: 10, label: "Meadow Apartments" });
+
+      // 5. Sunbeam Cottages (Residential Pocket)
+      placeCityBuilding(ctx, "cottage", -145, -260, 0);
+      placeCityBuilding(ctx, "cottage", 145, -260, Math.PI);
+      addOccluder(-145, -260, 12, 10, 6);
+      addOccluder(145, -260, 12, 10, 6);
+      pois.push({ x: -145, z: -260, r: 6 }, { x: 145, z: -260, r: 6 });
+
+    // ================= STAGE 4: OPEN AREAS & PARKING =================
+      // Market & Hospital Parking Aprons
+      const parkMat = new THREE.MeshStandardMaterial({ color: 0x4a4d52, roughness: 0.85 });
+      parkMat.userData.gtbRealized = true;
+
+      const mLot = new THREE.Mesh(new THREE.PlaneGeometry(36, 28), parkMat);
+      mLot.rotation.x = -Math.PI / 2;
+      mLot.position.set(60, 0.018, BLVD_Z - 8);
+      mLot.receiveShadow = true;
+      scene.add(mLot);
+
+      const hLot = new THREE.Mesh(new THREE.PlaneGeometry(42, 32), parkMat);
+      hLot.rotation.x = -Math.PI / 2;
+      hLot.position.set(-65, 0.018, BLVD_Z - 10);
+      hLot.receiveShadow = true;
+      scene.add(hLot);
+
+      // Street Clutter & Billboards throughout commercial zones
+      placeBillboard(ctx, ROAD_X - 16, -200, Math.PI / 2, "NORTH BAYOU PLAZA");
+      placeBillboard(ctx, ROAD_X + 16, -340, -Math.PI / 2, "CALYPSO DOCKS HIGHWAY");
+
+      placeStreetClutter(ctx, WEST_STREET_X - 6, -180, 0);
+      placeStreetClutter(ctx, EAST_STREET_X + 6, -180, Math.PI);
+      placeStreetClutter(ctx, 60, BLVD_Z - 20, Math.PI / 2);
+      placeStreetClutter(ctx, -65, BLVD_Z - 22, -Math.PI / 2);
+
+    // ================= STAGE 5: VEGETATION =================
+      // Natural tree clusters framing the district boundaries
+      const pineGeo = new THREE.ConeGeometry(2.2, 7.5, 5);
+      const pineMat = new THREE.MeshStandardMaterial({ color: 0x2d4a2b, roughness: 0.9 });
+      pineMat.userData.gtbRealized = true;
+
+      const trunkGeo = new THREE.CylinderGeometry(0.3, 0.4, 2.5, 5);
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 0.95 });
+      trunkMat.userData.gtbRealized = true;
+
+      for (let i = 0; i < 90; i++) {
+        const side = i % 2 ? -1 : 1;
+        const tx = side * (135 + Math.random() * 80);
+        const tz = -140 - Math.random() * 280;
+        
+        const g = new THREE.Group();
+        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+        trunk.position.y = 1.25;
+        const top = new THREE.Mesh(pineGeo, pineMat);
+        top.position.y = 5.0;
+        top.castShadow = true;
+        g.add(trunk, top);
+        g.position.set(tx, 0, tz);
+        scene.add(g);
+        if (addBlocker) addBlocker(tx, tz, 1.2);
+      }
+
+    // ================= STAGE 6: LANDMARK ANCHOR =================
+      // Cloudline Tower closes the northern view up US-167!
+      placeCityBuilding(ctx, "tower", ROAD_X, -400, 0);
+      addOccluder(ROAD_X, -400, 20, 20, 36);
+      pois.push({ x: ROAD_X, z: -400, r: 14, label: "Cloudline Tower" });
+
+      // Landmark plaza surround & decorative fences
+      makeDecorativeFence(ctx, ROAD_X - 18, -388, ROAD_X + 18, -388);
+      placeOfficeClutter(ctx, ROAD_X, -384, 0);
+  }
+
+  return {
+    bounds: BOUNDS,
+    occluders,
+    pois,
+    props,
+    lanes: [
+      { name: "northbound-ext", points: [[ROAD_X + 2.4, -136], [ROAD_X + 2.4, -400]], cruise: [14, 20] },
+      { name: "southbound-ext", points: [[ROAD_X - 2.4, -400], [ROAD_X - 2.4, -136]], cruise: [14, 20] },
+      { name: "blvd-eastbound", points: [[-180, BLVD_Z - 2.4], [180, BLVD_Z - 2.4]], cruise: [12, 18] },
+      { name: "blvd-westbound", points: [[180, BLVD_Z + 2.4], [-180, BLVD_Z + 2.4]], cruise: [12, 18] },
+    ],
+    zoneAt(x, z) {
+      if (x < BOUNDS.x0 || x > BOUNDS.x1 || z < BOUNDS.z0 || z > BOUNDS.z1) return null;
+      if (Math.abs(z - BLVD_Z) < 25) return "corporate";
+      if (Math.abs(x - WEST_STREET_X) < 35 || Math.abs(x - EAST_STREET_X) < 35) return "industrial";
+      if (Math.hypot(x - ROAD_X, z - (-400)) < 40) return "urban";
+      return "forest";
+    },
+    minimap: {
+      roads: [
+        { points: [[ROAD_X, -136], [ROAD_X, -410]], width: 10, color: "#cfcab8" },
+        { points: [[-180, BLVD_Z], [180, BLVD_Z]], width: 10, color: "#cfcab8" },
+        { points: [[WEST_STREET_X, -380], [WEST_STREET_X, -160]], width: 8 },
+        { points: [[EAST_STREET_X, -380], [EAST_STREET_X, -160]], width: 8 },
+      ],
+      buildings: [
+        { x0: -79, x1: -51, z0: BLVD_Z + 11, z1: BLVD_Z + 33 }, // Hospital
+        { x0: 50, x1: 70, z0: BLVD_Z + 12, z1: BLVD_Z + 28 },   // Market
+        { x0: -53, x1: -37, z0: -187, z1: -173 },              // Garage
+        { x0: 38, x1: 52, z0: -186, z1: -174 },               // Cafe
+        { x0: WEST_STREET_X - 27, x1: WEST_STREET_X - 9, z0: -217, z1: -203 }, // Fire Station
+        { x0: WEST_STREET_X - 34, x1: WEST_STREET_X - 10, z0: -329, z1: -311 }, // School
+        { x0: EAST_STREET_X + 9, x1: EAST_STREET_X + 31, z0: -219, z1: -201 }, // Offices
+        { x0: EAST_STREET_X + 10, x1: EAST_STREET_X + 26, z0: -326, z1: -314 }, // Apartments
+        { x0: ROAD_X - 10, x1: ROAD_X + 10, z0: -410, z1: -390 }, // Cloudline Tower
+      ],
+      areas: [
+        ...C.minimap.areas,
+        { x0: CORE.x0, x1: CORE.x1, z0: CORE.z0, z1: CORE.z1, color: "#2d332d" },
+      ],
+      water: C.minimap.water,
+    },
+    buildSet,
+  };
+}

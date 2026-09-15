@@ -30,6 +30,9 @@ export const DEFAULT_BINDINGS = Object.freeze({
   gfxUp: ["BracketRight"],
   perf: ["F3"],
   debugOrientation: ["F4"],
+  reload: ["KeyR"],
+  equipBat: ["Digit1"],
+  horn: ["KeyH"],
 });
 
 // keys the browser must not act on (scrolling, find bar, …)
@@ -65,6 +68,17 @@ export function createInput({ bindings = DEFAULT_BINDINGS, target = window } = {
     }
   });
   target.addEventListener("mouseup", (e) => mouseHeld.delete(e.button));
+  let lastWheel = 0;
+  target.addEventListener("wheel", (e) => {
+    const now = performance.now();
+    if (now - lastWheel < 100) return; // 100ms throttle
+    lastWheel = now;
+    if (e.deltaY > 0) {
+      for (const fn of handlers.get("nextWeapon") || []) fn(e);
+    } else if (e.deltaY < 0) {
+      for (const fn of handlers.get("prevWeapon") || []) fn(e);
+    }
+  }, { passive: true });
   // alt-tab or a lost pointer lock must not leave W stuck down
   target.addEventListener("blur", () => { held.clear(); mouseHeld.clear(); });
 

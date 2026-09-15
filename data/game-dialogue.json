@@ -1,0 +1,1029 @@
+{
+  "lines": [
+    {
+      "id": "radio_host_001",
+      "character": "RADIO HOST",
+      "text": "Tusouxroe city officials announced another fourteen-million-dollar redevelopment initiative today."
+    },
+    {
+      "id": "second_host_001",
+      "character": "SECOND HOST",
+      "text": "What are they redeveloping?"
+    },
+    {
+      "id": "radio_host_002",
+      "character": "RADIO HOST",
+      "text": "The development initiative."
+    },
+    {
+      "id": "second_host_002",
+      "character": "SECOND HOST",
+      "text": "What?"
+    },
+    {
+      "id": "radio_host_003",
+      "character": "RADIO HOST",
+      "text": "Nobody knows."
+    },
+    {
+      "id": "emiko_001",
+      "character": "EMIKO",
+      "text": "You look tired."
+    },
+    {
+      "id": "keseme_001",
+      "character": "KESEME",
+      "text": "That's my face."
+    },
+    {
+      "id": "emiko_002",
+      "character": "EMIKO",
+      "text": "You looked less tired yesterday."
+    },
+    {
+      "id": "keseme_002",
+      "character": "KESEME",
+      "text": "Yesterday nobody shot at me."
+    },
+    {
+      "id": "emiko_003",
+      "character": "EMIKO",
+      "text": "Excuse me?"
+    },
+    {
+      "id": "keseme_003",
+      "character": "KESEME",
+      "text": "Bad opening sentence."
+    },
+    {
+      "id": "emiko_004",
+      "character": "EMIKO",
+      "text": "Very bad."
+    },
+    {
+      "id": "emiko_005",
+      "character": "EMIKO",
+      "text": "Where did you get this?"
+    },
+    {
+      "id": "keseme_004",
+      "character": "KESEME",
+      "text": "Mally."
+    },
+    {
+      "id": "emiko_006",
+      "character": "EMIKO",
+      "text": "Of course."
+    },
+    {
+      "id": "keseme_005",
+      "character": "KESEME",
+      "text": "Technically thieves stole it from Mally, hogs stole it from the thieves, and then I stole it from the sheriff."
+    },
+    {
+      "id": "emiko_007",
+      "character": "EMIKO",
+      "text": "I'm going to make more tea."
+    },
+    {
+      "id": "keseme_006",
+      "character": "KESEME",
+      "text": "Shell corporation."
+    },
+    {
+      "id": "mally_001",
+      "character": "MALLY",
+      "text": "Sounds like a water park."
+    },
+    {
+      "id": "bubba_001",
+      "character": "BUBBA",
+      "text": "I'd go."
+    },
+    {
+      "id": "keseme_007",
+      "character": "KESEME",
+      "text": "You'd drink the water."
+    },
+    {
+      "id": "bubba_002",
+      "character": "BUBBA",
+      "text": "Depends what's in it."
+    },
+    {
+      "id": "chimi_001",
+      "character": "CHIMI",
+      "text": "So this is the plan? We sit here and pretend the bayou isn't making that noise?"
+    },
+    {
+      "id": "dixon_001",
+      "character": "DIXON",
+      "text": "It is a strategic pause."
+    },
+    {
+      "id": "chimi_002",
+      "character": "CHIMI",
+      "text": "It smells like a tactical couch."
+    },
+    {
+      "id": "dixon_002",
+      "character": "DIXON",
+      "text": "That sentence had too many emergencies in it."
+    },
+    {
+      "id": "gr33do_001",
+      "character": "GR33DO",
+      "text": "Jazz Cigarettes can't get a derektiojn. Direction. He's got bad Derektile Dysfunction."
+    },
+    {
+      "id": "chimi_003",
+      "character": "CHIMI",
+      "text": "I regret asking what that means."
+    },
+    {
+      "id": "gr33do_002",
+      "character": "GR33DO",
+      "text": "He's supposedly inspired by Jerkmate!"
+    },
+    {
+      "id": "solange_001",
+      "character": "SOLANGE",
+      "text": "You brought the original ledger?"
+    },
+    {
+      "id": "keseme_008",
+      "character": "KESEME",
+      "text": "No."
+    },
+    {
+      "id": "solange_002",
+      "character": "SOLANGE",
+      "text": "Smart."
+    },
+    {
+      "id": "mally_002",
+      "character": "MALLY",
+      "text": "She made twelve copies."
+    },
+    {
+      "id": "keseme_009",
+      "character": "KESEME",
+      "text": "Thirteen."
+    },
+    {
+      "id": "solange_003",
+      "character": "SOLANGE",
+      "text": "Extremely smart."
+    },
+    {
+      "id": "bubba_003",
+      "character": "BUBBA",
+      "text": "I ate near one of them."
+    },
+    {
+      "id": "bubba_004",
+      "character": "BUBBA",
+      "text": "What?"
+    },
+    {
+      "id": "solange_004",
+      "character": "SOLANGE",
+      "text": "Where did this come from?"
+    },
+    {
+      "id": "keseme_010",
+      "character": "KESEME",
+      "text": "Why does everyone keep asking me that before telling me what it means?"
+    },
+    {
+      "id": "solange_005",
+      "character": "SOLANGE",
+      "text": "Because I've been investigating these people for two years."
+    },
+    {
+      "id": "keseme_011",
+      "character": "KESEME",
+      "text": "Who are they?"
+    },
+    {
+      "id": "solange_006",
+      "character": "SOLANGE",
+      "text": "Everybody."
+    },
+    {
+      "id": "solange_007",
+      "character": "SOLANGE",
+      "text": "Sometimes they're fighting each other. Sometimes they're working together."
+    },
+    {
+      "id": "mally_003",
+      "character": "MALLY",
+      "text": "So it's a conspiracy?"
+    },
+    {
+      "id": "solange_008",
+      "character": "SOLANGE",
+      "text": "No."
+    },
+    {
+      "id": "mally_004",
+      "character": "MALLY",
+      "text": "Thank God."
+    },
+    {
+      "id": "solange_009",
+      "character": "SOLANGE",
+      "text": "It's worse."
+    },
+    {
+      "id": "solange_010",
+      "character": "SOLANGE",
+      "text": "It's business."
+    },
+    {
+      "id": "loudspeaker_001",
+      "character": "LOUDSPEAKER",
+      "text": "ORLEAROUGE POLICE! EVERYONE INSIDE, COME OUT WITH YOUR HANDS VISIBLE!"
+    },
+    {
+      "id": "solange_011",
+      "character": "SOLANGE",
+      "text": "That was fast."
+    },
+    {
+      "id": "mally_005",
+      "character": "MALLY",
+      "text": "Who called them?"
+    },
+    {
+      "id": "mally_006",
+      "character": "MALLY",
+      "text": "Why y'all keep doing that?"
+    },
+    {
+      "id": "bubba_005",
+      "character": "BUBBA",
+      "text": "Pattern recognition."
+    },
+    {
+      "id": "solange_012",
+      "character": "SOLANGE",
+      "text": "Keseme?"
+    },
+    {
+      "id": "keseme_012",
+      "character": "KESEME",
+      "text": "I'm fine."
+    },
+    {
+      "id": "keseme_013",
+      "character": "KESEME",
+      "text": "They're leaving the east alley open."
+    },
+    {
+      "id": "solange_013",
+      "character": "SOLANGE",
+      "text": "Trap?"
+    },
+    {
+      "id": "keseme_014",
+      "character": "KESEME",
+      "text": "No."
+    },
+    {
+      "id": "keseme_015",
+      "character": "KESEME",
+      "text": "Incompetence."
+    },
+    {
+      "id": "keseme_016",
+      "character": "KESEME",
+      "text": "Move."
+    },
+    {
+      "id": "mally_007",
+      "character": "MALLY",
+      "text": "These cost two hundred dollars."
+    },
+    {
+      "id": "keseme_017",
+      "character": "KESEME",
+      "text": "You owe me three hundred."
+    },
+    {
+      "id": "mally_008",
+      "character": "MALLY",
+      "text": "That's different."
+    },
+    {
+      "id": "keseme_018",
+      "character": "KESEME",
+      "text": "Mathematically, it isn't."
+    },
+    {
+      "id": "solange_014",
+      "character": "SOLANGE",
+      "text": "Keseme…"
+    },
+    {
+      "id": "computer_voice_001",
+      "character": "COMPUTER VOICE",
+      "text": "Surface identification detected."
+    },
+    {
+      "id": "mally_009",
+      "character": "MALLY",
+      "text": "The sewer just talked."
+    },
+    {
+      "id": "bubba_006",
+      "character": "BUBBA",
+      "text": "I knew OrleaRouge had infrastructure money."
+    },
+    {
+      "id": "solange_015",
+      "character": "SOLANGE",
+      "text": "Where does that go?"
+    },
+    {
+      "id": "keseme_019",
+      "character": "KESEME",
+      "text": "Not a sewer."
+    },
+    {
+      "id": "keseme_020",
+      "character": "KESEME",
+      "text": "That's water."
+    },
+    {
+      "id": "mally_010",
+      "character": "MALLY",
+      "text": "We died."
+    },
+    {
+      "id": "bubba_007",
+      "character": "BUBBA",
+      "text": "This doesn't look like my expected destination."
+    },
+    {
+      "id": "keseme_021",
+      "character": "KESEME",
+      "text": "No advertisements."
+    },
+    {
+      "id": "solange_016",
+      "character": "SOLANGE",
+      "text": "That's what you noticed?"
+    },
+    {
+      "id": "keseme_022",
+      "character": "KESEME",
+      "text": "It's extremely unusual."
+    },
+    {
+      "id": "amara_001",
+      "character": "AMARA",
+      "text": "Keseme Nadia."
+    },
+    {
+      "id": "keseme_023",
+      "character": "KESEME",
+      "text": "You know me."
+    },
+    {
+      "id": "amara_002",
+      "character": "AMARA",
+      "text": "We've known about you for a long time."
+    },
+    {
+      "id": "mally_011",
+      "character": "MALLY",
+      "text": "Do y'all know me?"
+    },
+    {
+      "id": "amara_003",
+      "character": "AMARA",
+      "text": "Unfortunately."
+    },
+    {
+      "id": "mally_012",
+      "character": "MALLY",
+      "text": "Man, even Atlantis disrespect me."
+    },
+    {
+      "id": "amara_004",
+      "character": "AMARA",
+      "text": "What you discovered on the surface threatens more than politicians."
+    },
+    {
+      "id": "amara_005",
+      "character": "AMARA",
+      "text": "It threatens us."
+    },
+    {
+      "id": "keseme_024",
+      "character": "KESEME",
+      "text": "What is this place?"
+    },
+    {
+      "id": "amara_006",
+      "character": "AMARA",
+      "text": "The oldest secret in Dixie Beaux."
+    },
+    {
+      "id": "amara_007",
+      "character": "AMARA",
+      "text": "Welcome to Nirbayou Nolantis."
+    },
+    {
+      "id": "amara_008",
+      "character": "AMARA",
+      "text": "Every terrace is somebody's home. Nobody here earns the right to a roof."
+    },
+    {
+      "id": "mally_013",
+      "character": "MALLY",
+      "text": "Rent?"
+    },
+    {
+      "id": "amara_009",
+      "character": "AMARA",
+      "text": "Nobody has asked me that in thirty years."
+    },
+    {
+      "id": "bubba_008",
+      "character": "BUBBA",
+      "text": "Where do they send the bill?"
+    },
+    {
+      "id": "amara_010",
+      "character": "AMARA",
+      "text": "There isn't one."
+    },
+    {
+      "id": "bubba_009",
+      "character": "BUBBA",
+      "text": "I'm gonna need to sit down."
+    },
+    {
+      "id": "solange_017",
+      "character": "SOLANGE",
+      "text": "I've spent two years proving the surface can't afford any of this."
+    },
+    {
+      "id": "amara_011",
+      "character": "AMARA",
+      "text": "It can. It chooses not to."
+    },
+    {
+      "id": "keseme_025",
+      "character": "KESEME",
+      "text": "Your entire budget is public?"
+    },
+    {
+      "id": "amara_012",
+      "character": "AMARA",
+      "text": "Of course."
+    },
+    {
+      "id": "keseme_026",
+      "character": "KESEME",
+      "text": "Including law enforcement?"
+    },
+    {
+      "id": "amara_013",
+      "character": "AMARA",
+      "text": "Everything."
+    },
+    {
+      "id": "keseme_027",
+      "character": "KESEME",
+      "text": "Surface governments would consider that an act of terrorism."
+    },
+    {
+      "id": "amara_014",
+      "character": "AMARA",
+      "text": "That's one reason we're underground."
+    },
+    {
+      "id": "amara_015",
+      "character": "AMARA",
+      "text": "Nolantis did not become peaceful because human beings became perfect."
+    },
+    {
+      "id": "amara_016",
+      "character": "AMARA",
+      "text": "We became peaceful because we stopped designing systems that rewarded desperation."
+    },
+    {
+      "id": "amara_017",
+      "character": "AMARA",
+      "text": "People still argue. They still become jealous. They still lie. They still make mistakes."
+    },
+    {
+      "id": "keseme_028",
+      "character": "KESEME",
+      "text": "But nobody is starving."
+    },
+    {
+      "id": "amara_018",
+      "character": "AMARA",
+      "text": "Correct."
+    },
+    {
+      "id": "keseme_029",
+      "character": "KESEME",
+      "text": "Nobody goes bankrupt because they're sick."
+    },
+    {
+      "id": "amara_019",
+      "character": "AMARA",
+      "text": "Correct."
+    },
+    {
+      "id": "keseme_030",
+      "character": "KESEME",
+      "text": "Nobody becomes homeless because rent doubles."
+    },
+    {
+      "id": "amara_020",
+      "character": "AMARA",
+      "text": "Correct."
+    },
+    {
+      "id": "keseme_031",
+      "character": "KESEME",
+      "text": "Then why hide?"
+    },
+    {
+      "id": "amara_021",
+      "character": "AMARA",
+      "text": "Because the surface knows we exist."
+    },
+    {
+      "id": "amara_022",
+      "character": "AMARA",
+      "text": "And certain people have spent generations making sure nobody else does."
+    },
+    {
+      "id": "solange_018",
+      "character": "SOLANGE",
+      "text": "Because if people knew this worked—"
+    },
+    {
+      "id": "keseme_032",
+      "character": "KESEME",
+      "text": "They'd start asking why their government says it can't."
+    },
+    {
+      "id": "keseme_033",
+      "character": "KESEME (V.O.)",
+      "text": "OrleaRouge teaches you two things."
+    },
+    {
+      "id": "keseme_034",
+      "character": "KESEME (V.O.)",
+      "text": "Life can be beautiful."
+    },
+    {
+      "id": "keseme_035",
+      "character": "KESEME (V.O.)",
+      "text": "And beauty doesn't make you safe."
+    },
+    {
+      "id": "thief_001",
+      "character": "THIEF",
+      "text": "Back off!"
+    },
+    {
+      "id": "keseme_036",
+      "character": "KESEME",
+      "text": "No."
+    },
+    {
+      "id": "thief_002",
+      "character": "THIEF",
+      "text": "We'll shoot!"
+    },
+    {
+      "id": "keseme_037",
+      "character": "KESEME",
+      "text": "That is significantly more persuasive."
+    },
+    {
+      "id": "keseme_038",
+      "character": "KESEME",
+      "text": "And unnecessarily loud."
+    },
+    {
+      "id": "radio_announcer_001",
+      "character": "RADIO ANNOUNCER",
+      "text": "Good morning, Dixie Beaux! Eighty-nine degrees, ninety-eight percent humidity, and approximately three hundred percent chance somebody's cousin is doing something illegal."
+    },
+    {
+      "id": "preacher_001",
+      "character": "PREACHER",
+      "text": "The end is near!"
+    },
+    {
+      "id": "talk_radio_host_001",
+      "character": "TALK RADIO HOST",
+      "text": "Everything wrong with this state is because of people from somewhere else!"
+    },
+    {
+      "id": "woman_caller_001",
+      "character": "WOMAN CALLER",
+      "text": "You were born in Ohio, Earl."
+    },
+    {
+      "id": "talk_radio_host_002",
+      "character": "TALK RADIO HOST",
+      "text": "That's irrelevant."
+    },
+    {
+      "id": "gps_001",
+      "character": "GPS",
+      "text": "Turn left in six hundred feet."
+    },
+    {
+      "id": "keseme_039",
+      "character": "KESEME",
+      "text": "That's water."
+    },
+    {
+      "id": "gps_002",
+      "character": "GPS",
+      "text": "Recalculating."
+    },
+    {
+      "id": "keseme_040",
+      "character": "KESEME",
+      "text": "You tried to kill me."
+    },
+    {
+      "id": "gps_003",
+      "character": "GPS",
+      "text": "Recalculating."
+    },
+    {
+      "id": "keseme_041",
+      "character": "KESEME",
+      "text": "That's not an apology."
+    },
+    {
+      "id": "keseme_042",
+      "character": "KESEME",
+      "text": "You're calling before nine in the morning."
+    },
+    {
+      "id": "mally_014",
+      "character": "MALLY",
+      "text": "It's eight fifty-seven."
+    },
+    {
+      "id": "keseme_043",
+      "character": "KESEME",
+      "text": "Exactly."
+    },
+    {
+      "id": "mally_015",
+      "character": "MALLY",
+      "text": "We got a problem."
+    },
+    {
+      "id": "keseme_044",
+      "character": "KESEME",
+      "text": "“We” usually means you did something stupid and somehow capitalism expects me to participate."
+    },
+    {
+      "id": "mally_016",
+      "character": "MALLY",
+      "text": "Somebody stole my car."
+    },
+    {
+      "id": "keseme_045",
+      "character": "KESEME",
+      "text": "Green Bravado?"
+    },
+    {
+      "id": "mally_017",
+      "character": "MALLY",
+      "text": "Yeah."
+    },
+    {
+      "id": "keseme_046",
+      "character": "KESEME",
+      "text": "Broken passenger window?"
+    },
+    {
+      "id": "mally_018",
+      "character": "MALLY",
+      "text": "Yeah."
+    },
+    {
+      "id": "keseme_047",
+      "character": "KESEME",
+      "text": "Rear bumper held on with electrical tape?"
+    },
+    {
+      "id": "mally_019",
+      "character": "MALLY",
+      "text": "It's tactical reinforcement."
+    },
+    {
+      "id": "keseme_048",
+      "character": "KESEME",
+      "text": "Your tactical reinforcement just passed me."
+    },
+    {
+      "id": "mally_020",
+      "character": "MALLY",
+      "text": "Get my car!"
+    },
+    {
+      "id": "keseme_049",
+      "character": "KESEME",
+      "text": "You called the wrong friend."
+    },
+    {
+      "id": "mally_021",
+      "character": "MALLY",
+      "text": "You are literally following it."
+    },
+    {
+      "id": "keseme_050",
+      "character": "KESEME",
+      "text": "Coincidence."
+    },
+    {
+      "id": "keseme_051",
+      "character": "KESEME",
+      "text": "Why are there so many—"
+    },
+    {
+      "id": "thief_003",
+      "character": "THIEF",
+      "text": "GET THESE DEMON PIGS AWAY FROM ME!"
+    },
+    {
+      "id": "keseme_052",
+      "character": "KESEME",
+      "text": "Technically pigs and hogs—"
+    },
+    {
+      "id": "thief_004",
+      "character": "THIEF",
+      "text": "I DON'T CARE!"
+    },
+    {
+      "id": "bubba_010",
+      "character": "BUBBA",
+      "text": "KES!"
+    },
+    {
+      "id": "keseme_053",
+      "character": "KESEME",
+      "text": "Why are you here?"
+    },
+    {
+      "id": "bubba_011",
+      "character": "BUBBA",
+      "text": "Hog hunt."
+    },
+    {
+      "id": "bubba_012",
+      "character": "BUBBA",
+      "text": "Apparently the hogs declared independence."
+    },
+    {
+      "id": "bubba_013",
+      "character": "BUBBA",
+      "text": "HEY!"
+    },
+    {
+      "id": "keseme_054",
+      "character": "KESEME",
+      "text": "Why do you have tranquilizers?"
+    },
+    {
+      "id": "bubba_014",
+      "character": "BUBBA",
+      "text": "Long story."
+    },
+    {
+      "id": "keseme_055",
+      "character": "KESEME",
+      "text": "Legal story?"
+    },
+    {
+      "id": "bubba_015",
+      "character": "BUBBA",
+      "text": "Shorter story."
+    },
+    {
+      "id": "mally_022",
+      "character": "MALLY",
+      "text": "My baby!"
+    },
+    {
+      "id": "keseme_056",
+      "character": "KESEME",
+      "text": "Your baby has hoof prints."
+    },
+    {
+      "id": "bubba_016",
+      "character": "BUBBA",
+      "text": "Adds character."
+    },
+    {
+      "id": "mally_023",
+      "character": "MALLY",
+      "text": "Why were they stealing it anyway?"
+    },
+    {
+      "id": "mally_024",
+      "character": "MALLY",
+      "text": "That ain't mine."
+    },
+    {
+      "id": "mally_025",
+      "character": "MALLY",
+      "text": "Most of it ain't mine."
+    },
+    {
+      "id": "keseme_057",
+      "character": "KESEME",
+      "text": "Mally."
+    },
+    {
+      "id": "mally_026",
+      "character": "MALLY",
+      "text": "Yeah?"
+    },
+    {
+      "id": "keseme_058",
+      "character": "KESEME",
+      "text": "Who gave you this bag?"
+    },
+    {
+      "id": "mally_027",
+      "character": "MALLY",
+      "text": "Nobody."
+    },
+    {
+      "id": "keseme_059",
+      "character": "KESEME",
+      "text": "Incorrect answer."
+    },
+    {
+      "id": "mally_028",
+      "character": "MALLY",
+      "text": "I was holding it for somebody."
+    },
+    {
+      "id": "keseme_060",
+      "character": "KESEME",
+      "text": "Worse answer."
+    },
+    {
+      "id": "keseme_061",
+      "character": "KESEME",
+      "text": "How many people know you have this?"
+    },
+    {
+      "id": "mally_029",
+      "character": "MALLY",
+      "text": "Maybe—"
+    },
+    {
+      "id": "keseme_062",
+      "character": "KESEME",
+      "text": "Don't say “maybe.”"
+    },
+    {
+      "id": "mally_030",
+      "character": "MALLY",
+      "text": "Maybe everybody."
+    },
+    {
+      "id": "mercer_001",
+      "character": "MERCER",
+      "text": "Morning."
+    },
+    {
+      "id": "mercer_002",
+      "character": "MERCER",
+      "text": "Beautiful day."
+    },
+    {
+      "id": "bubba_017",
+      "character": "BUBBA",
+      "text": "Debatable."
+    },
+    {
+      "id": "mercer_003",
+      "character": "MERCER",
+      "text": "That your property?"
+    },
+    {
+      "id": "keseme_063",
+      "character": "KESEME",
+      "text": "Found property."
+    },
+    {
+      "id": "mercer_004",
+      "character": "MERCER",
+      "text": "Then I'll take it."
+    },
+    {
+      "id": "keseme_064",
+      "character": "KESEME",
+      "text": "Evidence requires documentation."
+    },
+    {
+      "id": "mercer_005",
+      "character": "MERCER",
+      "text": "You always this difficult?"
+    },
+    {
+      "id": "keseme_065",
+      "character": "KESEME",
+      "text": "Only when people ask me to ignore procedure."
+    },
+    {
+      "id": "mercer_006",
+      "character": "MERCER",
+      "text": "Procedure?"
+    },
+    {
+      "id": "mercer_007",
+      "character": "MERCER",
+      "text": "Out here, young lady, procedure is whatever keeps everybody safe."
+    },
+    {
+      "id": "keseme_066",
+      "character": "KESEME",
+      "text": "Interesting."
+    },
+    {
+      "id": "mercer_008",
+      "character": "MERCER",
+      "text": "What's interesting?"
+    },
+    {
+      "id": "keseme_067",
+      "character": "KESEME",
+      "text": "Nothing."
+    },
+    {
+      "id": "mercer_009",
+      "character": "MERCER",
+      "text": "Good."
+    },
+    {
+      "id": "mercer_010",
+      "character": "MERCER",
+      "text": "Bag."
+    },
+    {
+      "id": "mercer_011",
+      "character": "MERCER",
+      "text": "You kids stay out of trouble."
+    },
+    {
+      "id": "mally_031",
+      "character": "MALLY",
+      "text": "Absolutely."
+    },
+    {
+      "id": "bubba_018",
+      "character": "BUBBA",
+      "text": "Statistically unlikely."
+    },
+    {
+      "id": "mally_032",
+      "character": "MALLY",
+      "text": "Please tell me you didn't—"
+    },
+    {
+      "id": "mally_033",
+      "character": "MALLY",
+      "text": "We gonna die."
+    },
+    {
+      "id": "keseme_068",
+      "character": "KESEME",
+      "text": "Possibly."
+    },
+    {
+      "id": "bubba_019",
+      "character": "BUBBA",
+      "text": "Can we schedule it after lunch?"
+    },
+    {
+      "id": "bubba_020",
+      "character": "BUBBA",
+      "text": "That's the last of 'em. Go get Mally's car."
+    }
+  ]
+}

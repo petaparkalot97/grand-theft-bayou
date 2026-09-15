@@ -1,4 +1,4 @@
-import { createSpawnZones, ZONE_MIX } from "../../src/spawnzones.js";
+import { createSpawnZones, ZONE_MIX, WANDER } from "../../src/spawnzones.js";
 import { createNpcSystem } from "../../src/npc.js";
 import { createFactionWar } from "../../src/factions.js";
 import * as THREE from "three";
@@ -136,5 +136,92 @@ for (let i = 0; i < 10; i++) {
   extraNpcs.push(n);
 }
 assert(npcs.hostileCount <= 7, `hostileCount (${npcs.hostileCount}) never exceeds MAX_HOSTILE (7)`);
+
+// Scenario E: per-zone wander profiles (zone-dependent walk speed + radius)
+console.log("=== Per-zone wander profiles (WANDER) ===");
+assert(WANDER.urban.speed > 1 && WANDER.urban.r < 1, "Urban profile: quicker steps, tighter radius");
+assert(WANDER.rural.speed < 1 && WANDER.rural.r > 1, "Rural profile: slower steps, wider radius");
+assert(WANDER.highway === null && WANDER.water === null, "Nobody wanders on the highway or the water");
+
+let p2 = null;
+for (let tries = 0; tries < 50 && !p2; tries++) p2 = spawnZones.pick({ x: 20, z: 0 }, []);   // retries skip highway/water rejections, as the game does
+assert(p2 && p2.wanderR != null && p2.wanderSpeed != null, "pick() returns a wander profile alongside the spot");
+assert(p2.wanderR === WANDER[p2.zone].r && p2.wanderSpeed === WANDER[p2.zone].speed, "The returned profile matches the spot's zone");
+
+const cityZones = createSpawnZones({
+  MAP, ROAD_X: 0, ROAD_HALF: 8, LOT_X: 40,
+  // everything east of x 150 is "urban"; the pick relocates to a hangout
+  getOrlea: () => ({ inCity: (x, z) => x > 150, pois: [{ x: 245, z: 0, r: 10 }] }),
+  coreMinX: 100,
+});
+let cityPick = null;
+for (let tries = 0; tries < 50 && (!cityPick || cityPick.zone !== "urban"); tries++) {
+  cityPick = cityZones.pick({ x: 180, z: 0 }, []);
+}
+assert(cityPick && cityPick.zone === "urban" && cityPick.wanderSpeed === WANDER.urban.speed,
+  "A city pick carries the urban profile (fast, tight)");
+
+const npcs2 = createNpcSystem({ pois: [{ x: 180, z: 0, r: 10 }], resolveCollision, hitPlayer, bounds: MAP });
+const c = createMockNpc("hoodrat", 180, 0);
+c.wanderR = cityPick.wanderR; c.wanderSpeed = cityPick.wanderSpeed;
+npcs2.init(c);
+assert(c.wanderR === WANDER.urban.r && c.wanderSpeed === WANDER.urban.speed, "init() keeps the spawner's zone profile on the record");
+
+const unp = createMockNpc("hoodrat", 0, 0);
+npcs2.init(unp);
+assert(unp.wanderR === 1 && unp.wanderSpeed === 1, "A record without a zone profile gets the neutral default");
+
+// Scenario F: Market Row — Lafourchette's Saturday market
+console.log("=== Market Row (Saturday crowd) ===");
+assert(ZONE_MIX.market_row.hoodrat === 0.25 && ZONE_MIX.market_row.redneck === 0.75, "market_row mix leans parish: 75% Redneck / 25% Hoodrat");
+assert(WANDER.market_row.r < WANDER.town.r && WANDER.market_row.r < WANDER.commercial.r, "market_row wanders tighter than town or commercial");
+
+// a district whose open area claims its own zone name; the gather sink pulls
+// nearby samples onto the square, exactly as main.js wires it
+const MARKET_RECT = { x0: 316, x1: 348, z0: -99, z1: -73 };
+const marketDistrict = createSpawnZones({
+  MAP: { minX: -200, maxX: 380, minZ: -200, maxZ: 200 },   // Lafourchette sits east of the old ±200 square
+  ROAD_X: 0, ROAD_HALF: 8, LOT_X: 40, getOrlea: () => null,
+  extraZone: (x, z) => (x >= MARKET_RECT.x0 && x <= MARKET_RECT.x1 && z >= MARKET_RECT.z0 && z <= MARKET_RECT.z1) ? "market_row" : null,
+  gatherPois: [{ x: 332, z: -86, r: 10 }],   // r 10 keeps the scatter inside the 26×26 m square
+});
+let mp = null;
+// the player strolls past on the road 40 m west of the square; spawns sample a
+// 65–105 m ring around them, and the sink pulls the ones that pass near it
+for (let tries = 0; tries < 80 && (!mp || mp.zone !== "market_row"); tries++) {
+  mp = marketDistrict.pick({ x: 290, z: -86 }, []);
+}
+assert(mp && mp.zone === "market_row" && mp.wanderR === WANDER.market_row.r,
+  "A Market Row pick carries the market profile (tight and slow)");
+assert(mp.x >= MARKET_RECT.x0 && mp.x <= MARKET_RECT.x1 && mp.z >= MARKET_RECT.z0 && mp.z <= MARKET_RECT.z1,
+  "The gathered spawn lands on the market square itself");
+assert(mp.kind === "redneck" || mp.kind === "hoodrat", "Market Row spawns people, never hogs");
+
+// worldTime drives market hours: day 1 (game opens 18:30) is quiet, day 2+ at
+// noon bustles, and night closes
+const fakeClock = { hours: 12, day: 2 };
+const mkt = createNpcSystem({ pois, resolveCollision, hitPlayer, bounds: MAP, worldTime: fakeClock });
+const m1 = createMockNpc("redneck", 0, 0);
+m1.wanderR = WANDER.market_row.r; m1.wanderSpeed = WANDER.market_row.speed;
+mkt.init(m1);
+assert(m1.marketSaturday === true, "A market NPC at noon on day 2 is in Saturday mode");
+
+const lateClock = { hours: 19.5, day: 2 };
+const mktLate = createNpcSystem({ pois, resolveCollision, hitPlayer, bounds: MAP, worldTime: lateClock });
+const m2 = createMockNpc("redneck", 0, 0);
+m2.wanderR = WANDER.market_row.r; m2.wanderSpeed = WANDER.market_row.speed;
+mktLate.init(m2);
+assert(m2.marketSaturday === false, "A market NPC at 19:30 is closed (quiet streets)");
+
+const day1 = createNpcSystem({ pois, resolveCollision, hitPlayer, bounds: MAP, worldTime: { hours: 19, day: 1 } });
+const m3 = createMockNpc("redneck", 0, 0);
+m3.wanderR = WANDER.market_row.r; m3.wanderSpeed = WANDER.market_row.speed;
+day1.init(m3);
+assert(m3.marketSaturday === false, "Day 1 evening (the game's opening) is not a market day");
+
+const noonTown = createNpcSystem({ pois, resolveCollision, hitPlayer, bounds: MAP, worldTime: { hours: 12, day: 2 } });
+const m4 = createMockNpc("hoodrat", 0, 0);          // town profile: wanderSpeed 1.1 > 1
+noonTown.init(m4);
+assert(m4.marketSaturday === false, "Non-market zones never get Saturday mode, whatever the hour");
 
 console.log("🎉 All unit tests passed cleanly!");

@@ -19,9 +19,10 @@ import * as THREE from "three";
 import { WEAPONS, RARITY } from "./weapons.js";
 
 export const LOOT_TABLES = Object.freeze({
-  hoodrat: { cash: 0.8, weapon: 0.16 },
-  redneck: { cash: 0.7, weapon: 0.24 },
-  hog: { cash: 0, weapon: 0 },
+  hoodrat: { cash: 0.7, weapon: 0.16, ammo: 0.2 },
+  redneck: { cash: 0.6, weapon: 0.24, ammo: 0.25 },
+  prostitute: { cash: 0.92, weapon: 0.03, ammo: 0.05 },
+  hog: { cash: 0, weapon: 0, ammo: 0 },
 });
 export const CASH_NOTES = Object.freeze([[5, 40], [10, 30], [20, 20], [50, 10]]);   // [amount, weight]
 const MAX_ACTIVE = 24;
@@ -47,7 +48,7 @@ function weighted(pairs, rnd) {
  */
 export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flashObjective, rng = Math.random }) {
   const active = [];
-  const pool = { cash: [], weapon: [] };
+  const pool = { cash: [], weapon: [], ammo: [] };
   let t = 0;
 
   const unlit = (color, opts = {}) => {
@@ -56,6 +57,7 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
     return m;
   };
   const billMat = unlit(0x3fa34d), bandMat = unlit(0xf2e7b8), gunMat = unlit(0x3a4048), gunMetal = unlit(0x9aa4ae);
+  const ammoMat = unlit(0xd97724), ammoBandMat = unlit(0x403425);
   const glowTex = (() => {
     const c = document.createElement("canvas");
     c.width = c.height = 64;
@@ -78,6 +80,16 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
     glow.material.userData.gtbRealized = true;
     glow.scale.setScalar(1.2);
     g.add(stack, band, glow);
+    return g;
+  }
+  function makeAmmo() {
+    const g = new THREE.Group();
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.18, 0.22), ammoMat);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.05, 0.23), ammoBandMat);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffa000, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glow.material.userData.gtbRealized = true;
+    glow.scale.setScalar(1.1);
+    g.add(box, band, glow);
     return g;
   }
   function makeWeapon() {
@@ -105,7 +117,7 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
 
   function spawn(kind, x, z, payload) {
     if (active.length >= MAX_ACTIVE) release(active[0]);
-    const obj = pool[kind].pop() || (kind === "cash" ? makeCash() : makeWeapon());
+    const obj = pool[kind].pop() || (kind === "cash" ? makeCash() : kind === "ammo" ? makeAmmo() : makeWeapon());
     if (kind === "weapon") {
       const rarity = WEAPONS[payload.id].rarity;
       obj.userData.ring.material = ringMat(rarity);
@@ -126,7 +138,7 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
   }
 
   function rollWeapon() {
-    const rarity = weighted(Object.entries(RARITY).map(([k, r]) => [k, r.weight]), rng);
+    const rarity = weighted(Object.entries(RARITY).filter(([k]) => k !== "starter").map(([k, r]) => [k, r.weight]), rng);
     const options = Object.values(WEAPONS).filter((w) => w.rarity === rarity);
     const w = options[(rng() * options.length) | 0];
     return { id: w.id, rounds: w.clip };
@@ -143,12 +155,13 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
       const p = npc.spr.position, out = [];
       if (rng() < table.cash) out.push(spawn("cash", p.x + (rng() - 0.5), p.z + (rng() - 0.5), { amount: weighted(CASH_NOTES, rng) }));
       if (rng() < table.weapon) out.push(spawn("weapon", p.x + (rng() - 0.5) * 1.6, p.z + (rng() - 0.5) * 1.6, rollWeapon()));
+      if (rng() < table.ammo) out.push(spawn("ammo", p.x + (rng() - 0.5) * 1.2, p.z + (rng() - 0.5) * 1.2, { rounds: 16 }));
       return out;
     },
 
     /** Put a specific drop on the ground (QA, story rewards). */
     dropAt(kind, x, z, payload) {
-      return spawn(kind, x, z, kind === "cash" ? { amount: payload && payload.amount || 20 } : { id: payload && payload.id || "tec9", rounds: payload && payload.rounds });
+      return spawn(kind, x, z, kind === "cash" ? { amount: payload && payload.amount || 20 } : kind === "ammo" ? { rounds: payload && payload.rounds || 16 } : { id: payload && payload.id || "tec9", rounds: payload && payload.rounds });
     },
 
     update(dt) {
@@ -165,10 +178,20 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
           state.cash += it.amount;
           syncHUD();
           flashObjective(`+$${it.amount}`);
+        } else if (it.kind === "ammo") {
+          const cur = arsenal.current;
+          if (cur.melee) {
+            state.cash += 10;
+            syncHUD();
+            flashObjective(`Recycled ammo scrap for +$10 cash`);
+          } else {
+            arsenal.addReserve(cur.id, it.rounds);
+            flashObjective(`Picked up ${it.rounds} ${cur.name} rounds`);
+          }
         } else {
           const w = WEAPONS[it.id];
           arsenal.give(it.id, it.rounds);
-          flashObjective(`Picked up a ${w.name} (${RARITY[w.rarity].label}) · ${it.rounds} rounds`);
+          flashObjective(`Picked up a ${w.name} (${RARITY[w.rarity].label})`);
         }
         release(it);
       }

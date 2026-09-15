@@ -22,6 +22,7 @@
 import * as THREE from "three";
 import { headingFromVector } from "./world.js";
 import { makeChurch } from "./church.js";
+import { makeDecorativeFence } from "./landmarks.js";
 
 export const PARISH_MIN_X = -440;
 const REGION_EAST_X = -150;        // west of this is the parish proper
@@ -303,7 +304,7 @@ export function createWestParish(ctx) {
   }
   /** A sign on the shoulder at sample i, facing traffic that drives along (+1) or against (−1) the route. */
   function signBeside(i, dir, lines) {
-    const p = PTS[i], t = HWY.tan[i], r = HWY.right[i];
+    const p = PTS[i] || { x: 0, z: 0 }, t = HWY.tan[i] || new THREE.Vector3(0, 0, 1), r = HWY.right[i] || new THREE.Vector3(1, 0, 0);
     const off = dir * (HWY_WIDTH / 2 + 3.5);                  // the driver's right-hand shoulder
     const facing = headingFromVector(t.x * dir, t.z * dir) + Math.PI;   // back toward the oncoming driver
     greenSign(lines, p.x + r.x * off, p.z + r.z * off, facing);
@@ -401,8 +402,8 @@ export function createWestParish(ctx) {
     scene.add(cane);
     props.push(cane);
 
-    // chainlink on three sides, open toward the hamlet
-    ctx.makeFence(f.x0, f.z0, f.x1, f.z0);
+    // fence on three sides, open toward the hamlet
+    makeDecorativeFence(ctx, f.x0, f.z0, f.x1, f.z0);
     ctx.makeFence(f.x0, f.z0, f.x0, f.z1);
     ctx.makeFence(f.x1, f.z0, f.x1, f.z1);
     pois.push({ x: f.x1 + 2, z: (f.z0 + f.z1) / 2, r: 6 });   // someone always leaning on the fence

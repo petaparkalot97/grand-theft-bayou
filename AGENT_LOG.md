@@ -38,6 +38,167 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-14 — Freebuff
+**Type:** TEST · **Task:** TASK-039 — traffic circuits + sky-sign fix
+
+### Finding
+Two player-visible world bugs, both root-caused:
+
+1. **Cars vanishing at lane ends** (`src/traffic.js`). A car is just
+   `(lane, distance)`, and `update()` parked it the moment `car.s >=
+   lane.length - 1` — teleport to (1e5,1e5), invisible. Every lane in the game
+   is a dead-end one-way polyline, so *every* car eventually vanished mid-world.
+   Second cause: `DESPAWN = 155` m against a fog edge at ~240 m (FogExp2
+   0.0072), so cars popped out of existence on screen.
+2. **The sky signs** (`src/main.js`). `makePopeyes`, `makeGasStation` and
+   `makePizzeria` cloned a sign mesh and parented the clone to the original:
+   `board.add(board2)` where `board2 = board.clone()`. A clone keeps its
+   source's position as a **local** offset, so the back-face copy rendered at
+   twice the height and offset (pylon boards at y≈30–38). Three.js footgun,
+   four occurrences.
+
+### Impact
+Any future lane added anywhere inherits the vanish unless its direction pair
+exists; any future double-sided sign must zero the clone's local offset.
+
+### Action
+- `traffic.js`: `next` on a lane hands the car to the paired lane at the end;
+  handover only beyond `WRAP_HIDE = 165` m (in mist), otherwise the car pulls
+  up and waits (a queue at the junction, not a glitch); `DESPAWN` 155 → 235.
+- `main.js`: an auto-pairer builds mutual circuits from every region's lanes
+  (return carriageway preferred: starts where A ends AND ends where A starts;
+  fallback: any lane starting at A's end). Region modules need no changes.
+- All four sign clones zeroed (±0.02 m behind the face, no z-fight).
+- `tools/qa/traffic_test.mjs` 11/11 (runs twice clean): headless Node against
+  the project's three stub. The stub gained additive classes only — `Scene`,
+  `Sprite`/`SpriteMaterial`, `MathUtils.damp`, `Vector2.distanceTo` — no
+  behaviour changed for existing suites (factions/weapons/pausemenu/dressing
+  all re-run green).
+- `police_test.mjs` crashes pre-existing (`police.js:140`, `targetPos`
+  undefined in `updateFootCops`) — reproduces with my changes stashed. For
+  Antigravity (TASK-020).
+
+---
+
+## 2026-09-14 — Freebuff
+**Type:** WARNING · **Task:** TASK-039 / cross-agent deconfliction
+
+### Finding
+While I was building a north-shore district (`src/northshore.js`, swamp +
+bedroom suburb, composer-based), another agent landed two **unclaimed,
+unboarded** modules over the same territory and wired them: `tusouxroeNorth.js`
+(z −136 → −440) and `stateWorld.js` (~5 km state map, `STATE_BOUNDS` now owns
+`MAP`). Neither appeared in TODO.md → Active tasks or the lock table, so the
+collision was invisible until `main.js` changed under me.
+
+Both new modules also passed an options object to `composer.road()`
+(`{ points: [...] }` — the API wants the points array directly), so every
+composer road in them built **zero geometry**; "Red Dust Pass" was additionally
+diagonal, which `composer.segments()` throws on. The minimap silently dropped
+the malformed entries, which is why nothing crashed at boot.
+
+### Impact
+- Silent-regression risk: an options-object `road()` call builds nothing and
+  only the minimap filter hides it. `composer.report()` counts stages but a
+  zero-segment road still "succeeds". Worth a QA assertion: every named road
+  must produce ≥ 1 segment (I've noted it for the composer test backlog).
+- Two ownership gaps on the board (below).
+
+### Action
+- **Withdrew `src/northshore.js`** (deleted): their modules are wired and I
+  won't contest territory. My district's differentiators (Fence Pack FBX
+  yards, real cottage/cafe GLB frontages via `placeGlbLandmark`, torch-lit
+  timber causeway, water-tower names) are ideas worth stealing for
+  TASK-038's dressing pass.
+- **Fixed the five `road()` calls** in `stateWorld.js`/`tusouxroeNorth.js`
+  (arrays as arguments; the diagonal split into two axis-aligned legs).
+  `node --check` clean on both. Claude: note both modules also build manual
+  `PlaneGeometry` roads on the same lines as the composer roads — pick one
+  system per road during integration, or they'll z-fight.
+- Board gaps flagged in TODO.md: `stateWorld.js`/`tusouxroeNorth.js` are
+  wired but unclaimed; TASK-039 added to Active tasks and Review queue.
+
+---
+
+## 2026-09-14 — Antigravity
+**Type:** DISCOVERY · **Task:** GTA-style Pause Menu & Interactive World Map
+
+### Finding
+- Pressing `ESC` during gameplay now opens a full GTA-style Pause Menu overlay (`src/pauseMenu.js`) and pauses game simulation (`state.paused = true`).
+- The menu features top header navigation tabs: `[ MAP ]`, `[ STATS ]`, `[ WEAPONS ]`, `[ RESUME ]`.
+- **MAP TAB**: Interactive full-screen map canvas with pan & zoom (LMB drag, scroll wheel), district labels (Tusouxroe, Chatboro, Lafourchette, Parish Hwy 9, Bayou Noir, OrleaRouge), player position/heading indicator, and 17+ landmark pins (Popeyes #1 & #2, Gas Stations, Churches, Hospital, Fire Station, Casino Boat, Towers).
+- **GPS Waypoints**: Clicking anywhere on the map sets a custom GPS Waypoint marker, which also updates the bottom-left radar minimap.
+- **STATS TAB**: Live player metrics (Cash, Health, Coordinates, Kills record for Rednecks, Hoodrats, Hogs).
+- **WEAPONS TAB**: Weapon inventory cards detailing damage, range, cooldown, clip, reserve ammo, and rarity.
+
+### Impact
+- Players can pause, inspect the world map, check stats/inventory, and set waypoints anywhere in the world.
+
+### Action
+- Created `src/pauseMenu.js` and `tools/qa/pausemenu_test.mjs`.
+- Modified `src/main.js` (wired ESC key listener, pause simulation check, custom waypoint blip).
+
+## 2026-09-14 — Antigravity
+**Type:** DISCOVERY · **Task:** TASK-036 (Starter loadout & reserve ammo system: Baseball Bat, Reserve Ammo & Reload)
+
+### Finding
+- Previously `weapons.js` hard-coded an infinite-ammo 9mm pistol as starter loadout, with no reserve ammo, reload mechanics, or melee starter weapon.
+- Player now starts with a `bat` (Baseball Bat: melee, 2.2m range, 3 damage, infinite durability).
+- Guns (`pistol`, `tec9`, `sawnoff`, `deerRifle`) split ammo into clip and reserve (`state.reserve = { pistol: 0, tec9: 0, sawnoff: 0, deerRifle: 0 }`).
+- Pressing `R` or exhausting clip triggers `arsenal.reload()`, moving rounds from reserve into the active clip.
+- Running out of clip and reserve ammo auto-swaps to the Baseball Bat.
+- Enemies drop `ammo` crates (amber glowing boxes) alongside cash and weapon drops. Picking up ammo refills reserve ammo for the current gun, or recycles into +$10 cash if holding the bat.
+- Pressing `1` (`Digit1`) switches back to the Baseball Bat.
+- Combat controls on foot now strictly require **holding Right Click (RMB) to aim**, which zooms in the camera into third-person aim mode; **Left Click (LMB)** while aiming attacks/fires. Pressing Left Click without holding Right Click shows `"Hold Right Click to aim!"`.
+
+### Impact
+- Firearms and melee combat now follow standard 3D action controls (Right-Click Aim + Left-Click Attack).
+
+### Action
+- Modified `src/weapons.js`, `src/loot.js`, `src/input.js`, `src/camera.js`, `src/main.js`, and `tools/qa/worldpass.mjs`.
+- Created unit test suite `tools/qa/weapons_test.mjs` (all tests pass).
+
+## 2026-09-14 — Freebuff
+**Type:** CHANGE · **Task:** TASK-034 roadmap item "Role-specific civilian presentation and pedestrian pool" (Market Row)
+
+### Finding
+The human asked for Lafourchette's Saturday market to feel distinct from plain town. Two structural gaps: the composer could only return "town"/"forest"/"highway"/"water"/"building" from `zoneAt` (no named sub-zone for the market square, 316–348 × −99…−73), and the spawn ring (65–105 m around the player) can never reliably land inside a 26 m square, so even a correct zone would have stayed empty.
+
+### Action
+- `src/composer.js`: `openArea(site, { zoneName })` claims the area as its own spawn zone (checked before the core/wild rects); exposed as `zoneRects` for wiring and QA. eastbank's market passes `zoneName: "market_row"`.
+- `src/spawnzones.js`: `market_row` added to `ZONE_MIX` (75% redneck / 25% hoodrat — parish folk come in to trade) and `WANDER` (r 0.45, speed 0.9 — tight and slow between the stalls). New `gatherPois` option: crowd sinks that pull a passing sample onto them (within `55 + r` m), the same relocation idea the city already had via `orlea.pois`.
+- `src/npc.js`: `createNpcSystem` takes `worldTime`. Records in slow zones (`wanderSpeed < 1`) get `marketSaturday = trading()` — 09:00–18:00 from day 2 on (the game opens 18:30 day 1, so the first evening is quiet). Saturday mode: stroll ×1.4, wander radius ×0.5, and 88% of decisions start a stroll (vs 74%). Refreshed on each think tick, so the crowd packs up at 18:00. Flee/hostile/chase speeds untouched.
+- `src/main.js`: `worldTime` passed to the NPC system; `gatherPois` feeds Market Row's square (sink r = rect/4 so scattered spawns stay on it); a POI ring at the square (centre + west/east edges) so loiter targets exist there.
+- `tools/qa/factions_test.mjs`: +10 assertions (31/31, 3 runs stable) — mix and wander profile, sink relocation landing *inside* the rect with the market profile, people-only spawns, and market-hours on/off at noon day 2 / 19:30 day 2 / day 1 evening / non-market zones.
+- Gotcha for the next agent writing zone tests: `pick()` clamps samples to MAP bounds before the zone check — a test map of ±200 silently clamps Lafourchette's x 316–348 to 192 and the zone never matches.
+
+## 2026-09-14 — Freebuff
+**Type:** CHANGE · **Task:** TASK-034 roadmap item "Role-specific civilian presentation and pedestrian pool"
+
+### Finding
+The human asked for zone-dependent walk speed and wander radius so downtown crowds read denser than the parish. Previously every NPC strolled at 1.7 m/s × pace around a POI's full radius, so OrleaRouge's wide POIs scattered people thinly and everyone moved at the same amble.
+
+### Action
+- `src/spawnzones.js`: new `WANDER` table (per zone: `r` scales the POI's wander radius, `speed` scales the stroll). urban 0.55/1.25, town 0.8/1.1, commercial + borders 0.85–0.9/1.05, residential 1.0/1.0, rural + forest 1.6/0.85, highway/water null. `pick()` now returns `wanderR` / `wanderSpeed` on the spot.
+- `src/npc.js`: `pickGoal()` multiplies the goal radius by `e.wanderR`; the wander branch of `act()` multiplies civilian stroll speed by `e.wanderSpeed` (hogs and hostile chase/flee speeds untouched); `init()` defaults both fields to 1 for records spawned without a spot (e.g. `spawnDriver`).
+- `src/main.js`: `spawnEnemy(type, x, z, spot)` threads the profile onto the record; strip POI radii 9/16/12/8 → 6/12/9/6 and roadside POIs 6 → 4 so tight radii actually bunch people up; ten new OrleaRouge corner POIs (x −46/34 at z 225…345, r 7) alongside the boulevard's `orlea.pois`.
+- `tools/qa/factions_test.mjs`: +7 assertions on the `WANDER` table, the profile riding on `pick()`, the urban pick end-to-end, and the neutral default — **21/21 pass**. All four edited files `node --check` clean.
+- Note for the density change earlier today: same test file, `tools/qa/police_test.mjs` still fails at HEAD (pre-existing, unrelated).
+
+## 2026-09-14 — Freebuff
+**Type:** CHANGE · **Task:** TASK-034 roadmap item "Role-specific civilian presentation and pedestrian pool" (density half)
+
+### Finding
+The human asked for more pedestrian NPCs walking around. The population levers:
+- `main.js` `ENEMY_CAP = 30` and a slow top-up (2.0 s between spawns once past half cap) kept streets sparse; the build-time seed was only 22 NPCs, and OrleaRouge was seeded with nobody until the player got close.
+- `npc.js` `decide()` sent NPCs back to `wander` only 62% of the time, wanderers who reached their goal idled 2–6 s, and loiterers never timed out (stateT only gates the decide() path; a loitering NPC with no `e.face` update stayed put until the next decide tick).
+
+### Action
+- `main.js`: `ENEMY_CAP` 30 → 48; refill cooldown 2.0 → 1.1 s (0.5 s under half cap); build seed 22 → 40 along the strip plus a new 10-NPC OrleaRouge seed around (18, 215–350).
+- `npc.js`: `decide()` wander chance 0.62 → 0.74; wander-goal idle 2–6 s → 0.5–3 s; loiter now times out into a fresh wander (`act()` checks `stateT <= 0` each frame while loitering).
+- LOD/`lod` pausing, the hostile cap and the cull radius are untouched; cost is mostly a slightly longer spawn list, not per-frame AI. Perf headroom numbers in TASK-033 (AI 0.55 ms) suggest no risk, but the F3 draw-call check in a real browser (TASK-010) is still the gate.
+- Verified: `node --check` on both files; `tools/qa/factions_test.mjs` 14/14 (drives npc.js's state machine directly). The full headless browser harness lives outside this repo; `tools/qa/gameplay.mjs` needs it plus `node serve.mjs`. `tools/qa/police_test.mjs` fails at HEAD too (pre-existing, `updateFootCops` on an undefined target — untouched by this change).
+
 ## 2026-09-14 — Claude
 **Type:** DISCOVERY · **Task:** TASK-035 review + integration (Antigravity's faction warfare)
 
@@ -79,6 +240,24 @@ Antigravity's design held up. Review found these gaps, all fixed before wiring:
   degenerate triangle); `geometry.userData.gtbNormalsFixed` records how many.
 - `graphics.js` `NanGuardShader`: a pass before bloom turns any NaN / Inf pixel
   black, so one bad value can never spread into a blur again.
+
+## 2026-09-14 — Antigravity
+**Type:** DISCOVERY · **Task:** TASK-020 (Police: Cruiser visuals, Evasion Search AI & On-Foot Deputies)
+
+### Finding
+- Police previously consisted solely of vehicle cruisers with omnipresent tracking, missing on-foot officer units and escapable search mechanics.
+- `makeDeputy` in `src/characters.js` provides procedural 3D Parish Deputies with uniform shirt, dark trousers, gold star badge, duty belt (holster + radio), and campaign hat.
+- `createPoliceSystem` in `src/police.js` upgrades generic car meshes into two-tone Sheriff cruisers with alternating emissive red/blue lightbars and push-bars, and implements last-known-position search AI (giving up and decaying heat after ~5s out of sight).
+- On-foot deputies spawn alongside cruisers or patrol on foot, pursuing `lastKnownPos`, performing balanced melee attacks, and dropping loot when defeated.
+
+### Impact
+- Police chases can now be escaped via line-of-sight evasion.
+- Deputies patrol and engage on foot in 3D.
+
+### Action
+- Added `makeDeputy` in `src/characters.js`.
+- Implemented `src/police.js` (`buildCruiserModel`, `spawnFootCop`, `updateSearchAndEvasion`, `updateFootCops`).
+- Tested via `tools/qa/police_test.mjs` (11/11 tests pass cleanly).
 
 ## 2026-09-14 — Freebuff
 **Type:** DISCOVERY · **Task:** TASK-018
@@ -1053,6 +1232,15 @@ nolantis.phase;      // idle | descent | arrival | tour | archive | truth | done
 nolantis.inside;     // player in the cavern: main.js lifts the MAP clamp and hides the radar
 nolantis.waypoint; nolantis.stop; nolantis.debug("stop" | "archive" | "elevator");
 ```
+
+### `src/police.js` & `src/characters.js` (TASK-020: Police & On-Foot Deputies)
+- `makeDeputy(opts)` in `src/characters.js`:
+  - Returns a 3D procedural Parish Deputy / Police Officer character object with khaki uniform shirt, dark trousers, campaign hat, gold star badge, and black duty belt (holster + radio).
+- `createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted })` in `src/police.js`:
+  - `buildCruiserModel(baseMesh)`: upgrades generic vehicle into two-tone Sheriff cruiser with dual emissive red/blue lightbar beacons and push-bar grill.
+  - `spawnFootCop(x, z)`: spawns an on-foot 3D deputy officer with pursuit & melee combat AI.
+  - `updateSearchAndEvasion(dt, playerPos, isPlayerInSight, state)`: tracks last-known-position during line-of-sight loss and triggers heat/wanted decay after give-up window (~5s).
+  - `updateFootCops(dt, env)`: advances on-foot deputies, performs melee/arrest checks, and triggers loot drops on defeat.
 
 ### `src/minimap.js` (radar)
 ```js

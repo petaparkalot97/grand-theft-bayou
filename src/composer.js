@@ -79,6 +79,7 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
   }
   const isFree = (r) => eachCell(r, (k) => grid[k] === FREE);
   const fill = (r, v) => eachCell(r, (k) => { grid[k] = v; });
+  const zoneRects = [];                     // named zones an openArea() claimed
   function valueAt(x, z) {
     const i = Math.floor((x - bounds.x0) / cell), j = Math.floor((z - bounds.z0) / cell);
     return i < 0 || j < 0 || i >= cols || j >= rows ? -1 : grid[j * cols + i];
@@ -222,12 +223,13 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
       });
     },
 
-    /** Build into a planned site as an open area (lot, park, market). */
-    openArea(siteName, { color = "#5a5a52", build }) {
+    /** Build into a planned site as an open area (lot, park, market). `zoneName` claims the area as its own spawn zone. */
+    openArea(siteName, { color = "#5a5a52", build, zoneName = null }) {
       const entry = enter("openAreas");
       const rect = sites.get(siteName);
       if (!rect) throw new Error(`[composer] ${name}: no site "${siteName}"`);
       fill(rect, OPEN);
+      if (zoneName) zoneRects.push([zoneName, rect]);
       const c = centre(rect);
       cluster(siteName, () => build(rect, c));
       minimap.areas.push({ ...rect, color });
@@ -299,17 +301,21 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
       entry.items++;
     },
 
-    /** Spawn zone for spawnzones.js, or null outside this district. "building" is no spawn zone: nobody appears inside walls. */
+    /** Spawn zone for spawnzones.js, or null outside this district. "building" is no spawn zone: nobody appears inside walls. An open area can name its own zone (eastbank.js's market). */
     zoneAt(x, z) {
       const v = valueAt(x, z);
       if (v < 0) return null;
       if (v === ROAD) return "highway";
       if (v === WATER) return "water";
       if (v === BUILDING) return "building";
+      for (const [zoneName, rect] of zoneRects) if (inRect(rect, x, z)) return zoneName;
       if (zones.core && inRect(zones.core, x, z)) return "town";
       if (zones.wild && inRect(zones.wild, x, z)) return "forest";
       return null;
     },
+
+    /** The named zones an open area claimed, for QA (see eastbank_test-style checks). */
+    get zoneRects() { return zoneRects; },
 
     get pois() { return pois; },
     get props() { return props; },

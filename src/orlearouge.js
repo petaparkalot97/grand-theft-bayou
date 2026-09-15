@@ -19,6 +19,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
+import { makeDecorativeFence, placeOfficeClutter, placeCityBuilding } from "./landmarks.js";
 
 export const CAUSEWAY = { minZ: 136, maxZ: 192 };
 export const CITY = { minX: -136, maxX: 136, minZ: 196, maxZ: 382 };
@@ -341,6 +342,7 @@ export function createOrleaRouge(ctx) {
 
   function hospital(b) {
     mesh(new THREE.BoxGeometry(b.x1 - b.x0 - 2, 11, b.z1 - b.z0 - 4), std("plaster wall", 0xd8d6cf), b.cx, 5.5, b.cz);
+    placeOfficeClutter(ctx, b.cx - 6, b.z0 + 3);
     // the sign has lost a few letters
     const sign = canvasTex(1024, 128, (x, w, h) => {
       x.fillStyle = "#f4f2ea"; x.fillRect(0, 0, w, h);
@@ -358,6 +360,7 @@ export function createOrleaRouge(ctx) {
   function cemetery(b) {
     const stone = std("marble tomb", 0xd9d6cc), wallMat = std("brick wall", 0x9a8a7a);
     const w = b.x1 - b.x0, d = b.z1 - b.z0;
+    makeDecorativeFence(ctx, b.x0 + 1, b.z0, b.x1 - 1, b.z0);
     for (const [ww, dd, x, z] of [[w, 0.5, b.cx, b.z0], [w, 0.5, b.cx, b.z1], [0.5, d, b.x0, b.cz], [0.5, d, b.x1, b.cz]]) {
       if (z === b.z0) {
         // leave a gate in the street-side wall
@@ -382,6 +385,7 @@ export function createOrleaRouge(ctx) {
   function construction(b) {
     const steel = std("steel beam", 0xc98a2a, { metalness: 0.5, roughness: 0.5 });
     const w = b.x1 - b.x0, d = b.z1 - b.z0;
+    placeOfficeClutter(ctx, b.cx + 5, b.z0 + 4);
     // an unfinished tower frame
     for (const [cx, cz] of [[-6, -5], [6, -5], [-6, 5], [6, 5]]) {
       mesh(new THREE.BoxGeometry(0.6, 22, 0.6), steel, b.cx + cx - 4, 11, b.cz + cz);
