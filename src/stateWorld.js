@@ -28,7 +28,12 @@ export function createStateWorld(ctx) {
   const pois = [];
   const props = [];
   const lanes = [];
-  const minimapLayers = { roads: [], buildings: [], areas: [], water: [] };
+  const minimapLayers = { roads: [], buildings: [], areas: [
+    { x0: -1050, x1: -400, z0: -900, z1: -550, color: "#6e3f28" }, // Red Dust Badlands
+    { x0: 400, x1: 1050, z0: -1000, z1: -400, color: "#59636b" }, // Port Calypso Concrete
+  ], water: [
+    { x0: 800, x1: 1100, z0: -1100, z1: -800 } // Port Bay
+  ] };
 
   function addOccluder(x, z, w, d, h = 18) {
     occluders.push({
@@ -110,7 +115,6 @@ export function createStateWorld(ctx) {
       addLitSpot({ x, y: 5.5, z: -588, warm: 0xffe0b0, power: 110, range: 28, pole: true });
     }
 
-    C.landmark("Port Calypso Lighthouse", () => {
       // Coastal Lighthouse Landmark
       const lightHouseMat = new THREE.MeshStandardMaterial({ color: 0xdedac9, roughness: 0.4 });
       lightHouseMat.userData.gtbRealized = true;
@@ -129,7 +133,6 @@ export function createStateWorld(ctx) {
       if (addBlocker) addBlocker(1020, -980, 4.5);
       addOccluder(1020, -980, 9, 9, 30);
       pois.push({ x: 1020, z: -980, r: 16, label: "Calypso Lighthouse" });
-    });
 
     lanes.push(
       { name: "port-hwy-east", points: [[400, -596], [1050, -596]], cruise: [14, 22] },
@@ -207,7 +210,6 @@ export function createStateWorld(ctx) {
         if (addBlocker) addBlocker(tx, tz, 1.4);
       }
 
-    C.landmark("Summit Radio Tower", () => {
       const towerMat = new THREE.MeshStandardMaterial({ color: 0xd6402a, metalness: 0.8, roughness: 0.3 });
       towerMat.userData.gtbRealized = true;
 
@@ -220,7 +222,6 @@ export function createStateWorld(ctx) {
       if (addBlocker) addBlocker(-1020, -950, 4.0);
       addOccluder(-1020, -950, 8, 8, 45);
       pois.push({ x: -1020, z: -950, r: 15, label: "Cypress Summit Radio" });
-    });
 
     lanes.push(
       { name: "red-dust-west", points: [[-400, -600], [-1050, -850]], cruise: [10, 16] },

@@ -199,7 +199,6 @@ export function createTusouxroeNorth(ctx) {
       }
 
     // ================= STAGE 6: LANDMARK ANCHOR =================
-    C.landmark("Cloudline Tower", () => {
       // Cloudline Tower closes the northern view up US-167!
       placeCityBuilding(ctx, "tower", ROAD_X, -400, 0);
       addOccluder(ROAD_X, -400, 20, 20, 36);
@@ -208,7 +207,6 @@ export function createTusouxroeNorth(ctx) {
       // Landmark plaza surround & decorative fences
       makeDecorativeFence(ctx, ROAD_X - 18, -388, ROAD_X + 18, -388);
       placeOfficeClutter(ctx, ROAD_X, -384, 0);
-    });
   }
 
   return {
@@ -247,9 +245,10 @@ export function createTusouxroeNorth(ctx) {
         { x0: ROAD_X - 10, x1: ROAD_X + 10, z0: -410, z1: -390 }, // Cloudline Tower
       ],
       areas: [
+        ...C.minimap.areas,
         { x0: CORE.x0, x1: CORE.x1, z0: CORE.z0, z1: CORE.z1, color: "#2d332d" },
       ],
-      water: [],
+      water: C.minimap.water,
     },
     buildSet,
   };
