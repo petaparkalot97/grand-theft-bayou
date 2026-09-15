@@ -1341,6 +1341,7 @@ makeHoodrat({ sex: "m"|"f", crew: "red"|"blue"|{cloth, chain, shoe, hat}, seed, 
 - `e.rivalTarget`: NPC record target when engaged in cross-faction duel (cleared when rival dies, stays out of range for ~6 s, or the NPC is released).
 - `env.killEnemy(e)` (optional, on the env passed to `npcs.update`): called when a rival blow kills `e`. `main.js` passes `killEnemy(e, { turf: true })`: death animation, noise and `loot.dropFor`, but **no** `kills` tally, kill line or `checkHeatUp()`.
 - `npcs.provoke(e)` on an NPC in a turf fight drops its rival: it turns on the player.
+- `e.leash = { x, z, r }` (Claude, 2026-09-15): a mission pen. Every `npcs.update` holds the NPC inside the circle, even while frozen by distance. In `act()`, whatever state it's in (fleeing, charging, knocked back), it slides along the edge, and a hog's charge ends there. `main.js`'s 160 m population cull skips penned NPCs. Hog Wild (`prologue.js`) pens its herd at `CRASH` with r 32 and clears the pen in `finish()`. Set `e.leash = null` to release.
 
 ### `src/main.js`
 - `spawnEnemy(type, x, z)` now returns the record. `__game.spawnEnemy` and `__game.factionWar` are exposed for QA.

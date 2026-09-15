@@ -1308,6 +1308,7 @@ before `COMPLETE`.
 - **The alternate campaign room** (`src/alternateCampaign.js`, "INT. THE ROOM") is built at (92, -104), on the South Tusouxroe street right in front of Keseme’s (the Nadia) house. It is hidden except while its own opening plays; it used to stand there permanently as a black block. If it ever needs to be visible in play, move it off that street first.
 - **NaN pixels:** a zero-length normal lights as NaN, and bloom spreads NaN into a black, flickering blur. `realize()` repairs bad normals on every model (`sanitizeNormals`), and `NanGuardShader` runs before bloom so a bad pixel stays one black pixel. Headless SwiftShader does not reproduce the blur; check it on a real GPU (TASK-010).
 - **Palette-atlas models** (Designersoup cars): nearest filtering, no mipmaps, `realize(…, { noDerive: true, keepPixelFilter: true })`, or the swatches bleed and glitter.
+- **Mission targets stay in their area:** give each one `e.leash = { x, z, r }` (npc.js holds it inside; the population cull skips it) and clear it when the mission ends. Hog Wild's herd is penned 32 m around the crash site; `tools/qa/prologue.mjs` checks it. Headless tests: Esc outside a cutscene opens the pause menu, which freezes the simulation.
 
 ---
 

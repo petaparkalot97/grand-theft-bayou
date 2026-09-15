@@ -308,6 +308,7 @@ export function createPrologue(ctx) {
   }
 
   // ---------------------------------------------------------------- the herd
+  const HERD_PEN_R = 32;       // m around CRASH; the herd pours in from 14–28 m out
   function spawnHerd() {
     // pour out of the treeline to the north and east, loosely, not in a ring
     const spots = [];
@@ -323,6 +324,8 @@ export function createPrologue(ctx) {
       e.T = { ...e.T, dmg: 9, aggro: 30 };       // a lot of them, so they hit softer
       e.mood = "territorial";
       e.home = { x: CRASH.x, z: CRASH.z, r: 14 };
+      // penned at the crash site for the mission: they can't flee or chase anyone off it
+      e.leash = { x: CRASH.x, z: CRASH.z, r: HERD_PEN_R };
       // where it ends up milling around the car during the cutscene
       const a = Math.random() * Math.PI * 2, r = 4 + Math.random() * 8;
       e.mill = { x: CRASH.x + Math.cos(a) * r, z: CRASH.z + Math.sin(a) * r, pace: 5 + Math.random() * 4 };
@@ -692,6 +695,7 @@ export function createPrologue(ctx) {
 
   function finish(skipped = false) {
     phase = "done";
+    for (const e of herd) e.leash = null;    // a skipped mission's leftover hogs roam free again
     // the story carries on into Act One; Free roam (skipped) does not
     if (!skipped && ctx.onFinished) queueMicrotask(ctx.onFinished);
     if (bravado) bravado.locked = false;

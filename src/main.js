@@ -1900,9 +1900,10 @@ function updateEnemyPopulation(dt) {
   if (!spot) return;
   spawnEnemy(spot.kind, spot.x, spot.z, spot);
 
-  // cull enemies that wandered absurdly far, then compact the list
+  // cull enemies that wandered absurdly far, then compact the list. Mission-penned
+  // NPCs (e.leash) stay put: culling Hog Wild's herd would count as clearing it.
   for (const e of enemies) {
-    if (!e.dead && Math.hypot(e.spr.position.x - playerPos.x, e.spr.position.z - playerPos.z) > 160) {
+    if (!e.dead && !e.leash && Math.hypot(e.spr.position.x - playerPos.x, e.spr.position.z - playerPos.z) > 160) {
       npcs.release(e);
       scene.remove(e.spr); e.dead = "gone";
     }

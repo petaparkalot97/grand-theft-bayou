@@ -387,6 +387,19 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
       p.x = THREE.MathUtils.clamp(p.x, B.minX + 3, B.maxX - 3);
       p.z = THREE.MathUtils.clamp(p.z, B.minZ + 3, B.maxZ - 3);
     }
+
+    if (e.leash) pen(e);
+  }
+
+  // a mission pen (e.leash = { x, z, r }, e.g. Hog Wild's herd): whatever the state,
+  // fleeing, charging or knocked back by a shot, it slides along the edge, never out
+  function pen(e) {
+    const p = e.spr.position, L = e.leash;
+    const lx = p.x - L.x, lz = p.z - L.z, ld = Math.hypot(lx, lz);
+    if (ld <= L.r) return;
+    p.x = L.x + (lx / ld) * L.r;
+    p.z = L.z + (lz / ld) * L.r;
+    e.charge = 0;                          // a charge ends at the edge instead of ramming it
   }
 
   return {
@@ -432,6 +445,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
       const p = e.spr.position;
       const dist = Math.hypot(env.player.x - p.x, env.player.z - p.z);
       e.lod = dist < NEAR ? 0 : dist < FAR ? 1 : 2;
+      if (e.leash) pen(e);                 // held even while frozen far from the player
       // far away and not after you: frozen until you come back
       if (e.lod === 2 && e.state !== "hostile") return false;
 
