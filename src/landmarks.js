@@ -100,6 +100,8 @@ export function makeDecorativeFence(ctx, x1, z1, x2, z2, opts = {}) {
   }
 
   scene.add(g);
+  if (ctx && ctx.props) ctx.props.push(g);
+  if (ctx.props) ctx.props.push(g);
   return g;
 }
 
@@ -170,6 +172,8 @@ export function placeOfficeClutter(ctx, x, z, ry = 0) {
   g.add(foliage);
 
   scene.add(g);
+  if (ctx && ctx.props) ctx.props.push(g);
+  if (ctx.props) ctx.props.push(g);
   if (addBlocker) addBlocker(x, z, 1.5);
   return g;
 }
@@ -258,6 +262,8 @@ export function placeCityBuilding(ctx, typeKey, x, z, ry = 0) {
   }
 
   scene.add(g);
+  if (ctx && ctx.props) ctx.props.push(g);
+  if (ctx.props) ctx.props.push(g);
 
   if (addBlocker) {
     addBlocker(x, z, Math.max(spec.w, spec.d) / 2);
@@ -334,6 +340,8 @@ export function placeStreetClutter(ctx, x, z, ry = 0) {
   }
 
   scene.add(g);
+  if (ctx && ctx.props) ctx.props.push(g);
+  if (ctx.props) ctx.props.push(g);
   if (addBlocker) addBlocker(x, z, 2.2);
   return g;
 }
@@ -378,6 +386,8 @@ export function placeMaritimeCargo(ctx, x, z, ry = 0) {
   }
 
   scene.add(g);
+  if (ctx && ctx.props) ctx.props.push(g);
+  if (ctx.props) ctx.props.push(g);
   if (addBlocker) addBlocker(x, z, 5.0);
   return g;
 }
@@ -427,6 +437,8 @@ export function placeOilDerrick(ctx, x, z, ry = 0) {
   g.add(wheel);
 
   scene.add(g);
+  if (ctx && ctx.props) ctx.props.push(g);
+  if (ctx.props) ctx.props.push(g);
   if (addBlocker) addBlocker(x, z, 5.5);
   if (addLitSpot) addLitSpot({ x, y: 8.5, z, warm: 0xffaa44, power: 120, range: 30 });
   return g;
@@ -464,6 +476,8 @@ export function placeBillboard(ctx, x, z, ry = 0, title = "BAYOU MOTEL") {
   g.add(trim);
 
   scene.add(g);
+  if (ctx && ctx.props) ctx.props.push(g);
+  if (ctx.props) ctx.props.push(g);
   if (addBlocker) addBlocker(x, z, 2.0);
   if (addLitSpot) addLitSpot({ x, y: 13.0, z: z + 0.8, warm: 0xffffff, power: 90, range: 22 });
   return g;
@@ -516,6 +530,8 @@ export function placeBayouStiltHut(ctx, x, z, ry = 0) {
   g.add(lantern);
 
   scene.add(g);
+  if (ctx && ctx.props) ctx.props.push(g);
+  if (ctx.props) ctx.props.push(g);
   if (addBlocker) addBlocker(x, z, 4.0);
   if (addLitSpot) addLitSpot({ x, y: 4.8, z: z + 5.2, warm: 0xffaa44, power: 85, range: 20 });
   return g;

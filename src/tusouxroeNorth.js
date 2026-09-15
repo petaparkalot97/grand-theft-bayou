@@ -42,6 +42,7 @@ export function createTusouxroeNorth(ctx) {
   const occluders = [];
   const pois = [];
   const props = [];
+  ctx.props = props;
 
   function addOccluder(x, z, w, d, h = 18) {
     occluders.push({
@@ -68,6 +69,7 @@ export function createTusouxroeNorth(ctx) {
     hwyMesh.position.set(ROAD_X, 0.02, -278);
     hwyMesh.receiveShadow = true;
     scene.add(hwyMesh);
+    props.push(hwyMesh);
 
     // Tusouxroe Blvd
     const blvdMesh = new THREE.Mesh(new THREE.PlaneGeometry(380, 9), roadMat);

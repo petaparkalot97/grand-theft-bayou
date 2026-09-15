@@ -27,6 +27,7 @@ export function createStateWorld(ctx) {
   const occluders = [];
   const pois = [];
   const props = [];
+  ctx.props = props;
   const lanes = [];
   const minimapLayers = { roads: [], buildings: [], areas: [
     { x0: -1050, x1: -400, z0: -900, z1: -550, color: "#6e3f28" }, // Red Dust Badlands
