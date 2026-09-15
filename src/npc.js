@@ -21,14 +21,10 @@ import { vehicleRight } from "./vehicles.js";
 
 const rand = (lo, hi) => lo + (hi - lo) * Math.random();
 const NEAR = 55, FAR = 110;
-<<<<<<< HEAD
 export const MAX_HOSTILE = 7;      // never let the whole map pile onto the player
-=======
-const MAX_HOSTILE = 7;             // never let the whole map pile onto the player
 // Market Row keeps Saturday hours: bustling trade 09:00–18:00, but only from
 // day 2 on — the game opens at 18:30 on day 1, so the first evening is quiet.
 const MARKET_OPEN = 9, MARKET_CLOSE = 18;
->>>>>>> 917ab851faf8182a14fb8b47e009793eda708a6e
 
 // Nobody attacks unprovoked. Temperament only matters once the player hurts an
 // NPC: "brave" people and "territorial" hogs defend themselves, the rest run.
@@ -121,6 +117,14 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
 
   function release(e) {
     if (e.state === "hostile") hostiles--;
+    if (e.solicitVeh) {
+      if (e.solicitVeh.seats && e.solicitVeh.seats[1] && e.solicitVeh.seats[1].occupant === e) {
+        e.solicitVeh.seats[1].occupant = null;
+      }
+      if (e.solicitVeh.obj) e.solicitVeh.obj.rotation.z = 0;
+      e.solicitVeh = null;
+    }
+    if (e.spr) e.spr.visible = true;
     e.rivalTarget = null;
     e.state = "dead";
   }
@@ -385,23 +389,6 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
     }
   }
 
-<<<<<<< HEAD
-=======
-  function release(e) {
-    if (e.state === "hostile") hostiles--;
-    if (e.solicitVeh) {
-      if (e.solicitVeh.seats && e.solicitVeh.seats[1] && e.solicitVeh.seats[1].occupant === e) {
-        e.solicitVeh.seats[1].occupant = null;
-      }
-      if (e.solicitVeh.obj) e.solicitVeh.obj.rotation.z = 0;
-      e.solicitVeh = null;
-    }
-    if (e.spr) e.spr.visible = true;
-    e.rivalTarget = null;
-    e.state = "dead";
-  }
-
->>>>>>> 917ab851faf8182a14fb8b47e009793eda708a6e
   return {
     get hostileCount() { return hostiles; },
     becomeHostile,

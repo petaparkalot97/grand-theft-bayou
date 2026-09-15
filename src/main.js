@@ -37,11 +37,8 @@ import { createEastBank, EAST_MAX_X } from "./eastbank.js";
 import { createNolantis } from "./nolantis.js";
 import { ROUTE_EAST, CRASH } from "./prologue.js";
 import { createSpawnZones } from "./spawnzones.js";
-<<<<<<< HEAD
 import { createFactionWar } from "./factions.js";
-=======
 import { createTusouxroeNorth, NORTH_MIN_Z } from "./tusouxroeNorth.js";
->>>>>>> 917ab851faf8182a14fb8b47e009793eda708a6e
 import { createWestParish, onParishHighway, PARISH_MIN_X } from "./westparish.js";
 import { createPlayerCharacter, getPlayerCharacter, PLAYER_CHARACTERS } from "./playerCharacters.js";
 import { createAlternateCampaign } from "./alternateCampaign.js";
@@ -1291,21 +1288,18 @@ const NPC_POIS = [
 for (let z = MAP.maxZ - 16; z > MAP.minZ + 16; z -= 24) {
   NPC_POIS.push({ x: ROAD_X + (z % 48 ? 9 : -9), z, r: 4 });
 }
-<<<<<<< HEAD
-const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, bounds: MAP });
-// killEnemy: a turf fight's loser (npc.js hitRival) drops loot but isn't the player's kill
-const npcEnv = { player: playerPos, driving: false, others: enemies, killEnemy: (e) => killEnemy(e, { turf: true }) };
-=======
 const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, bounds: MAP, worldTime });
 const npcEnv = {
   player: playerPos,
+  driving: false,
   get veh() { return state.veh; },
   state,
   syncHUD,
   flashObjective,
   others: enemies,
+  // a turf fight's loser (npc.js hitRival) drops loot but isn't the player's kill
+  killEnemy: (e) => killEnemy(e, { turf: true }),
 };
->>>>>>> 917ab851faf8182a14fb8b47e009793eda708a6e
 // What spawns where comes from the world context (spawnzones.js): no hogs in
 // town or on the highway, an occasional one in the woods.
 const spawnZones = createSpawnZones({

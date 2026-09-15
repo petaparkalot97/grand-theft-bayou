@@ -1185,18 +1185,12 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/fx.js` | — | TASK-012 | Available |
 | `src/traffic.js` | Freebuff | TASK-039 (REVIEW) — TASK-012/014 changes go through review | Locked |
 | `tools/characters.html` | — | TASK-018 (REVIEW) | Available |
-<<<<<<< HEAD
+| `src/audio.js`, `src/weapons_3d.js` | Freebuff | TASK-040 | Locked |
 | `src/factions.js` (new) | — | TASK-035 (REVIEW, integrated) | Available |
 | `src/spawnzones.js` | — | TASK-035 (REVIEW, integrated) | Available |
 | `src/npc.js` | — | TASK-035 (REVIEW, integrated) | Available |
-=======
-| `src/audio.js`, `src/weapons_3d.js` | Freebuff | TASK-040 | Locked |
-| `src/factions.js` (new) | — | TASK-035 (REVIEW) | Available |
-| `src/spawnzones.js` | — | TASK-035 (REVIEW) | Available |
-| `src/npc.js` | — | TASK-035 (REVIEW) | Available |
 | `src/police.js` (new) | — | TASK-020 (REVIEW) | Available |
 | `src/characters.js` | — | TASK-020 (REVIEW) | Available |
->>>>>>> 917ab851faf8182a14fb8b47e009793eda708a6e
 | `src/weapons.js`, `src/loot.js` | — | TASK-036 | Available |
 | `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Antigravity | TASK-038 | Locked |
 | `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
@@ -1229,15 +1223,11 @@ before `COMPLETE`.
   `src/main.js` (auto-pairer over every region's lanes, the four sign clones
   zeroed). Tested via `tools/qa/traffic_test.mjs` (11/11).
 - `TASK-020` — Police: escapable Sheriff, cruiser visuals & on-foot 3D deputies (`src/police.js`, `src/characters.js`). Tested via `tools/qa/police_test.mjs` (11/11 tests pass).
-- `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Tested via `tools/qa/factions_test.mjs` (14/14 tests pass).
+- `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Reviewed, fixed and wired into `main.js` by Claude. `factions_test.mjs` 14/14, in-game `tools/qa/factions.mjs` 12/12. Needs a real-browser clip of a border fight, and `border_market` is unreachable (see the task).
 - `TASK-018` — Character viewer (`tools/characters.html`): cast presets + full
   option controls; statically verified (module syntax + a value audit of every
   preset and palette against the game sources). Needs one real-browser load
   (TASK-010) before `COMPLETE`.
-<<<<<<< HEAD
-- `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Reviewed, fixed and wired into `main.js` by Claude. `factions_test.mjs` 14/14, in-game `tools/qa/factions.mjs` 12/12. Needs a real-browser clip of a border fight, and `border_market` is unreachable (see the task).
-=======
->>>>>>> 917ab851faf8182a14fb8b47e009793eda708a6e
 - `TASK-001` — Atmosphere and graphics pass: height fog / mist, light shafts,
   headlights, wet roads + mirror, speed blur (`src/fx.js`, `src/graphics.js`).
   Needs real-GPU tuning (TASK-028).
