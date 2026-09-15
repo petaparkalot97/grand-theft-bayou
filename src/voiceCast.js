@@ -42,6 +42,12 @@ export const VOICE_CAST = {
   AMARA: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Dr. Amara Veaux" },
   EMIKO: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Emiko" },
   SOLANGE: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Solange" },
+
+  // Act One part C (welcomeback.js / nolantis.js)
+  BELLEFONTAINE: { referenceId: "1f7da7179c324f3e8b3603094cd12cbd", label: "Governor Gus Bellefontaine" },
+  GOVERNOR: { referenceId: "1f7da7179c324f3e8b3603094cd12cbd", label: "Governor Gus Bellefontaine" },
+  EXECUTIVE: { referenceId: "54e995c017564b558940e09ba3572d76", label: "Corporate executive" },
+  VOICE: { referenceId: "504f3f5d6567435aad64c130fb448c2f", label: "Unknown caller (distorted)" },
 };
 
 export const STREET_NPC_VOICE_IDS = [

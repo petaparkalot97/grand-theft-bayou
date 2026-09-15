@@ -1343,6 +1343,16 @@ makeHoodrat({ sex: "m"|"f", crew: "red"|"blue"|{cloth, chain, shoe, hat}, seed, 
 - `npcs.provoke(e)` on an NPC in a turf fight drops its rival: it turns on the player.
 - `e.leash = { x, z, r }` (Claude, 2026-09-15): a mission pen. Every `npcs.update` holds the NPC inside the circle, even while frozen by distance. In `act()`, whatever state it's in (fleeing, charging, knocked back), it slides along the edge, and a hog's charge ends there. `main.js`'s 160 m population cull skips penned NPCs. Hog Wild (`prologue.js`) pens its herd at `CRASH` with r 32 and clears the pen in `finish()`. Set `e.leash = null` to release.
 
+### `src/welcomeback.js` — Act One part C, "Welcome Back to Dixie" (Claude, 2026-09-15)
+- Source: the human's script, everything after THE TRUTH to "ACT ONE BEGINS". The script text was recovered from an earlier session transcript (`~/.claude/projects/…/aae09ba6….jsonl`, the user's first message on 2026-09-13), not from a file in the repo.
+- `createWelcomeBack({ scene, camera, cine, state, makeHoodrat, makeCastMember, poolLight, getPlayer })` → `{ buildSet(), props, cast, SURFACE, update(dt), officeScene(c), montageScene(c, { keseme }), surfaceScene(c, { keseme, crew: [solange, mally, bubba] }) }`.
+  - The scene functions take the running cine api `c`; call them from inside a `cine.scene`, never wrap them in another scene.
+  - Sealed sets under Chatboro at y = −40 (like Act One's kitchen): the Sheriff's Office at (30, 118) with Mercer, Governor Bellefontaine, a casino magnate, an executive, live CCTV footage on the wall; the montage's counting room at (30, 148), dressed per beat (dealers / police evidence / casino count room / church building fund).
+  - Montage dressing, hidden until the montage plays: payday-loan sign + eviction at the trailer park, a candlelit memorial in South Tusouxroe (x ≈ 79, z ≈ −101), a protest on the French District street (x −42…−37, z 244), Bellefontaine's fundraiser banner at the casino riverboat (48, 379), a prison bus on US-167, containers and a freight train east of the refinery (x ≈ 142–155, z 130–195).
+  - Police helicopters circle downtown (74, 290) during the surface beat. Lights come from the pool, which follows the camera, so surface shots are lit while the player stands in Nolantis.
+- `src/main.js`: created just before Nolantis and passed as `nolantis` ctx `partC`; `welcomeBack.update(dt)` runs next to `nolantis.update(dt)`; its props are kept out of `batchStatic`; `__game.welcomeBack` for QA.
+- `src/nolantis.js` with `ctx.partC`: after The Truth, phases `office` (CUT TO the Sheriff's Office) → `platform` (gameplay: walk to the observation platform, local (−12, −70)) → `overlook` (platform scene, montage + V.O., the phone call, MISSION UNLOCKED card) → `done` (gameplay: the elevator) → `returning` (final cinematic up the shaft, then `surfaceScene` at `returnTo`) → `left`. Without `partC` it keeps the old direct return. QA step `debug("overlook")`. `voiceCast.js` has BELLEFONTAINE / GOVERNOR / EXECUTIVE / VOICE for `npm run voiceover`.
+
 ### `src/main.js`
 - `spawnEnemy(type, x, z)` now returns the record. `__game.spawnEnemy` and `__game.factionWar` are exposed for QA.
 

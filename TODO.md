@@ -1116,10 +1116,24 @@ You see them, and you feel them when you drive over one.
         "We died" angle, the canopy blocking the tour start, and an upside-down
         archive map.
     - **Blue Light Special regression** passes and ends in the Nolantis tour.
-  - **Part C:** Governor Bellefontaine and Mercer at the Chatboro Sheriff's
-    Office, the observation platform with Solange, the montage + V.O., the
+  - **Part C, "Welcome Back to Dixie"** (`src/welcomeback.js` new; `src/nolantis.js`, `src/main.js`, `src/voiceCast.js`, `tools/qa/nolantis.mjs`): **REVIEW (Claude, 2026-09-15).**
+    Implemented and wired (interface in AGENT_LOG → Interface contracts). The script
+    text came from an earlier session transcript; every line is the human's.
+    - `tools/qa/nolantis.mjs` walks the whole chapter headless: The Truth → office →
+      platform → montage → V.O. → the call → MISSION UNLOCKED → elevator → surface →
+      ACT ONE BEGINS → free roam at the storm drain. All Part C checks pass, no new
+      console errors (only the known gitignored city-GLB / voice-manifest 404s).
+    - The test's old "outside MAP" walking check was stale (the state-wide expansion
+      widened MAP past Nolantis) and its Esc presses could open the pause menu; both fixed.
+    - Screenshots checked for every new scene; montage dressing moved where it clipped
+      buildings (Chatboro sign and eviction now at the trailer park's open south edge).
+    - Pending: a real-browser play-through (TASK-010), and `npm run voiceover` for the
+      new speakers (BELLEFONTAINE, EXECUTIVE, VOICE).
+    From the human's script, after The Truth to the end of the prologue script:
+    Governor Bellefontaine and Mercer at the Chatboro Sheriff's Office, the
+    observation platform with Solange, the montage + Keseme's V.O., the
     threatening phone call, "MISSION UNLOCKED: WELCOME BACK TO DIXIE", and the
-    final elevator cinematic.
+    final elevator cinematic ("—we become extremely inconvenient", ACT ONE BEGINS).
 - [ ] `TASK-017` (original scope) — **Act One's later beats**: the threatening phone call ("Your mother's house is very pretty"), Governor Bellefontaine's meeting with Mercer, the flood tunnel and the Nirbayou Nolantis descent. Needs TASK-009 and TASK-016.
 - [ ] `TASK-019` — **Weakest surfaces**: the stylised Popeyes, trailers and water towers are plain boxes. Needs their builders moved out of `main.js` into `src/landmarks.js` first (Claude). Suggested: Antigravity.
 - [ ] `TASK-021` — **Minimap / waypoint arrow** (new `src/minimap.js`; Claude hooks it up). Story objectives already have world positions. Suggested: Codex.

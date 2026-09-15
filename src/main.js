@@ -35,6 +35,7 @@ import { createWorldTime } from "./worldtime.js";
 import { createWeather } from "./weather.js";
 import { createEastBank, EAST_MAX_X } from "./eastbank.js";
 import { createNolantis } from "./nolantis.js";
+import { createWelcomeBack } from "./welcomeback.js";
 import { ROUTE_EAST, CRASH } from "./prologue.js";
 import { createSpawnZones } from "./spawnzones.js";
 import { createFactionWar } from "./factions.js";
@@ -1003,6 +1004,7 @@ let eastBank = null;           // Lafourchette, the east bank (eastbank.js, laid
 let tusouxroeNorth = null;     // North Tusouxroe, composed district
 let stateWorld = null;         // State-Wide Expansion (stateWorld.js)
 let nolantis = null;           // Act One continued underground: Nirbayou Nolantis (nolantis.js)          // a story chapter can catch WASTED / BUSTED and respawn instead
+let welcomeBack = null;        // Act One part C: the Sheriff's Office, the montage, the surface (welcomeback.js)
 let alternate = null;
 const buildingOccluders = [];  // tall buildings the camera must stay in front of
 let mainStreetWest = -73;      // Main Street runs from US-167 west to the last shopfront
@@ -1783,10 +1785,19 @@ async function buildLevel() {
   NPC_POIS.push(...stateWorld.pois);
   camCtl.setOccluders([...orlea.occluders, ...buildingOccluders, ...tusouxroeNorth.occluders, ...stateWorld.occluders]);
 
+  // ---- Act One part C, "Welcome Back to Dixie": sets under Chatboro, montage dressing, helicopters ----
+  welcomeBack = createWelcomeBack({
+    scene, camera, cine, state, makeHoodrat, poolLight,
+    makeCastMember: (who) => makeCastMember(makeHoodrat, who),
+    getPlayer: () => player,
+  });
+  welcomeBack.buildSet();
+
   // ---- Nirbayou Nolantis: a sealed cavern set well west of the map ----
   nolantis = createNolantis({
     scene, camera, cine, state, playerPos, MAP, makeHoodrat, addBlocker, poolLight, surface, flashObjective,
     getPlayer: () => player,
+    partC: welcomeBack,                                       // after The Truth, the rest of the script
     makeCastMember: (who) => makeCastMember(makeHoodrat, who),
     setObjective: setStoryObjective,
     setCameraYaw: (yaw) => camCtl.addYaw(yaw - camCtl.yaw),
@@ -2655,6 +2666,7 @@ function tick() {
     if (eastBank) eastBank.update(dt, playerPos);
     hijacker.update(dt);
     if (nolantis) nolantis.update(dt);
+    if (welcomeBack) welcomeBack.update(dt);
     if (alternate) alternate.update(dt);
     updateRemotePlayers(dt);
     if (multiplayerMode && multiplayer?.connected && state.running) {
@@ -3258,6 +3270,7 @@ async function boot() {
     ...(westParish ? westParish.props : []),
     ...(eastBank ? eastBank.props : []),
     ...(nolantis ? nolantis.props : []),
+    ...(welcomeBack ? welcomeBack.props : []),
     ...(alternate ? alternate.props : []),
     ...(tusouxroeNorth ? tusouxroeNorth.props : []),
     ...(stateWorld ? stateWorld.props : []),
@@ -3280,7 +3293,7 @@ async function boot() {
       player.position.set(x, 0, z);
       player.visible = true;
       if (player._last) player._last.copy(player.position);
-    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug, minimap, hijacker, arsenal, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, get nolantis() { return nolantis; },
+    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug, minimap, hijacker, arsenal, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
     get playerMoveHeading() { return playerMoveHeading; },
     get soundtrack() { return soundtrackReady; } };
   // the radar's base map, from the level as built
