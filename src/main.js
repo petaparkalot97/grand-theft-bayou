@@ -3231,18 +3231,8 @@ async function boot() {
       water.push(...m.water);
       buildings.push(...m.buildings);
     }
-    if (tusouxroeNorth) {
-      const m = tusouxroeNorth.minimap;
-      roads.push(...m.roads);
-      areas.push(...m.areas);
-      buildings.push(...m.buildings);
-    }
-    if (stateWorld) {
-      const m = stateWorld.minimap;
-      roads.push(...m.roads);
-      areas.push(...m.areas);
-      buildings.push(...m.buildings);
-    }
+    if (tusouxroeNorth) { const m = tusouxroeNorth.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water||[])); }
+    if (stateWorld) { const m = stateWorld.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water||[])); }
     minimap.build({ roads, areas, water, buildings });
   }
   settleCans();                  // every blocker exists now: no can may sit inside one

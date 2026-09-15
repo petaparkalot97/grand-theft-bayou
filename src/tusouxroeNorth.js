@@ -41,6 +41,7 @@ export function createTusouxroeNorth(ctx) {
 
   const occluders = [];
   const pois = [];
+  const props = [];
 
   function addOccluder(x, z, w, d, h = 18) {
     occluders.push({
@@ -213,6 +214,7 @@ export function createTusouxroeNorth(ctx) {
     bounds: BOUNDS,
     occluders,
     pois,
+    props,
     lanes: [
       { name: "northbound-ext", points: [[ROAD_X + 2.4, -136], [ROAD_X + 2.4, -400]], cruise: [14, 20] },
       { name: "southbound-ext", points: [[ROAD_X - 2.4, -400], [ROAD_X - 2.4, -136]], cruise: [14, 20] },
