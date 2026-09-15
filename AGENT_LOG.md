@@ -719,6 +719,22 @@ road plane.
 
 # ⚠️ WARNINGS / FAILED APPROACHES
 
+## 2026-09-15 — Claude
+**Type:** WARNING · **Task:** deploy (merge of 917ab85 into the TASK-035 integration)
+
+### Finding
+- Merge `f26dd26` / "update 9" **committed unresolved conflict markers** into `src/main.js`, `src/npc.js` and `TODO.md`. Pages served `Uncaught SyntaxError: Unexpected token '<<'` at `src/main.js:40`, and the live game didn't boot.
+- `d23dc01` ("remove git conflict markers from main.js") only added `DISCORD BOT/` files; the markers were still there.
+- `assets/city/` and `assets/audio/voice/` are **gitignored and not on disk**, but "update 9" loads them: the 10 building GLBs in `landmarks.js` and the voice manifest in `cinema.js`. They 404 on every load, locally and on Pages. Both paths degrade safely (`loadGLB` resolves `null`, the manifest falls back to `{}`), so this is noise, not a crash. Commit the assets, or stop loading them, to clean it up.
+
+### Action
+- `5f2ea2a` resolved all 5 hunks keeping both sides, and was pushed. Live check: `main.js` / `npc.js` on Pages have 0 markers.
+  - One `release()` in `npc.js`, with upstream's solicit-vehicle cleanup plus the `rivalTarget` reset. Keeping both hunks' copies would be a duplicate declaration.
+  - `npcEnv` has upstream's `veh` / `state` / `syncHUD` / `flashObjective`, plus `killEnemy` (turf) and `driving`.
+- Verified: `node --check` on every `src/*.js`, a repo-wide marker grep, every relative import resolves, `factions_test.mjs` passes (including the Market Row tests), and the merged game boots headless.
+- **Before pushing a merge:** `git grep -nE '^(<<<<<<<|>>>>>>>) '` and `node --check src/main.js`. Either one would have caught this.
+- `tools/qa/factions.mjs`: the provoke test spawned where test 3's kill had just made noise, so the fresh pair fled instead of fighting. It now waits 4.5 s and uses another stretch of the strip border.
+
 ## 2026-09-13 — Claude
 **Type:** WARNING · **Task:** TASK-034 follow-up (character select, controls, Keseme)
 
