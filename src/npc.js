@@ -20,7 +20,7 @@ import * as THREE from "three";
 
 const rand = (lo, hi) => lo + (hi - lo) * Math.random();
 const NEAR = 55, FAR = 110;
-const MAX_HOSTILE = 7;             // never let the whole map pile onto the player
+export const MAX_HOSTILE = 7;      // never let the whole map pile onto the player
 
 // Nobody attacks unprovoked. Temperament only matters once the player hurts an
 // NPC: "brave" people and "territorial" hogs defend themselves, the rest run.
@@ -95,22 +95,25 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
     setState(e, "flee", rand(4, 7));
   }
 
-  function hitRival(attacker, victim, dmg, env) {
-    if (!victim || victim.dead || victim.state === "dead") return;
-    victim.hp = (victim.hp || 5) - dmg;
-    events.push({ x: victim.spr.position.x, z: victim.spr.position.z, r: 15, t: now });
-    if (victim.hp <= 0) {
-      if (env && typeof env.killEnemy === "function") {
-        env.killEnemy(victim);
-      } else {
-        release(victim);
-        victim.dead = true;
-        victim.state = "dead";
-        if (victim.spr && typeof victim.spr.play === "function") {
-          victim.spr.play("death", { fps: 9, loop: false, force: true });
-        }
-      }
-    }
+  function noise(x, z, r = 22) {
+    events.push({ x, z, r, t: now });
+    if (events.length > 32) events.shift();
+  }
+
+  function release(e) {
+    if (e.state === "hostile") hostiles--;
+    e.rivalTarget = null;
+    e.state = "dead";
+  }
+
+  // a turf fight blow (factions.js); a kill goes through env.killEnemy for the loot
+  function hitRival(victim, dmg, env) {
+    if (victim.dead || victim.state === "dead") return;
+    victim.hp -= dmg;
+    noise(victim.spr.position.x, victim.spr.position.z, 15);
+    if (victim.hp > 0) return;
+    if (env.killEnemy) env.killEnemy(victim);
+    else { release(victim); victim.dead = true; }
   }
 
   function decide(e, dist, env) {
@@ -118,6 +121,8 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
     const interval = e.lod ? 1 : 0.3;
 
     if (e.state === "hostile") {
+      // hurt by the player in the middle of a turf fight: the player is now the problem
+      if (e.provoked) { e.provoked = false; e.rivalTarget = null; e.calm = 0; }
       if (e.rivalTarget) {
         if (e.rivalTarget.dead || e.rivalTarget.state === "dead") {
           e.rivalTarget = null;
@@ -207,7 +212,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
         }
         if (targetDist < T.melee && e.atkCd === 0) {
           e.atkCd = T.atkGap;
-          if (hasRival) hitRival(e, e.rivalTarget, T.dmg, env);
+          if (hasRival) hitRival(e.rivalTarget, T.dmg, env);
           else hitPlayer(T.dmg);
           e.charge = 0;
         }
@@ -216,7 +221,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
         anim = "attack"; fps = 10;
         if (e.atkCd === 0) {
           e.atkCd = T.atkGap;
-          if (hasRival) hitRival(e, e.rivalTarget, T.dmg, env);
+          if (hasRival) hitRival(e.rivalTarget, T.dmg, env);
           else hitPlayer(T.dmg);
         }
         e.spr.setFlip(dx);
@@ -266,15 +271,11 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
     }
   }
 
-  function release(e) {
-    if (e.state === "hostile") hostiles--;
-    e.rivalTarget = null;
-    e.state = "dead";
-  }
-
   return {
     get hostileCount() { return hostiles; },
     becomeHostile,
+    noise,
+    release,
 
     /** Give a freshly spawned NPC record its temperament and home turf. */
     init(e) {
@@ -297,17 +298,8 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds }) {
       e.lod = 0;
     },
 
-    /** Something violent happened at (x, z): a shot, a hit, a kill. */
-    noise(x, z, r = 22) {
-      events.push({ x, z, r, t: now });
-      if (events.length > 32) events.shift();
-    },
-
     /** The player hurt this NPC directly. */
     provoke(e) { e.provoked = true; e.think = 0; },
-
-    /** Bookkeeping when an NPC dies or is culled. */
-    release(e) { if (e.state === "hostile") hostiles--; e.state = "dead"; },
 
     beginFrame(dt) { now += dt; frame++; },
 

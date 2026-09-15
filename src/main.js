@@ -34,6 +34,7 @@ import { createEastBank, EAST_MAX_X } from "./eastbank.js";
 import { createNolantis } from "./nolantis.js";
 import { ROUTE_EAST, CRASH } from "./prologue.js";
 import { createSpawnZones } from "./spawnzones.js";
+import { createFactionWar } from "./factions.js";
 import { createWestParish, onParishHighway, PARISH_MIN_X } from "./westparish.js";
 import { createPlayerCharacter, getPlayerCharacter, PLAYER_CHARACTERS } from "./playerCharacters.js";
 import { createAlternateCampaign } from "./alternateCampaign.js";
@@ -1221,7 +1222,8 @@ for (let z = MAP.maxZ - 16; z > MAP.minZ + 16; z -= 24) {
   NPC_POIS.push({ x: ROAD_X + (z % 48 ? 9 : -9), z, r: 6 });
 }
 const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, bounds: MAP });
-const npcEnv = { player: playerPos, driving: false, others: enemies };
+// killEnemy: a turf fight's loser (npc.js hitRival) drops loot but isn't the player's kill
+const npcEnv = { player: playerPos, driving: false, others: enemies, killEnemy: (e) => killEnemy(e, { turf: true }) };
 // What spawns where comes from the world context (spawnzones.js): no hogs in
 // town or on the highway, an occasional one in the woods.
 const spawnZones = createSpawnZones({
@@ -1230,6 +1232,9 @@ const spawnZones = createSpawnZones({
   extraZone: (x, z) => (westParish && westParish.zoneAt(x, z)) || (eastBank && eastBank.zoneAt(x, z)) || null,   // Hwy 9, Bayou Noir, Lafourchette
   coreMinX: -WORLD - 4,                                                   // town / city zones end at the old west edge
 });
+// Rednecks and Hoodrats leave each other alone on their own turf; where the turfs
+// meet (spawnzones.js border zones) they fight, near the player (factions.js).
+const factionWar = createFactionWar({ npcs, spawnZones });
 
 function spawnEnemy(typeName, x, z) {
   const T = ENEMY_TYPES[typeName];
@@ -1250,6 +1255,7 @@ function spawnEnemy(typeName, x, z) {
   };
   npcs.init(rec);
   enemies.push(rec);
+  return rec;
 }
 
 // ---------------------------------------------------------------- truck (escape)
@@ -2298,15 +2304,19 @@ function muzzleFlash(from) {
   muzzleLight.intensity = 30;
 }
 
-function killEnemy(e) {
+// `turf`: killed by a rival gang member, not the player. The body still drops its
+// loot, but there's no tally, no kill line and no heat (police and gang violence
+// is a separate decision; see TASK-035).
+function killEnemy(e, { turf = false } = {}) {
   npcs.release(e);
   npcs.noise(e.spr.position.x, e.spr.position.z, 30);
   e.dead = true;
   e.state = "dead";
   e.t = 0;
-  kills[e.type] = (kills[e.type] || 0) + 1;
   if (e.type !== "hog") e.spr.play("death", { fps: 9, loop: false, force: true });
   loot.dropFor(e);
+  if (turf) return;
+  kills[e.type] = (kills[e.type] || 0) + 1;
   flashObjective(`${e.T.label} down.  ${EMOJI.hog} ${kills.hog}   ${EMOJI.redneck} ${kills.redneck}   ${EMOJI.hoodrat} ${kills.hoodrat}`);
   checkHeatUp();
 }
@@ -2673,6 +2683,7 @@ function simulate(dt) {
     // false = paused or off-beat for its distance: skip the animation as well
     if (updateEnemy(e, dt) && e.spr.update) e.spr.update(dt, camera);
   }
+  if (populationOn) factionWar.update(dt, enemies, playerPos);   // no turf wars during set pieces
   perf._ai += performance.now() - a0;
 
   // ---- ambient traffic ----
@@ -3068,7 +3079,7 @@ async function boot() {
       player.position.set(x, 0, z);
       player.visible = true;
       if (player._last) player._last.copy(player.position);
-    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug, minimap, hijacker, arsenal, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, get nolantis() { return nolantis; },
+    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug, minimap, hijacker, arsenal, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, get nolantis() { return nolantis; },
     get playerMoveHeading() { return playerMoveHeading; },
     get soundtrack() { return soundtrackReady; } };
   // the radar's base map, from the level as built

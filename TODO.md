@@ -534,7 +534,7 @@ console errors.
 
 ### TASK-035 — Redneck vs Hoodrat territorial warfare
 
-**Status:** `REVIEW` · **Agent:** `Antigravity`
+**Status:** `REVIEW` (reviewed + integrated by Claude, headless-tested; the real-browser clip is still pending, TASK-010) · **Agent:** `Antigravity` (build), `Claude` (review, integration)
 **Files / subsystem:**
 - `src/factions.js` (new)
 - `src/spawnzones.js` (edit — add territory/border zone tagging)
@@ -615,6 +615,20 @@ contracts before marking `REVIEW`.
 - `src/npc.js` updated with `becomeHostile(e, rivalTarget)` extension, mutual rival target state, and `hitRival` combat damage execution.
 - Headless unit test suite `tools/qa/factions_test.mjs` created and passing 14/14 tests cleanly.
 - Interface contract documented in `AGENT_LOG.md` for Claude's `main.js` wiring.
+- **Review + integration (Claude, 2026-09-14).** Details in AGENT_LOG → Discoveries and Interface contracts.
+  - Fixed before wiring:
+    - turf kills no longer count toward `HEAT_KILLS` (they would have brought in the Sheriff);
+    - rival deaths now drop loot through `killEnemy(e, { turf: true })`;
+    - shooting an NPC mid-fight turns it on the player;
+    - fights only start within 60 m of the player, never take the last 2 of `MAX_HOSTILE`'s slots, and don't recruit NPCs already hostile;
+    - `hitRival` goes through `noise()`, and there's one `release`.
+  - Wired: `if (populationOn) factionWar.update(dt, enemies, playerPos)` after the enemy loop.
+  - Tests:
+    - `factions_test.mjs` 14/14 (needs a local three.js; see AGENT_LOG);
+    - new `tools/qa/factions.mjs` 12/12, 0 console errors;
+    - regressions `worldpass.mjs` 7/7 and `gameplay.mjs` calm and stable (HP 100 throughout, 0 console errors).
+- **Known issue:** `border_market` can never be returned in the game. `eastBank.zoneAt` claims its box first (probe: town 84 / building 8 / highway 16). `border_strip` (US-167 frontage, z −40…40) is the one working contested zone.
+- **Still to do:** the real-browser clip of a border fight (acceptance criterion), and a working second border zone.
 
 ---
 
@@ -1064,9 +1078,9 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/fx.js` | — | TASK-012 | Available |
 | `src/traffic.js` | — | TASK-012 / TASK-014 | Available |
 | `tools/characters.html` | — | TASK-018 (REVIEW) | Available |
-| `src/factions.js` (new) | — | TASK-035 (REVIEW) | Available |
-| `src/spawnzones.js` | — | TASK-035 (REVIEW) | Available |
-| `src/npc.js` | — | TASK-035 (REVIEW) | Available |
+| `src/factions.js` (new) | — | TASK-035 (REVIEW, integrated) | Available |
+| `src/spawnzones.js` | — | TASK-035 (REVIEW, integrated) | Available |
+| `src/npc.js` | — | TASK-035 (REVIEW, integrated) | Available |
 | `src/weapons.js`, `src/loot.js` | — | TASK-036 | Available |
 | `src/police.js` (new) | — | TASK-020 | Available |
 | `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | — | TASK-038 | Available |
@@ -1097,7 +1111,7 @@ before `COMPLETE`.
   option controls; statically verified (module syntax + a value audit of every
   preset and palette against the game sources). Needs one real-browser load
   (TASK-010) before `COMPLETE`.
-- `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Tested via `tools/qa/factions_test.mjs` (14/14 tests pass).
+- `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Reviewed, fixed and wired into `main.js` by Claude. `factions_test.mjs` 14/14, in-game `tools/qa/factions.mjs` 12/12. Needs a real-browser clip of a border fight, and `border_market` is unreachable (see the task).
 - `TASK-001` — Atmosphere and graphics pass: height fog / mist, light shafts,
   headlights, wet roads + mirror, speed blur (`src/fx.js`, `src/graphics.js`).
   Needs real-GPU tuning (TASK-028).
@@ -1184,6 +1198,7 @@ before `COMPLETE`.
 # 🧪 TESTING STATUS
 
 **Last known test status:**
+- After TASK-035 integration (2026-09-14): `tools/qa/factions.mjs` **12/12**, `factions_test.mjs` **14/14**, `worldpass.mjs` **7/7**, `gameplay.mjs` **pass** (HP 100 at every step, 0 hostile after the shots; 2 hostile while passing the strip border zone, consistent with one turf-fight pair), 0 console errors in all runs.
 - After the character-select merge (dc84b97…089983f) and Keseme restored as the default character: `controls.mjs` **32/32**, `worldpass.mjs` **7/7**, character-select probe (Keseme first and default, story mode with her, Dixon still swaps the model). All 14 `tools/qa` scripts now confirm the character select and fire with a left click on the game canvas.
 - Controls + gas cans (`tools/qa/controls.mjs`): **32/32** (re-run after TASK-034: all 5 cans reachable, 2 m on foot, driving past 2.8 m off, glow columns).
 - World pass (`tools/qa/worldpass.mjs`): **7/7** (Popeyes, loot tables, a real kill, pickups, weapon slot, world time, weather).

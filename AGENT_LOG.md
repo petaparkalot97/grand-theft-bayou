@@ -39,6 +39,27 @@ setup existed (TASK-001 … TASK-009).
 # 🧠 DISCOVERIES
 
 ## 2026-09-14 — Claude
+**Type:** DISCOVERY · **Task:** TASK-035 review + integration (Antigravity's faction warfare)
+
+### Finding
+Antigravity's design held up. Review found these gaps, all fixed before wiring:
+- **Turf kills would have called the police.** Rival deaths went through `killEnemy`, which counts `kills[type]` toward `HEAT_KILLS` and calls `checkHeatUp()`. Gangs killing each other would have brought Sheriff Mercer in on the player. The brief leaves police reaction to gang violence as a human decision.
+- **`npcEnv` had no `killEnemy`**, so in the game a rival death took `hitRival`'s fallback: no loot, no noise.
+- **Shooting an NPC mid-fight did nothing.** The rival branch in `decide()` returned before `e.provoked` was read.
+- **Fights started anywhere on the map** and could hold all 7 hostile slots out of sight, so a brave NPC the player shot would flee instead of fighting back. Near the cap, the second `becomeHostile` could also fail and leave a one-sided "fight".
+- A calm-or-hostile check let an NPC already chasing the player be recruited into a turf fight.
+- `hitRival` pushed straight into `events`, skipping `noise()`'s 32-entry cap, and `npc.js` had two `release` functions (the exported one didn't clear `rivalTarget`).
+- `tools/qa/factions_test.mjs` imports `three`, which isn't installed (the game loads it from jsDelivr), so the reported 14/14 couldn't be re-run as-is. It passes 14/14 with a local r160 copy and a Node resolve hook.
+
+### Action
+- Fixed in `npc.js` / `factions.js` and wired into `main.js` (see Interface contracts).
+- New in-game test `tools/qa/factions.mjs`: **12/12, 0 console errors.** Trailer park pair stays calm; a border pair 130 m away doesn't fight; a border pair near the player fights, the loser drops loot, kills / wanted / heat unchanged, HP 100, winner goes back to wandering; provoked mid-fight turns on the player; 6 border pairs hold 4 hostile slots (limit 5).
+- Regressions after wiring: `worldpass.mjs` 7/7; `gameplay.mjs` calm and stable (HP 100 at every step, 0 hostile after its five shots). Two snapshots near the strip border zone show `hostile: 2` with 2 bystanders fleeing, which fits one turf-fight pair; the snapshot doesn't record `rivalTarget`, so this isn't proven. 0 console errors, 0 failed requests in every run.
+
+### Still open
+- **`border_market` is unreachable in the game.** Its box (x 115…180, z −30…50) is claimed first by `eastBank.zoneAt` through `extraZone`: a live probe of that box returned town 84, building 8, highway 16, border_market 0. The unit test only passes because its mock has no `extraZone`. `border_strip` is the one contested zone that works. To add a second, give `eastbank.js` (composer) a contested rect whose `zoneAt` returns `"border_market"`, or pick another spot outside every district.
+
+## 2026-09-14 — Claude
 **Type:** DISCOVERY · **Task:** TASK-034 follow-up (black glitching blur)
 
 ### Finding
@@ -1101,15 +1122,24 @@ makeHoodrat({ sex: "m"|"f", crew: "red"|"blue"|{cloth, chain, shoe, hat}, seed, 
 ## 2026-09-14 — Antigravity (TASK-035: Faction Warfare)
 
 ### `src/factions.js`
-- Export `createFactionWar({ npcs, spawnZones })` -> `{ update(dt, living) }`
+- Export `createFactionWar({ npcs, spawnZones })` -> `{ update(dt, living, player = null) }`
   - `npcs`: NPC system instance from `createNpcSystem`
   - `spawnZones`: spawnZones instance from `createSpawnZones` (uses `spawnZones.isBorder(x, z)`)
-  - `living`: array of active NPC records (e.g. `enemies`)
-  - Call `factionWar.update(dt, enemies)` in main loop alongside `updateEnemyPopulation(dt)` / `npcs.update`.
+  - `living`: array of NPC records (e.g. `enemies`; dead ones are skipped)
+  - `player`: `{x, z}`. Fights only start within 60 m of it; `null` ignores distance (unit tests).
+  - Only calm Redneck / Hoodrat records are paired; anyone already hostile (at a rival or the player) is left alone.
+  - A fight starts only if both can go hostile within `MAX_HOSTILE - 2`, so 2 slots stay free for NPCs the player provokes.
+- **Wired (Claude, 2026-09-14):** `if (populationOn) factionWar.update(dt, enemies, playerPos)` right after the enemy update loop in `main.js`. Set pieces that switch population off also switch turf wars off.
 
 ### `src/npc.js` extensions
-- `npcs.becomeHostile(e, rivalTarget = null)`: sets `e.rivalTarget`, transitions to `"hostile"` state while respecting `MAX_HOSTILE` (7).
-- `e.rivalTarget`: NPC record target when engaged in cross-faction duel (cleared when rival dies or out of range).
+- `export const MAX_HOSTILE` (7).
+- `npcs.becomeHostile(e, rivalTarget = null)`: sets `e.rivalTarget`, transitions to `"hostile"` state while respecting `MAX_HOSTILE`.
+- `e.rivalTarget`: NPC record target when engaged in cross-faction duel (cleared when rival dies, stays out of range for ~6 s, or the NPC is released).
+- `env.killEnemy(e)` (optional, on the env passed to `npcs.update`): called when a rival blow kills `e`. `main.js` passes `killEnemy(e, { turf: true })`: death animation, noise and `loot.dropFor`, but **no** `kills` tally, kill line or `checkHeatUp()`.
+- `npcs.provoke(e)` on an NPC in a turf fight drops its rival: it turns on the player.
+
+### `src/main.js`
+- `spawnEnemy(type, x, z)` now returns the record. `__game.spawnEnemy` and `__game.factionWar` are exposed for QA.
 
 ---
 
