@@ -1010,6 +1010,8 @@ const compass = createCompass();
 const minimap = createMinimap({ MAP });
 // the player's weapon slot (weapons.js) and what NPCs drop (loot.js)
 const arsenal = createArsenal({ state, flashObjective });
+const kills = { hog: 0, redneck: 0, hoodrat: 0, prostitute: 0 };
+const EMOJI = { hog: "🐗", redneck: "🧢", hoodrat: "🎧", prostitute: "💋" };
 const pauseMenu = createPauseMenu({ MAP, state, getPlayerPos: () => playerPos, minimap, arsenal, kills });
 const loot = createLoot({
   scene, state, arsenal, flashObjective,
@@ -1175,8 +1177,7 @@ let attackTimer = 0;
 // Bayou trouble: Feral Hogs, Rednecks, Hoodrats, Prostitutes.
 const enemies = [];
 const atlases = {};   // name -> loaded atlas
-const kills = { hog: 0, redneck: 0, hoodrat: 0, prostitute: 0 };
-const EMOJI = { hog: "🐗", redneck: "🧢", hoodrat: "🎧", prostitute: "💋" };
+
 
 const ENEMY_TYPES = {
   // player uses the 'redneck' sheet untinted; the Redneck ENEMY gets a hard red
