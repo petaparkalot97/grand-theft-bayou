@@ -48,6 +48,10 @@ export const VOICE_CAST = {
   GOVERNOR: { referenceId: "1f7da7179c324f3e8b3603094cd12cbd", label: "Governor Gus Bellefontaine" },
   EXECUTIVE: { referenceId: "54e995c017564b558940e09ba3572d76", label: "Corporate executive" },
   VOICE: { referenceId: "504f3f5d6567435aad64c130fb448c2f", label: "Unknown caller (distorted)" },
+
+  // Sync's campaign (syncCampaign.js)
+  SYNC: { referenceId: "43f6dcf7d39f4b90bed118f8355c0f73", label: "Sync" },
+  UNCLE: { referenceId: "7eaed20411484921bc031de079a44712", label: "Uncle Roscoe (phone)" },
 };
 
 export const STREET_NPC_VOICE_IDS = [

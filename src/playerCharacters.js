@@ -39,6 +39,13 @@ export const PLAYER_CHARACTERS = Object.freeze({
     campaign: "alternate", health: 125, speed: 5.5, melee: 1.7, ranged: 0.75, abilityCooldown: 14,
     accent: "#db6548", portrait: "⚔",
   },
+  sync: {
+    id: "sync", name: "Sync", subtitle: "THE UNCLE'S NEPHEW",
+    ability: "FAMILY OBLIGATION",
+    description: "Uncle Roscoe has Demands, and Sundown is coming. Bring backup.",
+    campaign: "sync", health: 100, speed: 6.8, melee: 1, ranged: 1.05, abilityCooldown: 16,
+    accent: "#3aa0c9", portrait: "🔗",
+  },
 });
 
 export function getPlayerCharacter(id) { return PLAYER_CHARACTERS[id] || PLAYER_CHARACTERS.peta; }
@@ -66,6 +73,13 @@ export function createPlayerCharacter(id, { makePeta, makeKeseme = makePeta, mak
   if (id === "gr33do") {
     const actor = makeHoodrat({ sex: "m", seed: 8831, height: 1.98, top: 0x4d4656, denim: 0x272a36, hair: 0x261b16, headwear: "none", crew: { cloth: 0x51466b, chain: 0x9b8bba, shoe: 0x322841 } });
     addSmoke(actor); return actor;
+  }
+  if (id === "sync") {
+    return makeHoodrat({
+      sex: "m", seed: 5511, height: 1.85, skin: 0xc79a74, hair: 0x1c1c1c, headwear: "none",
+      top: 0x2a4a5c, denim: 0x22242c,
+      crew: { cloth: 0x3aa0c9, chain: 0xc7c7c7, shoe: 0x1a1a1a },   // teal accent matches his portrait/menu color
+    });
   }
   return makeHoodrat({ sex: "m", seed: 4412, height: 2.25, top: 0x8c3a31, denim: 0x292c35, hair: 0x17120f, headwear: "none", crew: { cloth: 0x5c2525, chain: 0x8d7048, shoe: 0x25252b } });
 }
