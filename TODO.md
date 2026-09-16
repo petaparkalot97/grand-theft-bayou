@@ -57,6 +57,170 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-041 — Connect and densely populate the state-wide expansion (human request, 2026-09-17)
+
+**Status:** `READY` · **Agent:** `Antigravity`
+**Files / subsystem:** `src/stateWorld.js` (primary), a new `src/*.js` module per
+extra region if that reads cleaner than growing one file, `docs/WORLD_BUILDING.md`
+(update the audit). **Not** `src/main.js` beyond documented additive hooks
+(new road/lane arrays, occluders, POIs — same pattern `stateWorld.buildSet()`
+already exposes; Claude wires it in).
+
+**Context — why the human is seeing "huge empty space, no NPCs":**
+`stateWorld.js` expanded the playable map to a full 2,400 × 2,400 m square
+(`STATE_BOUNDS`, ±1200) but only builds **3 small pockets** inside it — Port
+Calypso (docks, NE), Cypress Hills (badlands, NW), Lakeshore Marsh (SW) — each
+just 2–4 buildings scattered across a ~700 m corner. The file's own header
+comment promises 6 regions; the other 3 (OrleaRouge/Lafourchette, Tusouxroe
+North, West Parish/Bayou Noir) are separate, earlier modules that don't reach
+this new outer boundary. Worse:
+- **`stateWorld.js` has no task owner and no QA test at all** — it was built
+  during a messy merge (`update 9`, the same one that committed literal
+  conflict markers into `main.js`/`npc.js`, since fixed) and is listed
+  `Unclaimed` in the file-lock table. Claude verified: `tools/qa/` has no
+  `stateworld.mjs` or equivalent.
+- **The 3 built regions are not connected to the road network at all.**
+  `main.js` has zero references to any of `stateWorld.js`'s road endpoints
+  (checked: `grep` for the district names / road coordinates returns
+  nothing). A player driving out from the old city hits flat, empty ground
+  with no road guiding them toward Port Calypso/Cypress Hills/Lakeshore
+  Marsh — they're floating islands, not a connected state.
+- Population **should** work out there (zone types `industrial`/`resort` are
+  defined in `spawnzones.js` with real NPC kinds — `dockworker`, `mechanic`,
+  `tourist`, `suit`, `thug` — and `spawnZones.pick()` spawns dynamically
+  around wherever the player is, not a fixed map-wide count), but since
+  nothing has ever tested it out there, treat that as unverified, not proven.
+
+**Assets available — check the license file of anything you pull in:**
+- `Z:\GITHUB\bayou\assets\` already has unextracted packs nobody has used:
+  `City assets.zip`, `CityTools.zip` (198 MB), `Fence Pack.zip` (partially
+  used, see TASK-038), `abandoned_office_space.zip` (partially used),
+  `crayon-city-architecture-v1.1.1.zip`, `GTA Unity 1.0.unitypackage`
+  (281 MB — a full Unity GTA-style city kit), `Los Santos Mini Map.bbdoc`
+  (344 MB). `assets/city/models/{flat,textured}/` (10 building types,
+  `placeCityBuilding()` in `landmarks.js`) and `assets/models/*` are already
+  wired and safe to reuse/place more of.
+- **New, human-provided (2026-09-17): `Z:\GITHUB\_ASSETS\`** — a much larger
+  external library, indexed in its own `INDEX.md`. Relevant to this task:
+  `3D/Buildings-Shops/Downtown City MegaKit[Standard].zip` (224 MB, modular
+  downtown kit), `Buildings.rar`, `TownTileSet.zip`, `Quequis_House.rar`,
+  `Trailer_Park.rar`, `free city pack.zip` (benches/road pieces/signs/hydrant),
+  `3D/Roads-Infrastructure/[FREE] Modular Roads - Base.zip`,
+  `3D/Characters-Animations/KayKit_Character_Animations_1.1.zip` and
+  `Animations_V1_01.zip` for NPC variety. Check each pack's own
+  license/readme before use (per that library's own `INDEX.md` note); this is
+  outside the game repo, so extract what you need into `assets/` (or a new
+  `assets/statewide/` folder) rather than referencing the external path
+  directly.
+
+**Goal, in priority order (connectivity and life over raw square-footage —
+filling all 5.76 km² solidly is not realistic in one pass):**
+1. **Connect the 3 existing regions to the road network.** Each needs at
+   least one real road/highway leg linking it to US-167 or an existing
+   district's edge, with lane markings, signage and a sense of arrival (a
+   welcome sign, a change in scenery) — not a random dirt patch that starts
+   mid-nowhere. Wire the new road(s) and lanes the same way the existing
+   ones already are (`stateWorld.lanes`, picked up in `main.js`).
+2. **Densify each of the 3 existing regions** well past "2–4 buildings":
+   more structures, parking, fencing/props, NPC hangout POIs (pushed into
+   `NPC_POIS` the same way `stateWorld.pois` already is), and enough spawn
+   variety that each reads as an actual place, not a diorama.
+3. **If time allows**, add a 4th region or extend the connective tissue
+   between two existing ones, rather than leaving the rest of the 5.76 km²
+   permanently flat and empty. Use your judgement on realistic scope — flag
+   in your handoff notes if you think `STATE_BOUNDS` itself should shrink to
+   match what's actually buildable, rather than advertising a state nobody
+   will ever fill.
+4. Correct `docs/WORLD_BUILDING.md`'s audit to reflect what's actually placed
+   (mirrors the existing TASK-038 convention).
+
+**Acceptance criteria:**
+- Driving from the existing city, a player can find and follow a real road
+  into all 3 regions without teleporting/QA hooks.
+- Each region reads as populated: buildings you can see from the road, NPCs
+  present (screenshot proof), not just an occluder box and a lamp post.
+- New `tools/qa/stateworld.mjs` (or extend an existing one): builds cleanly,
+  road connectivity check (no dead-end-in-void), draw calls on foot/driving
+  within the existing budget guardrails, NPCs actually spawn in each new
+  zone type, no new console errors.
+- `worldpass.mjs` / `gameplay.mjs` / `eastbank.mjs` regressions still pass.
+- Screenshots of all 3 regions, arrival to each from the connecting road.
+
+**Out of scope:** `Hoodrathavoc.zip` (blocked, RenderWare format, see
+TASK-038); `src/main.js` beyond additive hooks; traffic-engine changes
+(`src/traffic.js`) — that's TASK-042, Freebuff, sequenced after your road/lane
+data lands.
+
+**Integration notes (for Claude):** Same pattern as `stateWorld.buildSet()`
+today — new `pois`/`lanes`/`occluders`/`minimap` arrays, wired in `main.js`
+the same additive way. Document the exact new road endpoints/coordinates in
+`AGENT_LOG.md` → Interface contracts so TASK-042 (Freebuff) knows where to
+extend traffic.
+
+**Notes:** —
+
+---
+
+### TASK-042 — Traffic, vehicle variety and life on the state-wide roads (human request, 2026-09-17)
+
+**Status:** `BLOCKED` on TASK-041 landing real road/lane data · **Agent:** `Freebuff`
+**Files / subsystem:** `src/traffic.js`, vehicle/traffic-pool tuning in
+`main.js` (propose changes; Claude applies — same convention as other
+`main.js`-adjacent tasks), a new `tools/qa/stateworld_traffic.mjs` or an
+extension of TASK-041's QA file.
+
+**Dependencies:** TASK-041 (Antigravity) — needs the new regions' road/lane
+data landed and documented in `AGENT_LOG.md` → Interface contracts before
+this can do anything real. Until then, use the wait to audit the current
+traffic pool/cap assumptions against a state 5x the old map's size.
+
+**Context:** The traffic pool (`maxCars`, currently tuned for the old, much
+smaller map — 12–16 cars per the TASK-031/033 notes) and vehicle-variety
+logic were never revisited for a 2,400×2,400 m state. Once TASK-041's new
+roads exist, they need real traffic on them, not silence — an empty road
+reads worse than an empty field. This also gives you a natural place to
+verify the car-audio exit-teardown fix (TASK-040, already reviewed and fixed
+by Claude — `lastVehAudio` in `main.js`) still behaves correctly at the map's
+far reaches, and that the traffic-circuit lane-handover work (TASK-039)
+composes cleanly with brand-new lanes rather than needing special-casing.
+
+**Goal:**
+1. Once TASK-041's lanes exist, confirm they compose into the existing
+   circuit/handover system (`traffic.js`) without special-casing — same
+   `lane.next` auto-pairing `main.js` already does for every other region.
+2. Scale `maxCars`/pool sizing sensibly for the bigger map — enough that the
+   new roads don't read as dead, without spiking draw calls past the existing
+   driving budget (`tools/qa/gameplay.mjs` → `driving.perf.calls`).
+3. Vehicle variety on the new roads if it's currently uniform — reuse
+   existing vehicle defs (`src/vehicles.js`); this is tuning/config, not new
+   models, unless something you find in `Z:\GITHUB\_ASSETS\3D\Vehicles\` is a
+   clear, easy win (check license first).
+4. Spot-check car audio (engine/squeal, the exit-teardown fix) still works
+   correctly for a vehicle picked up/dropped far from the map's original
+   center.
+
+**Acceptance criteria:**
+- Traffic visibly present on every new road from TASK-041, both directions.
+- Headless HIGH driving draw calls stay within the existing budget guardrail
+  on the new roads (measure and record before/after, same convention as
+  TASK-012).
+- No regressions: `traffic_test.mjs`, `factions_test.mjs`,
+  `audio_weapons_test.mjs` all still pass.
+- New/extended QA coverage for traffic on the state-wide roads specifically
+  (currently zero coverage exists).
+- No new console errors.
+
+**Out of scope:** the road/building/NPC-population work itself (TASK-041,
+Antigravity); new vehicle models unless the quick-win case above applies.
+
+**Integration notes (for Claude):** Expect this to be small, additive tuning
+once TASK-041 lands — flag here if `main.js`'s traffic-pool cap needs to move
+beyond a simple constant change.
+
+**Notes:** —
+
+---
+
 ### TASK-040 — Wire the car audio + 3D weapons commit into the game (message 8 follow-up)
 
 **Status:** `REVIEW` (implemented, headless-tested by Freebuff, wiring reviewed and one bug fixed by Claude; real-browser audio check pending, TASK-010) · **Agent:** Freebuff (build), Claude (review)
