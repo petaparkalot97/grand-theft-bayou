@@ -57,6 +57,155 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-043 — Player/NPC character revamp: lose the "Roblox" look, GTA III/SA-style fidelity (human request, 2026-09-17)
+
+**Status:** `READY` · **Agent:** `Antigravity`
+**Files / subsystem:** `src/characters.js` (the shared `Hoodrat` rig — every
+player, NPC, redneck and cop uses it), `src/playerCharacters.js` (per-character
+model wiring only — not the `campaign`/stat fields, those are settled).
+**Not** `src/weapons_3d.js`, `src/greedoCampaign.js`, `src/main.js`'s `fire()` —
+animation work is TASK-044 (Freebuff), sequenced separately.
+
+**Context:** The human's words: *"the player sprites look like they're from
+Roblox or something like that. Terrible... [want] something like the ones
+from Grand Theft Auto 3 or San Andreas."* Root cause, verified by reading
+`characters.js`: every humanoid in the game — player, hoodrat, redneck,
+deputy, every named story character — is one procedural rig (`Hoodrat` class)
+built entirely from primitive `BoxGeometry`/`CylinderGeometry`/`SphereGeometry`
+pieces (a box torso, cylinder limbs, etc.). The file's own header says it was
+built "to the GTA San Andreas-style reference sheets," but boxes-and-cylinders
+construction is exactly what reads as blocky/Roblox in practice, whatever the
+intent was. This is a fidelity/execution problem, not a wrong reference.
+
+**Also found while investigating (same root cause, worth folding in):**
+`playerCharacters.js`'s `makePeta` calls `makeCastMember(makeHoodrat, "keseme",
+...)` — **"Peta" currently has no model of his own; he's visually just
+Keseme's character relabeled.** Confirm and fix if it's still true when you
+pick this up.
+
+**Already done (2026-09-17, Claude, same request):** Chimi was a custom
+`BulbasaurActor` (a green creature) from an earlier, now-reverted decision.
+Swapped to a normal `makeHoodrat()` call — Caucasian male, the game's
+existing `REDNECK_SKIN` palette — in `playerCharacters.js`. That part doesn't
+need redoing; it's the *quality* of the underlying rig everyone (including
+Chimi now) renders through that's the actual ask.
+
+**Assets available** (same libraries as TASK-041 — check licenses):
+`Z:\GITHUB\_ASSETS\3D\Characters-Animations\` (`KayKit_Character_Animations_1.1.zip`,
+`Animations_V1_01.zip`); `Z:\GITHUB\bayou\assets\Hoodrathavoc.zip` is
+**blocked** — `.dff`/`.txd` RenderWare format, no Three.js loader, already
+flagged in TASK-038, don't re-spend time on it. `Trailer_Park.rar` characters
+are already partially used (see `docs/WORLD_BUILDING.md`'s asset table).
+
+**Goal — your judgement call on approach, either is acceptable:**
+1. **Refine the primitive rig itself**: better proportions (less boxy torso/
+   limbs, smoother joints, GTA SA's slightly stylized-but-human silhouette)
+   while keeping the procedural, seed-driven, palette-swappable system that
+   makes crew variety/NPC population cheap. Lowest risk, keeps every existing
+   caller (NPCs, cops, all 5 playable characters, cutscene actors) working
+   unchanged.
+2. **Swap to real character models** for the 5 playable characters
+   specifically (higher fidelity, closer to actual PS2-era GTA), sourced from
+   the asset libraries above, while leaving NPCs on the existing procedural
+   rig (a visible player/NPC quality gap is normal in GTA-likes).
+Whichever you pick, fix Peta's missing model as part of the same pass.
+
+**Acceptance criteria:**
+- Screenshot comparison, before/after, of at least 2 playable characters and
+  1 generic NPC, at a normal gameplay camera distance.
+- Peta has his own distinct look, not Keseme's.
+- No regression to the `play()`/`update()`/`setFlip()`/`material.opacity`
+  surface `npc.js`/`main.js` depend on (`Hoodrat` is a drop-in
+  `AnimatedSprite` replacement today — don't break that contract for NPCs).
+- `tools/qa/worldpass.mjs`, `tools/qa/gameplay.mjs`, `tools/qa/factions.mjs`
+  regressions still pass.
+- Draw calls don't regress past the existing on-foot budget (measure before/
+  after, same convention as prior visual passes).
+- No new console errors.
+
+**Out of scope:** attack/fire animations (TASK-044, Freebuff — don't touch
+the `anim === "attack"` block's *logic*, only its geometry/proportions if
+your approach changes the rig's bone/pivot structure enough to require it;
+coordinate with Freebuff if so, since TASK-044 is about to extend that same
+block).
+
+**Integration notes (for Claude):** None expected if this stays inside
+`characters.js`/`playerCharacters.js`'s existing exports. Flag here if a
+real-model swap needs new loader plumbing in `main.js`.
+
+**Notes:** —
+
+---
+
+### TASK-044 — Weapon-specific attack animations: bat swing, one-handed fire, two-handed fire (human request, 2026-09-17)
+
+**Status:** `READY` (sequence after TASK-043 lands, or in parallel if you
+coordinate on `characters.js`'s attack block — see below) · **Agent:** `Freebuff`
+**Files / subsystem:** `src/characters.js` (the `anim === "attack"` block),
+`src/weapons_3d.js` (`playFireAnim3D`), `src/weapons.js` (add a grip-type
+field), `src/main.js`'s `fire()` (propose the anim-selection change; Claude
+applies since it's a `main.js` edit).
+
+**Context:** The human's words: *"the attack animations for the baseball bat
+and the firing of two-handed weapons like shotguns, rifles, the one-handed
+guns like pistols, Uzis — we need to have that down."* Verified: right now
+there is exactly **one** attack animation for everything. `main.js`'s
+`fire()` (~line 2437) always calls `player.play("attack", { fps: 12, loop:
+false, force: true })` and `playFireAnim3D(gun.melee)`, whatever weapon is
+equipped. `characters.js`'s `attack` state (~line 717) is a generic
+"alternating straight punches" boxing animation — the bat swing, the pistol
+shot and the shotgun blast all look identical. `weapons_3d.js`'s
+`playFireAnim3D(isMelee)` only takes a boolean, so it already can't
+distinguish one-handed from two-handed either.
+
+**Grip-type data doesn't exist yet.** `weapons.js`'s `WEAPONS` table has
+`melee: true` on `bat` only; there's no `twoHanded`/`grip` field to key
+animations off. Add one (e.g. `grip: "melee" | "one" | "two"` — `bat`: melee,
+`pistol`/`tec9`: one, `sawnoff`/`deerRifle`: two) and route both the body
+animation and the view-model recoil off it.
+
+**Goal:**
+1. Three distinct body-animation states in `characters.js` (replacing the
+   one-size-fits-all `attack`): a bat swing (a real arced swing, not punches),
+   a one-handed fire/recoil pose (pistol/Tec-9 — one arm extended, light
+   snap-back), a two-handed fire/recoil pose (shotgun/rifle — both arms
+   raised, braced stance, heavier kick). Reuse the existing pivot/elbow rig
+   `A.forEach(...)` already exposes — this is new pose math, not a new
+   skeleton.
+2. `weapons_3d.js`'s `playFireAnim3D` takes the grip type instead of a melee
+   boolean, and gives the view-model itself a matching, distinct recoil per
+   grip (a two-handed weapon should kick differently than a one-handed one).
+3. `main.js`'s `fire()` picks the right anim name/grip from the equipped
+   weapon's new field — this is the one `main.js` touch, small and additive,
+   propose it and hand off to Claude.
+
+**Acceptance criteria:**
+- Visibly distinct animations for bat / pistol-or-Tec-9 / shotgun-or-rifle,
+  both on the character body and the view-model, screenshot or clip proof.
+- `tools/qa/weapons_test.mjs` still passes; extend it (or add a new test) to
+  assert the right anim/grip is selected per weapon id.
+- `tools/qa/audio_weapons_test.mjs`'s existing 33 asserts still pass (it
+  covers `updateWeapon3D`/`playFireAnim3D` directly — check the signature
+  change doesn't break its calls).
+- No regression to melee combat feel or fire timing/cooldowns (`gun.cooldown`
+  is unrelated to animation length — don't couple them).
+- No new console errors.
+
+**Out of scope:** the character rig's underlying geometry/proportions
+(TASK-043, Antigravity) — this task is new pose math on the existing rig,
+not a remodel. If TASK-043 changes the pivot structure enough to break your
+pose math, coordinate rather than both editing `characters.js`'s attack
+block blind.
+
+**Integration notes (for Claude):** The `fire()` anim-selection change and
+the `WEAPONS` grip-type field addition are both small and additive — review
+as such. Document the final `grip` values and `playFireAnim3D`'s new
+signature in `AGENT_LOG.md` → Interface contracts.
+
+**Notes:** —
+
+---
+
 ### TASK-041 — Connect and densely populate the state-wide expansion (human request, 2026-09-17)
 
 **Status:** `REVIEW` (reviewed by Claude 2026-09-17 — see Claude's review below) · **Agent:** `Antigravity`

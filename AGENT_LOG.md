@@ -38,6 +38,64 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-17 — Claude
+**Type:** DISCOVERY · **Task:** TASK-043/TASK-044 (new — human request: player sprite revamp, weapon-specific animations, per-character campaigns)
+
+### Finding
+Three-part human request, investigated before writing tasks:
+1. **"Player sprites look like Roblox"**: every humanoid (player, NPC,
+   redneck, cop, every story character) is one procedural rig
+   (`characters.js`'s `Hoodrat`) built from primitive box/cylinder/sphere
+   geometry. The file's own header claims a GTA San Andreas reference, but
+   the primitive construction reads as blocky regardless of intent — a
+   fidelity/execution gap, not a wrong reference. Also found while in there:
+   `playerCharacters.js`'s `makePeta` calls `makeCastMember(makeHoodrat,
+   "keseme", ...)` — Peta has no model of his own, he's visually Keseme
+   relabeled.
+2. **"Attack animations for bat/one-handed/two-handed guns"**: verified only
+   one animation exists for everything. `main.js`'s `fire()` always calls
+   `player.play("attack", ...)`; `characters.js`'s `attack` state is a single
+   generic "alternating straight punches" animation reused for the bat swing
+   and every gun. `weapons_3d.js`'s `playFireAnim3D(isMelee)` only takes a
+   boolean, so the view-model can't distinguish one-handed from two-handed
+   either. `weapons.js`'s `WEAPONS` table has no grip-type field to key off.
+3. **Per-character campaigns**: `alternateCampaign.js` (the "Jazz
+   Cigarettes"/"Save the Hogs" opening) already had `chimi.campaign =
+   "alternate"` — no change needed there. `gr33do` shared the same
+   "alternate" value with Chimi and Dixon (not a real per-character split).
+
+### Action
+- Chimi: swapped the `BulbasaurActor` (an earlier, now-reverted decision) for
+  a normal `makeHoodrat()` call — Caucasian male, the game's existing
+  `REDNECK_SKIN` palette. Removed the now-dead `BulbasaurActor` class.
+- New `src/greedoCampaign.js`: Gr33do's own campaign, "FIND PETA", built from
+  the human's script (door-knock cold open, XC reveal, a checkpoint chase
+  across the state reusing `bluelight.js`'s proven lead/distance pattern,
+  ending at a Keseme resolution beat). `gr33do.campaign` now points to
+  `"greedo"` instead of sharing `"alternate"`. Wired into `main.js` the same
+  additive way every other campaign module is (construction, `buildSet()`,
+  `update(dt)`, `props` batching exclusion, minimap waypoint chain, `__game`
+  exposure). Peta's porch is a sealed set at y = −40, same convention as Act
+  One's kitchen / Welcome Back's Sheriff's Office.
+- **Separately, mid-session:** human reported cutscene dialogue cutting off
+  before its voice audio finished. Root cause: `cinema.js`'s `say()` held
+  each line on screen using a pure text-length guess with zero connection to
+  the actual audio clip; `playVoiceLine()` fired the `Audio` element and
+  returned immediately without learning its real duration. Easy to miss
+  before today's earlier fix shipped the voice manifest/mp3s to the live
+  deploy — most lines were silently hitting the browser-TTS fallback before
+  that. Fixed: `playVoiceLine()` now resolves a Promise with the real clip
+  duration (via `loadedmetadata`); `say()` takes `max(text/explicit estimate,
+  real audio duration + 0.15s)`.
+- Wrote `TASK-043` (Antigravity — character rig visual revamp, GTA III/SA
+  fidelity, fix Peta's missing model) and `TASK-044` (Freebuff —
+  weapon-specific attack animations: bat/one-handed/two-handed, needs a new
+  `grip` field on `WEAPONS`) into `TODO.md`.
+- Verified: `node --check` clean on every touched file; `traffic_test`,
+  `factions_test`, `weapons_test`, `pausemenu_test`, `stateworld_traffic` all
+  still pass. Not yet verified in a real browser (campaign playthrough,
+  dialogue pacing feel) — folds into TASK-010.
+
 ## 2026-09-17 — Antigravity (Follow-up)
 **Type:** UPDATE · **Task:** Fill Empty Spaces
 
