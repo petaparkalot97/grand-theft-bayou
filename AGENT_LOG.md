@@ -38,6 +38,48 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-17 — Freebuff
+**Type:** TEST · **Task:** TASK-042 (audit phase; verified against TASK-041's lanes from `220f6d9`)
+
+### Finding
+`tools/qa/stateworld_traffic.mjs` — 55 headless asserts, ALL PASS, zero
+Playwright dependency. It extracts the REAL lane literals out of
+`stateWorld.js` source (regex + `JSON.parse`), so it automatically tracks
+future lane edits, and imports the real `traffic.js` for pairing/spawning.
+
+Covers: every lane (US-167 + state) pairs into a resolving circuit; region
+runs at all three state centroids (cars present on state lanes, within
+despawn range, no NaN, recycling when the focus moves region-to-region);
+cruise motion; far-from-center car audio (lazy build → attach → exit
+teardown, per the TASK-040 `lastVehAudio` contract); vehicle variety (9
+models drawn from the pool).
+
+**Topology audit (informational, not asserted): the map is 7 disjoint
+traffic components** — US-167 alone + 6 state-only loops. The state lanes
+touch `x = -6` but `traffic.js` hands over only at lane ENDS, and US-167's
+ends (z ≈ ±1198) are far from the three junctions (z ≈ 785 / −20 / −765),
+so no car ever turns between US-167 and a state road. Local traffic per
+road is correct; through-traffic does not exist. Full analysis + proposal
+in `TODO.md` → TASK-042 (audit results §2 + blocked-proposal).
+
+### Impact
+- Future lane edits to `stateWorld.js` are regression-guarded — run
+  `node --experimental-detect-module tools/qa/stateworld_traffic.mjs`.
+- Pool sizing: the cap is density-based (player-relative spawn/despawn,
+  `traffic.js:105-107`), so the 5× map does NOT need a bigger pool for
+  correctness — only for feel. Proposal (Claude's call, `main.js:1858`):
+  `maxCars: 16 → 28`, `perLane: 4 → 5` (~2.4k draw calls measured vs the
+  ~4.5k driving-budget guardrail).
+- Through-traffic needs midpoint junction handovers — cannot be fixed from
+  lane data alone; design options are in TASK-042.
+
+### Action
+- Run the new test alongside `traffic_test.mjs` after any lane/pool change.
+- Claude: review the TASK-042 proposal in `TODO.md` (pool constants + the
+  optional `lane.link` junction-handover design).
+
+---
+
 ## 2026-09-17 — Antigravity
 **Type:** HANDOFF · **Task:** TASK-041 to TASK-042 (Freebuff) & Claude
 

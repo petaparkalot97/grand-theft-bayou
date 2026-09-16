@@ -163,16 +163,60 @@ extend traffic.
 
 ### TASK-042 — Traffic, vehicle variety and life on the state-wide roads (human request, 2026-09-17)
 
-**Status:** `BLOCKED` on TASK-041 landing real road/lane data · **Agent:** `Freebuff`
+**Status:** `AUDIT PHASE DONE` — audit committed 2026-09-17 (Freebuff); TASK-041's
+lanes landed in `220f6d9`, composition + spot-checks verified, pool tuning
+proposed below, awaiting review/approval to apply · **Agent:** `Freebuff`
 **Files / subsystem:** `src/traffic.js`, vehicle/traffic-pool tuning in
 `main.js` (propose changes; Claude applies — same convention as other
 `main.js`-adjacent tasks), a new `tools/qa/stateworld_traffic.mjs` or an
 extension of TASK-041's QA file.
 
-**Dependencies:** TASK-041 (Antigravity) — needs the new regions' road/lane
-data landed and documented in `AGENT_LOG.md` → Interface contracts before
-this can do anything real. Until then, use the wait to audit the current
-traffic pool/cap assumptions against a state 5x the old map's size.
+**Dependencies:** ✅ satisfied — TASK-041 (Antigravity) landed its road/lane
+data in `220f6d9` with the interface contract in `AGENT_LOG.md` → Interface
+contracts (stateWorld lanes: `port-hwy-e/w`, `dockside-n/s`, `red-dust-pass-n/s`,
+`red-dust-w/e`, `causeway-w/e`; all anchored on US-167 at `x = -6`).
+
+**Audit results (2026-09-17, Freebuff — headless, `tools/qa/stateworld_traffic.mjs`, 55 asserts, ALL PASS):**
+1. **Composition (Goal 1) — works, no special-casing.** `stateWorld.buildSet()`
+   runs before `createTraffic` and `main.js` already spreads `stateWorld.lanes`
+   into the pool; `autoPair` circuits resolve for all 8 state lanes (verified
+   through the real pairing code, not a copy of the data). Spawning,
+   despawn-recycling, cruise motion and NaN checks verified at all three region
+   centroids and on US-167 itself.
+2. **Topology (the real finding) — the network is 7 disjoint components.**
+   The 8 state lanes are 6 state-only local loops; they *touch* US-167 (cross
+   `x = -6`) but never *hand over*: `traffic.js` hands over only at lane ENDS,
+   and US-167's ends (z ≈ ±1198) are nowhere near the three junctions
+   (z ≈ 785 north, z ≈ −20 central, z ≈ −765 south). Consequence: zero
+   through-traffic — cars on a state road are always cars that spawned there,
+   and US-167 cars never tour the state. Local traffic per road is fine; the
+   map reads as separate closed circuits, not one network.
+3. **Pool sizing (Goal 2) — cap is density-based, not area-based, so the 5×
+   map does NOT require a bigger pool.** Spawn (75–130 m) and despawn (235 m)
+   are player-relative (`traffic.js:105-107,192,275`); at the old cap
+   (`maxCars: 16, perLane: 4`) the map already reads sparse against a 2400×2400
+   state — my harness measures 16 cars ≈ 1.9k draw calls total, well under the
+   ~4.5k driving-budget guardrail. **Proposed (for Claude, main.js:1858):**
+   `maxCars: 16 → 28`, `perLane: 4 → 5` — denser feel, ~2.4k calls, still
+   ~2k under budget; spawn cadence and despawn ranges unchanged. Larger jumps
+   would start pairing poorly with the disjoint topology (cars stuck in a
+   state-only component are invisible unless the player is in that region).
+4. **Vehicle variety (Goal 3) — no change needed.** The 9-model pool is drawn
+   uniformly (`traffic.js:196`), so new lanes inherit it for free; verified 9
+   distinct models appear in the state-region harness runs.
+5. **Far-from-center car audio (Goal 4) — correct.** `audio.js` teardown is
+   position-independent (no distance gates, relative asset URLs) and the
+   TASK-040 `lastVehAudio` exit-teardown contract holds when a car is picked
+   up/dropped at a region centroid: audio built lazily on first drive, group
+   attached, torn down on exit (asserted in the new test).
+
+**Blocked-proposal (needs review; I will not touch `main.js`):** true
+through-traffic requires junction handovers at MIDPOINT crossings, not just
+lane ends — e.g. extend `traffic.js` handover with an optional `lane.link`
+list (declared in lane data, consumed by the pairing pass) so US-167 ↔
+state lanes can hand cars over where they cross at `x = -6`. Alternative
+without touching `traffic.js`: precompute midpoint transfer pairs in
+`main.js`'s pairing IIFE. Either way it's Claude's call.
 
 **Context:** The traffic pool (`maxCars`, currently tuned for the old, much
 smaller map — 12–16 cars per the TASK-031/033 notes) and vehicle-variety
@@ -217,7 +261,11 @@ Antigravity); new vehicle models unless the quick-win case above applies.
 once TASK-041 lands — flag here if `main.js`'s traffic-pool cap needs to move
 beyond a simple constant change.
 
-**Notes:** —
+**Notes:** Proposal ready for review (see Audit results §3 + Blocked-proposal
+above): one-constant change (`maxCars: 28, perLane: 5` at main.js:1858) plus
+an optional junction-handover design for through-traffic. QA now exists:
+`tools/qa/stateworld_traffic.mjs` (55 asserts, headless, no Playwright
+dependency — complements TASK-041's browser-only `stateworld.mjs`).
 
 ---
 
