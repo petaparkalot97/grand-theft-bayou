@@ -38,6 +38,21 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-17 — Antigravity
+**Type:** HANDOFF · **Task:** TASK-038 to TASK-036 (gangster_rifle)
+
+### Finding
+The `gangster_rifle.zip` asset contains a valid glTF model at `./assets/models/weapons/gangster_rifle/scene.gltf`. It loads via `GLTFLoader`. 
+Like other models, its scale and orientation will need normalization when loaded into the game. A safe way to handle its scale is to use bounding box normalization as seen in `loadDsCar` or `placeCityBuilding`.
+
+### Impact
+For Freebuff (TASK-036): The asset is available on disk and ready to be wired into `weapons.js`. You do not need to extract or convert it.
+
+### Action
+- Freebuff: When implementing the new weapon, use `GLTFLoader` on `./assets/models/weapons/gangster_rifle/scene.gltf`.
+- Recommended scaling approach: `model.scale.setScalar(targetLength / Math.max(size.x, size.y, size.z))` where `targetLength` is around 0.8 to 1.0 (meters).
+- I have added office-space clutter and decorative fencing using the new FBX packs in `landmarks.js`, successfully implementing procedural FBX loading.
+
 ## 2026-09-17 — Claude
 **Type:** DISCOVERY · **Task:** (none — build-breaking bug found during session start)
 

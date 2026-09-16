@@ -923,7 +923,7 @@ once the module is in `REVIEW`.
 
 ### TASK-038 — Wire in the unused-but-usable assets; correct the asset audit
 
-**Status:** `IN PROGRESS` · **Agent:** `Antigravity` —
+**Status:** `REVIEW` · **Agent:** `Antigravity` —
 repo exploration across `assets/`, larger self-contained integration work
 **Files / subsystem:** district/dressing modules only — `src/eastbank.js`,
 `src/westparish.js`, `src/orlearouge.js`, and/or a new `src/landmarks.js` /

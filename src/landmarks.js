@@ -8,6 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 
 /** 10 City Building GLB model filenames and fallback specs */
 export const CITY_BUILDING_TYPES = {
@@ -29,8 +30,14 @@ function stdMat(color, roughness = 0.7, name = "building mat", extra = {}) {
   return m;
 }
 
+let _fbxLoader = null;
+function loadFBX(url) {
+  if (!_fbxLoader) _fbxLoader = new FBXLoader();
+  return new Promise(r => _fbxLoader.load(url, r, undefined, e => { console.warn("FBX load failed", url, e); r(null); }));
+}
+
 /**
- * Builds a decorative multi-part fence line (reusing Fence Pack layout with posts, caps, and rails).
+ * Builds a decorative multi-part fence line using Fence Pack assets.
  */
 export function makeDecorativeFence(ctx, x1, z1, x2, z2, opts = {}) {
   const { scene, addBlocker } = ctx;
@@ -44,69 +51,33 @@ export function makeDecorativeFence(ctx, x1, z1, x2, z2, opts = {}) {
   g.position.set(x1, 0, z1);
   g.rotation.y = angle;
 
-  const brickMat = stdMat(0x8a4a3a, 0.85, "brick pier");
-  const stoneMat = stdMat(0xc9c3b8, 0.75, "stone cap");
-  const ironMat = stdMat(0x1c1f22, 0.5, "iron rail", { metalness: 0.6 });
+  const spacing = 3.5;
+  const count = Math.max(1, Math.floor(len / spacing));
+  const step = len / count;
 
-  const postSpacing = 3.5;
-  const postCount = Math.max(2, Math.floor(len / postSpacing) + 1);
-  const step = len / (postCount - 1);
+  loadFBX('./assets/models/fences/Fence Pack/Fence.fbx').then(fbx => {
+    if (!fbx) return;
+    const box = new THREE.Box3().setFromObject(fbx);
+    const sz = box.getSize(new THREE.Vector3());
+    const scale = step / Math.max(0.1, sz.z, sz.x);
+    fbx.scale.setScalar(scale);
 
-  for (let i = 0; i < postCount; i++) {
-    const pz = i * step;
-    // Brick / stone pier post
-    const pier = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1.3, 0.45), brickMat);
-    pier.position.set(0, 0.65, pz);
-    pier.castShadow = pier.receiveShadow = true;
-    g.add(pier);
-
-    // Stone cap on top
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.12, 0.55), stoneMat);
-    cap.position.set(0, 1.36, pz);
-    cap.castShadow = true;
-    g.add(cap);
-
-    if (addBlocker) {
-      const bx = x1 + (dx / len) * pz;
-      const bz = z1 + (dz / len) * pz;
-      addBlocker(bx, bz, 0.4);
+    for (let i = 0; i < count; i++) {
+      const pz = i * step + (step / 2);
+      const piece = fbx.clone(true);
+      piece.position.set(0, 0, pz);
+      // Fences might need rotation depending on FBX orientation
+      piece.rotation.y = Math.PI / 2;
+      g.add(piece);
     }
-  }
-
-  // Interconnecting rails & balusters
-  for (let i = 0; i < postCount - 1; i++) {
-    const zStart = i * step + 0.22;
-    const zEnd = (i + 1) * step - 0.22;
-    const span = zEnd - zStart;
-    const zMid = (zStart + zEnd) / 2;
-
-    // Top & bottom horizontal bars
-    for (const ry of [0.35, 1.05]) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, span), ironMat);
-      bar.position.set(0, ry, zMid);
-      bar.castShadow = true;
-      g.add(bar);
-    }
-
-    // Vertical railing bars (balusters)
-    const pickets = Math.max(2, Math.floor(span / 0.35));
-    const pStep = span / (pickets + 1);
-    for (let p = 1; p <= pickets; p++) {
-      const picket = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.75, 0.04), ironMat);
-      picket.position.set(0, 0.7, zStart + p * pStep);
-      picket.castShadow = true;
-      g.add(picket);
-    }
-  }
+  });
 
   scene.add(g);
-  if (ctx && ctx.props) ctx.props.push(g);
-  if (ctx.props) ctx.props.push(g);
   return g;
 }
 
 /**
- * Builds office space clutter (desks, chairs, laptops, trash bins, planters).
+ * Procedural office furniture + FBX clutter from abandoned_office_space.
  */
 export function placeOfficeClutter(ctx, x, z, ry = 0) {
   const { scene, addBlocker } = ctx;
@@ -117,9 +88,7 @@ export function placeOfficeClutter(ctx, x, z, ry = 0) {
   const woodMat = stdMat(0x6a4a3a, 0.8, "desk wood");
   const metalMat = stdMat(0x3a3d40, 0.5, "desk frame", { metalness: 0.7 });
   const chairMat = stdMat(0x22252a, 0.9, "office chair");
-  const plantMat = stdMat(0x3a6b34, 0.85, "office plant");
-  const potMat = stdMat(0xd9c7a0, 0.7, "terracotta pot");
-
+  
   // Executive Desk
   const desk = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.1, 1.2), woodMat);
   desk.position.set(0, 0.75, 0);
@@ -134,16 +103,6 @@ export function placeOfficeClutter(ctx, x, z, ry = 0) {
     g.add(leg);
   }
 
-  // Laptop on desk
-  const laptopBase = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.02, 0.25), metalMat);
-  laptopBase.position.set(-0.3, 0.81, 0.1);
-  g.add(laptopBase);
-
-  const laptopScreen = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.22, 0.02), metalMat);
-  laptopScreen.position.set(-0.3, 0.92, -0.02);
-  laptopScreen.rotation.x = -0.2;
-  g.add(laptopScreen);
-
   // Swivel Chair
   const chairSeat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.1, 0.55), chairMat);
   chairSeat.position.set(0, 0.45, 0.8);
@@ -157,23 +116,36 @@ export function placeOfficeClutter(ctx, x, z, ry = 0) {
   chairStem.position.set(0, 0.2, 0.8);
   g.add(chairStem);
 
-  // Trash Bin beside desk
-  const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.14, 0.4, 12), metalMat);
-  bin.position.set(1.1, 0.2, 0.3);
-  g.add(bin);
+  // Load abandoned_office_space clutter
+  loadFBX('./assets/models/office/Content/meshes/laptop.FBX').then(fbx => {
+    if (!fbx) return;
+    const box = new THREE.Box3().setFromObject(fbx);
+    const sz = box.getSize(new THREE.Vector3());
+    fbx.scale.setScalar(0.4 / Math.max(0.01, sz.x));
+    fbx.position.set(-0.3, 0.81, 0.1);
+    g.add(fbx);
+  });
 
-  // Potted Flower / Plant
-  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.18, 0.45, 12), potMat);
-  pot.position.set(-1.1, 0.225, -0.4);
-  g.add(pot);
+  loadFBX('./assets/models/office/Content/meshes/bin.FBX').then(fbx => {
+    if (!fbx) return;
+    const box = new THREE.Box3().setFromObject(fbx);
+    const sz = box.getSize(new THREE.Vector3());
+    fbx.scale.setScalar(0.4 / Math.max(0.01, sz.y));
+    fbx.position.set(1.1, 0.0, 0.3);
+    g.add(fbx);
+  });
 
-  const foliage = new THREE.Mesh(new THREE.DodecahedronGeometry(0.35), plantMat);
-  foliage.position.set(-1.1, 0.6, -0.4);
-  g.add(foliage);
+  loadFBX('./assets/models/office/Content/meshes/flower_pot.FBX').then(fbx => {
+    if (!fbx) return;
+    const box = new THREE.Box3().setFromObject(fbx);
+    const sz = box.getSize(new THREE.Vector3());
+    fbx.scale.setScalar(0.7 / Math.max(0.01, sz.y));
+    fbx.position.set(-1.1, 0.0, -0.4);
+    g.add(fbx);
+  });
 
   scene.add(g);
   if (ctx && ctx.props) ctx.props.push(g);
-  if (ctx.props) ctx.props.push(g);
   if (addBlocker) addBlocker(x, z, 1.5);
   return g;
 }
