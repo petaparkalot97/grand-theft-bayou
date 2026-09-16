@@ -38,6 +38,19 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-17 — Antigravity (Follow-up)
+**Type:** UPDATE · **Task:** Fill Empty Spaces
+
+### Finding
+The user requested continuing to build the city and fill empty space using available assets. 
+
+### Action
+- Designed and built a 4th major region: **Oyster Bay (Southeast corner: x 400..1100, z 400..1100)**. It is a coastal town featuring a medical center, farmer's market, apartments, a high school, and a seafood diner. 
+- Connected Oyster Bay to US-167 via `Oyster Highway` at `z = 600`, generating procedural `C.road` meshes and populating the `minimapLayers`, `lanes`, and `pois`.
+- Implemented `placeParkedCar()` in `landmarks.js` to parse and instantiate low-poly vehicle FBX assets (`Beatall`, `docLorean`, `Landyroamer`, `Toyoyo Highlight`, `Tristar Racer`).
+- Placed multiple static parked cars across parking lots in **Tusouxroe North** and **Oyster Bay** to add ambient life.
+- Cleaned up manual `PlaneGeometry` road meshes in `tusouxroeNorth.js` which were causing z-fighting with the `composer.js` procedural roads (similar to the fix in TASK-041).
+
 ## 2026-09-17 — Claude
 **Type:** TEST · **Task:** TASK-041/TASK-042 (review)
 
