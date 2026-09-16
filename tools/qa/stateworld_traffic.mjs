@@ -14,7 +14,7 @@
 //      US-167 and a state road. See AGENT_LOG → TASK-042 for the proposal.
 //   2. Circuits: main.js's auto-pairing (the same find() logic) pairs every
 //      state lane into a mutual return pair or a one-way loop.
-//   3. Life on the roads: the real createTraffic pool (maxCars 16, the way
+//   3. Life on the roads: the real createTraffic pool (maxCars 28, the way
 //      main.js builds it) spawns moving cars on the state lanes when the
 //      player visits each of Port Calypso, Cypress Hills and Lakeshore —
 //      an empty road reads worse than an empty field.
@@ -156,8 +156,8 @@ function makeTraffic() {
     scene, registerVehicle,
     models: Array.from({ length: 9 }, fakeCarModel),
     lanes: allDefs,
-    perLane: 4,
-    maxCars: 16,
+    perLane: 5,   // matches main.js's createTraffic() call (TASK-042 pool tune, Claude applied)
+    maxCars: 28,
   }) };
 }
 function step(traffic, focus, n = 400, dt = 0.05) {

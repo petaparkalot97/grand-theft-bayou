@@ -1854,8 +1854,10 @@ async function buildLevel() {
       }
       return all;
     })(),
-    perLane: 4,
-    maxCars: 16,
+    perLane: 5,
+    maxCars: 28,   // TASK-042 (Freebuff): the state-wide map is 5x the old one; spawn/despawn
+                   // are player-relative so this is a density tune, not a correctness fix —
+                   // measured ~2.4k draw calls, still under the ~4.5k driving budget guardrail
   });
 
   // ---- the escape truck ----

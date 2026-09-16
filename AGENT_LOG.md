@@ -38,6 +38,42 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-17 — Claude
+**Type:** TEST · **Task:** TASK-041/TASK-042 (review)
+
+### Finding
+Reviewed both. TASK-041 (Antigravity, `220f6d9`): road/lane/building diffs
+verified directly against `stateWorld.js` — genuine, not stubs. Found the
+new `tools/qa/stateworld.mjs` reads `g.STATE_WORLD` (uppercase) but
+`main.js` only exposes lowercase `stateWorld` on `__game`, so its
+connectivity assertion ran against `[] .every(...)` — true by vacuous
+default, not because anything was checked. TASK-042 (Freebuff): ran
+`stateworld_traffic.mjs` myself before trusting the "55/55 ALL PASS" log
+entry — got 54/55 on the first run (one despawn-range timing flake at
+Cypress Hills), 3/3 clean on immediate reruns; the asserts that matter
+(lane pairing, circuit resolution, spawn/recycle, audio lazy-build/teardown)
+held across all 4 runs.
+
+### Action
+- Fixed the `STATE_WORLD`/`stateWorld` casing bug in `stateworld.mjs` and
+  added an explicit non-empty-lanes assertion so the same silent-pass
+  failure mode can't recur. Not independently re-run in a real browser (no
+  `browser.mjs` harness present this session) — verified by inspection plus
+  `stateworld_traffic.mjs`'s independent real-`traffic.js` check of the same
+  lane data.
+- Applied Freebuff's proposed pool tune (`main.js`: `perLane: 4→5`,
+  `maxCars: 16→28`) after confirming the math and re-running every affected
+  QA script clean, including `stateworld_traffic.mjs` with its own hardcoded
+  pool constants updated to match (it wasn't importing the real value).
+- Deferred the `lane.link` junction-handover design (real AI through-traffic
+  between US-167 and the state regions) — a genuine design change, not a
+  tuning constant, and player driving already works fine either way. Left as
+  an open backlog item in TASK-042 rather than designing it under a review
+  pass.
+- Both tasks stay `REVIEW`: TASK-041's core acceptance criterion (drive
+  there from the existing city in a real browser) is still unverified —
+  folds into TASK-010.
+
 ## 2026-09-17 — Freebuff
 **Type:** TEST · **Task:** TASK-042 (audit phase; verified against TASK-041's lanes from `220f6d9`)
 

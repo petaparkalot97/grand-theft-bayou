@@ -59,7 +59,7 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 ### TASK-041 — Connect and densely populate the state-wide expansion (human request, 2026-09-17)
 
-**Status:** `REVIEW` · **Agent:** `Antigravity`
+**Status:** `REVIEW` (reviewed by Claude 2026-09-17 — see Claude's review below) · **Agent:** `Antigravity`
 **Files / subsystem:** `src/stateWorld.js` (primary), a new `src/*.js` module per
 extra region if that reads cleaner than growing one file, `docs/WORLD_BUILDING.md`
 (update the audit). **Not** `src/main.js` beyond documented additive hooks
@@ -157,15 +157,46 @@ the same additive way. Document the exact new road endpoints/coordinates in
 `AGENT_LOG.md` → Interface contracts so TASK-042 (Freebuff) knows where to
 extend traffic.
 
+**Claude's review (2026-09-17):**
+- Verified `220f6d9`'s road/building additions directly: each of the 3
+  regions' `C.road()` calls now start/end at `x = -6` (US-167's line) instead
+  of the old 400/-400 stubs, and the matching `lanes`/`minimap.roads` arrays
+  were updated to match. New buildings (apartments, cafe, tower, school,
+  market, more stilt huts) with POIs, occluders and fencing are real, not
+  copy-paste stubs.
+- **Bug found and fixed:** Antigravity's new `tools/qa/stateworld.mjs` reads
+  `g.STATE_WORLD` (uppercase) off `window.__game`, but `main.js` only ever
+  exposes `get stateWorld()` (lowercase). The road-connectivity assertion was
+  running against `undefined → []`, which is vacuously true — the test was
+  passing without checking anything. Fixed to read `g.stateWorld` and added
+  an explicit assertion that the lane array is non-empty first, so a future
+  regression can't hide behind the same silent fallback again.
+- Could not run `stateworld.mjs` itself this pass (it's a real-browser
+  Playwright test, no `browser.mjs` runner is present in this repo/session);
+  the fix is verified by code inspection (the casing mismatch is
+  unambiguous) and by `stateworld_traffic.mjs`'s independent, real-`traffic.js`
+  headless verification of the same lane data (see TASK-042 below) — still
+  needs an actual real-browser run (folds into TASK-010).
+- `main.js` needed no changes: `stateWorld.buildSet()`'s new content flows
+  through the wiring that already existed (`NPC_POIS`, `occluders`, `lanes`,
+  `props`, `minimap` — all pre-dated this task), exactly as Antigravity's
+  handoff note assumed.
+- Not yet verified: the acceptance criterion "driving from the existing city,
+  a player can find and follow a real road" — geometry now touches `x = -6`
+  but this hasn't been driven end-to-end in a real browser. Also see TASK-042
+  §2: the roads touch but don't hand traffic over, so NPC cars don't actually
+  cross between US-167 and the state regions yet (player driving is
+  unaffected — only AI traffic routing).
+
 **Notes:** —
 
 ---
 
 ### TASK-042 — Traffic, vehicle variety and life on the state-wide roads (human request, 2026-09-17)
 
-**Status:** `AUDIT PHASE DONE` — audit committed 2026-09-17 (Freebuff); TASK-041's
-lanes landed in `220f6d9`, composition + spot-checks verified, pool tuning
-proposed below, awaiting review/approval to apply · **Agent:** `Freebuff`
+**Status:** `REVIEW` — pool-size proposal reviewed and applied by Claude
+2026-09-17 (`main.js`: `perLane: 4→5`, `maxCars: 16→28`); junction-handover
+proposal still open, see Claude's review below · **Agent:** `Freebuff`
 **Files / subsystem:** `src/traffic.js`, vehicle/traffic-pool tuning in
 `main.js` (propose changes; Claude applies — same convention as other
 `main.js`-adjacent tasks), a new `tools/qa/stateworld_traffic.mjs` or an
@@ -261,11 +292,37 @@ Antigravity); new vehicle models unless the quick-win case above applies.
 once TASK-041 lands — flag here if `main.js`'s traffic-pool cap needs to move
 beyond a simple constant change.
 
-**Notes:** Proposal ready for review (see Audit results §3 + Blocked-proposal
-above): one-constant change (`maxCars: 28, perLane: 5` at main.js:1858) plus
-an optional junction-handover design for through-traffic. QA now exists:
-`tools/qa/stateworld_traffic.mjs` (55 asserts, headless, no Playwright
-dependency — complements TASK-041's browser-only `stateworld.mjs`).
+**Claude's review (2026-09-17):**
+- Ran `stateworld_traffic.mjs` myself before touching anything: 54/55 pass,
+  1 flaky failure ("every car within despawn range" at Cypress Hills). Reran
+  3× clean immediately after — the lane-pairing/circuit/spawn/audio asserts
+  that actually matter were consistent across all 4 runs. Reads as a timing
+  edge case on the 30-simulated-second despawn window, the same class of
+  flake already documented for `police_test`/`controls.mjs` elsewhere in
+  this project, not a logic bug in the lane data or traffic engine.
+- Applied the proposed pool tune: `main.js` `perLane: 4→5`, `maxCars: 16→28`,
+  with a comment explaining why (player-relative spawn/despawn means this is
+  a density tune, not a correctness fix). Re-verified: `traffic_test.mjs`,
+  `factions_test.mjs`, `weapons_test.mjs`, `pausemenu_test.mjs` all still
+  pass; `stateworld_traffic.mjs` still passes with the new pool size
+  (Lakeshore Marsh now shows 28 cars on the causeway vs. 16 before).
+- Updated `stateworld_traffic.mjs`'s own hardcoded `perLane`/`maxCars` to
+  match the new real values (it had its own local copy, not an import from
+  `main.js`) so the test keeps verifying the actual deployed numbers.
+- **Not applied — deferring:** the junction-handover (`lane.link`) design for
+  real through-traffic. It's a genuine `main.js`/`traffic.js` design change,
+  not a tuning constant, and local traffic on every road already works
+  correctly (verified). Player driving is unaffected either way — this only
+  gates whether *AI* traffic crosses between US-167 and the state regions.
+  Leaving as a documented backlog item rather than designing it under this
+  review pass; revisit if the disjoint-network feel becomes a real complaint.
+
+**Notes:** Proposal reviewed and applied (see Claude's review above):
+one-constant change (`maxCars: 28, perLane: 5` at main.js:1858) plus
+an optional junction-handover design for through-traffic (deferred, see
+above). QA now exists: `tools/qa/stateworld_traffic.mjs` (55 asserts,
+headless, no Playwright dependency — complements TASK-041's browser-only
+`stateworld.mjs`).
 
 ---
 

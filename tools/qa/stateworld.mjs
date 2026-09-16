@@ -34,8 +34,9 @@ async function tests(page, log) {
   await page.waitForTimeout(1500);
 
   // Connectivity
-  const lanes = await js(`return g.STATE_WORLD ? g.STATE_WORLD.lanes : [];`);
-  const connected = lanes.every(l => {
+  const lanes = await js(`return g.stateWorld ? g.stateWorld.lanes : [];`);
+  pass("stateWorld lanes are actually exposed on __game (not an empty/undefined fallback)", lanes.length > 0, { laneCount: lanes.length });
+  const connected = lanes.length > 0 && lanes.every(l => {
     // Check if points connect to x = -6 (main road)
     return l.points.some(p => Math.abs(p[0] - (-6)) < 2);
   });
