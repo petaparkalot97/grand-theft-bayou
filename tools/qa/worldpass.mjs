@@ -50,33 +50,39 @@ async function tests(page, log) {
   await page.screenshot({ path: `${out}-1-popeyes-orlearouge.png` });
 
   // ---- drop tables over many rolls (no pickups left behind)
+  // The rates are read from the live LOOT_TABLES, so the test follows the game
+  // when the tables are tuned. Ammo is a drop kind since TASK-036.
   const rates = await js(`
     const L = g.loot, fake = (type) => ({ type, spr: { position: { x: 5000, z: 5000 } } });
-    const tally = {};
+    const tally = { tables: L.LOOT_TABLES };
     for (const type of ["hoodrat", "redneck", "hog"]) {
-      const t = tally[type] = { rolls: 2000, cash: 0, weapon: 0, amounts: {}, rarities: {} };
+      const t = tally[type] = { rolls: 2000, cash: 0, weapon: 0, ammo: 0, amounts: {}, rarities: {} };
       for (let i = 0; i < t.rolls; i++) {
         for (const d of L.dropFor(fake(type))) {
           t[d.kind]++;
           if (d.kind === "cash") t.amounts[d.amount] = (t.amounts[d.amount] || 0) + 1;
-          else { const r = g.arsenal.WEAPONS[d.id].rarity; t.rarities[r] = (t.rarities[r] || 0) + 1; }
+          else if (d.kind === "weapon") { const r = g.arsenal.WEAPONS[d.id].rarity; t.rarities[r] = (t.rarities[r] || 0) + 1; }
         }
         while (L.active.length) L.update(0), L.active.length && (L.active[0].born = -1e9, L.update(0));
       }
     }
     return tally;`);
   const pct = (t, k) => t[k] / t.rolls;
-  pass("drop rates follow the tables (hoodrat ~80% cash / ~16% weapon, redneck ~70% / ~24%, hog nothing)",
-    Math.abs(pct(rates.hoodrat, "cash") - 0.8) < 0.04 && Math.abs(pct(rates.hoodrat, "weapon") - 0.16) < 0.04 &&
-    Math.abs(pct(rates.redneck, "cash") - 0.7) < 0.04 && Math.abs(pct(rates.redneck, "weapon") - 0.24) < 0.04 &&
-    rates.hog.cash === 0 && rates.hog.weapon === 0, { rates });
+  const follows = (type) => ["cash", "weapon", "ammo"]
+    .every((k) => Math.abs(pct(rates[type], k) - rates.tables[type][k]) < 0.04);
+  pass("drop rates follow LOOT_TABLES (cash / weapon / ammo per type, hog nothing)",
+    follows("hoodrat") && follows("redneck") &&
+    rates.hog.cash === 0 && rates.hog.weapon === 0 && rates.hog.ammo === 0, { rates });
 
   // record every loot roll main.js makes (killEnemy calls loot.dropFor on this same object)
   await js(`const orig = g.loot.dropFor.bind(g.loot); window.__rolls = [];
     g.loot.dropFor = (e) => { const r = orig(e); window.__rolls.push({ npc: e, drops: r.map((d) => d.kind) }); return r; }; return true;`);
 
   // ---- a real kill: shoot a civilian until it drops and its loot table rolls
-  await js(`window.__qaAim = true; g.teleport(-6, 100); return true;`);
+  // The starter loadout is the baseball bat (TASK-036), which does nothing at the
+  // 3 m this test stands off at, so arm the 9mm first: the point is the loot roll.
+  await js(`window.__qaAim = true; g.teleport(-6, 100);
+    g.state.weapon = "pistol"; g.state.ammo = 60; g.arsenal.render(); return true;`);
   await page.waitForTimeout(2500);
   const kill = await js(`
     const p = g.player.position;

@@ -146,8 +146,13 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
       return rect;
     },
 
-    /** A road (stage "road", or "sideStreets" for side streets): surface, sidewalks, centre line, lamps. */
-    road(roadName, points, { width = 8, sidewalk = 1.6, stage: st = "road", centreLine = width >= 8, lampEvery = 0, y = 0.022 } = {}) {
+    /**
+     * A road (stage "road", or "sideStreets" for side streets): surface, sidewalks, centre line, lamps.
+     * `material` overrides the asphalt (a material or a factory) for dirt tracks and trails;
+     * `sidewalk: 0` leaves the verges bare; `paved: false` lays no surface at all, for a
+     * stretch something else already paves (US-167 runs the length of the map as one plane).
+     */
+    road(roadName, points, { width = 8, sidewalk = 1.6, stage: st = "road", centreLine = width >= 8, lampEvery = 0, y = 0.022, material = null, paved = true } = {}) {
       const entry = enter(st);
       const segs = segments(points);
       const half = width / 2 + sidewalk;
@@ -159,8 +164,12 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
         });
         const mx = (sg.ax + sg.bx) / 2, mz = (sg.az + sg.bz) / 2;
         const w = sg.alongX ? sg.len : width, d = sg.alongX ? width : sg.len;
-        plane(w, d, tiled(ctx.roadMaterial(), w, d, 9), mx, y, mz);
+        if (paved) {
+          const surf = typeof material === "function" ? material() : (material || ctx.roadMaterial());
+          plane(w, d, tiled(surf, w, d, 9), mx, y, mz);
+        }
         for (const s of [-1, 1]) {
+          if (sidewalk <= 0) break;
           const off = s * (width / 2 + sidewalk / 2);
           const sw = sg.alongX ? sg.len : sidewalk, sd = sg.alongX ? sidewalk : sg.len;
           plane(sw, sd, tiled(concrete(), sw, sd, 6), mx + sg.rx * off, y + 0.004, mz + sg.rz * off);

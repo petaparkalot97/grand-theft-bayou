@@ -1,5 +1,5 @@
 // Headless test of the east bank (eastbank.js, laid out by composer.js):
-//   - the map grows east (MAP.maxX = EAST_MAX_X); you can walk and drive out there
+//   - the map grows east (MAP.maxX reaches past EAST_MAX_X); you can walk and drive out there
 //   - the district was composed in order: road → buildings → side streets → open areas → vegetation → landmark,
 //     and every stage placed something
 //   - nothing overlaps: no building footprint crosses a road corridor
@@ -64,7 +64,9 @@ async function tests(page, log) {
   // ---- composition
   const rep = await js(`const e = g.eastBank; if (!e) return null;
     return { report: e.report(), maxX: g.MAP.maxX, minimap: { roads: e.minimap.roads.length, buildings: e.minimap.buildings.length, areas: e.minimap.areas.length, water: e.minimap.water.length } };`);
-  pass("the map grows east: MAP.maxX is 380", rep && rep.maxX === 380, { maxX: rep && rep.maxX });
+  // The state-wide expansion pushed MAP.maxX past Lafourchette (1200 today), so the
+  // check is that the map still reaches the district's east edge, not an exact number.
+  pass("the map reaches east past Lafourchette (MAP.maxX >= 380)", rep && rep.maxX >= 380, { maxX: rep && rep.maxX });
   const STAGES = ["road", "buildings", "sideStreets", "openAreas", "vegetation", "landmark"];
   const st = rep ? rep.report.stages : [];
   const order = st.map((s) => STAGES.indexOf(s.stage));

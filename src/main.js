@@ -43,6 +43,7 @@ import { createTusouxroeNorth, NORTH_MIN_Z } from "./tusouxroeNorth.js";
 import { createWestParish, onParishHighway, PARISH_MIN_X } from "./westparish.js";
 import { createPlayerCharacter, getPlayerCharacter, PLAYER_CHARACTERS } from "./playerCharacters.js";
 import { createAlternateCampaign } from "./alternateCampaign.js";
+import { buildCruiserModel, createPoliceSystem } from "./police.js";
 import { createMultiplayer } from "./multiplayer.js";
 import { createStateWorld, STATE_BOUNDS } from "./stateWorld.js";
 
@@ -1291,6 +1292,11 @@ for (let z = MAP.maxZ - 16; z > MAP.minZ + 16; z -= 24) {
   NPC_POIS.push({ x: ROAD_X + (z % 48 ? 9 : -9), z, r: 4 });
 }
 const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, bounds: MAP, worldTime });
+// The Sheriff's search / give-up logic (police.js). The cruisers themselves are
+// driven below in updateSheriffs; the module owns "where do they think you are".
+const police = createPoliceSystem({
+  scene, MAP, npcs, loot, hitPlayer, busted: () => busted(),
+});
 const npcEnv = {
   player: playerPos,
   driving: false,
@@ -1552,17 +1558,9 @@ async function buildLevel() {
     }
   });
 
-  // sheriff cruiser prototype (tinted pickup) for the wanted system
-  if (pickup) {
-    sheriffProto = pickup.clone(true);
-    sheriffProto.traverse((o) => {
-      if (o.isMesh) o.material = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.5 });
-    });
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.3, 0.5),
-      new THREE.MeshBasicMaterial({ color: 0x1133aa }));
-    bar.position.set(0, 2.0, 0);
-    sheriffProto.add(bar);
-  }
+  // sheriff cruiser for the wanted system: police.js paints the two-tone livery,
+  // the push bar and the red/blue lightbar over the pickup shell (TASK-020)
+  if (pickup) sheriffProto = buildCruiserModel(pickup);
 
   // ---- the Prologue / Mission 1 set: Keseme's coupe, Mally's Bravado, the dirt road ----
   prologue = createPrologue({
@@ -1649,7 +1647,8 @@ async function buildLevel() {
     NPC_POIS.push({ x: -46, z, r: 7 }, { x: 34, z, r: 7 });
   }
   // the overpass deck, OrleaRouge's buildings, and Tusouxroe's shopfronts
-  camCtl.setOccluders([...orlea.occluders, ...buildingOccluders]);
+  losBoxes = [...orlea.occluders, ...buildingOccluders];
+  camCtl.setOccluders(losBoxes);
 
   // ---- Tusouxroe's roads, and 40 potholes on each one ----
   // Main Street runs between the two shopfront rows, west from US-167.
@@ -1783,7 +1782,8 @@ async function buildLevel() {
   });
   stateWorld.buildSet();
   NPC_POIS.push(...stateWorld.pois);
-  camCtl.setOccluders([...orlea.occluders, ...buildingOccluders, ...tusouxroeNorth.occluders, ...stateWorld.occluders]);
+  losBoxes = [...orlea.occluders, ...buildingOccluders, ...tusouxroeNorth.occluders, ...stateWorld.occluders];
+  camCtl.setOccluders(losBoxes);
 
   // ---- Act One part C, "Welcome Back to Dixie": sets under Chatboro, montage dressing, helicopters ----
   welcomeBack = createWelcomeBack({
@@ -2836,9 +2836,18 @@ function simulate(dt) {
   // ---- wanted level (only once the Sheriff is paying attention) ----
   if (copsActive()) {
     state.crimeCd = Math.max(0, state.crimeCd - dt);
+    // police.js holds the last-known position and the give-up window: once the
+    // cruisers have lost you for GIVEUP_WINDOW it drains the heat fast, and the
+    // wanted level is allowed to reach 0 -- it used to be floored at 1 star for
+    // the rest of the run, so a chase could only end by wrecking every cruiser.
+    police.updateSearchAndEvasion(dt, playerPos, sheriffSees(dt), state);
     if (state.crimeCd <= 0) state.heat = Math.max(0, state.heat - dt * (state.veh ? 0.3 : 0.16));
-    const w = Math.min(5, Math.max(1, Math.floor(state.heat / 1.4)));
-    if (w !== state.wanted) { state.wanted = w; syncHUD(); }
+    const w = state.heat <= 0.1 ? 0 : Math.min(5, Math.max(1, Math.floor(state.heat / 1.4)));
+    if (w !== state.wanted) {
+      if (w === 0) { police.clearPursuit(); flashObjective("You lost them."); }
+      state.wanted = w;
+      syncHUD();
+    }
     updateSheriffs(dt);
   }
 
@@ -3103,32 +3112,126 @@ function checkHeatUp() {
     syncHUD();
   }
 }
-function updateSheriffs(dt) {
-  const want = Math.max(0, state.wanted - 1);
-  if (sheriffs.filter((s) => !s.dead).length < want && sheriffProto) spawnSheriff();
-
-  let onTop = false;
-  const flash = Math.sin(clock.elapsedTime * 12) > 0 ? 0x3366ff : 0xff2233;
-  let lit = 0;
+// ---- can a cruiser see you? (TASK-020) ------------------------------------
+// Sight is range plus line of sight through the same boxes the camera treats as
+// occluders. Re-tested 5x a second, not every frame: it only drives the give-up
+// timer, and a chase turns on a few hundred ms, not on one frame.
+let losBoxes = [];
+const COP_SIGHT = 62;          // m: past this you are a rumour, not a target
+const COP_POINT_BLANK = 14;    // m: this close they have you, walls or not
+let _seenCd = 0, _seenNow = false;
+function segmentBlocked(ax, az, bx, bz) {
+  const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx);
+  const z0 = Math.min(az, bz), z1 = Math.max(az, bz);
+  const dx = bx - ax, dz = bz - az;
+  for (const o of losBoxes) {
+    if (o.maxY !== undefined && o.maxY < 1.6) continue;       // low walls do not hide a car
+    if (o.maxX < x0 || o.minX > x1 || o.maxZ < z0 || o.minZ > z1) continue;
+    // slab test in the x/z plane, unrolled: this runs over every occluder, and the
+    // array-of-pairs version allocated on each one
+    let t0 = 0, t1 = 1;
+    if (Math.abs(dx) < 1e-6) {
+      if (o.minX - ax > 0 || o.maxX - ax < 0) continue;
+    } else {
+      let near = (o.minX - ax) / dx, far = (o.maxX - ax) / dx;
+      if (near > far) { const t = near; near = far; far = t; }
+      if (near > t0) t0 = near;
+      if (far < t1) t1 = far;
+      if (t0 > t1) continue;
+    }
+    if (Math.abs(dz) < 1e-6) {
+      if (o.minZ - az > 0 || o.maxZ - az < 0) continue;
+    } else {
+      let near = (o.minZ - az) / dz, far = (o.maxZ - az) / dz;
+      if (near > far) { const t = near; near = far; far = t; }
+      if (near > t0) t0 = near;
+      if (far < t1) t1 = far;
+      if (t0 > t1) continue;
+    }
+    return true;
+  }
+  return false;
+}
+function sheriffSees(dt) {
+  _seenCd -= dt;
+  if (_seenCd > 0) return _seenNow;
+  _seenCd = 0.2;
+  _seenNow = false;
+  const at = state.veh ? state.veh.obj.position : playerPos;
   for (const s of sheriffs) {
     if (s.dead) continue;
+    const d = Math.hypot(at.x - s.obj.position.x, at.z - s.obj.position.z);
+    if (d > COP_SIGHT) continue;
+    if (d < COP_POINT_BLANK || !segmentBlocked(s.obj.position.x, s.obj.position.z, at.x, at.z)) {
+      _seenNow = true;
+      break;
+    }
+  }
+  return _seenNow;
+}
+/** Send a cruiser home: off the blocker grid, out of the lists, out of the scene. */
+function retireSheriff(v) {
+  v.dead = true;
+  scene.remove(v.obj);
+  const bi = blockers.indexOf(v.blocker);
+  if (bi >= 0) blockers.splice(bi, 1);
+  blockerGrid.remove(v.blocker);
+  const vi = vehicles.indexOf(v);
+  if (vi >= 0) vehicles.splice(vi, 1);
+  const si = sheriffs.indexOf(v);
+  if (si >= 0) sheriffs.splice(si, 1);
+}
+function updateSheriffs(dt) {
+  const want = Math.max(0, state.wanted - 1);
+  if (state.wanted > 0 && sheriffs.filter((s) => !s.dead).length < want && sheriffProto) spawnSheriff();
+
+  // Where they drive: you while they can see you, the last place they saw you
+  // once they cannot. Homing on your live position is what made this inescapable.
+  const at = state.veh ? state.veh.obj.position : playerPos;
+  const lastKnown = police.pursuitTarget();
+  const searching = police.hasGivenUp();
+  const standDown = state.wanted === 0;
+  const target = standDown ? null : (lastKnown || at);
+
+  let onTop = false;
+  const on = Math.sin(clock.elapsedTime * 12) > 0;
+  const flash = on ? 0x3366ff : 0xff2233;
+  // the lightbar alternates on the shared cruiser materials: two uniform writes for
+  // the whole fleet, no extra lights (adding one would recompile every shader)
+  const bar = sheriffProto && sheriffProto.userData.lightbar;
+  if (bar) {
+    const live = !standDown && sheriffs.some((s) => !s.dead);
+    bar.red.material.emissiveIntensity = live && on ? 3.2 : 0.12;
+    bar.blue.material.emissiveIntensity = live && !on ? 3.2 : 0.12;
+  }
+  let lit = 0;
+  for (let i = sheriffs.length - 1; i >= 0; i--) {
+    const s = sheriffs[i];
+    if (s.dead) continue;
+    const gone = Math.hypot(at.x - s.obj.position.x, at.z - s.obj.position.z);
+    if (standDown && gone > 70) { retireSheriff(s); continue; }   // chase over: leave, off screen
     // the two persistent beacon lights ride the first two cruisers
     if (lit < beaconLights.length) {
       const b = beaconLights[lit++];
       b.position.copy(s.obj.position).setY(2.4);
       b.color.setHex(flash);
-      b.intensity = 20;
+      b.intensity = standDown ? 0 : 20;
     }
-    const to = _tmpV.copy(playerPos).sub(s.obj.position); to.y = 0;
-    const d = to.length();
-    to.normalize();
-    const desired = Math.atan2(to.x, to.z);
-    let dh = desired - s.heading;
-    while (dh > Math.PI) dh -= Math.PI * 2;
-    while (dh < -Math.PI) dh += Math.PI * 2;
-    s.heading += THREE.MathUtils.clamp(dh, -2.4 * dt, 2.4 * dt);
-    const spd = d > 6 ? 22 : 8;
-    s.speed = THREE.MathUtils.lerp(s.speed, spd, dt * 1.5);
+    if (target) {
+      const to = _tmpV.set(target.x - s.obj.position.x, 0, target.z - s.obj.position.z);
+      const d = to.length();
+      to.normalize();
+      const desired = Math.atan2(to.x, to.z);
+      let dh = desired - s.heading;
+      while (dh > Math.PI) dh -= Math.PI * 2;
+      while (dh < -Math.PI) dh += Math.PI * 2;
+      s.heading += THREE.MathUtils.clamp(dh, -2.4 * dt, 2.4 * dt);
+      // a searching cruiser cruises; only one that can see you floors it
+      const spd = d < 6 ? 8 : searching ? 12 : 22;
+      s.speed = THREE.MathUtils.lerp(s.speed, spd, dt * 1.5);
+    } else {
+      s.speed = THREE.MathUtils.lerp(s.speed, 0, dt * 1.2);
+    }
     _fwd.set(Math.sin(s.heading), 0, Math.cos(s.heading));
     const nx = s.obj.position.x + _fwd.x * s.speed * dt;
     const nz = s.obj.position.z + _fwd.z * s.speed * dt;
@@ -3137,9 +3240,11 @@ function updateSheriffs(dt) {
     s.blocker.x = s.obj.position.x; s.blocker.z = s.obj.position.z;
     s.obj.rotation.y = s.heading;
 
-    if (d < 4) {
+    if (!standDown && gone < 4) {
       onTop = true;
-      if (!state.veh) hitPlayer(dt * 14);           // beat down on foot
+      // 5 HP/s on foot, not 14: being cornered is an arrest (bustCd -> busted),
+      // not a 7-second death. Full health lasts ~20 s, and the bust lands first.
+      if (!state.veh) hitPlayer(dt * 5);
       else state.veh.speed *= (1 - dt * 1.5);       // ram / pit
     }
   }
@@ -3262,20 +3367,33 @@ async function boot() {
   // that moves or animates is excluded by its top-level object.
   loadNote.textContent = "batching the parish…";
   await paint();
+  // Anything that moves, or that a set piece shows and hides, must stay out of the
+  // batcher. The world districts used to be in here too — every composer cluster of
+  // West Parish, Lafourchette, north Tusouxroe and the state map — which left their
+  // scenery drawing one mesh at a time (162 separate fence rails in one view of the
+  // strip). batchStatic merges siblings into their own parent now, so a cluster still
+  // hides itself with everything it owns, and it can be batched safely (TASK-011).
   const moving = new Set([
     player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
     ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
     ...(prologue ? prologue.props : []),
     ...(blueLight ? blueLight.props : []),
-    ...(westParish ? westParish.props : []),
-    ...(eastBank ? eastBank.props : []),
     ...(nolantis ? nolantis.props : []),
     ...(welcomeBack ? welcomeBack.props : []),
     ...(alternate ? alternate.props : []),
+  ]);
+  // The districts' culling groups are boundaries: batch inside them, never across
+  // them, or hiding a cluster would leave its batch drawing (TASK-011).
+  const cullGroups = new Set([
+    ...(westParish ? westParish.props : []),
+    ...(eastBank ? eastBank.props : []),
     ...(tusouxroeNorth ? tusouxroeNorth.props : []),
     ...(stateWorld ? stateWorld.props : []),
   ]);
-  const batch = batchStatic(scene, { exclude: (root) => moving.has(root) });
+  const batch = batchStatic(scene, {
+    exclude: (root) => moving.has(root),
+    boundary: (o) => cullGroups.has(o),
+  });
   console.info(`[gfx] static batching: ${batch.meshes} meshes -> ${batch.meshes - batch.removed} (${batch.batches} batches)`);
   updateGfxLabel();
 
@@ -3293,7 +3411,7 @@ async function boot() {
       player.position.set(x, 0, z);
       player.visible = true;
       if (player._last) player._last.copy(player.position);
-    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug, minimap, hijacker, arsenal, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
+    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug, minimap, hijacker, arsenal, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
     get playerMoveHeading() { return playerMoveHeading; },
     get soundtrack() { return soundtrackReady; } };
   // the radar's base map, from the level as built

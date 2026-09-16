@@ -74,19 +74,19 @@ assert(policeSystem.footCops.length === 1, "Foot cop added to police system list
 
 // Update police system: cop should advance towards player at (0,0,0)
 const initialDist = Math.hypot(footCop.spr.position.x - playerPos.x, footCop.spr.position.z - playerPos.z);
-policeSystem.updateFootCops(0.5, playerPos);
+policeSystem.updateFootCops(0.5, { player: playerPos });
 const newDist = Math.hypot(footCop.spr.position.x - playerPos.x, footCop.spr.position.z - playerPos.z);
 assert(newDist < initialDist, "On-foot cop moves towards player position");
 
 // Move cop to melee range (1.2m)
 footCop.spr.position.set(1.0, 0, 0);
-policeSystem.updateFootCops(0.5, playerPos);
+policeSystem.updateFootCops(0.5, { player: playerPos });
 assert(hitPlayerCalls.length > 0, "On-foot cop attacks player in melee range");
 
 // Test foot cop defeat and loot drop
 const initialLootCount = scene.children.length;
 footCop.hp = 0;
-policeSystem.updateFootCops(0.1, playerPos);
+policeSystem.updateFootCops(0.1, { player: playerPos });
 assert(policeSystem.footCops.length === 0, "Defeated on-foot cop drops loot");
 
 // 5. Test Search & Evasion AI Give-up Decay

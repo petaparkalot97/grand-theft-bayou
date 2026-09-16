@@ -26,7 +26,7 @@ const CORE = { x0: -180, x1: 180, z0: -410, z1: -140 };
 const WILD = { x0: -235, x1: 235, z0: -435, z1: -135 };
 
 export function createTusouxroeNorth(ctx) {
-  const { scene, surface, roadMaterial, addBlocker, addLitSpot } = ctx;
+  const { scene, surface, addBlocker, addLitSpot } = ctx;
   const C = createComposer(ctx, {
     name: "TusouxroeNorth",
     bounds: BOUNDS,
@@ -55,37 +55,16 @@ export function createTusouxroeNorth(ctx) {
   function buildSet() {
     // ================= STAGE 1: ROAD NETWORK =================
     // (composer.road takes the points array directly; an options object builds nothing)
-    C.road("North US-167", [[ROAD_X, -136], [ROAD_X, -420]], { width: 11 });
+    // main.js paves US-167 as one plane down the whole map, so this stretch only
+    // adds the sidewalks, the centre line and the road grid over it (paved: false).
+    C.road("North US-167", [[ROAD_X, -136], [ROAD_X, -420]], { width: 10, paved: false });
     C.road("Tusouxroe Blvd", [[-190, BLVD_Z], [190, BLVD_Z]], { width: 11 });
     C.road("Civic Center Way", [[WEST_STREET_X, -380], [WEST_STREET_X, -160]], { width: 9 });
     C.road("Industrial Drive", [[EAST_STREET_X, -380], [EAST_STREET_X, -160]], { width: 9 });
 
-    // Road PBR Meshes
-    const roadMat = typeof roadMaterial === "function" ? roadMaterial() : new THREE.MeshStandardMaterial({ color: 0x3a3a40 });
-    
-    // US-167 Extension
-    const hwyMesh = new THREE.Mesh(new THREE.PlaneGeometry(10, 284), roadMat);
-    hwyMesh.rotation.x = -Math.PI / 2;
-    hwyMesh.position.set(ROAD_X, 0.02, -278);
-    hwyMesh.receiveShadow = true;
-    scene.add(hwyMesh);
-    props.push(hwyMesh);
-
-    // Tusouxroe Blvd
-    const blvdMesh = new THREE.Mesh(new THREE.PlaneGeometry(380, 9), roadMat);
-    blvdMesh.rotation.x = -Math.PI / 2;
-    blvdMesh.position.set(0, 0.021, BLVD_Z);
-    blvdMesh.receiveShadow = true;
-    scene.add(blvdMesh);
-
-    // Side Streets
-    for (const sx of [WEST_STREET_X, EAST_STREET_X]) {
-      const sideMesh = new THREE.Mesh(new THREE.PlaneGeometry(9, 220), roadMat);
-      sideMesh.rotation.x = -Math.PI / 2;
-      sideMesh.position.set(sx, 0.0205, -270);
-      sideMesh.receiveShadow = true;
-      scene.add(sideMesh);
-    }
+    // The four composer roads above already lay these same four lines (surface,
+    // sidewalks, markings, minimap). The hand-built PlaneGeometry copies that used
+    // to sit 1–2 mm under them are gone: they z-fought and doubled the road meshes.
 
     // Street Lamps along North US-167 & Tusouxroe Blvd
     for (let z = -150; z >= -410; z -= 24) {

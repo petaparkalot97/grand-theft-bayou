@@ -173,6 +173,22 @@ function haloSprite(color, size, strength) {
  * a pool of light where it lands and a halo at the bulb. `pole: true` also
  * builds the pole and lamp head, for lot lights that had no geometry at all.
  */
+/**
+ * Render layer for the wet-road mirror (TASK-012). The mirror camera renders this
+ * layer ONLY, so a full second pass over the world became a pass over the handful
+ * of bright things a wet road actually shows: lamp glows, beams, headlights, tail
+ * lights. Everything else still draws normally in the main pass — enabling this
+ * layer does not remove an object from layer 0.
+ *
+ * Reflect something else with `reflect(obj)`. Lit geometry is deliberately left
+ * out: nothing on this layer needs a light, so the mirror pass carries no lights.
+ */
+export const MIRROR_LAYER = 1;
+export function reflect(obj, on = true) {
+  obj.traverse((o) => (on ? o.layers.enable(MIRROR_LAYER) : o.layers.disable(MIRROR_LAYER)));
+  return obj;
+}
+
 export function addLamp(scene, spot) {
   const { x, y, z } = spot;
   const color = spot.warm != null ? spot.warm : 0xffd9a0;
@@ -197,6 +213,10 @@ export function addLamp(scene, spot) {
     o.receiveShadow = false;
   }
   g.add(shaft, pool, glow);
+  // the beam and the halo reflect; the light pool does not — it lies flat on the
+  // road, and a reflection of it is a second pool at the same place
+  reflect(shaft);
+  reflect(glow);
 
   if (spot.pole) {
     // left untagged on purpose: realize() gives it the chrome/steel surface
@@ -211,6 +231,7 @@ export function addLamp(scene, spot) {
     const lens = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.46).rotateX(Math.PI / 2), lensMat);
     lens.position.y = y + 0.15;
     g.add(pole, head, lens);
+    reflect(lens);
   }
 
   scene.add(g);
@@ -259,6 +280,7 @@ export function createHeadlights(scene) {
     const lens = haloSprite(warm, 1.1, 2.4);
     const tail = haloSprite(0xff2a1a, 0.7, 1.6);
     rig.add(light, target, beam, lens, tail);
+    for (const o of [beam, lens, tail]) reflect(o);
     return { sx, light, target, beam, lens, tail };
   });
 
@@ -389,6 +411,7 @@ export function createWetRoads(renderer, scene, camera) {
   };
 
   const vcam = new THREE.PerspectiveCamera();
+  vcam.layers.set(MIRROR_LAYER);          // see MIRROR_LAYER: the bright things only
   const meshes = [];
   const patched = new Set();
   let scale = 0;
@@ -475,6 +498,9 @@ export function createWetRoads(renderer, scene, camera) {
 
   return {
     uniforms,
+    MIRROR_LAYER,
+    /** Also show `obj` in the road reflection (see MIRROR_LAYER). */
+    reflect,
     /** Find and patch every asphalt surface under `root`. */
     collect(root) {
       root.traverse((o) => {

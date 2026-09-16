@@ -719,6 +719,87 @@ road plane.
 
 # ⚠️ WARNINGS / FAILED APPROACHES
 
+## 2026-09-16 — Claude
+**Type:** WARNING · **Task:** QA harness (what a headless click can and cannot do)
+
+### Finding
+- **A left click in the headless browser is swallowed by the pointer-lock request.**
+  The first `mousedown` on the game canvas asks for pointer lock ("Click the game to
+  look around with the mouse · Esc releases it") and never reaches `fire()`; in
+  headless Chromium the lock never resolves, so it is eaten every time. A test that
+  clicks and then asserts nothing happened proves nothing at all.
+- **On foot, `fire()` refuses unless the player is aiming** (`input.isDown("aim")`,
+  i.e. RMB) and flashes "Hold Right Click to aim!". That includes swinging the bat.
+  `window.__qaAim = true` is the hook the suite uses to stand in for holding RMB —
+  `worldpass.mjs` and `gameplay.mjs` set it; `controls.mjs` did not, which is half of
+  why its attack test had been failing.
+- **Hogs wander.** `npc.js` gives a hog a `home` where it spawned with r 14, so its
+  current position can sit in a neighbouring zone rectangle even though no hog is ever
+  spawned in town. Assert on `e.home`, not on where it is standing.
+
+### Action
+- Any QA that needs the player to shoot or swing: set `window.__qaAim = true` first,
+  and never treat a bare click as proof of a negative.
+
+## 2026-09-16 — Claude
+**Type:** WARNING · **Task:** TASK-042 (wiring TASK-020's police module)
+
+### Finding
+- **`src/police.js` sat in the review queue as done, and nothing imported it.**
+  `git grep createPolice -- src` returned one hit: its own definition. Every Sheriff
+  the player had ever met came from the inline code in `main.js`. A module that
+  "passes its tests" and is never wired changes nothing about the game — the board
+  said TASK-020 was in REVIEW, and the two faults the human reported were still
+  exactly as they were.
+- Its unit test **crashed** on the module's own signature (`updateFootCops(dt, env)`
+  called as `updateFootCops(dt, playerPos)`), so the recorded "11/11 tests pass"
+  cannot have been run against this pair of files.
+- **A clone keeps its source's transform.** `buildCruiserModel(pickup)` measured the
+  shell with `Box3.setFromObject` — but `main.js` hands it the same pickup it had
+  already parked as a wreck at (−15, −34), so the box came back in that corner of the
+  world and every light bar, door and push bar was built 15 m away from the car. On
+  screen the cruiser looked like a plain white pickup and the livery was invisible,
+  in an empty lot. Reset position/rotation and `updateMatrixWorld(true)` before
+  measuring anything you are about to attach.
+
+### Action
+- When a task says "new module only, Claude wires it": the wiring is not optional
+  bookkeeping, it *is* the delivery. Check `git grep` for the export before believing
+  a module is live, and put the integration on the board as its own task.
+- Screenshot the thing, do not just assert on it. All three of these passed their
+  numeric checks while the cruiser on screen had no visible livery at all.
+
+## 2026-09-16 — Claude
+**Type:** WARNING · **Task:** TASK-041 (road de-duplication) + QA
+
+### Finding
+**QA scripts rot silently, and a green board can be months stale.** Both of these
+had been failing since work landed around them; nobody re-ran them, and `TODO.md`
+still carried their old scores.
+- `tools/qa/worldpass.mjs` **crashed** on every run since "update 9": `loot.js`
+  gained an `ammo` drop kind, and the tally did `g.arsenal.WEAPONS[d.id].rarity`
+  for anything that wasn't cash — `undefined.rarity`. The in-page helper catches
+  the throw and returns `{ error }`, so the script read the *previous* call's
+  result and died later with a confusing `Cannot read properties of undefined`.
+  The cash rates had been retuned too (hoodrat 0.8 → 0.7, redneck 0.7 → 0.6), so
+  the hard-coded thresholds were wrong as well. It now reads `loot.LOOT_TABLES`
+  and compares against the live numbers.
+- The same script's kill test fired 12 shots that did nothing: the starter weapon
+  is the **baseball bat** since TASK-036, and the test stands 3 m off. It arms the
+  9mm first now.
+- `tools/qa/eastbank.mjs` asserted `MAP.maxX === 380`; the state-wide expansion
+  put it at 1200. Same stale-constant failure the nolantis script had in update 11.
+
+### Action
+- Assert against the game's own tables and bounds (`loot.LOOT_TABLES`, `MAP.maxX >= …`),
+  never a number copied out of the source on the day.
+- When a `js()` / `inPage()` result looks like the *previous* call's value, the page
+  script threw: check `{ error }` before using the result.
+- **Every QA script this session was run before it was trusted.** The unit tests that
+  `import "three"` could not run at all — `node_modules/` is not installed on this
+  machine (`three` is a dev-only resolve for those scripts; the game itself loads
+  three from the CDN). Do not report their scores from memory.
+
 ## 2026-09-15 — Claude
 **Type:** WARNING · **Task:** deploy (merge of 917ab85 into the TASK-035 integration)
 
@@ -1352,6 +1433,69 @@ makeHoodrat({ sex: "m"|"f", crew: "red"|"blue"|{cloth, chain, shoe, hat}, seed, 
   - Police helicopters circle downtown (74, 290) during the surface beat. Lights come from the pool, which follows the camera, so surface shots are lit while the player stands in Nolantis.
 - `src/main.js`: created just before Nolantis and passed as `nolantis` ctx `partC`; `welcomeBack.update(dt)` runs next to `nolantis.update(dt)`; its props are kept out of `batchStatic`; `__game.welcomeBack` for QA.
 - `src/nolantis.js` with `ctx.partC`: after The Truth, phases `office` (CUT TO the Sheriff's Office) → `platform` (gameplay: walk to the observation platform, local (−12, −70)) → `overlook` (platform scene, montage + V.O., the phone call, MISSION UNLOCKED card) → `done` (gameplay: the elevator) → `returning` (final cinematic up the shaft, then `surfaceScene` at `returnTo`) → `left`. Without `partC` it keeps the old direct return. QA step `debug("overlook")`. `voiceCast.js` has BELLEFONTAINE / GOVERNOR / EXECUTIVE / VOICE for `npm run voiceover`.
+
+### `src/merge.js` — batching by signature, inside boundaries (Claude, 2026-09-16, TASK-045)
+- `batchStatic(scene, { cell, exclude, boundary })`.
+  - `exclude(root)` — unchanged: skip this scene child entirely (things that move).
+  - `boundary(obj)` — **new**: `obj` owns its contents. A mesh under one is merged into
+    *it*, baked into its space, instead of into the scene root. Pass every culling
+    group that hides itself this way, or its batch keeps drawing when it hides.
+  - Returns `{ meshes, removed, batches, signatures }`.
+- Grouping is by **material signature**, not instance: identical set-ups share one
+  material and one batch. The signature includes each map's uuid *and* its repeat and
+  offset (composer's `tiled()` clones maps per road, so those stay apart), and the
+  identity of a patched `onBeforeCompile`. **Consequence:** a batched material is now
+  shared, so mutating one at runtime changes every mesh that matched it.
+- `main.js` passes the four district `props` arrays as boundaries and no longer
+  excludes them from batching. Scenery draw calls fell 16–49% depending on the view.
+
+### `src/fx.js` — the mirror render layer (Claude, 2026-09-16, TASK-044)
+- `export const MIRROR_LAYER = 1` and `export function reflect(obj, on = true)`.
+  The wet-road mirror camera renders **that layer only**; `reflect(obj)` enables it on
+  an object and its children (it stays in the main pass — layers are additive).
+- Tagged today: lamp beams, halos and lenses (`addLamp`), the player's headlight beam /
+  lens / tail glows (`createHeadlights`), and each traffic car's head and tail sprites
+  (`traffic.js`). Everything tagged is emissive or a sprite, so **the mirror pass needs
+  no lights** — do not tag lit geometry without also putting the lights on the layer,
+  or it renders black.
+- `wetRoads.reflect(obj)` and `wetRoads.MIRROR_LAYER` are on the api for main.js.
+- Cost at night on the strip, in a car: the pass went **1,734 → 202 draw calls**.
+
+### `src/police.js` — wired into main.js (Claude, 2026-09-16, TASK-042)
+- `buildCruiserModel(shell)` returns a liveried clone of `shell` (two-tone paint, door
+  panels, push bar, roof lightbar). It **resets the clone's position/rotation** and
+  sizes every detail from the model's own bounding box, so it fits whatever car it is
+  given. `g.userData.lightbar = { red, blue }` — the two beacon meshes. Their materials
+  are shared by every clone, so one pair of `emissiveIntensity` writes flashes the whole
+  fleet; `main.js` does that in `updateSheriffs`. Never add a light for this.
+- `createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted })` →
+  `{ GIVEUP_WINDOW, spawnFootCop, updateSearchAndEvasion, updateFootCops,
+     pursuitTarget, timeSinceSeen, hasGivenUp, clearPursuit, footCops, cruisers }`.
+  - `updateSearchAndEvasion(dt, playerPos, inSight, state)` each frame while the cops
+    are active: it holds the last-known position and, after `GIVEUP_WINDOW` (5 s) out
+    of sight, drains `state.heat` at 1.5/s.
+  - `pursuitTarget()` is what a unit should drive at — the last-known position, or
+    `null` before the first sighting (drive at the player then).
+  - `updateFootCops(dt, env)` takes an **env object** (`env.player`, `env.driving`),
+    not a position. It drops loot for a cop at hp ≤ 0 and removes it from `footCops`.
+- **`main.js` side** (`updateSheriffs`): `sheriffSees(dt)` is range (`COP_SIGHT` 62 m,
+  `COP_POINT_BLANK` 14 m) plus a segment/AABB line-of-sight test against `losBoxes`,
+  the same occluder list the camera gets, re-tested 5× a second. `state.wanted` may now
+  reach 0 (it used to be floored at 1 while `copsActive()`); at 0 the cruisers stand
+  down, go dark and `retireSheriff()` removes them once they are 70 m away.
+  `__game.police` and `__game.sheriffSees()` are exposed for QA.
+- **Not wired yet:** `spawnFootCop` / `updateFootCops`. Nothing spawns deputies in game.
+
+### `src/composer.js` — road options (Claude, 2026-09-16, TASK-041)
+- `C.road(name, points, opts)` takes three more options, all optional and additive:
+  - `material` — a `THREE.Material` or a factory, instead of `ctx.roadMaterial()`. Dirt tracks and trails.
+  - `sidewalk: 0` — no concrete verges (the corridor narrows with it).
+  - `paved: false` — register the road (grid cells, minimap, frontage anchor, sidewalks,
+    centre line, lamps) but lay **no surface**, for a stretch something else already paves.
+    `main.js` paves US-167 as one plane down the whole map: `tusouxroeNorth.js` uses this.
+- **One system per road.** A district must not build its own `PlaneGeometry` beside a
+  composer road: two surfaces 1–2 mm apart z-fight and cost double. `tools/qa/roads.mjs`
+  walks every district road line and fails if a line has more than one surface on it.
 
 ### `src/main.js`
 - `spawnEnemy(type, x, z)` now returns the record. `__game.spawnEnemy` and `__game.factionWar` are exposed for QA.

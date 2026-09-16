@@ -12,6 +12,19 @@
 import * as THREE from "three";
 import { createTraffic } from "../../src/traffic.js";
 
+// traffic.js picks lanes and spawn gaps with Math.random. With a 2-car pool both
+// cars can land on the same lane and stay there, which failed "cars spawn on both
+// lanes" about once in six runs. Seed it: the same run every time.
+{
+  let a = 0x9e3779b9;
+  Math.random = () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // traffic.js paints its light-glow sprite texture on a canvas at car-build
 // time; Node has no DOM, so hand it the smallest canvas a 2d-context stub.
 globalThis.document = {

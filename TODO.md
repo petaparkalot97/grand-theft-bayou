@@ -57,6 +57,274 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-045 — Batch by material signature, and stop excluding half the world (TASK-011)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/merge.js`, `src/main.js` (the exclusion list)
+
+#### What was wrong
+Two things, and the second was the expensive one.
+1. `batchStatic` grouped by material **instance** (`m.uuid`), so 406 static materials
+   that were only ~150 distinct set-ups split batches that could have been one.
+2. **Every world district was excluded from batching outright.** `main.js` put
+   `westParish.props`, `eastBank.props`, `tusouxroeNorth.props` and `stateWorld.props`
+   into the `moving` set — and those arrays hold *every composer cluster*, i.e. all
+   the scenery those modules build. One view of the US-167 strip drew 162 separate
+   `iron rail` meshes for that reason. The exclusion was not paranoia: a cluster hides
+   itself by going invisible, and `batchStatic` used to lift merged geometry out into
+   the scene root, where it would have kept drawing after its cluster was hidden.
+
+#### What changed
+- **Material signature.** Batches now key on what the renderer actually uses — type,
+  colour, emissive, roughness/metalness, opacity/blending/side/flags, every map with
+  its repeat and offset, and the identity of any `onBeforeCompile` — and all the
+  meshes in a batch share the one material instance.
+- **Batch boundaries.** `batchStatic(scene, { boundary })` takes a predicate marking
+  objects that own their contents. A mesh is merged into its nearest boundary
+  ancestor (baked into that object's space) instead of the scene root; with no
+  boundary above it, it merges at the scene root exactly as before. `main.js` passes
+  the districts' culling groups as boundaries, so a cluster still hides itself with
+  everything it owns — and the districts come out of the exclusion list.
+- Story props (`prologue`, `blueLight`, `nolantis`, `welcomeBack`, `alternate`) stay
+  excluded: those get shown and hidden individually.
+
+#### Testing performed (2026-09-16)
+Scenery-only draw calls — NPCs, traffic and vehicles hidden, fixed cameras, noon —
+so the two builds are comparable:
+
+| view | before | after |
+|---|---|---|
+| north crossroads (Tusouxroe) | 497 | **268** (−47%) |
+| Lafourchette | 1,584 | **919** (−42%) |
+| the US-167 strip | 1,772 | **907** (−49%) |
+| OrleaRouge | 1,054 | **890** (−16%) |
+
+Scene meshes 5,916 → 3,903; batches 519 → 726.
+(An intermediate version that merged strictly between siblings made OrleaRouge
+*worse* — 1,054 → 1,231 — because its props nest inside groups and used to merge
+across them at the scene root. That is what the boundary predicate is for.)
+
+- **Culling still holds:** `eastbank.mjs` **9/9**, including "fewer clusters drawn
+  from the strip than in Lafourchette" (22/28 vs 25/28) — a cluster still hides its
+  batch with itself — and the frame-time check (16.6 vs 16.5 ms avg).
+- **Nothing looks different:** the three fixed strip cameras in `controls.mjs`
+  (`tools/qa/out/ctl-strip-1..3.png`) match the shots taken before the change,
+  building for building, sign for sign, lamp for lamp; only cars and pedestrians
+  have moved.
+- `controls.mjs` **32/32**, `gameplay.mjs` **pass** (hp 100 at every step,
+  0 non-404 console errors), and the five unit tests still pass.
+
+#### Known issues
+- Materials that are identical at boot now **share one instance**. Anything that
+  later mutates a batched material's colour or emissive would change every mesh that
+  matched it. Nothing in the game does today (the mutated materials — cruiser
+  beacons, wet asphalt, story props — are all excluded from batching), but it is the
+  trade the signature makes.
+- Unbatched still: NPC bodies (they move), the pine cones and lamp posts that are
+  not siblings inside one cluster, and everything a set piece owns.
+
+---
+
+### TASK-044 — The wet-road mirror stops redrawing the whole world (TASK-012)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/fx.js`, `src/traffic.js` (2 lines, the car light sprites), `tools/qa/mirror.mjs` (new)
+
+#### What was wrong
+`createWetRoads` rendered the **entire scene** a second time from under the road,
+every other frame on HIGH. Measured at night on the strip, sitting in a car:
+**1,734 draw calls for the mirror pass** against 1,906 for the frame it belonged
+to — a mirror frame cost 3,683 calls, nearly double a plain one.
+
+#### What changed
+- **The mirror got its own render layer** (`MIRROR_LAYER = 1`, exported from `fx.js`
+  with a `reflect(obj)` helper). `vcam.layers.set(MIRROR_LAYER)` renders that layer
+  *only*, and the things a wet road actually shows are tagged into it: lamp beams and
+  halos, lamp lenses, the player's headlight beams / lens / tail glows, and every
+  traffic car's head and tail light sprites. Enabling the layer does not take an
+  object out of the main pass.
+- Lit geometry is deliberately **not** reflected: everything on the layer is emissive
+  or a sprite, so the mirror pass needs no lights at all. Buildings no longer appear
+  in the reflection; lamps, headlights and tail lights do.
+- The lamp's ground *pool* is not reflected — it lies flat on the road, so reflecting
+  it would paint a second pool in the same place.
+
+#### Testing performed (2026-09-16, headless, night, in a car on the US-167 strip)
+| | before | after |
+|---|---|---|
+| mirror pass | 1,734 calls | **202** |
+| worst frame (main + mirror) | 3,683 | **2,204** |
+| frame time at that spot | 29.4 ms | 25.3 ms |
+- `tools/qa/mirror.mjs` (new) **3/3**, and it keeps a before/after pair of night
+  screenshots (`tools/qa/out/mirror-*.png`) — lamp pools, headlight throw and tail
+  lights still read on the wet road.
+- `traffic_test.mjs` **11/11** (traffic.js now imports `fx.js`), plus the free-roam
+  and district regressions in Testing status.
+
+#### Known issues / what remains
+- **TASK-012's acceptance number (driving peak < 1,200) is not met, and not by this.**
+  The main pass alone is ~1,950–2,000 at that spot. When the brief was written the
+  driving peak was ~1,850 *including* the mirror; the state-wide expansion has since
+  roughly doubled what is on screen. A frustum tally of that view: 178 static batches,
+  162 `iron rail` meshes, 151 planes, 94 cones, and ~176 meshes of NPC bodies
+  (`skin` / `leather` / `lycra` / `cloth`). Cutting that is **TASK-011** (batch by
+  material signature) plus some form of NPC LOD — not the mirror.
+- Worth recording: **on foot the camera is pitched ~41° down, in a car ~22°**, so the
+  old "500–780 on foot vs 1,850 driving" gap is partly the camera looking at the
+  ground rather than down the road. Same spot, same fov, same far plane: 171 objects
+  in frustum on foot, 1,519 in the car.
+
+---
+
+### TASK-043 — Nose-first into a wall no longer spins the car 90° (found by running controls.mjs)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/vehicles.js`, `tools/qa/controls.mjs`
+
+#### What was wrong
+`tools/qa/controls.mjs` failed "after a head-on crash, S backs straight out": the car
+backed out 0.1 m in 1.2 s. It was not stuck. Sampling the car through the crash showed
+the real thing: **it had turned 90°.** `collisionResponse` swings the nose to follow
+the slide along a surface (`DRIVE.wallAlign`), which is right for a scrape — but a wall
+built of blocker circles always gives a little sideways slide even head-on, so holding
+W into a flat wall walked the nose round until the car sat parallel to it. S then
+reversed *sideways*, and a player who crashed nose-first ended up facing down the wall.
+
+#### What changed
+- `src/vehicles.js`: the nose only follows the slide when the slide is a real part of
+  the motion — `slide > Math.abs(v.speed) * 0.35` as well as the existing `slide > 0.3`.
+  A glancing hit still slides and aligns; a head-on hit stops facing the wall.
+- Measured after the fix: the car stops at z 332.75 still facing the wall (heading π,
+  speed 0), and S backs it straight out to z 361 in 1.2 s — 28 m, no sideways drift.
+- `tools/qa/controls.mjs` also had **two stale checks** of its own, both from the
+  starter-loadout change (TASK-036): the attack test swung the **baseball bat** (2.2 m)
+  from a 1.8 m stand-off at a wandering NPC and never connected, and it never set
+  `window.__qaAim`, so on foot `fire()` refused with "Hold Right Click to aim!". It now
+  steps into reach and aims. The hog census asserted every live hog's *current* cell is
+  `forest`; a hog potters within 14 m of where it was born, which can cross into a
+  neighbouring zone rectangle, so it now checks where each hog was **born**.
+
+#### Testing performed (2026-09-16)
+- `tools/qa/controls.mjs` **32/32** (was 30/32).
+- The crash probe above, and the driving regressions in Testing status.
+
+#### Known issues
+- The 0.35 threshold is a number picked to separate "scrape" from "head-on"; it reads
+  right in the two crash tests and in the probe, but nobody has felt it on a pad
+  (TASK-010).
+
+---
+
+### TASK-042 — Wire the police module in: a Sheriff you can get away from (TASK-020 integration)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/main.js` (wiring + the chase), `src/police.js`, `tools/qa/police.mjs` (new), `tools/qa/police_test.mjs`
+
+#### What was wrong
+`src/police.js` (TASK-020) was finished, listed in the review queue as "11/11 tests
+pass" — and **imported by nothing**. The live Sheriff was still `main.js`'s inline
+code, with exactly the two faults the human reported. `tools/qa/police_test.mjs`
+crashed on the module's real signature, so the 11/11 could never have been true of
+this pair; nobody had run it since.
+
+#### What changed
+- **The cruiser is a cruiser.** `sheriffProto` was `pickup.clone(true)` painted white
+  with one flat blue box on the roof — the same pickup that drives past in traffic.
+  It is now `buildCruiserModel(pickup)`: two-tone livery, door panels, push bar with
+  chrome uprights, and a roof lightbar whose red and blue beacons alternate (two
+  uniform writes on shared materials — no new lights, which would recompile every shader).
+- **`buildCruiserModel` now fits whatever shell it is handed.** Its offsets were
+  constants from another model's scale, and it measured the clone *without resetting
+  the source's transform* — main.js hands it the same pickup it parked as a wreck at
+  (−15, −34), so every detail was built around a point 15 m off the car. Sized from
+  the model's own bounding box now, measured at the origin.
+- **You can lose them.** Cruisers drove at the player's live position, always, and
+  `state.wanted` was floored at 1 star for the rest of the run — structurally no chase
+  could ever end except by wrecking every cruiser. Now `main.js` asks `police.js`:
+  a cruiser sees you within **62 m** with line of sight through the buildings the
+  camera already treats as occluders (**14 m** is point blank, walls or not, tested
+  5× a second). Out of sight for the **5 s** give-up window, the heat drains at
+  1.5/s, wanted reaches **0**, "You lost them." flashes, the beacons go dark, and the
+  cruisers are retired once they are 70 m away — off screen. A fresh crime starts a
+  new chase.
+- **Cornered is an arrest, not a shredder.** On-foot contact was `hitPlayer(dt * 14)`
+  — a full bar in about 7 s with no way to break contact. It is **5 HP/s** now: ~20 s
+  of contact to die, and `bustCd > 3 s` busts you first, which is the mechanic the
+  game already had.
+- A cruiser that has lost you **cruises at 12 m/s** while searching instead of
+  flooring it at 22; the player's car tops out at 30 (`DRIVE.maxForward`), so driving
+  well is now the way out.
+- `police.js` also gained `pursuitTarget()`, `timeSinceSeen()`, `hasGivenUp()`,
+  `clearPursuit()`, and its foot cops now die properly (hp ≤ 0 counts, the body leaves
+  the scene and the list after its loot drops).
+
+#### Testing performed (2026-09-16)
+- `tools/qa/police.mjs` (new, in-game) **8/8**: cruisers turn out at 3 stars; the
+  lightbar carries red/blue beacons; they alternate; on-foot contact costs ~5 HP/s
+  and does not end the run; out of sight the pursuit gives up; wanted returns to 0
+  **without wrecking a cruiser**; the cruisers stand down and leave; a new crime
+  starts a new chase. Daylight close-ups of the cruiser checked by eye
+  (`tools/qa/out/cruiser-*.png`).
+- `tools/qa/police_test.mjs` **11/11** — it now calls `updateFootCops(dt, env)` as the
+  module defines it.
+- Regressions: see Testing status.
+
+#### Known issues / what remains
+- **On-foot deputies are still not spawned.** `police.js` can build and drive them
+  (`spawnFootCop` / `updateFootCops`), and the unit test covers them, but nothing in
+  the game calls them yet: they need a spawn rule (wanted level, on foot, near a
+  stopped cruiser), a damage path from `fire()`, and a place in the NPC cap before
+  they are turned on. That is the rest of TASK-020.
+- The numbers above are headless-verified but **not felt on a real GPU** (TASK-010).
+  Whether 62 m / 5 s / 5 HP/s is *fun* is a playtest question, not a test question.
+
+---
+
+### TASK-041 — One road system per line (TASK-039 integration follow-up)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/composer.js`, `src/stateWorld.js`, `src/tusouxroeNorth.js`, `tools/qa/roads.mjs` (new), `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs`
+
+#### What changed
+- **Every road line has exactly one surface.** Both state-expansion modules laid a
+  hand-built `PlaneGeometry` road 1–2 mm under the composer road on the same line
+  (composer roads sit at y 0.022; the copies at 0.020–0.0205). Once TASK-039 made
+  `composer.road()` actually build geometry, all nine lines were paved twice —
+  z-fighting at grazing angles and double the road meshes. The hand-built copies
+  are gone; the composer owns the surface, the sidewalks, the markings, the road
+  grid and the minimap entry.
+- **`composer.road()` gained three options** so a district can say what it needs
+  instead of hand-building beside it: `material` (a material or factory — dirt
+  tracks), `sidewalk: 0` (bare verges), `paved: false` (lay no surface, for a
+  stretch something else already paves).
+- **Red Dust Pass is one dirt road.** It used to be an asphalt composer L *plus* a
+  diagonal dirt plane crossing it. Now it is the composer L in dirt, no sidewalks,
+  no centre line.
+- **North US-167** is `paved: false`: `main.js` paves US-167 as a single plane down
+  the whole map, so this stretch only adds sidewalks, the centre line and the grid.
+- **Two QA scripts had rotted** (found by running them, see AGENT_LOG → Warnings):
+  `worldpass.mjs` had crashed since "update 9" (loot gained an `ammo` drop kind and
+  the cash rates were retuned), and `eastbank.mjs` still asserted `MAP.maxX === 380`
+  from before the state-wide expansion (1200 today). Both fixed to read the live
+  values rather than the numbers of the day.
+
+#### Testing performed (headless Chromium / SwiftShader, 2026-09-16)
+- `tools/qa/roads.mjs` (new) **9/9**: one road surface per line, before/after
+  screenshots of the north crossroads, the port, the canyon and the causeway.
+  Run against HEAD first, where it failed 0/9 with 2–3 stacked surfaces per line —
+  the check can fail.
+- Regressions: `worldpass.mjs` **7/7**, `eastbank.mjs` **9/9**, `nolantis.mjs`
+  **8/8** (Act One part C, update 11's work), `gameplay.mjs` **pass** (hp 100 and
+  0 hostile at every step). Road planes in the scene 141 → 128. No new console
+  errors — only the known gitignored `assets/city` + voice-manifest 404s.
+
+#### Known issues
+- Not seen on a real GPU yet (TASK-010). Headless SwiftShader does not reproduce
+  z-fighting faithfully, so the *fix* is verified by mesh count and by the audit,
+  not by the shimmer disappearing on screen.
+
+---
+
 ### TASK-040 — Wire the car audio + 3D weapons commit into the game (message 8 follow-up)
 
 **Status:** `IN PROGRESS` · **Agent:** Freebuff
@@ -151,9 +419,9 @@ Interface contracts when done):
 - Wrapped cars keep their cruise speed through the U-turn (it happens at
   165+ m, in mist — invisible). If a region ever gets a lit junction at a lane
   end, give that lane a real loop polyline instead.
-- `stateWorld.js` builds manual `PlaneGeometry` roads alongside the composer
-  roads; with the fix the two overlap on the same lines. Claude should pick
-  one system per road during integration.
+- ~~`stateWorld.js` builds manual `PlaneGeometry` roads alongside the composer
+  roads; with the fix the two overlap on the same lines.~~ **Resolved by Claude,
+  2026-09-16 — see TASK-041.** The composer owns every road surface now.
 
 ---
 
@@ -566,7 +834,7 @@ which can't test pointer-lock release, audio, or real frame rate.
 **Out of scope:** changing code.
 
 ### TASK-011 — Batch static meshes by material signature
-**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Codex**)
+**Status:** `REVIEW` · **Agent:** `Claude` (done 2026-09-16, see TASK-045)
 **Files / subsystem:** `src/merge.js`
 **Dependencies:** none
 **Context:** `batchStatic` groups by material *instance*. 406 static
@@ -584,7 +852,9 @@ single material instance per batch.
 **Integration notes (for Claude):** —
 
 ### TASK-012 — Cut draw calls while driving
-**Status:** `READY` · **Agent:** `UNASSIGNED` (suggested: **Codex**)
+**Status:** `REVIEW` — the mirror half is done (Claude, 2026-09-16, see TASK-044).
+The main pass is what is left, and it belongs to TASK-011.
+**Agent:** `Claude`
 **Files / subsystem:** `src/fx.js` (road-mirror pass), `src/traffic.js` (traffic car cost)
 **Dependencies:** none. **Conflicts with TASK-014 (`traffic.js`); don't run both at once.**
 **Context:** Driving peaks around 1,850 draw calls headless vs. 500–780 on foot.
@@ -822,7 +1092,10 @@ Interface contracts.
 
 ### TASK-020 — Police: escapable Sheriff, real cruiser look & on-foot deputies
 
-**Status:** `REVIEW` · **Agent:** `Antigravity`
+**Status:** `REVIEW` — **module written by Antigravity, wired into the game by Claude on 2026-09-16 (see TASK-042).**
+Until then `src/police.js` was never imported by anything: the Sheriff the player
+actually met was still the ~90 lines of inline code in `main.js`.
+**Agent:** `Antigravity` (module) · `Claude` (integration)
 **Files / subsystem:**
 - `src/police.js` (new — police system, search logic, on-foot cop spawning/AI)
 - `src/characters.js` (edit — 3D procedural Deputy/Police officer character model)
@@ -1195,21 +1468,25 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/prologue.js` | Claude | TASK-009 | Locked |
 | `tools/qa/actone.mjs` | Claude | TASK-009 | Locked |
 | `src/graphics.js`, `index.html`, `serve.mjs`, `package.json` | Claude | Serial files: ask first | Locked |
-| `src/merge.js` | — | TASK-011 | Available |
-| `src/fx.js` | — | TASK-012 | Available |
+| `src/merge.js` | Claude | TASK-045 (REVIEW) — signatures + boundaries | Available |
+| `src/fx.js` | Claude | TASK-044 (REVIEW) — mirror layer | Available |
+| `tools/qa/mirror.mjs` (new) | Claude | TASK-044 | Available |
 | `src/traffic.js` | Freebuff | TASK-039 (REVIEW) — TASK-012/014 changes go through review | Locked |
 | `tools/characters.html` | — | TASK-018 (REVIEW) | Available |
 | `src/audio.js`, `src/weapons_3d.js` | Freebuff | TASK-040 | Locked |
 | `src/factions.js` (new) | — | TASK-035 (REVIEW, integrated) | Available |
 | `src/spawnzones.js` | — | TASK-035 (REVIEW, integrated) | Available |
 | `src/npc.js` | — | TASK-035 (REVIEW, integrated) | Available |
-| `src/police.js` (new) | — | TASK-020 (REVIEW) | Available |
+| `src/police.js` (new) | Claude | TASK-020 module / TASK-042 integration (REVIEW) | Available |
+| `tools/qa/police.mjs` (new), `tools/qa/police_test.mjs` | Claude | TASK-042 | Available |
 | `src/characters.js` | — | TASK-020 (REVIEW) | Available |
 | `src/weapons.js`, `src/loot.js` | — | TASK-036 | Available |
 | `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Antigravity | TASK-038 | Locked |
 | `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
 | `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |
-| `src/stateWorld.js`, `src/tusouxroeNorth.js` | Antigravity (unclaimed — see AGENT_LOG) | State-wide expansion | Unclaimed, fixes by Freebuff applied |
+| `src/stateWorld.js`, `src/tusouxroeNorth.js` | Antigravity (unclaimed — see AGENT_LOG) | State-wide expansion | Unclaimed, fixes by Freebuff and Claude (TASK-041) applied |
+| `src/composer.js` | Claude | TASK-041 (REVIEW) — road options | Available |
+| `tools/qa/roads.mjs` (new), `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs` | Claude | TASK-041 | Available |
 | `tools/qa/traffic_test.mjs` | Freebuff | TASK-039 | Locked |
 
 ### Lock rules
@@ -1232,11 +1509,30 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 Implemented and headless-tested; waiting on the real-browser pass (TASK-010)
 before `COMPLETE`.
 
+- `TASK-045` — Batching by material signature, inside culling boundaries (Claude):
+  scenery draw calls down 16–49% per view, scene meshes 5,916 → 3,903. eastbank 9/9
+  (culling intact), controls 32/32, gameplay pass, strip screenshots unchanged.
+- `TASK-044` — The wet-road mirror renders its own layer (Claude): mirror pass
+  1,734 -> 202 draw calls, worst frame 3,683 -> 2,204. `tools/qa/mirror.mjs` 3/3 with
+  before/after night screenshots. Needs a real-GPU look at the reflections (TASK-010),
+  and TASK-011 for the main pass.
+- `TASK-041` — One road system per line (Claude): `composer.road()` options
+  (`material`, `sidewalk: 0`, `paved: false`), the hand-built duplicate road planes
+  removed from `stateWorld.js` and `tusouxroeNorth.js`. `tools/qa/roads.mjs` 9/9
+  (0/9 against HEAD), worldpass 7/7, eastbank 9/9, gameplay pass. Needs a real-GPU
+  look at the four districts (TASK-010).
 - `TASK-039` — Traffic circuits + sky-sign fix (Freebuff): `src/traffic.js`
   (lane-end handover, `next` pairing, DESPAWN 235 m past WRAP_HIDE 165 m),
   `src/main.js` (auto-pairer over every region's lanes, the four sign clones
   zeroed). Tested via `tools/qa/traffic_test.mjs` (11/11).
-- `TASK-020` — Police: escapable Sheriff, cruiser visuals & on-foot 3D deputies (`src/police.js`, `src/characters.js`). Tested via `tools/qa/police_test.mjs` (11/11 tests pass).
+- `TASK-042` — The police module wired into the game (Claude): the cruiser model,
+  last-known-position pursuit with a 5 s give-up window, wanted able to reach 0,
+  on-foot contact 14 → 5 HP/s. `tools/qa/police.mjs` 8/8, `police_test.mjs` 11/11.
+  Needs the real-GPU feel pass (TASK-010) and the on-foot deputies (TASK-020).
+- `TASK-020` — Police module (`src/police.js`, `src/characters.js`): the cruiser look
+  and the search / give-up logic. **Wired in by TASK-042**; the on-foot deputies are
+  built and unit-tested but still not spawned in game. `tools/qa/police_test.mjs` 11/11
+  (it crashed against the module's real API until 2026-09-16).
 - `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Reviewed, fixed and wired into `main.js` by Claude. `factions_test.mjs` 14/14, in-game `tools/qa/factions.mjs` 12/12. Needs a real-browser clip of a border fight, and `border_market` is unreachable (see the task).
 - `TASK-018` — Character viewer (`tools/characters.html`): cast presets + full
   option controls; statically verified (module syntax + a value audit of every
@@ -1329,6 +1625,30 @@ before `COMPLETE`.
 # 🧪 TESTING STATUS
 
 **Last known test status:**
+- 2026-09-16 (Claude, after TASK-041, TASK-042 and TASK-043).
+  **In game (headless Chromium / SwiftShader):** `police.mjs` **8/8** (new),
+  `roads.mjs` **9/9** (new), `controls.mjs` **32/32** (was 30/32 — two stale checks
+  and a real collision bug, TASK-043), `worldpass.mjs` **7/7** (had been crashing
+  since "update 9"), `eastbank.mjs` **9/9** (was 8/9 on a stale `MAP.maxX`
+  assertion), `nolantis.mjs` **8/8**, `gameplay.mjs` **pass** (hp 100, 0 hostile at
+  every step), `prologue.mjs` **pass** (every phase, hands off to Act One),
+  `actone.mjs` **pass** (all steps, ends on the southern coordinates).
+  `police.mjs`, `gameplay.mjs`, `prologue.mjs` and `actone.mjs` were all re-run
+  *after* the `collisionResponse` change, since it touches every car in the game.
+  Then `mirror.mjs` **3/3** (new) for TASK-044, with `gameplay.mjs` and
+  `eastbank.mjs` re-run after it. After TASK-045 (batching): `eastbank.mjs` **9/9**
+  (culling intact), `controls.mjs` **32/32**, `gameplay.mjs` **pass**, the five unit
+  tests pass, and the three fixed strip cameras match their pre-change screenshots.
+  0 new console errors — still only the gitignored `assets/city` GLBs and the voice
+  manifest, 11 x 404 on every load.
+  **Unit tests (node):** `police_test` **11/11** (it crashed on the module's real
+  API until today), `traffic_test` **11/11** (seeded — it failed about 1 run in 6 on
+  a random lane choice), `weapons_test`, `factions_test`, `dressing_test`,
+  `pausemenu_test` all pass. `prostitute_test.mjs` is a *browser* script despite the
+  name, so `node` on it does nothing and exits 0.
+  **`three` had to be installed to run any of them:** `npm install three@0.160.0
+  --no-save` (matching the CDN r160). `node_modules/` is gitignored and `package.json`
+  is untouched, so the game still ships with no npm dependencies.
 - After TASK-035 integration (2026-09-14): `tools/qa/factions.mjs` **12/12**, `factions_test.mjs` **14/14**, `worldpass.mjs` **7/7**, `gameplay.mjs` **pass** (HP 100 at every step, 0 hostile after the shots; 2 hostile while passing the strip border zone, consistent with one turf-fight pair), 0 console errors in all runs.
 - After the character-select merge (dc84b97…089983f) and Keseme restored as the default character: `controls.mjs` **32/32**, `worldpass.mjs` **7/7**, character-select probe (Keseme first and default, story mode with her, Dixon still swaps the model). All 14 `tools/qa` scripts now confirm the character select and fire with a left click on the game canvas.
 - Controls + gas cans (`tools/qa/controls.mjs`): **32/32** (re-run after TASK-034: all 5 cans reachable, 2 m on foot, driving past 2.8 m off, glow columns).
@@ -1342,7 +1662,7 @@ before `COMPLETE`.
 
 **Last tested by:** Claude (headless Chromium / SwiftShader)
 
-**Last tested at:** 2026-09-13
+**Last tested at:** 2026-09-16
 
 **Known regressions:** none recorded. Still unverified: real-browser items (TASK-010).
 
@@ -1361,6 +1681,13 @@ Headless Chromium (SwiftShader), HIGH tier, 1280×720. CPU-side timings; fps not
 | Render submit | 15.8 ms | 10–16 ms | on foot |
 | Load | 6 console 404s | 0 errors, 0 failed requests | FBX URL modifier |
 | Frame time, Lafourchette vs the strip | — | 16.6 vs 16.5 ms avg, worst 33 ms | eastbank.mjs, 3 s rAF sample |
+| Wet-road mirror pass | 1,734 calls | 202 | TASK-044, night, in a car on the strip |
+| Worst frame there (main + mirror) | 3,683 | 2,204 | same spot, 29.4 → 25.3 ms |
+| Scenery draw calls, north crossroads | 497 | 268 | TASK-045, fixed camera, movers hidden |
+| Scenery draw calls, Lafourchette | 1,584 | 919 | same |
+| Scenery draw calls, US-167 strip | 1,772 | 907 | same |
+| Scenery draw calls, OrleaRouge | 1,054 | 890 | same |
+| Scene meshes | 5,916 | 3,903 | after batching the districts |
 
 Full history: `AGENT_LOG.md` → Performance investigations.
 

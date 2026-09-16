@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
+import { reflect } from "./fx.js";
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -129,6 +130,8 @@ export function createTraffic(o) {
       tail.position.set(sx * half, y, (box.min.z - obj.position.z) * k - 0.1 * k);
       tail.scale.setScalar(0.55 * k);
       obj.add(head, tail);
+      reflect(head);                       // other cars' lights show in the wet road
+      reflect(tail);
     }
     obj.visible = false;
     o.scene.add(obj);

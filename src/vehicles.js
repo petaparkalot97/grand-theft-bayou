@@ -167,8 +167,12 @@ export function collisionResponse(v, intendedX, intendedZ, resolvedX, resolvedZ,
         speed *= 1 - DRIVE.impactLoss * headOn;
         if (-into > 6) v.jolt = Math.min(1, (v.jolt || 0) + Math.min(0.8, -into / 25));
       }
-      // the nose follows the slide (the tail, when reversing)
-      if (slide > 0.3) {
+      // The nose follows the slide (the tail, when reversing) — but only on a
+      // glancing hit. Nose-first into a flat wall the slide is whatever the blocker
+      // circles happen to give, and following it swung a stopped car a full 90°
+      // along the wall while the player held W; S then reversed sideways instead of
+      // backing straight out (tools/qa/controls.mjs).
+      if (slide > 0.3 && slide > Math.abs(v.speed) * 0.35) {
         const target = Math.atan2(dir * vx, dir * vz);
         v.heading += wrapAngle(target - v.heading) * Math.min(1, dt * DRIVE.wallAlign);
       }

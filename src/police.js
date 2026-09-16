@@ -42,29 +42,49 @@ export function buildCruiserModel(baseCarMesh) {
     }
   });
 
-  // Door panels (two-tone side doors)
-  const leftDoor = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.75, 1.4), doorMat);
-  leftDoor.position.set(0.92, 0.85, 0.1);
+  // Everything below is sized from the shell it was handed, not from constants:
+  // the same call has to look right on whatever car the game has loaded, and the
+  // models are normalised nose-to-+z (vehicles.js), so +z is the front.
+  //
+  // The shell arrives wherever its source last stood (main.js hands over the same
+  // pickup it parked as a wreck), and a clone keeps that transform. Measure it at
+  // the origin, unrotated, or the livery is built around a point 15 m off the car —
+  // which is exactly what happened: beacons and doors floated in the next lot.
+  g.position.x = 0; g.position.z = 0;
+  g.rotation.set(0, 0, 0);
+  g.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(g).translate(new THREE.Vector3(0, -g.position.y, 0));
+  const size = box.getSize(new THREE.Vector3());
+  const mid = box.getCenter(new THREE.Vector3());
+  const halfW = size.x / 2, halfD = size.z / 2;
+
+  // Two-tone door panels: thin slabs flush against the flanks, at door height.
+  const doorGeo = new THREE.BoxGeometry(0.06, size.y * 0.3, size.z * 0.42);
+  const leftDoor = new THREE.Mesh(doorGeo, doorMat);
+  leftDoor.position.set(mid.x + halfW - 0.03, box.min.y + size.y * 0.5, mid.z + size.z * 0.06);
   const rightDoor = leftDoor.clone();
-  rightDoor.position.x = -0.92;
+  rightDoor.position.x = mid.x - halfW + 0.03;
   g.add(leftDoor, rightDoor);
 
-  // Push-bar bumper on front
-  const pushBar = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.4, 0.12), barMat);
-  pushBar.position.set(0, 0.5, 2.1);
-  const barGuard1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.65, 0.1), chromeMat);
-  barGuard1.position.set(0.4, 0.6, 2.15);
+  // Push bar across the nose, with two chrome uprights.
+  const pushBar = new THREE.Mesh(new THREE.BoxGeometry(size.x * 0.82, size.y * 0.16, 0.1), barMat);
+  pushBar.position.set(mid.x, box.min.y + size.y * 0.3, mid.z + halfD + 0.05);
+  const barGuard1 = new THREE.Mesh(new THREE.BoxGeometry(0.09, size.y * 0.34, 0.09), chromeMat);
+  barGuard1.position.set(mid.x + size.x * 0.22, box.min.y + size.y * 0.32, mid.z + halfD + 0.05);
   const barGuard2 = barGuard1.clone();
-  barGuard2.position.x = -0.4;
+  barGuard2.position.x = mid.x - size.x * 0.22;
   g.add(pushBar, barGuard1, barGuard2);
 
-  // Roof lightbar rig
-  const lightBarHolder = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.08, 0.22), barMat);
-  lightBarHolder.position.set(0, 1.72, 0);
-  const redBeacon = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.12, 0.2), redLightMat);
-  redBeacon.position.set(0.28, 1.81, 0);
-  const blueBeacon = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.12, 0.2), blueLightMat);
-  blueBeacon.position.set(-0.28, 1.81, 0);
+  // Lightbar on the roof, over the cabin (forward of centre on a pickup).
+  const barY = box.max.y + size.y * 0.05;
+  const barZ = mid.z + size.z * 0.12;
+  const lightBarHolder = new THREE.Mesh(new THREE.BoxGeometry(size.x * 0.78, size.y * 0.05, size.z * 0.1), barMat);
+  lightBarHolder.position.set(mid.x, barY, barZ);
+  const beaconGeo = new THREE.BoxGeometry(size.x * 0.34, size.y * 0.09, size.z * 0.09);
+  const redBeacon = new THREE.Mesh(beaconGeo, redLightMat);
+  redBeacon.position.set(mid.x + size.x * 0.2, barY + size.y * 0.06, barZ);
+  const blueBeacon = new THREE.Mesh(beaconGeo, blueLightMat);
+  blueBeacon.position.set(mid.x - size.x * 0.2, barY + size.y * 0.06, barZ);
 
   g.add(lightBarHolder, redBeacon, blueBeacon);
   g.userData.lightbar = { red: redBeacon, blue: blueBeacon };
@@ -127,11 +147,14 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted }
 
     for (let i = footCops.length - 1; i >= 0; i--) {
       const c = footCops[i];
+      if (c.hp <= 0 && !c.dead) c.dead = true;
       if (c.dead || c.state === "dead") {
         if (c.dead !== "released") {
           if (loot && typeof loot.dropFor === "function") loot.dropFor(c);
           c.dead = "released";
+          if (c.spr.parent) c.spr.parent.remove(c.spr);
         }
+        footCops.splice(i, 1);            // dropped and gone: the list holds the living
         continue;
       }
 
@@ -163,11 +186,31 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted }
     return onTopCount;
   }
 
+  /**
+   * Where a pursuing unit should drive: the player while they are in sight, the
+   * place they were last seen once they are not. `null` before the first sighting.
+   */
+  function pursuitTarget() { return hasLastKnownPos ? lastKnownPos : null; }
+
+  /** Seconds since the player was last in sight (0 while they are). */
+  function timeSinceSeen() { return hasLastKnownPos ? sightLostTime : 0; }
+
+  /** True once the give-up window has run out: the units are searching, not chasing. */
+  function hasGivenUp() { return hasLastKnownPos && sightLostTime > GIVEUP_WINDOW; }
+
+  /** Drop the chase outright (the player was busted, or the story took over). */
+  function clearPursuit() { hasLastKnownPos = false; sightLostTime = 0; }
+
   return {
+    GIVEUP_WINDOW,
     buildCruiserModel,
     spawnFootCop,
     updateSearchAndEvasion,
     updateFootCops,
+    pursuitTarget,
+    timeSinceSeen,
+    hasGivenUp,
+    clearPursuit,
     get footCops() { return footCops; },
     get cruisers() { return cruisers; },
   };

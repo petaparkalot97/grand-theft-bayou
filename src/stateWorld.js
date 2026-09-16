@@ -22,7 +22,7 @@ export const STATE_BOUNDS = { minX: -1200, maxX: 1200, minZ: -1200, maxZ: 1200 }
  * Creates and orchestrates state-wide regional expansion districts.
  */
 export function createStateWorld(ctx) {
-  const { scene, surface, roadMaterial, addBlocker, addLitSpot, flashObjective } = ctx;
+  const { scene, surface, addBlocker, addLitSpot, flashObjective } = ctx;
 
   const occluders = [];
   const pois = [];
@@ -53,25 +53,12 @@ export function createStateWorld(ctx) {
       seed: 88412,
     });
 
-    const ROAD_Y = 0.02;
-    const roadMat = typeof roadMaterial === "function" ? roadMaterial() : new THREE.MeshStandardMaterial({ color: 0x333538 });
-
-    // Main Harbor Expressway & Dockside Road
-    // (composer.road takes the points array directly; an options object builds nothing)
+    // Main Harbor Expressway & Dockside Road.
+    // (composer.road takes the points array directly; an options object builds nothing.)
+    // The composer owns the surface: it lays the same two lines with sidewalks,
+    // markings and minimap data, so no hand-built plane goes under them.
     C.road("Port Highway", [[400, -600], [1050, -600]], { width: 12 });
     C.road("Dockside Drive", [[750, -1000], [750, -420]], { width: 10 });
-
-    const portHwy = new THREE.Mesh(new THREE.PlaneGeometry(650, 12), roadMat);
-    portHwy.rotation.x = -Math.PI / 2;
-    portHwy.position.set(725, ROAD_Y, -600);
-    portHwy.receiveShadow = true;
-    scene.add(portHwy);
-
-    const dockDr = new THREE.Mesh(new THREE.PlaneGeometry(10, 580), roadMat);
-    dockDr.rotation.x = -Math.PI / 2;
-    dockDr.position.set(750, ROAD_Y + 0.001, -710);
-    dockDr.receiveShadow = true;
-    scene.add(dockDr);
 
     // Warehouse & Container Yard Buildings
     // 1. Cargo Warehouse Alpha
@@ -167,15 +154,11 @@ export function createStateWorld(ctx) {
     const dirtMat = new THREE.MeshStandardMaterial({ color: 0x8a5a3a, roughness: 0.95 });
     dirtMat.userData.gtbRealized = true;
 
-    // Off-Road Canyon Circuit (axis-aligned legs — the composer rejects diagonals)
-    C.road("Red Dust Pass", [[-400, -600], [-1050, -600], [-1050, -850]], { width: 9 });
-
-    const canyonTrail = new THREE.Mesh(new THREE.PlaneGeometry(720, 10), dirtMat);
-    canyonTrail.rotation.x = -Math.PI / 2;
-    canyonTrail.rotation.z = -0.32;
-    canyonTrail.position.set(-725, 0.02, -725);
-    canyonTrail.receiveShadow = true;
-    scene.add(canyonTrail);
+    // Off-Road Canyon Circuit (axis-aligned legs — the composer rejects diagonals).
+    // Composed in dirt, with no sidewalks or centre line: it is a trail, not a street.
+    // The old hand-built diagonal plane crossed these legs and is gone.
+    C.road("Red Dust Pass", [[-400, -600], [-1050, -600], [-1050, -850]],
+      { width: 9, material: dirtMat, sidewalk: 0, centreLine: false });
 
     // Hilltop Cabins & Quarry Outpost
       placeCityBuilding(ctx, "cottage", -750, -850, 0.4);
@@ -248,16 +231,8 @@ export function createStateWorld(ctx) {
       seed: 44102,
     });
 
-    const roadMat = typeof roadMaterial === "function" ? roadMaterial() : new THREE.MeshStandardMaterial({ color: 0x3a3a40 });
-
-    // Causeway Loop Expressway
+    // Causeway Loop Expressway (composer-owned surface; no plane underneath)
     C.road("Lakeshore Causeway", [[-400, 750], [-1050, 750]], { width: 12 });
-
-    const causewayMesh = new THREE.Mesh(new THREE.PlaneGeometry(650, 12), roadMat);
-    causewayMesh.rotation.x = -Math.PI / 2;
-    causewayMesh.position.set(-725, 0.02, 750);
-    causewayMesh.receiveShadow = true;
-    scene.add(causewayMesh);
 
     // Fishing Outpost & Airboat Camp
       placeCityBuilding(ctx, "cottage", -680, 820, 0);
