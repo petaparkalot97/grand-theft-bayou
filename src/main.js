@@ -10,7 +10,7 @@ import { addLamp, createHeadlights, createWetRoads, updateFx } from "./fx.js";
 import { BlockerGrid } from "./spatial.js";
 import { createSoundtrack } from "./music.js";
 import { batchStatic } from "./merge.js";
-import { initAudio, createCarAudio } from "./audio.js";
+import { initAudio, createCarAudio, resumeAudio } from "./audio.js";
 import { initWeapons3D, updateWeapon3D, playFireAnim3D } from "./weapons_3d.js";
 import { createNpcSystem } from "./npc.js";
 import { createCameraController } from "./camera.js";
@@ -936,6 +936,7 @@ const state = {
   cinematic: false,   // a cutscene owns the world: simulation and input pause
 };
 const vehicles = [];   // every drivable car
+let lastVehAudio = null;   // the previous frame's state.veh.audio, so exiting a car tears its sound down
 const sheriffs = [];   // active police units
 const cashEl = document.getElementById("cash");
 const starsEl = document.getElementById("stars");
@@ -943,6 +944,7 @@ const vehIndic = document.getElementById("vehIndic");
 const music = document.getElementById("music");
 // Soundtrack: every audio file in assets/music/ (see the README there), shuffled.
 const soundtrackReady = createSoundtrack(music, { fallback: "./assets/audio/theme.mp3" });
+initAudio(camera);   // THREE.AudioListener on the camera; car audio builds from it lazily (audio.js)
 document.getElementById("mute").onclick = () => toggleMute();
 function toggleMute() {
   music.muted = !music.muted;
@@ -955,7 +957,7 @@ function registerVehicle(obj, r = 1.8, opts = {}) {
     audio: createCarAudio(obj),
     obj, heading: obj.rotation.y, speed: 0, hp: opts.hp || 40,
     sheriff: !!opts.sheriff, blocker: { x: obj.position.x, z: obj.position.z, r },
-    r, wob: 0,
+    r, wob: 0, impact: 0,   // impact: set by collisionResponse on the first frame of a hard hit (crash damage)
     def: obj.userData.vehicleDef || null,          // vehicles.js definition (class, model forward)
     seats: createSeats(obj.userData.vehicleDef),   // driver first; see vehicles.js for hijacking
   };
@@ -1113,6 +1115,7 @@ function confirmCharacter() {
     multiplayer.selectCharacter(id); characterSelect.hidden = true; multiplayerPanel.hidden = false; mpMessage.textContent = `${cfg.name} selected. Ready when you are.`; return;
   }
   if (!beginGame || gameLaunched) return;
+  resumeAudio();   // the AudioContext starts suspended until a user gesture — this click is one
   // Launch once. The select used to stay open under the hidden overlay, so every later Enter
   // (next cutscene line) or Space (jump) confirmed the character again and restarted the game:
   // the story opening queued again and again, and free roam reset on every jump.
@@ -2485,6 +2488,8 @@ function fire() {
   } else if (bestKind === "sheriff") {
     crime(0.4);
     damageVehicle(best, gun.damage * 2);
+  } else if (bestKind === "vehicle") {
+    damageVehicle(best, gun.damage * 1.5);   // shooting a car now does something
   }
 }
 
@@ -2689,6 +2694,10 @@ function tick() {
         camera.position.y += (Math.random() - 0.5) * 0.35 * j;
       }
     }
+    // View-model weapon: runs from the tick, not just on foot, so switching to
+    // the bat / a gun is instant. Hidden while driving (the car is the view) and
+    // during cutscenes — without the gate its last pose froze in the world.
+    updateWeapon3D(playerPos, _camFwd, state.weapon, dt, input.isDown("aim"), state.cinematic || !!state.veh);
     compass.update(camCtl.heading);
     minimap.visible = !(nolantis && nolantis.inside);
     minimap.update({
@@ -2821,11 +2830,17 @@ function simulate(dt) {
   if (state.veh) drivingUpdate(dt);
   else onFootUpdate(dt);
 
-  for (const v of vehicles) {
-    if (v.audio) {
-      const isSkidding = v === state.veh ? (input.isDown("brake") && Math.abs(v.speed) > 5) || (Math.abs(input.axis("left", "right")) > 0.5 && Math.abs(v.speed) > 25) : false;
-      v.audio.update(Math.abs(v.speed * 3.6), isSkidding);
-    }
+  // Car audio: the player's car only — the traffic pool never builds or plays.
+  // Every exit path (walking out, hijacked, crashed) just clears state.veh, so
+  // tear the *previous* car's audio down here instead of at each exit site.
+  if (state.veh && state.veh.audio) {
+    const v = state.veh;
+    const isSkidding = (input.isDown("brake") && Math.abs(v.speed) > 5) || (Math.abs(input.axis("left", "right")) > 0.5 && Math.abs(v.speed) > 25);
+    v.audio.update(Math.abs(v.speed * 3.6), isSkidding, true);
+    lastVehAudio = v.audio;
+  } else if (lastVehAudio) {
+    lastVehAudio.update(0, false, false);
+    lastVehAudio = null;
   }
 
   // keep the moon's shadow box over the player
@@ -2960,7 +2975,6 @@ function onFootUpdate(dt) {
   attackTimer = Math.max(0, attackTimer - dt);
   if (attackTimer <= 0) player.play(moving ? "walk" : "idle", { fps: moving ? 10 : 5 });
   player.update(dt, camera);
-  updateWeapon3D(playerPos, _camFwd, state.weapon, dt, input.isDown("aim"));
 }
 
 // ============================================================ DRIVING
@@ -3002,9 +3016,10 @@ function drivingUpdate(dt) {
     }
     v.lastHole = hit ? hit.hole : null;
   }
-  if (v.lastImpact > 10) {
-    v.hp -= v.lastImpact * 1.5;
-    v.lastImpact = 0;
+  // Crash damage (vehicles.js sets v.impact on the first frame of a hit)
+  if (v.impact > 0) {
+    v.hp -= v.impact * 1.5;
+    v.impact = 0;
     if (v.hp <= 0 && !v.exploded) { crime(0.5); explodeCar(v); }
   }
   if (v.jolt > 0) {

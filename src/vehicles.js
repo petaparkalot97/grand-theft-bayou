@@ -165,7 +165,10 @@ export function collisionResponse(v, intendedX, intendedZ, resolvedX, resolvedZ,
       if (!v.inContact) {
         const headOn = Math.min(1, -into / Math.max(1, Math.abs(v.speed)));
         speed *= 1 - DRIVE.impactLoss * headOn;
-        if (-into > 6) v.jolt = Math.min(1, (v.jolt || 0) + Math.min(0.8, -into / 25));
+        if (-into > 6) {
+          v.jolt = Math.min(1, (v.jolt || 0) + Math.min(0.8, -into / 25));
+          v.impact = -into;   // m/s that hit the wall; the driver turns this into crash damage
+        }
       }
       // the nose follows the slide (the tail, when reversing)
       if (slide > 0.3) {

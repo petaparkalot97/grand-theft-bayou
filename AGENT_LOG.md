@@ -38,6 +38,50 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-17 — Claude
+**Type:** DISCOVERY · **Task:** TASK-040 (review)
+
+### Finding
+Reviewed Freebuff's TASK-040 wiring (audio.js, weapons_3d.js, main.js,
+vehicles.js). Independently reran `audio_weapons_test.mjs` (33/33), the
+stated regressions, and confirmed `police_test`/`dressing_test` fail
+identically on files this diff never touches (pre-existing, not a
+regression). Read the `main.js` diff line by line.
+
+Found one real gap: `simulate(dt)`'s new car-audio block only calls
+`v.audio.update(...)` while `v === state.veh`. Every place that exits a
+vehicle (`enterExitVehicle()`'s step-out path plus ~8 other `state.veh =
+null` sites — hijack, crash, cutscene teleports) just clears `state.veh` and
+never calls `.update(0, false, false)` on the car being left. `audio.js`'s
+own `active=false` teardown is correct and covered by a direct unit test, but
+that test calls `audio.update(0, false, false)` by hand with a `// player got
+out` comment — it verifies the module in isolation, not that `main.js` ever
+actually calls it. Net effect before the fix: get out of any car and its
+engine/tire-squeal loop plays forever from that spot.
+
+### Action
+Fixed in `main.js`: a one-variable tracker (`lastVehAudio`, declared next to
+`vehicles`) remembers the previous frame's active car audio; when `state.veh`
+is falsy and `lastVehAudio` is set, it gets one `.update(0, false, false)`
+call and is cleared. Re-verified `audio_weapons_test.mjs` 33/33 and all
+regressions after the fix. `TASK-040` → `REVIEW` in `TODO.md` updated with
+the full review note.
+
+## 2026-09-17 — Freebuff
+**Type:** DISCOVERY · **Task:** TASK-040
+
+### Finding
+- `registerVehicle` runs at boot (traffic pool + story cars), i.e. before any user gesture and before `initAudio()`. An eager `createCarAudio` therefore returned `undefined` for every vehicle and could never have played anything — the wiring bug was structural, not just a missing call. It would also have leaked a `THREE.AudioListener` (cyclic WebAudio refs) into every car.
+- Browsers start an AudioContext `suspended` until a user gesture; even a correct `initAudio` at boot stays silent without a `resume()` on the first click.
+- The local three QA stub (untracked, node_modules) had lost its `addons/loaders` stubs — `GLTFLoader.js` / `FBXLoader.js` were missing, breaking any test importing `landmarks.js`. Rebuilt both as failing-loader stubs; extended `index.js` additively (Camera / PerspectiveCamera, AudioListener / PositionalAudio with a fake context, `Vector3.clone`, `Object3D.lookAt`, `Group` type fields, BufferGeometry transforms). The stub's legacy `Box3` values were left byte-compatible — composer / landmarks / fx assert against the fixed unit-cube values.
+- `main.js` already carried partial TASK-040 wiring from the merge commits; the dead hooks were: `initAudio` never called, `updateWeapon3D` running on foot only, `v.lastImpact` set by nothing, and no vehicle-damage branch in `fire()`.
+
+### Impact
+Car audio must be built lazily and gated by an `active` flag — traffic cars must never build WebAudio nodes. Anyone touching the QA stub: keep the stub's legacy `Box3` values untouched.
+
+### Action
+Implemented in TASK-040 (see the task and Interface contracts). `createCarAudio` now returns `{ update(speedKmh, isSkidding, active), destroy, started, engine, squeal }`.
+
 ## 2026-09-17 — Antigravity
 **Type:** HANDOFF · **Task:** TASK-038 to TASK-036 (gangster_rifle)
 
@@ -770,6 +814,19 @@ road plane.
 
 # ⚠️ WARNINGS / FAILED APPROACHES
 
+## 2026-09-17 — Freebuff
+**Type:** WARNING · **Task:** TASK-038 (found while running TASK-040 regressions)
+
+### Finding
+- `tools/qa/dressing_test.mjs` fails on a clean tree, independent of TASK-040: it asserts `makeDecorativeFence(...)` returns a group with `children.length > 5` and `blockers.length >= 2` synchronously, but `src/landmarks.js` (commit cab6579) returns an empty group and attaches the FBX pieces in an async `.then`, placing no fence blockers at all. No loader behaviour can satisfy the test as written — either the implementation needs a procedural immediate fallback plus blockers, or the test needs to await the async build. Both files are TASK-038 (Antigravity, locked).
+- Also found: the local QA three stub had lost `addons/loaders/GLTFLoader.js` + `FBXLoader.js` (node_modules is gitignored, so stub work doesn't survive machine changes). Restored as failing-loader stubs; dressing_test now gets past the import and reaches the real assertion above.
+
+### Impact
+Don't burn time re-diagnosing dressing_test — it's a known test/implementation mismatch, not a regression from your change.
+
+### Action
+Left for TASK-038's owner. My stub restorations are additive and untracked (see DISCOVERIES, 2026-09-17 — Freebuff).
+
 ## 2026-09-15 — Claude
 **Type:** WARNING · **Task:** deploy (merge of 917ab85 into the TASK-035 integration)
 
@@ -856,6 +913,14 @@ scripts.
 ---
 
 # 🧪 TEST RESULTS
+
+## 2026-09-17 — Freebuff
+**Type:** TEST · **Task:** TASK-040
+
+- Environment: headless Node 26 (`node tools/qa/audio_weapons_test.mjs`) against the local three stub. Node has no WebAudio, so the sound itself is a TASK-010 real-browser item.
+- New `tools/qa/audio_weapons_test.mjs`: **33/33** — arsenal id coverage (bat / pistol / tec9 / sawnoff / deerRifle build and attach), unknown-id pistol fallback, holstered pose, driving/cinematic hide gate, null-pos safety, 40-frame melee/recoil anims stay finite, createCarAudio before initAudio is a usable no-op, listener attach, resumeAudio flips the fake context to running, active-only build, teardown/rebuild on exit/re-enter, destroy idempotence, traffic cars never build audio, and the vehicles.js impact contract (first frame only, scrapes excluded, normal driving untouched).
+- Regressions: `traffic_test` **11/11** (×4; one earlier failure was machine load, consistent with the board's flake note), `factions_test`, `weapons_test`, `pausemenu_test` pass. `police_test` crashes in `src/police.js` (`targetPos.x` undefined, line 140) — pre-existing. `dressing_test` fails on the TASK-038 mismatch (see WARNINGS).
+- `node --check` clean: `src/audio.js`, `src/weapons_3d.js`, `src/main.js`, `src/vehicles.js`.
 
 ## 2026-09-14 — Freebuff
 **Type:** TEST · **Task:** TASK-018
@@ -1406,6 +1471,24 @@ makeHoodrat({ sex: "m"|"f", crew: "red"|"blue"|{cloth, chain, shoe, hat}, seed, 
 
 ### `src/main.js`
 - `spawnEnemy(type, x, z)` now returns the record. `__game.spawnEnemy` and `__game.factionWar` are exposed for QA.
+
+## 2026-09-17 — Freebuff (TASK-040: car audio + 3D weapons)
+
+### `src/audio.js`
+- `initAudio(camera)`: idempotent; adds a `THREE.AudioListener` to the camera. Call once at boot (main.js does, right after `soundtrackReady`).
+- `resumeAudio()`: resumes the suspended AudioContext; call on the first user gesture (main.js does, in `confirmCharacter`).
+- `createCarAudio(carObj)` → `{ update(speedKmh, isSkidding, active), destroy(), started, engine, squeal }`
+  - Lazy + gated: real nodes build on the first `update(..., active === true)` **after** `initAudio`. `active === false` never builds and tears down an existing build (safe to call every frame for every car). `destroy()` is idempotent (`explodeCar` calls it).
+  - main.js calls `update` for the player's vehicle only; traffic cars stay silent.
+
+### `src/weapons_3d.js`
+- `initWeapons3D(scene)`: idempotent; builds the procedural view-models and loads the gangster rifle glTF (bbox-normalized to 0.85 m, `rotation.y = π`) over the deerRifle fallback. Loaded materials get `userData.gtbRealized = true` and `map.colorSpace = SRGBColorSpace`.
+- `updateWeapon3D(playerPos, aimDir, stateWeapon, dt, isAiming, hidden = false)`: call every frame from the tick (main.js does, next to `camCtl.update`), **not** from `onFootUpdate` only. `hidden` should be `state.cinematic || !!state.veh`; `hidden` (or a null `playerPos`) hides the pivot instead of throwing.
+- Weapon ids are the arsenal's: `bat` / `pistol` / `tec9` / `sawnoff` / `deerRifle`; unknown ids render the pistol proxy.
+- `playFireAnim3D(isMelee)`: `fire()` already calls it on foot; the view-model is hidden while driving, so no call is needed from the car branch.
+
+### `src/vehicles.js` (one field)
+- `collisionResponse` sets `v.impact = -into` (m/s into the obstacle) on the **first frame** of a contact only, and only when `-into > 6` — scrapes never set it. `main.js`'s `drivingUpdate` turns it into hp damage (`v.impact * 1.5`) and explodes at hp ≤ 0; `registerVehicle` inits `impact: 0`.
 
 ---
 
