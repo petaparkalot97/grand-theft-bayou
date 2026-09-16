@@ -58,20 +58,10 @@ export function createStateWorld(ctx) {
 
     // Main Harbor Expressway & Dockside Road
     // (composer.road takes the points array directly; an options object builds nothing)
-    C.road("Port Highway", [[400, -600], [1050, -600]], { width: 12 });
+    C.road("Port Highway", [[-6, -600], [1050, -600]], { width: 12 });
     C.road("Dockside Drive", [[750, -1000], [750, -420]], { width: 10 });
 
-    const portHwy = new THREE.Mesh(new THREE.PlaneGeometry(650, 12), roadMat);
-    portHwy.rotation.x = -Math.PI / 2;
-    portHwy.position.set(725, ROAD_Y, -600);
-    portHwy.receiveShadow = true;
-    scene.add(portHwy);
 
-    const dockDr = new THREE.Mesh(new THREE.PlaneGeometry(10, 580), roadMat);
-    dockDr.rotation.x = -Math.PI / 2;
-    dockDr.position.set(750, ROAD_Y + 0.001, -710);
-    dockDr.receiveShadow = true;
-    scene.add(dockDr);
 
     // Warehouse & Container Yard Buildings
     // 1. Cargo Warehouse Alpha
@@ -96,6 +86,28 @@ export function createStateWorld(ctx) {
     makeDecorativeFence(ctx, 860, -495, 900, -495);
     pois.push({ x: 880, z: -480, r: 10, label: "Port Fire Station" });
 
+    // 5. Port Calypso Apartments
+    placeCityBuilding(ctx, "apartments", 450, -650, 0);
+    addOccluder(450, -650, 20, 20, 15);
+    placeStreetClutter(ctx, 450, -630, 0);
+    pois.push({ x: 450, z: -650, r: 12, label: "Dockworker Flats" });
+
+    // 6. Dockside Cafe
+    placeCityBuilding(ctx, "cafe", 550, -550, Math.PI);
+    addOccluder(550, -550, 15, 15, 6);
+    makeDecorativeFence(ctx, 530, -565, 570, -565);
+    pois.push({ x: 550, z: -550, r: 8, label: "Salty Dog Diner" });
+
+    // 7. Shipping Authority Tower
+    placeCityBuilding(ctx, "tower", 750, -550, Math.PI / 2);
+    addOccluder(750, -550, 20, 20, 40);
+    placeOfficeClutter(ctx, 750, -530, 0);
+    pois.push({ x: 750, z: -550, r: 15, label: "Port Authority Tower" });
+
+    // Extra POIs for ambient traffic / spawns
+    pois.push({ x: 700, z: -800, r: 20, label: "Container Yard Hangout" });
+    pois.push({ x: 950, z: -650, r: 15, label: "East Docks Meetup" });
+
     // Shipping Container Stacks & Docks
       // Large maritime cargo stacks
       placeMaritimeCargo(ctx, 520, -850, 0);
@@ -112,7 +124,7 @@ export function createStateWorld(ctx) {
       placeStreetClutter(ctx, 750, -620, Math.PI / 2);
 
     // Harbor Lighting & Streetlamps
-    for (let x = 450; x <= 1000; x += 40) {
+    for (let x = 40; x <= 1000; x += 40) {
       addLitSpot({ x, y: 5.5, z: -588, warm: 0xffe0b0, power: 110, range: 28, pole: true });
     }
 
@@ -136,14 +148,14 @@ export function createStateWorld(ctx) {
       pois.push({ x: 1020, z: -980, r: 16, label: "Calypso Lighthouse" });
 
     lanes.push(
-      { name: "port-hwy-east", points: [[400, -596], [1050, -596]], cruise: [14, 22] },
-      { name: "port-hwy-west", points: [[1050, -604], [400, -604]], cruise: [14, 22] },
+      { name: "port-hwy-east", points: [[-6, -596], [1050, -596]], cruise: [14, 22] },
+      { name: "port-hwy-west", points: [[1050, -604], [-6, -604]], cruise: [14, 22] },
       { name: "dockside-north", points: [[754, -420], [754, -1000]], cruise: [12, 18] },
       { name: "dockside-south", points: [[746, -1000], [746, -420]], cruise: [12, 18] }
     );
 
     minimapLayers.roads.push(
-      { points: [[400, -600], [1050, -600]], width: 12, color: "#cfcab8" },
+      { points: [[-6, -600], [1050, -600]], width: 12, color: "#cfcab8" },
       { points: [[750, -1000], [750, -420]], width: 10, color: "#cfcab8" }
     );
     minimapLayers.buildings.push(
@@ -151,7 +163,11 @@ export function createStateWorld(ctx) {
       { x0: 869, x1: 891, z0: -729, z1: -711 },
       { x0: 610, x1: 630, z0: -488, z1: -472 },
       { x0: 871, x1: 889, z0: -487, z1: -473 },
-      { x0: 1014, x1: 1026, z0: -986, z1: -974 }
+      { x0: 1014, x1: 1026, z0: -986, z1: -974 },
+      // Newly added buildings
+      { x0: 440, x1: 460, z0: -660, z1: -640 }, // apartments
+      { x0: 542, x1: 558, z0: -558, z1: -542 }, // cafe
+      { x0: 740, x1: 760, z0: -560, z1: -540 }  // tower
     );
   }
 
@@ -168,7 +184,7 @@ export function createStateWorld(ctx) {
     dirtMat.userData.gtbRealized = true;
 
     // Off-Road Canyon Circuit (axis-aligned legs — the composer rejects diagonals)
-    C.road("Red Dust Pass", [[-400, -600], [-1050, -600], [-1050, -850]], { width: 9 });
+    C.road("Red Dust Pass", [[-6, -600], [-1050, -600], [-1050, -850]], { width: 9 });
 
     const canyonTrail = new THREE.Mesh(new THREE.PlaneGeometry(720, 10), dirtMat);
     canyonTrail.rotation.x = -Math.PI / 2;
@@ -189,6 +205,22 @@ export function createStateWorld(ctx) {
       // Industrial Oil Derricks / Pumpjacks in Badlands Quarry
       placeOilDerrick(ctx, -850, -780, 0.3);
       placeOilDerrick(ctx, -650, -720, -0.4);
+
+      // Abandoned Schoolhouse
+      placeCityBuilding(ctx, "school", -550, -650, Math.PI / 2);
+      addOccluder(-550, -650, 24, 20, 10);
+      makeDecorativeFence(ctx, -570, -670, -530, -670);
+      pois.push({ x: -550, z: -650, r: 12, label: "Ruined Schoolhouse" });
+
+      // Badlands Motel
+      placeCityBuilding(ctx, "apartments", -650, -600, 0);
+      addOccluder(-650, -600, 20, 20, 15);
+      pois.push({ x: -650, z: -600, r: 10, label: "Red Dust Motel" });
+
+      // Watchtower
+      placeCityBuilding(ctx, "tower", -950, -800, -Math.PI / 4);
+      addOccluder(-950, -800, 20, 20, 40);
+      pois.push({ x: -950, z: -800, r: 10, label: "Quarry Watchtower" });
 
       // Warning Billboards & Clutter
       placeBillboard(ctx, -550, -620, -0.3, "DANGER: QUARRY AREA");
@@ -225,17 +257,28 @@ export function createStateWorld(ctx) {
       pois.push({ x: -1020, z: -950, r: 15, label: "Cypress Summit Radio" });
 
     lanes.push(
+      // L-shaped road
+      { name: "red-dust-pass-w", points: [[-6, -597], [-1047, -597]], cruise: [12, 18] },
+      { name: "red-dust-pass-e", points: [[-1053, -603], [-6, -603]], cruise: [12, 18] },
+      { name: "red-dust-pass-s", points: [[-1047, -597], [-1047, -850]], cruise: [12, 18] },
+      { name: "red-dust-pass-n", points: [[-1053, -850], [-1053, -603]], cruise: [12, 18] },
+      // Diagonal canyon trail
       { name: "red-dust-west", points: [[-400, -600], [-1050, -850]], cruise: [10, 16] },
       { name: "red-dust-east", points: [[-1050, -850], [-400, -600]], cruise: [10, 16] }
     );
 
     minimapLayers.roads.push(
+      { points: [[-6, -600], [-1050, -600], [-1050, -850]], width: 9, color: "#cfcab8" },
       { points: [[-400, -600], [-1050, -850]], width: 9, color: "#8a5a3a" }
     );
     minimapLayers.buildings.push(
       { x0: -756, x1: -744, z0: -855, z1: -845 },
       { x0: -928, x1: -912, z0: -657, z1: -643 },
-      { x0: -1024, x1: -1016, z0: -954, z1: -946 }
+      { x0: -1024, x1: -1016, z0: -954, z1: -946 },
+      // Newly added buildings
+      { x0: -562, x1: -538, z0: -660, z1: -640 }, // school
+      { x0: -660, x1: -640, z0: -610, z1: -590 }, // apartments
+      { x0: -960, x1: -940, z0: -810, z1: -790 }  // tower
     );
   }
 
@@ -251,13 +294,9 @@ export function createStateWorld(ctx) {
     const roadMat = typeof roadMaterial === "function" ? roadMaterial() : new THREE.MeshStandardMaterial({ color: 0x3a3a40 });
 
     // Causeway Loop Expressway
-    C.road("Lakeshore Causeway", [[-400, 750], [-1050, 750]], { width: 12 });
+    C.road("Lakeshore Causeway", [[-6, 750], [-1050, 750]], { width: 12 });
 
-    const causewayMesh = new THREE.Mesh(new THREE.PlaneGeometry(650, 12), roadMat);
-    causewayMesh.rotation.x = -Math.PI / 2;
-    causewayMesh.position.set(-725, 0.02, 750);
-    causewayMesh.receiveShadow = true;
-    scene.add(causewayMesh);
+
 
     // Fishing Outpost & Airboat Camp
       placeCityBuilding(ctx, "cottage", -680, 820, 0);
@@ -271,27 +310,44 @@ export function createStateWorld(ctx) {
       // Bayou Stilt Huts & Boardwalk Outposts
       placeBayouStiltHut(ctx, -550, 880, Math.PI / 6);
       placeBayouStiltHut(ctx, -800, 920, -Math.PI / 4);
+      placeBayouStiltHut(ctx, -620, 950, Math.PI / 3);
+      placeBayouStiltHut(ctx, -700, 980, -Math.PI / 2);
+      placeBayouStiltHut(ctx, -900, 900, Math.PI / 8);
+
+      // Gas Station / Local Market
+      placeCityBuilding(ctx, "market", -450, 820, Math.PI);
+      addOccluder(-450, 820, 20, 16, 8);
+      placeStreetClutter(ctx, -450, 800, 0);
+      pois.push({ x: -450, z: 820, r: 10, label: "Lakeshore Bait & Tackle" });
+
+      // Marshside Apartments
+      placeCityBuilding(ctx, "apartments", -550, 820, 0);
+      addOccluder(-550, 820, 20, 20, 15);
+      pois.push({ x: -550, z: 820, r: 12, label: "Swamp Edge Flats" });
 
       // Causeway Advertisements & Fishing Clutter
       placeBillboard(ctx, -600, 730, Math.PI / 2, "MARSH AIRBOAT TOURS");
       placeStreetClutter(ctx, -920, 800, 0);
 
     // Causeway Lighting
-    for (let x = -450; x >= -1000; x -= 40) {
+    for (let x = -40; x >= -1000; x -= 40) {
       addLitSpot({ x, y: 5.5, z: 756, warm: 0xffd9a0, power: 100, range: 26, pole: true });
     }
 
     lanes.push(
-      { name: "causeway-west", points: [[-400, 746], [-1050, 746]], cruise: [14, 22] },
-      { name: "causeway-east", points: [[-1050, 754], [-400, 754]], cruise: [14, 22] }
+      { name: "causeway-west", points: [[-6, 746], [-1050, 746]], cruise: [14, 22] },
+      { name: "causeway-east", points: [[-1050, 754], [-6, 754]], cruise: [14, 22] }
     );
 
     minimapLayers.roads.push(
-      { points: [[-400, 750], [-1050, 750]], width: 12, color: "#cfcab8" }
+      { points: [[-6, 750], [-1050, 750]], width: 12, color: "#cfcab8" }
     );
     minimapLayers.buildings.push(
       { x0: -686, x1: -674, z0: 815, z1: 825 },
-      { x0: -927, x1: -913, z0: 814, z1: 826 }
+      { x0: -927, x1: -913, z0: 814, z1: 826 },
+      // Newly added buildings
+      { x0: -460, x1: -440, z0: 812, z1: 828 }, // market
+      { x0: -560, x1: -540, z0: 810, z1: 830 }  // apartments
     );
   }
 

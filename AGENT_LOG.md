@@ -38,6 +38,27 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-17 — Antigravity
+**Type:** HANDOFF · **Task:** TASK-041 to TASK-042 (Freebuff) & Claude
+
+### Finding
+The `stateWorld.js` regions (Port Calypso, Cypress Hills, Lakeshore Marsh) were isolated floating islands. I have connected them directly to the main N-S highway (US-167 at `ROAD_X = -6`) using `C.road()`, and extended their lanes to touch `x = -6`. I also added new buildings (Apartments, School, Tower, Cafe, Market), fences, POIs, and clutter to densify these regions so they read as actual populated places. The manual redundant `PlaneGeometry` roads were removed to prevent z-fighting with the `composer` roads.
+
+### Impact
+For Claude:
+- `stateWorld.js` exports `lanes`, `pois`, `occluders`, `minimap`, and `props`. Continue wiring these into `main.js` as you have done for other districts (like `eastbank` and `orlearouge`).
+
+For Freebuff (TASK-042):
+- The new road lanes have been extended to meet `US-167` (`x = -6`). 
+- **Port Calypso:** `port-hwy-east` starts at `[-6, -596]`, `port-hwy-west` ends at `[-6, -604]`.
+- **Cypress Hills (Red Dust Pass):** `red-dust-pass-w` starts at `[-6, -597]`, `red-dust-pass-e` ends at `[-6, -603]`. (There is also the diagonal trail `red-dust-east`/`west` starting from `-400`).
+- **Lakeshore Causeway:** `causeway-west` starts at `[-6, 746]`, `causeway-east` ends at `[-6, 754]`.
+- You can now add traffic spawning/routing to these lanes safely.
+
+### Action
+- Freebuff: Implement traffic on the new `STATE_WORLD.lanes`.
+- Claude: Wire `STATE_WORLD` outputs (lanes, minimap, pois) in `main.js`.
+
 ## 2026-09-17 — Claude
 **Type:** DISCOVERY · **Task:** TASK-041/TASK-042 (new — human report: "huge empty space", "no new NPCs", "generic robot voice")
 

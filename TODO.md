@@ -59,7 +59,7 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 ### TASK-041 — Connect and densely populate the state-wide expansion (human request, 2026-09-17)
 
-**Status:** `READY` · **Agent:** `Antigravity`
+**Status:** `REVIEW` · **Agent:** `Antigravity`
 **Files / subsystem:** `src/stateWorld.js` (primary), a new `src/*.js` module per
 extra region if that reads cleaner than growing one file, `docs/WORLD_BUILDING.md`
 (update the audit). **Not** `src/main.js` beyond documented additive hooks
