@@ -43,6 +43,7 @@ import { createTusouxroeNorth, NORTH_MIN_Z } from "./tusouxroeNorth.js";
 import { createWestParish, onParishHighway, PARISH_MIN_X } from "./westparish.js";
 import { createPlayerCharacter, getPlayerCharacter, PLAYER_CHARACTERS } from "./playerCharacters.js";
 import { createAlternateCampaign } from "./alternateCampaign.js";
+import { createGreedoCampaign } from "./greedoCampaign.js";
 import { createMultiplayer } from "./multiplayer.js";
 import { createStateWorld, STATE_BOUNDS } from "./stateWorld.js";
 
@@ -1008,6 +1009,7 @@ let stateWorld = null;         // State-Wide Expansion (stateWorld.js)
 let nolantis = null;           // Act One continued underground: Nirbayou Nolantis (nolantis.js)          // a story chapter can catch WASTED / BUSTED and respawn instead
 let welcomeBack = null;        // Act One part C: the Sheriff's Office, the montage, the surface (welcomeback.js)
 let alternate = null;
+let greedoCampaign = null;     // Gr33do's own campaign, "FIND PETA" (greedoCampaign.js)
 const buildingOccluders = [];  // tall buildings the camera must stay in front of
 let mainStreetWest = -73;      // Main Street runs from US-167 west to the last shopfront
 const camCtl = createCameraController({
@@ -1051,7 +1053,7 @@ function minimapBlips() {
   if (pauseMenu && pauseMenu.customWaypoint) {
     _blips.push({ kind: "waypoint", x: pauseMenu.customWaypoint.x, z: pauseMenu.customWaypoint.z });
   }
-  const wp = (blueLight && blueLight.waypoint) || (actOne && actOne.waypoint) || (prologue && prologue.waypoint);
+  const wp = (blueLight && blueLight.waypoint) || (actOne && actOne.waypoint) || (greedoCampaign && greedoCampaign.waypoint) || (prologue && prologue.waypoint);
   if (wp) _blips.push({ kind: "waypoint", x: wp.x, z: wp.z });
   if (!storyObjective) {
     // free roam: the escape plan (the cans, then the truck)
@@ -1123,6 +1125,7 @@ function confirmCharacter() {
   characterSelect.hidden = true;
   beginGame();
   if (cfg.campaign === "alternate") { prologue.skip(); alternate.start(); return; }
+  if (cfg.campaign === "greedo") { prologue.skip(); greedoCampaign.start(); return; }
   if (pendingLaunch === "story") prologue.start();
   else { prologue.skip(); music.volume = 0.55; soundtrackReady.then((s) => s.play()); flashObjective("Click the game to look around with the mouse · Esc releases it"); }
 }
@@ -2675,6 +2678,7 @@ function tick() {
     if (nolantis) nolantis.update(dt);
     if (welcomeBack) welcomeBack.update(dt);
     if (alternate) alternate.update(dt);
+    if (greedoCampaign) greedoCampaign.update(dt);
     updateRemotePlayers(dt);
     if (multiplayerMode && multiplayer?.connected && state.running) {
       networkInputTimer += dt;
@@ -3260,6 +3264,14 @@ async function boot() {
     flashObjective,
   });
   alternate.buildSet();
+  greedoCampaign = createGreedoCampaign({
+    scene, cine, state, playerPos, getPlayer: () => player, makeHoodrat,
+    makeActor: (id) => createPlayerCharacter(id, {
+      makePeta: () => makeCastMember(makeHoodrat, "keseme", { height: 1.74 }), makeHoodrat,
+    }),
+    flashObjective, setObjective: setStoryObjective,
+  });
+  greedoCampaign.buildSet();
 
   // Final sweep: the hand-built landmarks (Popeyes, trailers, water towers,
   // sheds) are plain coloured boxes straight out of the builders. Everything
@@ -3289,6 +3301,7 @@ async function boot() {
     ...(nolantis ? nolantis.props : []),
     ...(welcomeBack ? welcomeBack.props : []),
     ...(alternate ? alternate.props : []),
+    ...(greedoCampaign ? greedoCampaign.props : []),
     ...(tusouxroeNorth ? tusouxroeNorth.props : []),
     ...(stateWorld ? stateWorld.props : []),
   ]);
@@ -3303,7 +3316,7 @@ async function boot() {
   window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
-    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; }, CAN_REACH, CAN_REACH_VEHICLE,
+    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; }, CAN_REACH, CAN_REACH_VEHICLE,
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
       playerPos.set(x, 0, z);
