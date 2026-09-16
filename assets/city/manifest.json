@@ -1,0 +1,211 @@
+{
+  "id": "crayon-city-architecture",
+  "name": "Crayon City Architecture",
+  "version": "1.1.1",
+  "generatedAt": "2026-07-27T13:21:32.410Z",
+  "primaryFormat": "GLB",
+  "assetCount": 10,
+  "modelFileCount": 20,
+  "textureVariants": [
+    "textured",
+    "flat"
+  ],
+  "collision": {
+    "schema": "crayon.collider.v2",
+    "type": "compound boxes",
+    "bakedGeometry": true,
+    "includedOnEveryModel": true
+  },
+  "assets": [
+    {
+      "id": "cottage-sunbeam",
+      "name": "Sunbeam Cottage",
+      "family": "Architecture",
+      "file": "models/textured/sunbeam-cottage.glb",
+      "flatFile": "models/flat/sunbeam-cottage.glb",
+      "texturesEnabled": true,
+      "triangles": 740,
+      "dimensions": [
+        11.376,
+        5.31,
+        10.116
+      ],
+      "colliderCount": 30,
+      "collisionTriangles": 360,
+      "collisionSchema": "crayon.collider.v2",
+      "units": "meters",
+      "upAxis": "Y"
+    },
+    {
+      "id": "architecture-apartment-block",
+      "name": "Meadow Apartments",
+      "family": "Architecture",
+      "file": "models/textured/meadow-apartments.glb",
+      "flatFile": "models/flat/meadow-apartments.glb",
+      "texturesEnabled": true,
+      "triangles": 800,
+      "dimensions": [
+        9.157,
+        11.903,
+        9.313
+      ],
+      "colliderCount": 34,
+      "collisionTriangles": 408,
+      "collisionSchema": "crayon.collider.v2",
+      "units": "meters",
+      "upAxis": "Y"
+    },
+    {
+      "id": "architecture-skyscraper",
+      "name": "Cloudline Tower",
+      "family": "Architecture",
+      "file": "models/textured/cloudline-tower.glb",
+      "flatFile": "models/flat/cloudline-tower.glb",
+      "texturesEnabled": true,
+      "triangles": 848,
+      "dimensions": [
+        6.264,
+        18.894,
+        5.828
+      ],
+      "colliderCount": 27,
+      "collisionTriangles": 324,
+      "collisionSchema": "crayon.collider.v2",
+      "units": "meters",
+      "upAxis": "Y"
+    },
+    {
+      "id": "architecture-office-building",
+      "name": "Sageworks Offices",
+      "family": "Architecture",
+      "file": "models/textured/sageworks-offices.glb",
+      "flatFile": "models/flat/sageworks-offices.glb",
+      "texturesEnabled": true,
+      "triangles": 892,
+      "dimensions": [
+        8.784,
+        12.071,
+        7.056
+      ],
+      "colliderCount": 35,
+      "collisionTriangles": 420,
+      "collisionSchema": "crayon.collider.v2",
+      "units": "meters",
+      "upAxis": "Y"
+    },
+    {
+      "id": "architecture-cafe",
+      "name": "Cornerleaf Café",
+      "family": "Architecture",
+      "file": "models/textured/cornerleaf-cafe.glb",
+      "flatFile": "models/flat/cornerleaf-cafe.glb",
+      "texturesEnabled": true,
+      "triangles": 864,
+      "dimensions": [
+        8.634,
+        4.661,
+        8.548
+      ],
+      "colliderCount": 33,
+      "collisionTriangles": 396,
+      "collisionSchema": "crayon.collider.v2",
+      "units": "meters",
+      "upAxis": "Y"
+    },
+    {
+      "id": "architecture-supermarket",
+      "name": "Freshfield Market",
+      "family": "Architecture",
+      "file": "models/textured/freshfield-market.glb",
+      "flatFile": "models/flat/freshfield-market.glb",
+      "texturesEnabled": true,
+      "triangles": 856,
+      "dimensions": [
+        9.401,
+        3.35,
+        11.424
+      ],
+      "colliderCount": 31,
+      "collisionTriangles": 372,
+      "collisionSchema": "crayon.collider.v2",
+      "units": "meters",
+      "upAxis": "Y"
+    },
+    {
+      "id": "architecture-school",
+      "name": "Willowbrook School",
+      "family": "Architecture",
+      "file": "models/textured/willowbrook-school.glb",
+      "flatFile": "models/flat/willowbrook-school.glb",
+      "texturesEnabled": true,
+      "triangles": 774,
+      "dimensions": [
+        11.333,
+        5.041,
+        10.382
+      ],
+      "colliderCount": 31,
+      "collisionTriangles": 372,
+      "collisionSchema": "crayon.collider.v2",
+      "units": "meters",
+      "upAxis": "Y"
+    },
+    {
+      "id": "architecture-hospital",
+      "name": "Harborlight Hospital",
+      "family": "Architecture",
+      "file": "models/textured/harborlight-hospital.glb",
+      "flatFile": "models/flat/harborlight-hospital.glb",
+      "texturesEnabled": true,
+      "triangles": 898,
+      "dimensions": [
+        9.821,
+        8.32,
+        9.945
+      ],
+      "colliderCount": 32,
+      "collisionTriangles": 384,
+      "collisionSchema": "crayon.collider.v2",
+      "units": "meters",
+      "upAxis": "Y"
+    },
+    {
+      "id": "architecture-fire-station",
+      "name": "Ember Fire Station",
+      "family": "Architecture",
+      "file": "models/textured/ember-fire-station.glb",
+      "flatFile": "models/flat/ember-fire-station.glb",
+      "texturesEnabled": true,
+      "triangles": 712,
+      "dimensions": [
+        10.692,
+        6.746,
+        10.181
+      ],
+      "colliderCount": 24,
+      "collisionTriangles": 288,
+      "collisionSchema": "crayon.collider.v2",
+      "units": "meters",
+      "upAxis": "Y"
+    },
+    {
+      "id": "architecture-garage",
+      "name": "Mossline Garage",
+      "family": "Architecture",
+      "file": "models/textured/mossline-garage.glb",
+      "flatFile": "models/flat/mossline-garage.glb",
+      "texturesEnabled": true,
+      "triangles": 794,
+      "dimensions": [
+        11.024,
+        4.4,
+        10.832
+      ],
+      "colliderCount": 36,
+      "collisionTriangles": 432,
+      "collisionSchema": "crayon.collider.v2",
+      "units": "meters",
+      "upAxis": "Y"
+    }
+  ]
+}

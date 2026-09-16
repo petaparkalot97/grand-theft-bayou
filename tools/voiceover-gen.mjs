@@ -6,11 +6,17 @@
 // Scans src/*.js for dialogue lines (`c.say("WHO", "text")` and the local
 // `say(c, "WHO", "text")` helper some scene files define), looks up each
 // speaker's voice in src/voiceCast.js, and synthesizes any line that isn't
-// already cached on disk. Lines whose speaker still has a "TODO" placeholder
-// reference_id are skipped with a warning rather than failing the run.
+// already cached on disk (skip is the default; --force regenerates).
+// Lines whose speaker still has a "TODO" placeholder reference_id are
+// skipped with a warning rather than failing the run. A failed synthesis is
+// reported as FAILED, never silently swapped for a different voice/model.
 //
 // Requires FISH_AUDIO_API_KEY in .env (gitignored, not committed).
 // Run: npm run voiceover
+//   --force            regenerate every line, even ones already cached on disk
+//   --character=WHO     only lines spoken by WHO (case-insensitive, e.g. --character=KESEME)
+//   --line=SUBSTRING     only lines whose text contains SUBSTRING (case-insensitive)
+//   --dry-run            print what would be generated/skipped; no API calls, no writes
 // ---------------------------------------------------------------------------
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
@@ -76,7 +82,10 @@ function fileNameFor(who, text, referenceId = "") {
   return `${slug(who)}-${hash}.mp3`;
 }
 
-async function synthesize(text, referenceId) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const RETRY_DELAYS_MS = [500, 1500, 3000]; // 3 attempts total, increasing backoff
+
+async function synthesizeOnce(text, referenceId) {
   const res = await fetch(FISH_TTS_URL, {
     method: "POST",
     headers: {
@@ -90,10 +99,40 @@ async function synthesize(text, referenceId) {
     const body = await res.text().catch(() => "");
     throw new Error(`Fish Audio ${res.status}: ${body.slice(0, 300)}`);
   }
-  return Buffer.from(await res.arrayBuffer());
+  const audio = Buffer.from(await res.arrayBuffer());
+  if (audio.length === 0) throw new Error("Fish Audio returned an empty body");
+  return audio;
+}
+
+// Never falls back to a different model/voice on failure — a failed line is
+// reported FAILED, not silently replaced, so voices stay consistent per character.
+async function synthesize(text, referenceId) {
+  let lastErr;
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await synthesizeOnce(text, referenceId);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < RETRY_DELAYS_MS.length) await sleep(RETRY_DELAYS_MS[attempt]);
+    }
+  }
+  throw lastErr;
+}
+
+function parseArgs(argv) {
+  const opts = { force: false, character: null, line: null, dryRun: false };
+  for (const arg of argv) {
+    if (arg === "--force") opts.force = true;
+    else if (arg === "--dry-run") opts.dryRun = true;
+    else if (arg.startsWith("--character=")) opts.character = arg.slice("--character=".length).toUpperCase();
+    else if (arg.startsWith("--line=")) opts.line = arg.slice("--line=".length).toLowerCase();
+  }
+  return opts;
 }
 
 async function main() {
+  const opts = parseArgs(process.argv.slice(2));
+
   if (!API_KEY) {
     console.error("FISH_AUDIO_API_KEY is not set (checked .env and the environment). Aborting.");
     process.exitCode = 1;
@@ -103,13 +142,18 @@ async function main() {
   mkdirSync(OUT_DIR, { recursive: true });
   const manifest = existsSync(MANIFEST_PATH) ? JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) : {};
 
-  const dialogueLines = extractLines();
+  let dialogueLines = extractLines();
+  if (opts.character) dialogueLines = dialogueLines.filter((l) => l.who.toUpperCase() === opts.character);
+  if (opts.line) dialogueLines = dialogueLines.filter((l) => l.text.toLowerCase().includes(opts.line));
+
   const skippedVoices = new Set();
+  const failedLines = [];
   let generated = 0, cached = 0, failed = 0;
 
   for (const { who, text } of dialogueLines) {
     const voice = resolveVoice(who);
     const key = `${who}::${text}`;
+    const label = `[${who}] "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`;
     if (voice.referenceId.startsWith("TODO")) {
       skippedVoices.add(`${who} (${voice.label})`);
       continue;
@@ -117,9 +161,16 @@ async function main() {
 
     const fileName = fileNameFor(who, text, voice.referenceId);
     const filePath = path.join(OUT_DIR, fileName);
-    if (existsSync(filePath)) {
+    const alreadyCached = existsSync(filePath);
+
+    if (alreadyCached && !opts.force) {
       manifest[key] = fileName;
       cached++;
+      continue;
+    }
+
+    if (opts.dryRun) {
+      console.log(`${alreadyCached ? "[FORCE]" : "[GEN]  "} ${label}`);
       continue;
     }
 
@@ -128,20 +179,34 @@ async function main() {
       writeFileSync(filePath, audio);
       manifest[key] = fileName;
       generated++;
-      console.log(`generated: [${who}] "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`);
+      console.log(`generated: ${label}`);
     } catch (err) {
       failed++;
-      console.error(`failed: [${who}] "${text.slice(0, 60)}" — ${err.message}`);
+      failedLines.push({ who, text, reason: err.message });
+      console.error(`failed: ${label} — ${err.message}`);
     }
   }
 
-  writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + "\n");
+  if (!opts.dryRun) writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + "\n");
 
   console.log("");
-  console.log(`voiceover: ${generated} generated, ${cached} already cached, ${failed} failed.`);
-  if (skippedVoices.size) {
-    console.log(`skipped (no voice cast yet in src/voiceCast.js): ${[...skippedVoices].sort().join(", ")}`);
+  console.log("====================================");
+  console.log(opts.dryRun ? "VOICEOVER DRY RUN COMPLETE" : "VOICEOVER GENERATION COMPLETE");
+  console.log("====================================");
+  console.log(`Generated: ${generated}`);
+  console.log(`Cached:    ${cached}`);
+  console.log(`Failed:    ${failed}`);
+  console.log(`Total:     ${dialogueLines.length}`);
+  if (failedLines.length) {
+    console.log("");
+    console.log("Failed lines:");
+    for (const f of failedLines) console.log(`  [${f.who}] "${f.text.slice(0, 60)}" — ${f.reason}`);
   }
+  if (skippedVoices.size) {
+    console.log("");
+    console.log(`Skipped (no voice cast yet in src/voiceCast.js): ${[...skippedVoices].sort().join(", ")}`);
+  }
+  if (failed > 0) process.exitCode = 1;
 }
 
 main();
