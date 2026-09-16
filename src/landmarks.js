@@ -188,6 +188,44 @@ export function placeParkedCar(ctx, carType, x, z, ry = 0) {
   if (addBlocker) addBlocker(x, z, 2.5);
 }
 
+const TRUCK_FILES = {
+  pickup: "Pick_Up_1.fbx",
+  truck: "Truck_1.fbx",
+  van: "Van_1.fbx",
+  car_b: "Car_1_B.fbx",
+  car_r: "Car_1_R.fbx",
+  car_y: "Car_1_Y.fbx"
+};
+
+export function placeTruck(ctx, type, x, z, ry = 0) {
+  const { scene, addBlocker } = ctx;
+  const file = TRUCK_FILES[type] || "Pick_Up_1.fbx";
+  
+  loadFBX(`./assets/models/vehicles/${file}`).then(fbx => {
+    if (!fbx) return;
+    const model = fbx.clone(true);
+    
+    // Scale down if needed, assuming they need similar scaling
+    model.scale.setScalar(0.015);
+    
+    model.position.set(x, 0, z);
+    model.rotation.y = ry;
+    
+    model.traverse(o => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+        if (o.material) o.material.userData.gtbRealized = true;
+      }
+    });
+    
+    scene.add(model);
+    if (ctx.props) ctx.props.push(model);
+  });
+  
+  if (addBlocker) addBlocker(x, z, 3.5);
+}
+
 export function placeShopGLB(ctx, file, x, z, ry = 0, w = 15, h = 10, d = 15) {
   const { scene, addBlocker } = ctx;
   const g = new THREE.Group();
