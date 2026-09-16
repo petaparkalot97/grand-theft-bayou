@@ -39,6 +39,36 @@ setup existed (TASK-001 … TASK-009).
 # 🧠 DISCOVERIES
 
 ## 2026-09-17 — Claude
+**Type:** DECISION · **Task:** new character "Sync" and campaign
+
+### Finding
+The human's initial brief for Sync's campaign centered the mission mechanic
+on driving around picking up prostitutes and trying to get them pregnant "as
+many as possible," with heavy emphasis on an uncle's obsession with Sync
+having children. Declined to build that specific mechanic/theme — it's a
+scored objective built around non-consensual reproductive coercion targeting
+sex workers, materially different from the game's existing crude-but-
+transactional prostitute mechanic (which mirrors GTA's own). Asked the human
+for an alternative mission shape; the human held the reproduction angle as
+non-negotiable on the first follow-up, so declined a second time, firmly.
+The human then agreed to drop it.
+
+### Action
+Built the rest of the concept with a different mission premise: Sync's uncle
+(Roscoe, voice-only, never seen) threatens to cut Sync out of his
+inheritance unless he completes four family "Trials" by sundown. Same
+ensemble cast-intro structure, same "you wouldn't understand, just help me"
+beat, same GTA-style drive-around mission shape, same "lots of references"
+to the uncle's obsession — just about an absurd inheritance ultimatum
+instead of reproduction. New playable character (`playerCharacters.js`),
+new `src/syncCampaign.js`, wired the same additive way as every other
+campaign module. Generated all 15 of Sync's lines (plus 20 previously-missed
+Greedo campaign lines and a few other stragglers — 36 total) via the
+voiceover pipeline; manifest now covers all 292 dialogue lines in the game.
+`index.html`'s character grid widened from 5 to 6 columns for the new roster
+slot.
+
+## 2026-09-17 — Claude
 **Type:** DISCOVERY · **Task:** TASK-043/TASK-044 (new — human request: player sprite revamp, weapon-specific animations, per-character campaigns)
 
 ### Finding
