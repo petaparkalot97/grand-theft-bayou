@@ -22,7 +22,7 @@
 import * as THREE from "three";
 import { headingFromVector } from "./world.js";
 import { makeChurch } from "./church.js";
-import { makeDecorativeFence } from "./landmarks.js";
+import { makeDecorativeFence, placeParkedCar, placeGasStation } from "./landmarks.js";
 
 export const PARISH_MIN_X = -440;
 const REGION_EAST_X = -150;        // west of this is the parish proper
@@ -412,7 +412,9 @@ export function createWestParish(ctx) {
   // ---------------------------------------------------------------- rest stop
   function buildRestStop() {
     const rot = headingFromVector(REST.road.x - REST.x, REST.road.z - REST.z);   // front faces the highway
-    ctx.makeGasStation(REST.x, REST.z, rot, { name: "BAYOU NOIR FUEL", wall: 0xe3ddcf, trim: 0x2f7a4a, bg: "#f4efe2", band: "#2f7a4a", ink: "#b3261e" });
+    placeGasStation(ctx, REST.x, REST.z, rot);
+    placeParkedCar(ctx, "toyoyo", REST.x - 5, REST.z + 10, rot + Math.PI / 2);
+    placeParkedCar(ctx, "beatall", REST.x + 10, REST.z + 10, rot + Math.PI / 2);
     // an apron from the highway's edge to the pumps
     const dirX = REST.x - REST.road.x, dirZ = REST.z - REST.road.z, len = Math.hypot(dirX, dirZ);
     const a = new THREE.Vector3(REST.road.x + (dirX / len) * (HWY_WIDTH / 2 - 0.5), 0, REST.road.z + (dirZ / len) * (HWY_WIDTH / 2 - 0.5));

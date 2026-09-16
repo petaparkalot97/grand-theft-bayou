@@ -106,7 +106,8 @@ The user requested continuing to build the city and fill empty space using avail
 - Designed and built a 4th major region: **Oyster Bay (Southeast corner: x 400..1100, z 400..1100)**. It is a coastal town featuring a medical center, farmer's market, apartments, a high school, and a seafood diner. 
 - Connected Oyster Bay to US-167 via `Oyster Highway` at `z = 600`, generating procedural `C.road` meshes and populating the `minimapLayers`, `lanes`, and `pois`.
 - Implemented `placeParkedCar()` in `landmarks.js` to parse and instantiate low-poly vehicle FBX assets (`Beatall`, `docLorean`, `Landyroamer`, `Toyoyo Highlight`, `Tristar Racer`).
-- Placed multiple static parked cars across parking lots in **Tusouxroe North** and **Oyster Bay** to add ambient life.
+- Placed multiple static parked cars across parking lots in **Tusouxroe North** and **Oyster Bay**, and along the streets of **OrleaRouge** and **East Bank** to add ambient life.
+- Integrated `Tacos.glb` (Taco Stand), `BurgerPiz.glb` (BurgerPiz), `Gas_station.fbx` (Gas Station) and `6twelve.fbx` (6/12 Outpost) assets into the world map, replacing generic placeholder blocks in **Lakeshore Marsh**, **Cypress Hills**, **West Parish**, and **Oyster Bay**.
 - Cleaned up manual `PlaneGeometry` road meshes in `tusouxroeNorth.js` which were causing z-fighting with the `composer.js` procedural roads (similar to the fix in TASK-041).
 
 ## 2026-09-17 — Claude

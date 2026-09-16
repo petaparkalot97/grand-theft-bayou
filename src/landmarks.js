@@ -188,6 +188,106 @@ export function placeParkedCar(ctx, carType, x, z, ry = 0) {
   if (addBlocker) addBlocker(x, z, 2.5);
 }
 
+export function placeShopGLB(ctx, file, x, z, ry = 0, w = 15, h = 10, d = 15) {
+  const { scene, addBlocker } = ctx;
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+  
+  if (ctx.loadGLB) {
+    ctx.loadGLB(file).then((glb) => {
+      if (glb) {
+        const model = glb.clone(true);
+        let b = new THREE.Box3().setFromObject(model);
+        const sz = b.getSize(new THREE.Vector3());
+        
+        const scale = Math.min(w / Math.max(0.1, sz.x), h / Math.max(0.1, sz.y), d / Math.max(0.1, sz.z));
+        model.scale.setScalar(scale);
+        
+        b.setFromObject(model);
+        const center = b.getCenter(new THREE.Vector3());
+        model.position.set(-center.x, -b.min.y, -center.z);
+        
+        model.traverse((o) => {
+          if (o.isMesh) {
+            o.castShadow = true;
+            o.receiveShadow = true;
+            if (o.material) o.material.userData.gtbRealized = true;
+          }
+        });
+        
+        g.add(model);
+      }
+    });
+  }
+  
+  scene.add(g);
+  if (ctx.props) ctx.props.push(g);
+  if (addBlocker) addBlocker(x, z, Math.max(w, d) / 2);
+}
+
+export function placeGasStation(ctx, x, z, ry = 0) {
+  const { scene, addBlocker } = ctx;
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+  
+  loadFBX('./assets/models/gasstation/Gas_station.fbx').then((fbx) => {
+    if (fbx) {
+      const model = fbx.clone(true);
+      model.scale.setScalar(0.015);
+      
+      let b = new THREE.Box3().setFromObject(model);
+      const center = b.getCenter(new THREE.Vector3());
+      model.position.set(-center.x, -b.min.y, -center.z);
+      
+      model.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          o.receiveShadow = true;
+          if (o.material) o.material.userData.gtbRealized = true;
+        }
+      });
+      g.add(model);
+    }
+  });
+  scene.add(g);
+  if (ctx.props) ctx.props.push(g);
+  if (addBlocker) addBlocker(x, z, 12);
+}
+
+export function placeSixTwelve(ctx, x, z, ry = 0) {
+  const { scene, addBlocker } = ctx;
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+  
+  loadFBX('./assets/models/sixtwelve/6twelve.fbx').then((fbx) => {
+    if (fbx) {
+      const model = fbx.clone(true);
+      model.scale.setScalar(0.015);
+      
+      let b = new THREE.Box3().setFromObject(model);
+      const center = b.getCenter(new THREE.Vector3());
+      model.position.set(-center.x, -b.min.y, -center.z);
+      
+      model.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          o.receiveShadow = true;
+          if (o.material) o.material.userData.gtbRealized = true;
+        }
+      });
+      g.add(model);
+    }
+  });
+  scene.add(g);
+  if (ctx.props) ctx.props.push(g);
+  if (addBlocker) addBlocker(x, z, 10);
+}
+
+
+
 /**
  * Builds a structured building corresponding to one of the 10 city GLB variants.
  */

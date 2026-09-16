@@ -14,7 +14,7 @@
 
 import * as THREE from "three";
 import { createComposer } from "./composer.js";
-import { placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeMaritimeCargo, placeOilDerrick, placeBillboard, placeBayouStiltHut } from "./landmarks.js";
+import { placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeMaritimeCargo, placeOilDerrick, placeBillboard, placeBayouStiltHut, placeParkedCar, placeShopGLB, placeGasStation, placeSixTwelve } from "./landmarks.js";
 
 export const STATE_BOUNDS = { minX: -1200, maxX: 1200, minZ: -1200, maxZ: 1200 };
 
@@ -212,6 +212,11 @@ export function createStateWorld(ctx) {
       makeDecorativeFence(ctx, -570, -670, -530, -670);
       pois.push({ x: -550, z: -650, r: 12, label: "Ruined Schoolhouse" });
 
+      // Cypress 6/12 Convenience Store
+      placeSixTwelve(ctx, -750, -620, Math.PI);
+      pois.push({ x: -750, z: -620, r: 10, label: "6/12 Outpost" });
+      placeParkedCar(ctx, "tristar", -750, -605, Math.PI / 2);
+
       // Badlands Motel
       placeCityBuilding(ctx, "apartments", -650, -600, 0);
       addOccluder(-650, -600, 20, 20, 15);
@@ -303,9 +308,9 @@ export function createStateWorld(ctx) {
       addOccluder(-680, 820, 12, 10, 6);
       pois.push({ x: -680, z: 820, r: 8, label: "Captain Thibodeaux Shacks" });
 
-      placeCityBuilding(ctx, "cafe", -920, 820, Math.PI / 2);
+      placeShopGLB(ctx, "./assets/models/tacos/Tacos.glb", -920, 820, Math.PI / 2, 14, 12, 14);
       addOccluder(-920, 820, 14, 12, 7);
-      pois.push({ x: -920, z: 820, r: 8, label: "Alligator Bait Diner" });
+      pois.push({ x: -920, z: 820, r: 8, label: "Taco Stand" });
 
       // Bayou Stilt Huts & Boardwalk Outposts
       placeBayouStiltHut(ctx, -550, 880, Math.PI / 6);
@@ -314,9 +319,8 @@ export function createStateWorld(ctx) {
       placeBayouStiltHut(ctx, -700, 980, -Math.PI / 2);
       placeBayouStiltHut(ctx, -900, 900, Math.PI / 8);
 
-      // Gas Station / Local Market
-      placeCityBuilding(ctx, "market", -450, 820, Math.PI);
-      addOccluder(-450, 820, 20, 16, 8);
+      // Gas Station
+      placeGasStation(ctx, -450, 820, Math.PI);
       placeStreetClutter(ctx, -450, 800, 0);
       pois.push({ x: -450, z: 820, r: 10, label: "Lakeshore Bait & Tackle" });
 
@@ -368,10 +372,10 @@ export function createStateWorld(ctx) {
     addOccluder(550, 500, 24, 20, 20);
     pois.push({ x: 550, z: 500, r: 15, label: "Oyster Bay Medical" });
 
-    placeCityBuilding(ctx, "market", 750, 520, Math.PI / 2);
+    placeShopGLB(ctx, "./assets/models/burgerpiz/BurgerPiz.glb", 750, 520, Math.PI / 2, 20, 16, 20);
     addOccluder(750, 520, 20, 16, 8);
     placeStreetClutter(ctx, 750, 500, 0);
-    pois.push({ x: 750, z: 520, r: 12, label: "Farmer's Market" });
+    pois.push({ x: 750, z: 520, r: 12, label: "BurgerPiz" });
 
     placeCityBuilding(ctx, "apartments", 650, 700, Math.PI);
     addOccluder(650, 700, 20, 20, 15);
@@ -386,6 +390,12 @@ export function createStateWorld(ctx) {
     pois.push({ x: 950, z: 680, r: 10, label: "Seafood Diner" });
 
     placeBillboard(ctx, 450, 580, Math.PI / 2, "WELCOME TO OYSTER BAY");
+
+    placeParkedCar(ctx, "beatall", 550, 480, 0);
+    placeParkedCar(ctx, "doclorean", 750, 540, Math.PI);
+    placeParkedCar(ctx, "landyroamer", 650, 720, Math.PI / 2);
+    placeParkedCar(ctx, "toyoyo", 850, 720, -Math.PI / 2);
+    placeParkedCar(ctx, "tristar", 950, 660, 0);
 
     for (let x = 40; x <= 1000; x += 40) {
       addLitSpot({ x, y: 5.5, z: 606, warm: 0xffe0b0, power: 90, range: 25, pole: true });
