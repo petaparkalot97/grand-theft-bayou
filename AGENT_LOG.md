@@ -38,6 +38,42 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-17 — Claude
+**Type:** DISCOVERY · **Task:** (none — build-breaking bug found during session start)
+
+### Finding
+Commit d23dc01 ("Fix Cloudflare Pages deployment: remove git conflict markers
+from main.js") did not actually remove them. `src/main.js` still had two
+unresolved `<<<<<<< HEAD` / `=======` / `>>>>>>> 917ab85` blocks (an import
+line at the top, and the `npcs`/`npcEnv` construction around line ~1295), and
+`src/npc.js` had two more (the `MAX_HOSTILE`/`MARKET_OPEN` block, and a
+duplicate `release()` function). The file has never actually parsed as valid
+JS since that merge — this broke the Cloudflare Pages deploy *and* local dev,
+despite the commit message.
+
+### Impact
+Both sides of every conflict were live features already referenced elsewhere
+in the file (TASK-035's `factionWar`/`createFactionWar` alongside
+`tusouxroeNorth`; TASK-035's turf-war `npcEnv.killEnemy` alongside the
+prostitute-service `npcEnv.veh/state/syncHUD/flashObjective`; `release()`'s
+rival-cleanup alongside its `solicitVeh`/sprite-visibility cleanup). This
+wasn't a "pick a side" conflict — it needed an actual merge of both features.
+
+### Action
+- `src/main.js`: kept both import lines; merged `createNpcSystem(...)` (added
+  `worldTime`) and `npcEnv` (combined `driving`, `get veh()`, `state`,
+  `syncHUD`, `flashObjective`, `others`, and `killEnemy`).
+- `src/npc.js`: kept `export const MAX_HOSTILE` (factions.js imports it) plus
+  `MARKET_OPEN`/`MARKET_CLOSE`; merged the two `release()` bodies (rival/hostile
+  cleanup + solicitVeh/sprite cleanup) into the one at line ~118, removed the
+  duplicate.
+- Verified: no `<<<<<<<`/`=======`/`>>>>>>>` markers remain anywhere in the
+  repo (`grep -rl` over `src/`, `tools/`, root, excluding `node_modules`);
+  `node --check` clean on every file in `src/`; `tools/qa/factions_test.mjs`
+  26/26 (exercises the merged `npc.js` paths directly — faction war, market
+  hours, rival combat, `MAX_HOSTILE` cap).
+- Not committed — left for the human to review and commit.
+
 ## 2026-09-14 — Freebuff
 **Type:** TEST · **Task:** TASK-039 — traffic circuits + sky-sign fix
 
