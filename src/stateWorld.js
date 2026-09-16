@@ -14,7 +14,7 @@
 
 import * as THREE from "three";
 import { createComposer } from "./composer.js";
-import { placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeMaritimeCargo, placeOilDerrick, placeBillboard, placeBayouStiltHut, placeParkedCar, placeTruck, placeShopGLB, placeGasStation, placeSixTwelve } from "./landmarks.js";
+import { placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeMaritimeCargo, placeOilDerrick, placeBillboard, placeBayouStiltHut, placeParkedCar, placeTruck, placeShopGLB, placeGasStation, placeSixTwelve, placeGunShop } from "./landmarks.js";
 
 export const STATE_BOUNDS = { minX: -1200, maxX: 1200, minZ: -1200, maxZ: 1200 };
 
@@ -387,6 +387,9 @@ export function createStateWorld(ctx) {
     pois.push({ x: 950, z: 680, r: 10, label: "Seafood Diner" });
 
     placeBillboard(ctx, 450, 580, Math.PI / 2, "WELCOME TO OYSTER BAY");
+    
+    placeGunShop(ctx, 650, 480, 0);
+    pois.push({ x: 650, z: 480, r: 12, label: "Bayou Arsenal" });
 
     placeParkedCar(ctx, "beatall", 550, 480, 0);
     placeParkedCar(ctx, "doclorean", 750, 540, Math.PI);

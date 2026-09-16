@@ -18,7 +18,7 @@
 
 import * as THREE from "three";
 import { createComposer } from "./composer.js";
-import { placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeBillboard, placeParkedCar } from "./landmarks.js";
+import { placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeBillboard, placeParkedCar, placeGunShop } from "./landmarks.js";
 
 export const NORTH_MIN_Z = -440;
 const BOUNDS = { x0: -240, x1: 240, z0: -440, z1: -134 };
@@ -117,6 +117,10 @@ export function createTusouxroeNorth(ctx) {
       placeCityBuilding(ctx, "apartments", EAST_STREET_X + 18, -320, -Math.PI / 2);
       addOccluder(EAST_STREET_X + 18, -320, 16, 12, 14);
       pois.push({ x: EAST_STREET_X + 18, z: -320, r: 10, label: "Meadow Apartments" });
+
+      // Gun Shop
+      placeGunShop(ctx, EAST_STREET_X + 20, -270, -Math.PI / 2);
+      pois.push({ x: EAST_STREET_X + 20, z: -270, r: 12, label: "Bayou Arsenal" });
 
       // 5. Sunbeam Cottages (Residential Pocket)
       placeCityBuilding(ctx, "cottage", -145, -260, 0);

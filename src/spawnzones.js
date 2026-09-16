@@ -19,21 +19,21 @@
 // ---------------------------------------------------------------------------
 
 export const ZONE_MIX = Object.freeze({
-  urban: { hoodrat: 0.9, redneck: 0.1 },
+  urban: { hoodrat: 0.8, redneck: 0.1, prostitute: 0.1 },
   town: { hoodrat: 0.7, redneck: 0.3 },
-  commercial: { hoodrat: 0.45, redneck: 0.55 },
-  border_strip: { hoodrat: 0.5, redneck: 0.5, border: true },
+  commercial: { hoodrat: 0.40, redneck: 0.50, prostitute: 0.1 },
+  border_strip: { hoodrat: 0.45, redneck: 0.45, prostitute: 0.1, border: true },
   border_market: { hoodrat: 0.5, redneck: 0.5, border: true },
-  residential: { redneck: 0.92, hoodrat: 0.08 },
+  residential: { redneck: 0.82, hoodrat: 0.08, prostitute: 0.1 },
   market_row: { hoodrat: 0.25, redneck: 0.75 },
   rural: { redneck: 0.6, hoodrat: 0.15, hog: 0.25 },
   forest: { hog: 0.5, redneck: 0.5 },
   highway: null,
   water: null,
   // New Zones
-  industrial: { dockworker: 0.7, mechanic: 0.2, thug: 0.1 },
+  industrial: { dockworker: 0.6, mechanic: 0.2, thug: 0.1, prostitute: 0.1 },
   corporate: { suit: 0.8, tourist: 0.1, hoodrat: 0.1 },
-  resort: { tourist: 0.7, suit: 0.2, redneck: 0.1 }
+  resort: { tourist: 0.6, suit: 0.2, redneck: 0.1, prostitute: 0.1 }
 });
 export const HOG_CAP = 4;
 

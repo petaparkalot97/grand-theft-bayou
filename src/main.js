@@ -2440,7 +2440,12 @@ function fire() {
   crime(0.12);
   const origin = _tmpV.copy(playerPos).setY(state.veh ? 1.4 : 1.2);
 
-  if (!state.veh) { attackTimer = 0.42; player.play("attack", { fps: 12, loop: false, force: true }); playFireAnim3D(gun.melee); }
+  if (!state.veh) { 
+    attackTimer = 0.42; 
+    player.play(gun.melee ? "attack" : "shoot", { fps: 12, loop: false, force: true }); 
+    if (!gun.melee) player._yaw = camCtl.heading;
+    playFireAnim3D(gun.melee); 
+  }
 
   // Aim assist: hostile NPCs and cruisers first; a bystander is only hit if
   // the camera is pointed right at them. Used to snap to whoever was nearest.
@@ -2992,7 +2997,14 @@ function onFootUpdate(dt) {
   player.visible = true;
 
   attackTimer = Math.max(0, attackTimer - dt);
-  if (attackTimer <= 0) player.play(moving ? "walk" : "idle", { fps: moving ? 10 : 5 });
+  if (attackTimer <= 0) {
+    if (input.isDown("aim")) {
+      player.play("aim");
+      player._yaw = camCtl.heading;
+    } else {
+      player.play(moving ? "walk" : "idle", { fps: moving ? 10 : 5 });
+    }
+  }
   player.update(dt, camera);
 }
 

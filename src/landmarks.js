@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // landmarks.js — Procedural & model set-dressing kit for world expansion.
 //
 // Provides reusable asset integration and procedural set dressing:
@@ -685,3 +685,9 @@ export function placeBayouStiltHut(ctx, x, z, ry = 0) {
   return g;
 }
 
+export function placeGunShop(ctx, x, z, ry = 0) {
+  placeCityBuilding(ctx, "garage", x, z, ry);
+  const dx = Math.sin(ry) * -8;
+  const dz = Math.cos(ry) * -8;
+  placeBillboard(ctx, x + dx, z + dz, ry, "BAYOU ARSENAL - GUNS & AMMO");
+}

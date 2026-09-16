@@ -741,6 +741,30 @@ class Hoodrat extends THREE.Object3D {
 
     this.torso.rotation.x = 0;
 
+    if (this.anim === "aim" || this.anim === "shoot") {
+      const recoil = this.anim === "shoot" ? Math.max(0, 1 - this.time / 0.15) : 0;
+      this.torso.rotation.y = 0.4;
+      
+      // Right arm holds weapon
+      A[1].pivot.rotation.x = -1.57 + recoil * 0.2;
+      A[1].pivot.rotation.z = 0.1;
+      A[1].elbow.rotation.x = -0.1 - recoil * 0.3;
+      
+      // Left arm supports
+      A[0].pivot.rotation.x = -1.3;
+      A[0].pivot.rotation.z = -0.4;
+      A[0].elbow.rotation.x = -1.2;
+      
+      // Legs planted
+      L.forEach((l) => { l.pivot.rotation.x = 0; l.knee.rotation.x = 0.1; l.foot.rotation.x = 0; });
+      this.position.y = this.baseY || 0;
+      
+      if (this.anim === "shoot" && this.time > 0.15) {
+        this.anim = "aim"; // go back to aim after recoil
+      }
+      return;
+    }
+
     if (this.anim === "walk" && this._speed > 0.15) {
       // stride scales with speed, so a wandering Hoodrat ambles and a charging
       // one runs, off the same clip
