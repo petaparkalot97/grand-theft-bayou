@@ -31,6 +31,8 @@ const STOPS = [
   { id: "budget", x: 46, z: 54, r: 9, label: "the public ledger" },
 ];
 const ARCHIVE = { x: 0, z: 124, r: 20, door: { x: 0, z: 100 } };
+// Part C: the observation platform, looking over the city (clear of the monorail pillars and gardens)
+const OVERLOOK = { x: -12, z: -70, face: { x: 0, z: 12 } };
 const W = (lx, lz) => ({ x: NOLANTIS.x + lx, z: NOLANTIS.z + lz });
 
 function basic(color, opts = {}) {
@@ -164,7 +166,39 @@ export function createNolantis(ctx) {
     buildStops();
     buildArchive();
     buildPlaza();
+    buildOverlook();
     return props;
+  }
+
+  function buildOverlook() {
+    // a railed lookout: a pale deck, glass panes on the city side, benches behind, a plaque
+    const O = OVERLOOK, ang = Math.atan2(O.face.x - O.x, O.face.z - O.z);
+    const disc = mesh(new THREE.CircleGeometry(5.5, 40), std("observation deck", 0xe9e2d0), O.x, 0.05, O.z, { cast: false });
+    disc.rotation.x = -Math.PI / 2;
+    const glass = new THREE.MeshPhysicalMaterial({ name: "lookout glass", color: 0xbfe8ff, transparent: true, opacity: 0.25, roughness: 0.05, side: THREE.DoubleSide, depthWrite: false });
+    glass.userData.gtbRealized = true;
+    const brass = std("lookout rail", 0xd4a93a, { metalness: 0.8, roughness: 0.3 });
+    for (let i = -4; i <= 4; i++) {
+      const a = ang + i * 0.3, x = O.x + Math.sin(a) * 5.2, z = O.z + Math.cos(a) * 5.2;
+      const pane = mesh(new THREE.PlaneGeometry(1.6, 1), glass, x, 0.6, z, { cast: false });
+      pane.rotation.y = a;
+      const top = mesh(new THREE.BoxGeometry(1.6, 0.06, 0.08), brass, x, 1.12, z, { cast: false });
+      top.rotation.y = a;
+      block(x, z, 0.8);
+    }
+    const bench = std("lookout bench", 0x8a6a4a);
+    for (const s of [-1, 1]) {
+      const b = mesh(new THREE.BoxGeometry(1.8, 0.45, 0.5), bench,
+        O.x - Math.sin(ang) * 3 + Math.cos(ang) * s * 1.6, 0.23, O.z - Math.cos(ang) * 3 - Math.sin(ang) * s * 1.6);
+      b.rotation.y = ang;
+    }
+    const plaque = canvasTexture(1024, 160, (g, w, h) => {
+      g.fillStyle = "#0f2f33"; g.fillRect(0, 0, w, h);
+      g.fillStyle = "#e9d8a6"; g.font = "bold 76px Georgia, serif"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("OBSERVATION PLATFORM", w / 2, h / 2 + 4);
+    });
+    const sp = mesh(new THREE.PlaneGeometry(4, 0.62), basic(0xffffff, { map: plaque }), O.x - Math.sin(ang) * 5.4, 1.6, O.z - Math.cos(ang) * 5.4, { cast: false });
+    sp.rotation.y = ang + Math.PI;               // readable from the terminal side, where you walk up
   }
 
   function buildShaft() {
@@ -728,7 +762,8 @@ export function createNolantis(ctx) {
   function setTourObjective() {
     if (phase === "tour") ctx.setObjective(`NIRBAYOU NOLANTIS ${stop + 1}/${STOPS.length}: walk with Amara to ${STOPS[stop].label}.`);
     else if (phase === "archive") ctx.setObjective("NIRBAYOU NOLANTIS: follow Amara into the archive.");
-    else if (phase === "done") ctx.setObjective("Take the elevator back up to OrleaRouge when you're ready.");
+    else if (phase === "platform") ctx.setObjective("NIRBAYOU NOLANTIS: find Solange at the observation platform.");
+    else if (phase === "done") ctx.setObjective(ctx.partC ? "We're leaving. Take the elevator up to the surface." : "Take the elevator back up to OrleaRouge when you're ready.");
   }
 
   async function truthScene(c) {
@@ -815,6 +850,215 @@ export function createNolantis(ctx) {
     if (ctx.startNext) ctx.startNext();
   }
 
+  // ---------------------------------------------------------------- Part C (with welcomeback.js)
+  const LOOK_ANG = Math.atan2(OVERLOOK.face.x - OVERLOOK.x, OVERLOOK.face.z - OVERLOOK.z);
+  /** Local x/z at `f` m toward the city and `r` m to the right of the observation platform. */
+  function atDeck(f, r) {
+    const fx = Math.sin(LOOK_ANG), fz = Math.cos(LOOK_ANG);
+    return [OVERLOOK.x + fx * f + fz * r, OVERLOOK.z + fz * f - fx * r];
+  }
+  const deckL = (f, r, y) => { const [x, z] = atDeck(f, r); return L(x, y, z); };
+  const faceTo = (a, lx, lz) => { a._yaw = Math.atan2(NOLANTIS.x + lx - a.position.x, NOLANTIS.z + lz - a.position.z); };
+
+  async function platformScene(c) {
+    state.cinematic = true;
+    c.letterbox(true);
+    await c.black(true, 0.4);
+    const k = ctx.getPlayer();
+    const [kx, kz] = atDeck(3.2, 0);
+    const kw = W(kx, kz);
+    ctx.teleport(kw.x, kw.z, 0);
+    place(k, kx, 0, kz, OVERLOOK.face.x, OVERLOOK.face.z);
+    const [sx, sz] = atDeck(-4, 3.5);
+    place(cast.solange, sx, 0, sz, kx, kz);
+    const [ax, az] = atDeck(-14, -10);
+    place(cast.amara, ax, 0, az, kx, kz);
+    cast.mally.visible = cast.bubba.visible = false;
+    c.shot({ from: deckL(0.4, 0.6, 3.4), to: deckL(1, 0.4, 3), look: L(OVERLOOK.face.x, 10, OVERLOOK.face.z), dur: 7 });
+    await c.black(false, 0.6);
+    c.card("NOLANTIS —", "OBSERVATION PLATFORM", "");
+    await c.caption("Keseme stands overlooking the glowing underwater city.", 2.6);
+    const [jx, jz] = atDeck(3.2, 1.2);
+    moveTo(cast.solange, jx, jz, 1.6);
+    await c.caption("Solange joins her.", 1.8);
+    faceTo(cast.solange, OVERLOOK.face.x, OVERLOOK.face.z);
+    c.shot({ from: deckL(3.4, -3.2, 1.7), look: deckL(3.2, 0.6, 1.55), dur: 8 });
+    await say(c, "SOLANGE", "Beautiful, isn't it?");
+    await say(c, "KESEME", "Suspiciously.");
+    await say(c, "SOLANGE", "You don't trust paradise?");
+    await say(c, "KESEME", "I don't trust anything describing itself as paradise.");
+    await c.caption("Solange smiles.", 1.2);
+    await say(c, "SOLANGE", "Good answer.");
+    faceTo(k, jx, jz);
+    faceTo(cast.solange, kx, kz);
+    c.shot({ from: deckL(3.0, 1.9, 1.72), look: deckL(3.2, 0, 1.62), dur: 4 });
+    await c.caption("Their eyes meet.", 1.4);
+    await c.caption("There's chemistry.", 1.4);
+    faceTo(k, OVERLOOK.face.x, OVERLOOK.face.z);
+    await c.caption("Keseme notices and immediately looks toward the city.", 2.2);
+    c.shot({ from: deckL(3.4, -3.2, 1.7), look: deckL(3.2, 0.6, 1.55), dur: 6 });
+    await say(c, "SOLANGE", "You're blushing.");
+    await say(c, "KESEME", "The room is warm.");
+    await say(c, "SOLANGE", "It's sixty-nine degrees.");
+    await say(c, "KESEME", "Unusually warm.");
+    await c.caption("Solange laughs.", 1.2);
+    faceTo(cast.solange, OVERLOOK.face.x, OVERLOOK.face.z);
+    c.shot({ from: deckL(6.4, 0.6, 1.8), look: deckL(3.2, 0.6, 1.55), dur: 14 });
+    await c.caption("Then Keseme becomes serious.", 1.6);
+    await say(c, "KESEME", "Something bothers me.");
+    await say(c, "SOLANGE", "Only one thing?");
+    await say(c, "KESEME", "Nolantis has medicine. Technology. Energy. Food production.");
+    await say(c, "KESEME", "Enough resources to change millions of lives.");
+    await say(c, "SOLANGE", "Yeah.");
+    await say(c, "KESEME", "And they stayed hidden.");
+    await c.caption("Silence.", 1.4);
+    await say(c, "KESEME", "Maybe the surface isn't the only place with something to answer for.");
+    c.shot({ from: deckL(2.4, 1.8, 1.8), look: deckL(-14, -10, 1.6), dur: 6 });
+    await c.caption("Amara watches them from a distance.", 1.8);
+    await c.caption("Her expression suggests Keseme has asked exactly the question she feared someone eventually would.", 3.6);
+    await c.black(true, 0.5);
+  }
+
+  async function phoneScene(c) {
+    state.cinematic = true;
+    c.letterbox(true);
+    await c.black(true, 0.01);
+    const k = ctx.getPlayer();
+    const [kx, kz] = atDeck(3.2, 0);
+    const kw = W(kx, kz);
+    ctx.teleport(kw.x, kw.z, 0);
+    place(k, kx, 0, kz, OVERLOOK.face.x, OVERLOOK.face.z);
+    const [sx, sz] = atDeck(3.2, 1.2);
+    place(cast.solange, sx, 0, sz, OVERLOOK.face.x, OVERLOOK.face.z);
+    const [ax, az] = atDeck(-14, -10);
+    place(cast.amara, ax, 0, az, kx, kz);
+    c.shot({ from: deckL(3.9, -1.6, 1.75), look: deckL(3.2, 0, 1.55), dur: 5 });
+    await c.black(false, 0.5);
+    c.sfx("ring", 0.8);
+    await c.caption("PHONE RINGS", 1.4);
+    await c.caption("Keseme checks her phone.", 1.6);
+    await c.card("INCOMING CALL", "UNKNOWN NUMBER", "", { hold: 1.6 });
+    await c.caption("She answers.", 1.2);
+    await say(c, "KESEME", "Hello?");
+    await c.caption("A distorted voice responds.", 1.6);
+    await say(c, "VOICE", "You should have given Sheriff Mercer the book.");
+    faceTo(k, kx - Math.sin(LOOK_ANG), kz - Math.cos(LOOK_ANG));
+    c.shot({ from: deckL(1.8, 0, 1.7), look: deckL(3.2, 0, 1.62), dur: 9 });
+    await c.caption("Keseme's expression hardens.", 1.6);
+    await say(c, "KESEME", "Who is this?");
+    await say(c, "VOICE", "Go back to Tusouxroe.");
+    await c.caption("Keseme says nothing.", 1.6);
+    await say(c, "VOICE", "Your mother's house is very pretty.");
+    await c.caption("Keseme's face changes instantly.", 1.8);
+    await c.caption("The call ends.", 1.4);
+    c.shot({ from: deckL(3.4, -3.2, 1.7), look: deckL(3.2, 0.6, 1.55), dur: 2 });
+    await say(c, "SOLANGE", "Keseme?");
+    // she heads back for the elevator; Amara cuts across to stop her
+    const walk = [kx + (TERMINAL.x - kx) * 0.35, kz + (TERMINAL.z + 10 - kz) * 0.35];
+    faceTo(k, walk[0], walk[1]);
+    await c.caption("Keseme turns toward the elevator.", 1.6);
+    await say(c, "KESEME", "We're leaving.");
+    c.shot({ from: L(kx - 9, 4, kz + 5), look: L((kx + walk[0]) / 2, 1.2, (kz + walk[1]) / 2), dur: 8 });
+    moveTo(k, walk[0], walk[1], 1.7);
+    moveTo(cast.amara, walk[0] - 3, walk[1] + 1.5, 2.4);
+    await say(c, "AMARA", "Going to the surface now would be extremely dangerous.");
+    await c.caption("Keseme keeps walking.", 1.4);
+    await say(c, "AMARA", "Keseme!");
+    place(k, walk[0], 0, walk[1]);
+    place(cast.amara, walk[0] - 3, 0, walk[1] + 1.5);
+    await c.caption("She stops.", 1.2);
+    c.shot({ from: L(walk[0] + 2.2, 1.75, walk[1] + 2), look: L(walk[0], 1.6, walk[1]), dur: 8 });
+    await say(c, "KESEME", "Someone threatened my mother.");
+    await say(c, "AMARA", "We can protect your family.");
+    faceTo(k, walk[0] - 3, walk[1] + 1.5);
+    await c.caption("Keseme turns.", 1.2);
+    await say(c, "KESEME", "No.");
+    await c.wait(0.9);
+    await say(c, "KESEME", "I'm going to protect my family.");
+    await c.black(true, 0.5);
+    await c.card("MISSION UNLOCKED", "WELCOME BACK TO DIXIE",
+      "New regions available: Chatboro · Tusouxroe · OrleaRouge  —  Nirbayou Nolantis: restricted", { center: true, hold: 3.6 });
+    // gameplay: Keseme where she stopped, the gang waiting by the elevator
+    const w = W(walk[0], walk[1]);
+    ctx.teleport(w.x, w.z, 0);
+    k.baseY = 0;
+    place(cast.solange, TERMINAL.x - 2, 0, TERMINAL.z + 8, SHAFT.x, SHAFT.z);
+    place(cast.mally, TERMINAL.x + 2.5, 0, TERMINAL.z + 9, SHAFT.x, SHAFT.z);
+    place(cast.bubba, TERMINAL.x + 4, 0, TERMINAL.z + 7, SHAFT.x, SHAFT.z);
+    place(cast.amara, walk[0] - 3, 0, walk[1] + 1.5, walk[0], walk[1]);
+    ctx.setCameraYaw(0);
+    c.letterbox(false);
+    await c.black(false, 0.5);
+    state.cinematic = false;
+    ctx.flashObjective("MISSION UNLOCKED · WELCOME BACK TO DIXIE");
+  }
+
+  async function finalScene(c) {
+    state.cinematic = true;
+    c.letterbox(true);
+    await c.black(true, 0.5);
+    ctx.exitVehicle();
+    const k = ctx.getPlayer();
+    const shaftW = W(SHAFT.x, SHAFT.z);
+    ctx.teleport(shaftW.x, shaftW.z, 0);
+    elev.y = 0.35;
+    elevator.position.y = 0.35;
+    riders = [k, cast.solange, cast.mally, cast.bubba];
+    [[1.3, 1.1], [-1.4, 1.2], [1.4, -1.3], [-1.2, -1.4]].forEach(([dx, dz], i) => {
+      place(riders[i], SHAFT.x + dx, 0.7, SHAFT.z + dz, SHAFT.x, SHAFT.z - 10);
+    });
+    place(cast.amara, TERMINAL.x + 3, 0, TERMINAL.z + 9, SHAFT.x, SHAFT.z);
+    c.shot({ from: L(SHAFT.x + 3, 2.4, SHAFT.z + 10), look: atCar(0, 1.4, 0), dur: 4 });
+    await c.black(false, 0.6);
+    c.card("INT.", "THE ELEVATOR", "Going up");
+    await c.caption("Keseme enters the elevator with Mally, Bubba and Solange.", 2.6);
+    c.shot({ from: atCar(2.9, 1.8, -3.2), look: atCar(1.4, 1.3, -1.3), dur: 2 });
+    await c.caption("Mally checks a pistol.", 1.6);
+    c.shot({ from: atCar(-3.1, 1.8, -3), look: atCar(-1.2, 1.2, -1.4), dur: 2 });
+    await c.caption("Bubba loads equipment.", 1.6);
+    c.shot({ from: atCar(-3.2, 1.9, 3), look: atCar(-1.4, 1.5, 1.2), dur: 2 });
+    await c.caption("Solange activates a camera.", 1.6);
+    // up through the rock, into the glass band
+    c.shot({ from: L(SHAFT.x + 26, 10, SHAFT.z + 34), look: atCar(0, 1, 0), lookTo: L(SHAFT.x, CEIL + 4, SHAFT.z), dur: 9 });
+    const rise = moveElevator(CEIL + 24, 9);
+    await c.caption("Keseme watches the surface grow closer.", 2.4);
+    await rise;
+    c.shot({ from: atCar(3.4, 2.4, 3.4), look: atCar(0, 1.4, 0), dur: 12 });
+    await say(c, "MALLY", "So what's the plan?");
+    await say(c, "KESEME", "Find out who threatened my mother.");
+    await say(c, "BUBBA", "Then?");
+    await say(c, "KESEME", "Find out who owns Pelican Crown.");
+    await say(c, "SOLANGE", "Then?");
+    await c.caption("Keseme thinks.", 1.4);
+    c.shot({ from: L(SHAFT.x + 6, CEIL + 20, SHAFT.z + 6), look: atCar(0, 1, 0), lookTo: L(SHAFT.x, TOP_Y, SHAFT.z), dur: 7 });
+    const top = moveElevator(TOP_Y - 1, 7);
+    await c.caption("The elevator continues rising.", 2);
+    await top;
+    c.shot({ from: atCar(1.2, 1.7, 2.4), look: atCar(-1.4, 1.5, -1.2), dur: 8 });
+    await say(c, "KESEME", "Then we find out how many people they're hurting.");
+    await say(c, "MALLY", "And after that?");
+    await c.black(true, 0.4);
+
+    // the doors open on OrleaRouge (welcomeback.js plays the surface)
+    for (const e of extras) e.a.visible = false;
+    cast.amara.visible = false;
+    root.visible = false;
+    const r = ctx.returnTo;
+    ctx.teleport(r.x, r.z, r.heading || 0);
+    ctx.setCameraYaw(r.heading ? r.heading + Math.PI : 0);
+    ctx.setPopulation(true);
+    ctx.setObjective(null);
+    phase = "left";
+    for (const a of riders) a.baseY = 0;
+    await ctx.partC.surfaceScene(c, { keseme: k, crew: [cast.solange, cast.mally, cast.bubba] });
+    k.visible = true;
+    c.letterbox(false);
+    await c.black(false, 0.8);
+    state.cinematic = false;
+    ctx.flashObjective("ACT ONE BEGINS · Someone threatened Mama. Tusouxroe is north up US-167.");
+    if (ctx.startNext) ctx.startNext();
+  }
+
   let riders = [];
 
   // ---------------------------------------------------------------- API
@@ -833,6 +1077,7 @@ export function createNolantis(ctx) {
     get waypoint() {
       if (phase === "tour") return W(STOPS[stop].x, STOPS[stop].z);
       if (phase === "archive") return W(ARCHIVE.door.x, ARCHIVE.door.z);
+      if (phase === "platform") return W(OVERLOOK.x, OVERLOOK.z);
       if (phase === "done") return W(TERMINAL.x, TERMINAL.z + 4);
       return null;
     },
@@ -845,9 +1090,10 @@ export function createNolantis(ctx) {
       dialogue(descentScene).then(() => dialogue(arrivalScene));
     },
 
-    /** QA hooks for tools/qa/nolantis.mjs: "stop" | "archive" | "elevator". */
+    /** QA hooks for tools/qa/nolantis.mjs: "stop" | "archive" | "overlook" | "elevator". */
     debug(step) {
       const go = (p) => ctx.teleport(p.x, p.z, 0);
+      if (step === "overlook" && phase === "platform") go(W(OVERLOOK.x, OVERLOOK.z));
       if (step === "stop" && phase === "tour") go(W(STOPS[stop].x, STOPS[stop].z));
       if (step === "archive" && phase === "archive") go(W(ARCHIVE.door.x, ARCHIVE.door.z));
       if (step === "elevator" && phase === "done") go(W(TERMINAL.x, TERMINAL.z + 4));
@@ -871,7 +1117,7 @@ export function createNolantis(ctx) {
         const k = Math.min(1, elev.t / elev.dur), e = k * k * (3 - 2 * k);
         elev.y = elev.from + (elev.to - elev.from) * e;
         elevator.position.y = elev.y;
-        if (phase === "descent") for (const a of riders) a.baseY = elev.y + 0.35;
+        if (phase === "descent" || phase === "returning") for (const a of riders) a.baseY = elev.y + 0.35;
         if (k >= 1 && elev.resolve) { const r = elev.resolve; elev.resolve = null; r(); }
       }
 
@@ -942,12 +1188,30 @@ export function createNolantis(ctx) {
         if (near(ARCHIVE.door.x, ARCHIVE.door.z, 6)) {
           phase = "truth";
           ctx.setObjective(null);
-          dialogue(truthScene).then(() => { phase = "done"; setTourObjective(); ctx.flashObjective("The elevator will take you back to the surface."); });
+          dialogue(truthScene).then(() => {
+            if (!ctx.partC) { phase = "done"; setTourObjective(); ctx.flashObjective("The elevator will take you back to the surface."); return; }
+            // Part C: CUT TO the Sheriff's Office, then Solange waits at the observation platform
+            phase = "office";
+            dialogue((c) => ctx.partC.officeScene(c)).then(() => {
+              phase = "platform";
+              setTourObjective();
+              ctx.flashObjective("Solange slipped away to the observation platform.");
+            });
+          });
+        }
+      } else if (phase === "platform") {
+        if (near(OVERLOOK.x, OVERLOOK.z, 5)) {
+          phase = "overlook";
+          ctx.setObjective(null);
+          dialogue(platformScene)
+            .then(() => dialogue((c) => ctx.partC.montageScene(c, { keseme: ctx.getPlayer() })))
+            .then(() => dialogue(phoneScene))
+            .then(() => { phase = "done"; setTourObjective(); });
         }
       } else if (phase === "done") {
         if (near(TERMINAL.x, TERMINAL.z + 4, 5)) {
           phase = "returning";
-          dialogue(returnScene);
+          dialogue(ctx.partC ? finalScene : returnScene);
         }
       }
     },

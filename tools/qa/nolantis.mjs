@@ -45,6 +45,13 @@ async function tests(page, log) {
     objective: document.getElementById("objective").textContent,
     player: [+g.player.position.x.toFixed(1), +g.player.position.z.toFixed(1)] };`);
 
+  // Esc outside a cutscene opens the pause menu (pauseMenu.js), which freezes walking and
+  // covers the screenshots. The Esc presses that skip scenes can land just after one ends.
+  async function unpause(label) {
+    const paused = await check(`g.state.paused && !g.state.cinematic`);
+    if (paused) { await page.keyboard.press("Escape"); await page.waitForTimeout(400); log.steps.push(`${label}: closed the pause menu`); }
+  }
+
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.waitForFunction(() => { const b = document.getElementById("freeBtn"); return b && !b.disabled; }, null, { timeout: 240000 });
   await page.click("#freeBtn");
@@ -75,6 +82,7 @@ async function tests(page, log) {
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${out}-5-amara.png` });
   if (!(await pressUntil("Escape", `N.phase === "tour" && !g.state.cinematic && !g.cine.active`, "arrival -> tour"))) return;
+  await unpause("after arrival");
   // the welcome line flashes over the objective for 2.5 s, then the tour objective shows
   await page.waitForTimeout(3200);
   const tour = await snap();
@@ -87,7 +95,9 @@ async function tests(page, log) {
   await page.keyboard.down("KeyW"); await page.waitForTimeout(1000); await page.keyboard.up("KeyW");
   const w1 = await js(`return [g.player.position.x, g.player.position.z];`);
   const walked = Math.hypot(w1[0] - w0[0], w1[1] - w0[1]);
-  pass("the player can walk in Nolantis (outside the surface map bounds)", walked > 3 && w1[0] < w0[2] - 100, { walked: +walked.toFixed(1), x: +w1[0].toFixed(1), mapMinX: w0[2] });
+  // (the cavern used to sit outside MAP; the state-wide expansion widened MAP past it, so only check walking)
+  const stillInside = await check(`N.inside`);
+  pass("the player can walk in Nolantis", walked > 3 && stillInside, { walked: +walked.toFixed(1), x: +w1[0].toFixed(1), mapMinX: w0[2], inside: stillInside });
 
   // ---- the four stops
   for (let i = 0; i < 4; i++) {
@@ -107,16 +117,59 @@ async function tests(page, log) {
   await page.waitForTimeout(1500);
   await page.screenshot({ path: `${out}-9-truth.png` });
   await pressUntil("Enter", `/asking why their government/.test(${sub})`, "Keseme's last line", { every: 900, timeout: 60000 });
-  if (!(await pressUntil("Escape", `N.phase === "done" && !g.state.cinematic && !g.cine.active`, "truth -> done"))) return;
-  const done = await snap();
-  pass("after The Truth the objective points back to the elevator", done.phase === "done" && /elevator/i.test(done.objective), done);
+  // ---- Part C (welcomeback.js): one Esc skips The Truth; the office scene is queued behind it.
+  // From here on, wait for lines instead of pressing keys, so no press can skip a scene.
+  const card = `(document.querySelector("#cineCard.on b") ? document.querySelector("#cineCard b").textContent : "")`;
+  const wait = (expr, label, timeout = 150000) => pressUntil(null, expr, label, { every: 250, timeout });
+  await page.keyboard.press("Escape");
+  if (!(await wait(`N.phase === "office" && /Who is she/.test(${sub})`, "CUT TO: Sheriff's Office — Who is she?"))) return;
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${out}-10-office.png` });
+  if (!(await wait(`/nobody believes her/.test(${sub})`, "Bellefontaine: nobody believes her"))) return;
+  if (!(await wait(`N.phase === "platform" && !g.state.cinematic && !g.cine.active`, "office -> platform"))) return;
+  await unpause("after the office");
+  await page.waitForTimeout(3200);
+  const plat = await snap();
+  pass("after the Sheriff's Office the objective points to the observation platform", /observation platform/i.test(plat.objective), plat);
 
-  // ---- back to the surface
+  await js(`N.debug("overlook"); return true;`);
+  if (!(await wait(`/Suspiciously/.test(${sub})`, "platform: Suspiciously."))) return;
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${out}-11-platform.png` });
+  if (!(await wait(`/something to answer for/.test(${sub})`, "platform: something to answer for"))) return;
+  if (!(await wait(`/Chatboro residents/.test(${sub})`, "montage: Chatboro"))) return;
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${out}-12-montage-chatboro.png` });
+  if (!(await wait(`/protest police brutality/.test(${sub})`, "montage: OrleaRouge protest"))) return;
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${out}-13-montage-protest.png` });
+  if (!(await wait(`/count chips/.test(${sub})`, "montage: counting room"))) return;
+  await page.screenshot({ path: `${out}-14-montage-chips.png` });
+  if (!(await wait(`/Who keeps taking it/.test(${sub})`, "V.O.: Who keeps taking it?"))) return;
+  await page.screenshot({ path: `${out}-15-ledger.png` });
+  if (!(await wait(`/very pretty/.test(${sub})`, "the threat"))) return;
+  await page.screenshot({ path: `${out}-16-phone.png` });
+  const unlocked = await wait(`/WELCOME BACK TO DIXIE/.test(${card})`, "MISSION UNLOCKED card");
+  pass("the MISSION UNLOCKED: WELCOME BACK TO DIXIE card shows", unlocked);
+  if (!(await wait(`N.phase === "done" && !g.state.cinematic && !g.cine.active`, "phone -> done"))) return;
+  await page.waitForTimeout(3200);
+  const done = await snap();
+  pass("after the call the objective points to the elevator", done.phase === "done" && /elevator/i.test(done.objective), done);
+
+  // ---- the final cinematic
+  await unpause("before the elevator");
   await js(`N.debug("elevator"); return true;`);
-  if (!(await pressUntil("Escape", `N.phase === "left" && !g.state.cinematic && !g.cine.active`, "elevator -> surface", { every: 600, timeout: 30000 }))) return;
+  if (!(await wait(`/what's the plan/.test(${sub})`, "elevator: So what's the plan?"))) return;
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${out}-17-elevator.png` });
+  if (!(await wait(`/extremely inconvenient/.test(${sub})`, "surface: extremely inconvenient"))) return;
+  await page.screenshot({ path: `${out}-18-inconvenient.png` });
+  const begins = await wait(`/ACT ONE BEGINS/.test(${card})`, "ACT ONE BEGINS card", 40000);
+  pass("the script ends on ACT ONE BEGINS", begins);
+  if (!(await wait(`N.phase === "left" && !g.state.cinematic && !g.cine.active`, "final -> free roam", 40000))) return;
   await page.waitForTimeout(1500);
   const up = await snap();
-  pass("the elevator brings you back up to OrleaRouge; radar back", up.phase === "left" && !up.inside && !up.radarHidden
+  pass("Keseme ends up in OrleaRouge by the storm drain; radar back", up.phase === "left" && !up.inside && !up.radarHidden
     && Math.hypot(up.player[0] - 120, up.player[1] - 372) < 6, up);
-  await page.screenshot({ path: `${out}-10-surface.png` });
+  await page.screenshot({ path: `${out}-19-surface.png` });
 }

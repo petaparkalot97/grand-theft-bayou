@@ -1116,10 +1116,24 @@ You see them, and you feel them when you drive over one.
         "We died" angle, the canopy blocking the tour start, and an upside-down
         archive map.
     - **Blue Light Special regression** passes and ends in the Nolantis tour.
-  - **Part C:** Governor Bellefontaine and Mercer at the Chatboro Sheriff's
-    Office, the observation platform with Solange, the montage + V.O., the
+  - **Part C, "Welcome Back to Dixie"** (`src/welcomeback.js` new; `src/nolantis.js`, `src/main.js`, `src/voiceCast.js`, `tools/qa/nolantis.mjs`): **REVIEW (Claude, 2026-09-15).**
+    Implemented and wired (interface in AGENT_LOG → Interface contracts). The script
+    text came from an earlier session transcript; every line is the human's.
+    - `tools/qa/nolantis.mjs` walks the whole chapter headless: The Truth → office →
+      platform → montage → V.O. → the call → MISSION UNLOCKED → elevator → surface →
+      ACT ONE BEGINS → free roam at the storm drain. All Part C checks pass, no new
+      console errors (only the known gitignored city-GLB / voice-manifest 404s).
+    - The test's old "outside MAP" walking check was stale (the state-wide expansion
+      widened MAP past Nolantis) and its Esc presses could open the pause menu; both fixed.
+    - Screenshots checked for every new scene; montage dressing moved where it clipped
+      buildings (Chatboro sign and eviction now at the trailer park's open south edge).
+    - Pending: a real-browser play-through (TASK-010), and `npm run voiceover` for the
+      new speakers (BELLEFONTAINE, EXECUTIVE, VOICE).
+    From the human's script, after The Truth to the end of the prologue script:
+    Governor Bellefontaine and Mercer at the Chatboro Sheriff's Office, the
+    observation platform with Solange, the montage + Keseme's V.O., the
     threatening phone call, "MISSION UNLOCKED: WELCOME BACK TO DIXIE", and the
-    final elevator cinematic.
+    final elevator cinematic ("—we become extremely inconvenient", ACT ONE BEGINS).
 - [ ] `TASK-017` (original scope) — **Act One's later beats**: the threatening phone call ("Your mother's house is very pretty"), Governor Bellefontaine's meeting with Mercer, the flood tunnel and the Nirbayou Nolantis descent. Needs TASK-009 and TASK-016.
 - [ ] `TASK-019` — **Weakest surfaces**: the stylised Popeyes, trailers and water towers are plain boxes. Needs their builders moved out of `main.js` into `src/landmarks.js` first (Claude). Suggested: Antigravity.
 - [ ] `TASK-021` — **Minimap / waypoint arrow** (new `src/minimap.js`; Claude hooks it up). Story objectives already have world positions. Suggested: Codex.
@@ -1185,18 +1199,12 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/fx.js` | — | TASK-012 | Available |
 | `src/traffic.js` | Freebuff | TASK-039 (REVIEW) — TASK-012/014 changes go through review | Locked |
 | `tools/characters.html` | — | TASK-018 (REVIEW) | Available |
-<<<<<<< HEAD
+| `src/audio.js`, `src/weapons_3d.js` | Freebuff | TASK-040 | Locked |
 | `src/factions.js` (new) | — | TASK-035 (REVIEW, integrated) | Available |
 | `src/spawnzones.js` | — | TASK-035 (REVIEW, integrated) | Available |
 | `src/npc.js` | — | TASK-035 (REVIEW, integrated) | Available |
-=======
-| `src/audio.js`, `src/weapons_3d.js` | Freebuff | TASK-040 | Locked |
-| `src/factions.js` (new) | — | TASK-035 (REVIEW) | Available |
-| `src/spawnzones.js` | — | TASK-035 (REVIEW) | Available |
-| `src/npc.js` | — | TASK-035 (REVIEW) | Available |
 | `src/police.js` (new) | — | TASK-020 (REVIEW) | Available |
 | `src/characters.js` | — | TASK-020 (REVIEW) | Available |
->>>>>>> 917ab851faf8182a14fb8b47e009793eda708a6e
 | `src/weapons.js`, `src/loot.js` | — | TASK-036 | Available |
 | `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Antigravity | TASK-038 | Locked |
 | `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
@@ -1229,15 +1237,11 @@ before `COMPLETE`.
   `src/main.js` (auto-pairer over every region's lanes, the four sign clones
   zeroed). Tested via `tools/qa/traffic_test.mjs` (11/11).
 - `TASK-020` — Police: escapable Sheriff, cruiser visuals & on-foot 3D deputies (`src/police.js`, `src/characters.js`). Tested via `tools/qa/police_test.mjs` (11/11 tests pass).
-- `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Tested via `tools/qa/factions_test.mjs` (14/14 tests pass).
+- `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Reviewed, fixed and wired into `main.js` by Claude. `factions_test.mjs` 14/14, in-game `tools/qa/factions.mjs` 12/12. Needs a real-browser clip of a border fight, and `border_market` is unreachable (see the task).
 - `TASK-018` — Character viewer (`tools/characters.html`): cast presets + full
   option controls; statically verified (module syntax + a value audit of every
   preset and palette against the game sources). Needs one real-browser load
   (TASK-010) before `COMPLETE`.
-<<<<<<< HEAD
-- `TASK-035` — Redneck vs Hoodrat territorial warfare (`src/factions.js`, `src/spawnzones.js`, `src/npc.js`). Reviewed, fixed and wired into `main.js` by Claude. `factions_test.mjs` 14/14, in-game `tools/qa/factions.mjs` 12/12. Needs a real-browser clip of a border fight, and `border_market` is unreachable (see the task).
-=======
->>>>>>> 917ab851faf8182a14fb8b47e009793eda708a6e
 - `TASK-001` — Atmosphere and graphics pass: height fog / mist, light shafts,
   headlights, wet roads + mirror, speed blur (`src/fx.js`, `src/graphics.js`).
   Needs real-GPU tuning (TASK-028).
@@ -1318,6 +1322,7 @@ before `COMPLETE`.
 - **The alternate campaign room** (`src/alternateCampaign.js`, "INT. THE ROOM") is built at (92, -104), on the South Tusouxroe street right in front of Keseme’s (the Nadia) house. It is hidden except while its own opening plays; it used to stand there permanently as a black block. If it ever needs to be visible in play, move it off that street first.
 - **NaN pixels:** a zero-length normal lights as NaN, and bloom spreads NaN into a black, flickering blur. `realize()` repairs bad normals on every model (`sanitizeNormals`), and `NanGuardShader` runs before bloom so a bad pixel stays one black pixel. Headless SwiftShader does not reproduce the blur; check it on a real GPU (TASK-010).
 - **Palette-atlas models** (Designersoup cars): nearest filtering, no mipmaps, `realize(…, { noDerive: true, keepPixelFilter: true })`, or the swatches bleed and glitter.
+- **Mission targets stay in their area:** give each one `e.leash = { x, z, r }` (npc.js holds it inside; the population cull skips it) and clear it when the mission ends. Hog Wild's herd is penned 32 m around the crash site; `tools/qa/prologue.mjs` checks it. Headless tests: Esc outside a cutscene opens the pause menu, which freezes the simulation.
 
 ---
 

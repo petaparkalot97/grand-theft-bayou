@@ -129,16 +129,21 @@ async function tests(page, log) {
   await js(`q.drop(["r", "h"]); return true;`);
 
   // ---- 4. provoked mid-fight ----
-  await js(`g.state.hp = 100; g.teleport(6, 24); q.clear(8, 10, 90);
-    q.spawn("pr", "redneck", 8, 0, 1000); q.spawn("ph", "hoodrat", 13, 2, 1000); return true;`);
+  // test 3's kill left a 4 s noise event (r 30) at (10, 2): a fresh pair there just flees
+  // and wanders apart, so wait it out and use another stretch of the strip border
+  await page.waitForTimeout(4500);
+  await js(`g.state.hp = 100; g.teleport(6, -4); q.clear(8, -20, 90);
+    q.spawn("pr", "redneck", 8, -28, 1000); q.spawn("ph", "hoodrat", 13, -26, 1000); return true;`);
   const fighting = await until(`const a = q.view("pr"), b = q.view("ph"); return a.rival === "ph" && b.rival === "pr" ? { a, b } : null;`, 20000);
-  pass("provoke setup: a long fight starts", fighting.ok, fighting);
+  const setupState = fighting.ok ? null : await js(`return { pr: q.view("pr"), ph: q.view("ph"), hostileCount: g.npcs.hostileCount,
+    player: [+g.state.hp, !!g.state.veh], zonePr: g.spawnZones.zoneAt(q.tag.pr.spr.position.x, q.tag.pr.spr.position.z) };`);
+  pass("provoke setup: a long fight starts", fighting.ok, { ...fighting, setupState });
   if (fighting.ok) {
     const d0 = await js(`const e = q.tag.pr; g.npcs.provoke(e);
-      return Math.hypot(e.spr.position.x - 6, e.spr.position.z - 24);`);
+      return Math.hypot(e.spr.position.x - 6, e.spr.position.z + 4);`);
     const turned = await until(`const v = q.view("pr"); return v.state === "hostile" && v.rival === null ? v : null;`, 5000);
     await page.waitForTimeout(1500);
-    const d1 = await js(`const e = q.tag.pr; return Math.hypot(e.spr.position.x - 6, e.spr.position.z - 24);`);
+    const d1 = await js(`const e = q.tag.pr; return Math.hypot(e.spr.position.x - 6, e.spr.position.z + 4);`);
     pass("provoked mid-fight: the NPC drops its rival and comes for the player", turned.ok && d1 < d0,
       { turned, distBefore: +d0.toFixed(1), distAfter: +d1.toFixed(1) });
   }
