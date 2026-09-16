@@ -40,6 +40,7 @@
 - Port Calypso & Docks: Industrial port connected to US-167 via Port Highway. Includes a lighthouse, container yard, fire station, supply depot, and newly added apartments, diner, and port authority tower.
 - Cypress Hills & Red Dust Badlands: Off-road canyon and quarry connected via Red Dust Pass. Includes oil derricks, hilltop cabins, a radio tower, and a ruined schoolhouse and badlands motel.
 - Lakeshore Marsh & Causeway: Swamp outskirts connected via Lakeshore Causeway. Includes stilt huts, fishing outposts, airboat tours, an abandoned diner, and a swamp edge market and apartments.
+- Oyster Bay: Coastal town connected to US-167 via Oyster Highway. Includes a hospital, farmer's market, apartments, school, and seafood diner.
 
 `src/eastbank.js` adds a connected East Bank beyond the original OrleaRouge
 edge:

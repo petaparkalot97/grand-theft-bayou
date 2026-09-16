@@ -351,10 +351,69 @@ export function createStateWorld(ctx) {
     );
   }
 
+  // ================= 4. OYSTER BAY (Southeast: x 400..1100, z 400..1100) =================
+  function buildOysterBay() {
+    const C = createComposer(ctx, {
+      name: "OysterBay",
+      bounds: { x0: 380, x1: 1150, z0: 380, z1: 1150 },
+      zones: { core: { x0: 400, x1: 1100, z0: 420, z1: 1050 } },
+      seed: 12345,
+    });
+
+    // Main Coastal Highway
+    C.road("Oyster Highway", [[-6, 600], [1050, 600]], { width: 10 });
+
+    // Town Square / High Street
+    placeCityBuilding(ctx, "hospital", 550, 500, 0);
+    addOccluder(550, 500, 24, 20, 20);
+    pois.push({ x: 550, z: 500, r: 15, label: "Oyster Bay Medical" });
+
+    placeCityBuilding(ctx, "market", 750, 520, Math.PI / 2);
+    addOccluder(750, 520, 20, 16, 8);
+    placeStreetClutter(ctx, 750, 500, 0);
+    pois.push({ x: 750, z: 520, r: 12, label: "Farmer's Market" });
+
+    placeCityBuilding(ctx, "apartments", 650, 700, Math.PI);
+    addOccluder(650, 700, 20, 20, 15);
+    pois.push({ x: 650, z: 700, r: 12, label: "Coastal Apartments" });
+
+    placeCityBuilding(ctx, "school", 850, 700, -Math.PI / 2);
+    addOccluder(850, 700, 24, 20, 10);
+    pois.push({ x: 850, z: 700, r: 14, label: "Oyster Bay High" });
+
+    placeCityBuilding(ctx, "cafe", 950, 680, Math.PI);
+    addOccluder(950, 680, 15, 15, 6);
+    pois.push({ x: 950, z: 680, r: 10, label: "Seafood Diner" });
+
+    placeBillboard(ctx, 450, 580, Math.PI / 2, "WELCOME TO OYSTER BAY");
+
+    for (let x = 40; x <= 1000; x += 40) {
+      addLitSpot({ x, y: 5.5, z: 606, warm: 0xffe0b0, power: 90, range: 25, pole: true });
+    }
+
+    lanes.push(
+      { name: "oyster-hwy-east", points: [[-6, 596], [1050, 596]], cruise: [12, 18] },
+      { name: "oyster-hwy-west", points: [[1050, 604], [-6, 604]], cruise: [12, 18] }
+    );
+
+    minimapLayers.roads.push(
+      { points: [[-6, 600], [1050, 600]], width: 10, color: "#cfcab8" }
+    );
+
+    minimapLayers.buildings.push(
+      { x0: 538, x1: 562, z0: 490, z1: 510 }, // hospital
+      { x0: 740, x1: 760, z0: 512, z1: 528 }, // market
+      { x0: 640, x1: 660, z0: 690, z1: 710 }, // apartments
+      { x0: 838, x1: 862, z0: 690, z1: 710 }, // school
+      { x0: 942, x1: 958, z0: 672, z1: 688 }  // cafe
+    );
+  }
+
   function buildSet() {
     buildPortCalypso();
     buildCypressHills();
     buildLakeshoreMarsh();
+    buildOysterBay();
   }
 
   return {
@@ -366,8 +425,9 @@ export function createStateWorld(ctx) {
     minimap: minimapLayers,
     zoneAt(x, z) {
       if (x > 380 && z < -380) return "industrial";  // Port Calypso Docks
-      if (x < -380 && z < -380) return "industrial";       // Cypress Hills Badlands (Quarry)
-      if (x < -380 && z > 380) return "resort";        // Lakeshore Marsh (Stilts / tourists)
+      if (x < -380 && z < -380) return "industrial"; // Cypress Hills Badlands (Quarry)
+      if (x < -380 && z > 380) return "resort";      // Lakeshore Marsh (Stilts / tourists)
+      if (x > 380 && z > 380) return "town";         // Oyster Bay
       return null;
     },
     buildSet,
