@@ -1,4 +1,4 @@
-import * as THREE from "three";
+﻿import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { loadAtlas, AnimatedSprite } from "./sprite.js";
@@ -15,7 +15,7 @@ import { initWeapons3D, updateWeapon3D, playFireAnim3D } from "./weapons_3d.js";
 import { createNpcSystem } from "./npc.js";
 import { createCameraController } from "./camera.js";
 import { createTraffic } from "./traffic.js";
-import { randomHoodrat, randomProstitute, makeHoodrat } from "./characters.js";
+import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo } from "./characters.js";
 import { createCinema } from "./cinema.js";
 import { createPrologue, makeCastMember, PROLOGUE_KEEPOUT } from "./prologue.js";
 import { createActOne } from "./actone.js";
@@ -1197,6 +1197,8 @@ const ENEMY_TYPES = {
              h: 2.0, hp: 5, speed: 3.9, aggro: 22, melee: 1.9, dmg: 11, atkGap: 1.1 },
   hoodrat: { label: "Hoodrat", kind: "actor", tint: 0x6d95d6,
              h: 1.92, hp: 4, speed: 4.7, aggro: 24, melee: 1.8, dmg: 8, atkGap: 0.85 },
+  hobo:    { label: "Hobo", kind: "hobo", tint: 0x5a5a40,
+             h: 1.85, hp: 3, speed: 3.1, aggro: 15, melee: 1.8, dmg: 4, atkGap: 1.5 },
   prostitute: { label: "Prostitute", kind: "prostitute", tint: 0xe62b7e,
                h: 1.8, hp: 4, speed: 3.4, aggro: 24, melee: 1.8, dmg: 5, atkGap: 1.0 },
   hog:     { label: "Feral Hog", kind: "hog", tint: 0x000000,
@@ -1299,6 +1301,8 @@ function spawnEnemy(typeName, x, z, spot = null) {
     view = buildHog();
   } else if (typeName === "prostitute") {
     view = randomProstitute(rng, T.h);
+  } else if (T.kind === "hobo") {
+    view = randomHobo(rng, T.h);
   } else if (T.kind === "actor") {
     view = randomHoodrat(rng, T.h);
   } else {
@@ -1438,7 +1442,8 @@ async function buildLevel() {
     if (!inKeepout(x, z)) makeShroom(x, z);
   }
   if (stop) placeKit(stop, ROAD_X - ROAD_HALF - 1, SPAWN_Z - 24, 0, 1.2);
-  makeWaterTower(64, 2, "TUSOUXROE", ["SOUTH SIDE"]);
+  spawnEnemy('hobo', -18, 126); spawnEnemy('hobo', -12, 128); spawnEnemy('hobo', -16, 122);
+    makeWaterTower(64, 2, "TUSOUXROE", ["SOUTH SIDE"]);
   // Tusouxroe's welcome: redevelopment, and the neighbourhood's answer to it
   makeBillboard(ROAD_X - ROAD_HALF - 6, -38, 0.12,
     "LUXURY CONDOS", "COMING SOON", "WHERE WE SUPPOSED TO GO?");
@@ -1848,7 +1853,7 @@ async function buildLevel() {
   }
 }
 // ...and top it back up forever, out of sight of the player.
-const ENEMY_KINDS = ["hog", "redneck", "hoodrat", "prostitute", "dockworker", "mechanic", "suit", "tourist", "thug"];
+const ENEMY_KINDS = ["hog", "redneck", "hobo", "hoodrat", "prostitute", "dockworker", "mechanic", "suit", "tourist", "thug"];
 const ENEMY_CAP = 48;         // living NPCs to maintain (off-screen ones are hidden, npc.js)
 let enemyRespawnCd = 0;
 let populationOn = true;      // missions switch spawning off during set pieces
@@ -3527,6 +3532,7 @@ window.addEventListener("keydown", (e) => {
     }
   }
 });
+
 
 
 

@@ -54,8 +54,7 @@ export function createArsenal({ state, flashObjective }) {
   function render() {
     const w = WEAPONS[state.weapon] || WEAPONS.bat;
     const iconName = ICONS[w.id] || "unarmed.png";
-    // San Andreas style weapon icons are typically drawn large with an outline/shadow
-    const imgHtml = `<img src="./assets/weapons/${iconName}" style="height:55px; object-fit:contain; filter:drop-shadow(2px 2px 0px #000) drop-shadow(-1px -1px 0px #000);">`;
+    const imgHtml = `<div style="background: rgba(0,0,0,0.6); border: 2px solid #000; border-radius: 12px; padding: 4px; display: flex; align-items: center; justify-content: center; width: 64px; height: 64px;"><img src="./assets/ui/weapons/${iconName}" style="width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(2px 2px 0px #000) drop-shadow(-1px -1px 0px #000);"></div>`;
     const tint = RARITY[w.rarity] ? "#" + RARITY[w.rarity].color.toString(16).padStart(6, "0") : "#f4f1ea";
     
     if (w.melee) {

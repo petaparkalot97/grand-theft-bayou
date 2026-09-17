@@ -908,3 +908,18 @@ export function randomProstitute(rng = Math.random, height, opts = {}) {
     ...opts,
   });
 }
+export function makeHobo(opts = {}) {
+  const crew = { primary: 0x4a4a40, sec: 0x3d4133 }; // dirty, drab colors
+  return new Hoodrat({ ...opts, crew, headwear: "hat" });
+}
+
+export function randomHobo(rng = Math.random, height) {
+  return new Hoodrat({
+    sex: rng() < 0.2 ? "f" : "m",
+    crew: { primary: 0x504a40, sec: 0x353a30 },
+    headwear: rng() < 0.5 ? "hat" : "cap",
+    seed: (rng() * 1e9) | 0,
+    yaw: rng() * Math.PI * 2,
+    height,
+  });
+}
