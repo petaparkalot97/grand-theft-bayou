@@ -91,7 +91,7 @@ export function createCameraController({ camera, dom, canCapture }) {
       const p = dom.requestPointerLock();
       if (p && p.catch) p.catch(() => {});
     }
-    if (e.button === 2 && !locked) { dragging = true; lastX = e.clientX; lastY = e.clientY; }
+    if (e.button === 2 && !locked && canCapture()) { dragging = true; lastX = e.clientX; lastY = e.clientY; }
   }, true);
   addEventListener("mouseup", (e) => { if (e.button === 2) dragging = false; });
   addEventListener("blur", () => { dragging = false; });

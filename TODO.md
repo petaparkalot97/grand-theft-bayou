@@ -1748,6 +1748,17 @@ before `COMPLETE`.
 - `TASK-006` — **Soundtrack folder** `assets/music/`: live playlist from
   `serve.mjs`, `npm run build` writes `playlist.json`, shuffle, **N** next track,
   fallback theme. Endpoint verified.
+- **Mission renumbering (human request, 2026-09-17, Claude):** New Mission 1
+  "Transition Day" (`src/missionClinic.js`) — Keseme drives to Oyster Bay
+  Medical — now plays before the prologue. `prologue.js`'s own cold open and
+  chase are untouched; its "HOG WILD" mission card is now Mission 2, and
+  `main.js` calls `missionClinic.start()` for story mode instead of
+  `prologue.start()` directly (`missionClinic`'s `onFinished` calls it).
+  Also: Keseme's Fish Audio voice ID filled in in `src/voiceCast.js` (was a
+  `TODO_FEMALE_KESEME_...` placeholder — her lines were all generated with
+  the male voice she used to share with Peta). **Still needed:** run
+  `npm run voiceover` (needs `FISH_AUDIO_API_KEY`) to generate audio for her
+  now-correct voice and for the new mission's lines — not run yet.
 
 ---
 

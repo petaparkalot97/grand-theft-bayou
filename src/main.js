@@ -18,6 +18,7 @@ import { createTraffic } from "./traffic.js";
 import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo } from "./characters.js";
 import { createCinema } from "./cinema.js";
 import { createPrologue, makeCastMember, PROLOGUE_KEEPOUT } from "./prologue.js";
+import { createMissionClinic } from "./missionClinic.js";
 import { createActOne } from "./actone.js";
 import { createOrleaRouge } from "./orlearouge.js";
 import { createPotholes } from "./potholes.js";
@@ -977,6 +978,7 @@ function stepGfxTier(dir) {
 renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
 const cine = createCinema({ camera, muted: () => music.muted });
 let prologue = null;           // created once the car models have loaded
+let missionClinic = null;      // Mission 1 "Transition Day" (missionClinic.js) — plays before the prologue now
 let actOne = null;             // Act One "Welcome Home" (actone.js), starts when the prologue ends
 let orlea = null;              // the causeway + OrleaRouge, the south of the map (orlearouge.js)
 let potholes = null;           // Tusouxroe's potholes (potholes.js)
@@ -1038,7 +1040,7 @@ function minimapBlips() {
   if (pauseMenu && pauseMenu.customWaypoint) {
     _blips.push({ kind: "waypoint", x: pauseMenu.customWaypoint.x, z: pauseMenu.customWaypoint.z });
   }
-  const wp = (blueLight && blueLight.waypoint) || (actOne && actOne.waypoint) || (greedoCampaign && greedoCampaign.waypoint) || (syncCampaign && syncCampaign.waypoint) || (prologue && prologue.waypoint);
+  const wp = (missionClinic && missionClinic.waypoint) || (blueLight && blueLight.waypoint) || (actOne && actOne.waypoint) || (greedoCampaign && greedoCampaign.waypoint) || (syncCampaign && syncCampaign.waypoint) || (prologue && prologue.waypoint);
   if (wp) _blips.push({ kind: "waypoint", x: wp.x, z: wp.z });
   for (const s of sheriffs) if (!s.dead) _blips.push({ kind: "cop", x: s.obj.position.x, z: s.obj.position.z });
   for (const e of enemies) if (!e.dead && e.state === "hostile") _blips.push({ kind: "hostile", x: e.spr.position.x, z: e.spr.position.z });
@@ -1106,7 +1108,7 @@ function confirmCharacter() {
   if (cfg.campaign === "alternate") { prologue.skip(); alternate.start(); return; }
   if (cfg.campaign === "greedo") { prologue.skip(); greedoCampaign.start(); return; }
   if (cfg.campaign === "sync") { prologue.skip(); syncCampaign.start(); return; }
-  if (pendingLaunch === "story") prologue.start();
+  if (pendingLaunch === "story") missionClinic.start();
   else { prologue.skip(); music.volume = 0.55; soundtrackReady.then((s) => s.play()); flashObjective("Click the game to look around with the mouse · Esc releases it"); }
 }
 for (const id of characterIds) {
@@ -1568,7 +1570,19 @@ async function buildLevel() {
   // the push bar and the red/blue lightbar over the pickup shell (TASK-020)
   if (pickup) sheriffProto = buildCruiserModel(pickup);
 
-  // ---- the Prologue / Mission 1 set: Keseme's coupe, Mally's Bravado, the dirt road ----
+  // ---- Mission 1 "Transition Day": Keseme's drive to Oyster Bay Medical ----
+  missionClinic = createMissionClinic({
+    scene, cine, state, playerPos, getPlayer: () => player,
+    makeActor: (id) => createPlayerCharacter(id, {
+      makePeta: () => makeCastMember(makeHoodrat, "keseme", { height: 1.74 }), makeHoodrat,
+    }),
+    flashObjective, setObjective: setStoryObjective,
+    onFinished: () => prologue.start(),
+    ROAD_X, SPAWN_Z,
+  });
+  missionClinic.buildSet();
+
+  // ---- the Prologue / Mission 2 set: Keseme's coupe, Mally's Bravado, the dirt road ----
   prologue = createPrologue({
     scene, camera, cine, state, playerPos, getPlayer: () => player, vehicles, enemies,
     registerVehicle, spawnEnemy, killEnemy, npcs, makeHoodrat, surface, hitPlayer,
@@ -2678,6 +2692,7 @@ function tick() {
         simulate(Math.min(left, 1 / 30));
       }
     }
+    if (missionClinic) missionClinic.update(dt);
     if (prologue) prologue.update(dt);
     if (actOne) actOne.update(dt);
     if (orlea) orlea.update(dt);
@@ -3417,6 +3432,7 @@ async function boot() {
   const moving = new Set([
     player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
     ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
+    ...(missionClinic ? missionClinic.props : []),
     ...(prologue ? prologue.props : []),
     ...(blueLight ? blueLight.props : []),
     ...(nolantis ? nolantis.props : []),
