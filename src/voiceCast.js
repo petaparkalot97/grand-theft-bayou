@@ -11,9 +11,16 @@
 // ---------------------------------------------------------------------------
 
 export const VOICE_CAST = {
-  KESEME: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Keseme Nadia" },
-  KESEM: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Keseme Nadia" },
-  NADIA: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Keseme Nadia" },
+  // Keseme is canonically female (playerCharacters/prologue CAST sex:"f"), but
+  // every line she had was generated with the male street-voice she used to
+  // share with Peta. Re-record her with a female Fish Audio voice:
+  //   1. paste the female voice's referenceId over the TODO below
+  //   2. npm run voiceover -- --force --character=KESEME
+  // (the cache is keyed by voice id, so only her ~104 lines regenerate; the
+  // old male takes stay on disk but drop out of manifest.json)
+  KESEME: { referenceId: "TODO_FEMALE_KESEME_PASTE_FISH_AUDIO_REFERENCE_ID", label: "Keseme Nadia" },
+  KESEM: { referenceId: "TODO_FEMALE_KESEME_PASTE_FISH_AUDIO_REFERENCE_ID", label: "Keseme Nadia" },
+  NADIA: { referenceId: "TODO_FEMALE_KESEME_PASTE_FISH_AUDIO_REFERENCE_ID", label: "Keseme Nadia" },
   PETA: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Petaparkalot" },
   PETAPARKALOT: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Petaparkalot" },
 
