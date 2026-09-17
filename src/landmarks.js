@@ -36,6 +36,17 @@ function loadFBX(url) {
   return new Promise(r => _fbxLoader.load(url, r, undefined, e => { console.warn("FBX load failed", url, e); r(null); }));
 }
 
+// A mesh's .material can be a single Material or an array of them (common on
+// multi-material FBX imports) — arrays have no .userData, so setting it
+// directly throws. Marks every material on the mesh as already-authored so
+// the scene-wide PBR pass (realize()) leaves it alone.
+function markRealized(o) {
+  if (!o.material) return;
+  for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+    if (m) m.userData.gtbRealized = true;
+  }
+}
+
 /**
  * Builds a decorative multi-part fence line using Fence Pack assets.
  */
@@ -177,7 +188,7 @@ export function placeParkedCar(ctx, carType, x, z, ry = 0) {
       if (o.isMesh) {
         o.castShadow = true;
         o.receiveShadow = true;
-        if (o.material) o.material.userData.gtbRealized = true;
+        markRealized(o);
       }
     });
     
@@ -215,7 +226,7 @@ export function placeTruck(ctx, type, x, z, ry = 0) {
       if (o.isMesh) {
         o.castShadow = true;
         o.receiveShadow = true;
-        if (o.material) o.material.userData.gtbRealized = true;
+        markRealized(o);
       }
     });
     
@@ -250,7 +261,7 @@ export function placeShopGLB(ctx, file, x, z, ry = 0, w = 15, h = 10, d = 15) {
           if (o.isMesh) {
             o.castShadow = true;
             o.receiveShadow = true;
-            if (o.material) o.material.userData.gtbRealized = true;
+            markRealized(o);
           }
         });
         
@@ -283,7 +294,7 @@ export function placeGasStation(ctx, x, z, ry = 0) {
         if (o.isMesh) {
           o.castShadow = true;
           o.receiveShadow = true;
-          if (o.material) o.material.userData.gtbRealized = true;
+          markRealized(o);
         }
       });
       g.add(model);
@@ -313,7 +324,7 @@ export function placeSixTwelve(ctx, x, z, ry = 0) {
         if (o.isMesh) {
           o.castShadow = true;
           o.receiveShadow = true;
-          if (o.material) o.material.userData.gtbRealized = true;
+          markRealized(o);
         }
       });
       g.add(model);
