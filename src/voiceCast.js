@@ -1,7 +1,8 @@
 // ---------------------------------------------------------------------------
 // voiceCast.js — per-speaker Fish Audio voice mapping for cutscenes & dialogue.
 //
-//   - KESEM NADIA & PETAPARKALOT : f1b549768da341069e84d25c5b354d50
+//   - KESEME NADIA               : 98655a12fa944e26b274c535e5e03842
+//   - PETAPARKALOT                : f1b549768da341069e84d25c5b354d50
 //   - CHIMI                     : 9bfcd2342af343dc92e659628aaafcd7
 //   - DIXON                     : 7e6821ce331e4394a59736f12fdb4cd1
 //   - GREEDO                    : 0bb73a55b11e4d7eb41336be61c5abf3
@@ -57,8 +58,8 @@ export const VOICE_CAST = {
   VOICE: { referenceId: "504f3f5d6567435aad64c130fb448c2f", label: "Unknown caller (distorted)" },
 
   // Sync's campaign (syncCampaign.js)
-  SYNC: { referenceId: "43f6dcf7d39f4b90bed118f8355c0f73", label: "Sync" },
-  UNCLE: { referenceId: "7eaed20411484921bc031de079a44712", label: "Uncle Roscoe (phone)" },
+  SYNC: { referenceId: "d269c1a386044cb183bbf7e4a02eb919", label: "Sync" },
+  UNCLE: { referenceId: "f212cebdad124957908119daa634037c", label: "Uncle Scunter" },
 };
 
 export const STREET_NPC_VOICE_IDS = [

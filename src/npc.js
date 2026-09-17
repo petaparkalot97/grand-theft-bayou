@@ -345,7 +345,10 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
       if (e.inCarTimer <= 0) {
         if (v.obj) v.obj.rotation.z = 0;
         if (env.state) {
-          env.state.money = Math.max(0, (env.state.money || 0) - 50);
+          // Count completed passenger rides so campaign missions can require
+          // several pickups even though the vehicle has one passenger seat.
+          env.state.prostituteTrips = (env.state.prostituteTrips || 0) + 1;
+          env.state.cash = Math.max(0, (env.state.cash || 0) - 50);
           env.state.hp = Math.min(100, (env.state.hp || 100) + 50);
           if (typeof env.syncHUD === "function") env.syncHUD();
         }

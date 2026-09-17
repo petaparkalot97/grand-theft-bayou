@@ -4,6 +4,32 @@ How cutscene dialogue gets turned into real spoken audio, and how to add
 more of it. Read this before writing new dialogue in a cutscene, or if a
 line is playing as a robotic browser voice instead of a real one.
 
+## Workflow: dialogue → voice
+
+The whole pipeline, start to finish:
+
+1. **Write the line in code.** Dialogue lives inline in scene files as
+   `c.say("WHO", "text")` — there's no separate dialogue data file.
+2. **Map the speaker to a voice, once.** `src/voiceCast.js` is the *only*
+   file the pipeline reads for this — a `WHO` → Fish Audio `referenceId`
+   table. (Not `data/game-voices.json` — that belongs to an old, unused
+   Python pipeline and nothing in the live game reads it.)
+3. **Generate.** `node tools/voiceover-gen.mjs` scans `src/*.js` for every
+   `c.say(...)` call, resolves each speaker via `src/voiceCast.js`, and
+   calls the Fish Audio TTS API for any line not already in
+   `assets/audio/voice/manifest.json`.
+4. **Fish Audio renders it.** Which model you're on matters a lot here —
+   see "Free vs. paid model" below. This is the step that can silently
+   produce the wrong voice.
+5. **Save + record.** The mp3 lands in `assets/audio/voice/`, and the
+   `"WHO::exact line text"` → filename mapping is written to
+   `manifest.json`.
+6. **Commit both.** The mp3 and the updated `manifest.json` must be
+   committed together — nothing else generates these at build/deploy time.
+7. **Runtime playback.** `cinema.js`'s `playVoiceLine(who, text)` looks the
+   line up in the manifest and plays the mp3. Missing entry → silent
+   fallback to the browser's robotic `speechSynthesis` voice.
+
 ## How it works
 
 Dialogue isn't stored in a separate data file — it's written directly in the
@@ -37,10 +63,36 @@ line was never run through the generator, not that anything is broken.
   committed): `FISH_AUDIO_API_KEY=...`
 - Optional: `FISH_AUDIO_MODEL` in `.env` to override the default TTS model
   (`s2.1-pro-free`).
-- See `FISH_AUDIO_EXPLANATION.md` at the repo root for background on Fish
-  Audio's credit system and voice cloning — as of 2026-09-17 cloning is
-  confirmed working (verified with a live test line, listened to by the
-  human).
+- See `FISH_AUDIO_EXPLANATION.md` (this folder) for background on Fish
+  Audio's credit system and voice cloning.
+
+## Free vs. paid model
+
+The default model, `s2.1-pro-free`, is what this project actually uses —
+the account has never had Fish Audio **Developer API credit**, so the
+paid model (`s2.1-pro`) isn't usable here at all: every request fails
+outright with an HTTP 402 (it does *not* silently fall back to the free
+tier). Don't set `FISH_AUDIO_MODEL=s2.1-pro` unless credit has actually
+been added at https://fish.audio/app/developers.
+
+In practice the free tier clones every voice in `VOICE_CAST` fine —
+Chimi, Dixon, Greedo, Peta, Keseme, and Sync were all generated this way
+and sound correct. `FISH_AUDIO_EXPLANATION.md` documents an earlier
+theory that the free tier ignores custom cloning and substitutes a
+generic voice; that turned out not to be the actual cause of any bug
+seen so far. (Keseme's "wrong voice" bug, for example, was a literal
+`TODO_...` placeholder `referenceId` sitting in `VOICE_CAST` — nothing to
+do with model tier.) If a voice does come out sounding generic, check the
+`referenceId` in `VOICE_CAST` first before suspecting the model.
+
+**Gotcha:** the on-disk filename/cache key is
+`slug(who)-sha1(who::text::referenceId)` — the model is *not* part of the
+hash. So a line already generated once stays cached under that key
+forever unless you pass `--force` (scoped with `--character=`) — e.g.
+after fixing a wrong `referenceId` in place rather than changing it to a
+new value. Lines that are new to `manifest.json` (new text, or a
+character whose `referenceId` just changed to a new value) don't need
+`--force` — they're cache misses either way.
 
 ## Adding a new line to an existing character
 
@@ -125,9 +177,11 @@ Add it to `.env` at the repo root (see Requirements above). The script reads
 both `.env` and the real environment; either works.
 
 **A character's voice sounds generic / not like their actual cloned voice.**
-This was a real, separate problem — see `FISH_AUDIO_EXPLANATION.md` — tied to
-Fish Audio Developer Credits. Confirmed no longer an issue as of 2026-09-17,
-but if it recurs, that doc is the place to start.
+Check `referenceId` in `src/voiceCast.js` first — the most common cause so
+far has been a wrong or placeholder ID (e.g. a leftover `TODO_...` value,
+or one character's ID accidentally shared with another), not the Fish
+Audio model tier. See "Free vs. paid model" above and
+`FISH_AUDIO_EXPLANATION.md` for the credits background.
 
 **Old, unused mp3 files are piling up in `assets/audio/voice/`.**
 Filenames are content-hashed (`slug(who)-sha1(who::text::referenceId).mp3`),

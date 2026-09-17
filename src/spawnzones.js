@@ -19,12 +19,12 @@
 // ---------------------------------------------------------------------------
 
 export const ZONE_MIX = Object.freeze({
-  urban: { hoodrat: 0.8, redneck: 0.1, prostitute: 0.1 },
-  town: { hoodrat: 0.7, redneck: 0.3 },
-  commercial: { hoodrat: 0.40, redneck: 0.50, prostitute: 0.1 },
-  border_strip: { hoodrat: 0.45, redneck: 0.45, prostitute: 0.1, border: true },
-  border_market: { hoodrat: 0.5, redneck: 0.5, border: true },
-  residential: { redneck: 0.82, hoodrat: 0.08, prostitute: 0.1 },
+  urban: { hoodrat: 0.68, redneck: 0.12, prostitute: 0.20 },
+  town: { hoodrat: 0.60, redneck: 0.25, hobo: 0.15 },
+  commercial: { hoodrat: 0.34, redneck: 0.46, prostitute: 0.20 },
+  border_strip: { hoodrat: 0.36, redneck: 0.46, prostitute: 0.18, border: true },
+  border_market: { hoodrat: 0.42, redneck: 0.43, prostitute: 0.15, border: true },
+  residential: { redneck: 0.60, hoodrat: 0.08, hobo: 0.32 },
   market_row: { hoodrat: 0.25, redneck: 0.75 },
   rural: { redneck: 0.6, hoodrat: 0.15, hog: 0.25 },
   forest: { hog: 0.5, redneck: 0.5 },

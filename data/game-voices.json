@@ -16,7 +16,7 @@
       "model": "s2.1-pro-free"
     },
     "keseme": {
-      "voice_id": "f1b549768da341069e84d25c5b354d50",
+      "voice_id": "98655a12fa944e26b274c535e5e03842",
       "voice_title": "Keseme Nadia",
       "model": "s2.1-pro-free"
     },
@@ -33,6 +33,16 @@
     "chimi": {
       "voice_id": "9bfcd2342af343dc92e659628aaafcd7",
       "voice_title": "Chimi",
+      "model": "s2.1-pro-free"
+    },
+    "sync": {
+      "voice_id": "d269c1a386044cb183bbf7e4a02eb919",
+      "voice_title": "Sync",
+      "model": "s2.1-pro-free"
+    },
+    "uncle_scunter": {
+      "voice_id": "f212cebdad124957908119daa634037c",
+      "voice_title": "Uncle Scunter",
       "model": "s2.1-pro-free"
     },
     "dixon": {
