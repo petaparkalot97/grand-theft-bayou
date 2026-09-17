@@ -158,6 +158,49 @@ export function createCinema({ camera, muted = () => false }) {
       if (far) out.gain.value *= 0.35;
       src.connect(lp).connect(out);
       src.start(t);
+    } else if (kind === "pistolShot") {
+      // A crisp mid-range crack — shorter and brighter than the shotgun's boom.
+      const src = a.createBufferSource();
+      src.buffer = noiseBuffer(a, 0.16, (p) => Math.pow(1 - p, 4.5));
+      const lp = a.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.setValueAtTime(3200, t);
+      lp.frequency.exponentialRampToValueAtTime(450, t + 0.14);
+      out.gain.value *= 0.7;
+      src.connect(lp).connect(out);
+      src.start(t);
+    } else if (kind === "tec9Shot") {
+      // Very short and tinny — a light, fast-firing round. Quieter per shot
+      // since the Tec-9's cooldown (0.13s) means these stack up fast.
+      const src = a.createBufferSource();
+      src.buffer = noiseBuffer(a, 0.09, (p) => Math.pow(1 - p, 6));
+      const bp = a.createBiquadFilter();
+      bp.type = "bandpass"; bp.frequency.value = 2600; bp.Q.value = 1.1;
+      out.gain.value *= 0.42;
+      src.connect(bp).connect(out);
+      src.start(t);
+    } else if (kind === "rifleShot") {
+      // A sharp, powerful crack: a noise burst plus a brief high bandpass
+      // "snap" layered on top, distinct from the shotgun's low boom.
+      const body = a.createBufferSource();
+      body.buffer = noiseBuffer(a, 0.24, (p) => Math.pow(1 - p, 3.2));
+      const lp = a.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.setValueAtTime(5200, t);
+      lp.frequency.exponentialRampToValueAtTime(320, t + 0.22);
+      body.connect(lp).connect(out);
+      body.start(t);
+
+      const snap = a.createBufferSource();
+      snap.buffer = noiseBuffer(a, 0.035, (p) => Math.pow(1 - p, 8));
+      const bp = a.createBiquadFilter();
+      bp.type = "bandpass"; bp.frequency.value = 4400; bp.Q.value = 0.8;
+      const snapGain = a.createGain();
+      snapGain.gain.value = 0.6 * volume;
+      snap.connect(bp).connect(snapGain).connect(a.destination);
+      snap.start(t);
+
+      out.gain.value *= 1.15;
     } else if (kind === "static") {
       const src = a.createBufferSource();
       src.buffer = noiseBuffer(a, 0.4, () => 0.5);

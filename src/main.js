@@ -168,7 +168,10 @@ document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 // Aerial perspective. Keep it thin — the whole point of the PBR pass is that
 // you can see surface detail down the strip.
-scene.fog = new THREE.FogExp2(0x24353f, 0.0072);
+// Keep the night haze atmospheric without hiding the ground texture and road edges.
+// The old density saturated at normal gameplay distances, making the whole map
+// read as one gray plane.
+scene.fog = new THREE.FogExp2(0x24353f, 0.0028);
 
 const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.3, 420);
 const CAM_OFFSET = new THREE.Vector3(0, 15, 15);
@@ -302,7 +305,13 @@ let ground;
 function buildGround() {
   ground = new THREE.Mesh(
     new THREE.PlaneGeometry(MAP.maxX - MAP.minX + WORLD * 0.4, MAP.maxZ - MAP.minZ + WORLD * 0.8, 1, 1),
-    new THREE.MeshStandardMaterial({ map: groundTexture(), roughness: 1 })
+    new THREE.MeshStandardMaterial({
+      map: groundTexture(), color: 0x43552f, roughness: 1,
+      // The floor is the player's depth reference. Applying the atmospheric fog
+      // shader to this kilometre-scale plane made its near side blend into the
+      // fog colour and look like a solid white/gray map.
+      fog: false,
+    })
   );
   ground.rotation.x = -Math.PI / 2;
   // centred on the grown map, and tiled to match its longer z so it doesn't stretch
@@ -401,11 +410,13 @@ function addBlocker(x, z, r) {
   blockerGrid.addStatic(b);
   return b;
 }
-
-// Hidden dev-mode landmark placement tool (type $DEVMODE69xxx during free
-// roam). Needs nothing from the async boot sequence, so it's constructed
-// here rather than in boot().
-const mapEditor = createMapEditor({ scene, camera, addBlocker, addLitSpot: (spot) => litSpots.push(spot) });
+// The undo path in the dev-mode map editor needs to take a placed object's
+// collision back out again, not just delete its mesh.
+function removeBlocker(b) {
+  const i = blockers.indexOf(b);
+  if (i >= 0) blockers.splice(i, 1);
+  blockerGrid.remove(b);
+}
 
 // ---------------------------------------------------------------- trees (wall of swamp)
 function buildTrees() {
@@ -884,7 +895,7 @@ function spawnTracer(from, to) {
 const state = {
   running: false, over: false,
   hp: 100, sp: 100, cans: 0, cash: 0,
-  fireCd: 0, hurtCd: 0, dusk: 0,
+  fireCd: 0, hurtCd: 0, dusk: 0, prostituteTrips: 0,
   selectedCharacter: "keseme", campaign: "main",   // Keseme Nadia, the story's protagonist, is the default pick
   veh: null,          // vehicle the player is driving, or null (on foot)
   heat: 0,            // crime heat -> wanted stars
@@ -934,6 +945,18 @@ function crime(amount) {
 // One source of truth for controls (input.js): gameplay asks about actions,
 // never key codes.
 const input = createInput();
+
+// Hidden dev-mode landmark placement tool (type $DEVMODE69xxx during free
+// roam). Constructed here (not in boot()) so it's live the instant the cheat
+// code is typed, and after `input`/`renderer`/`loadGLB` so it can drive its
+// own free-fly camera and build real-looking (not fallback-box) previews.
+const mapEditor = createMapEditor({
+  scene, camera, renderer, input, loadGLB,
+  addBlocker, removeBlocker,
+  addLitSpot: (spot) => litSpots.push(spot),
+  removeLitSpot: (spot) => { const i = litSpots.indexOf(spot); if (i >= 0) litSpots.splice(i, 1); },
+});
+
 input.onPress("interact", () => { enterExitVehicle(); tryInteract(); });
 input.onPress("mute", () => toggleMute());
 input.onPress("nextTrack", () => soundtrackReady.then((s) => s.next()));
@@ -971,7 +994,11 @@ let syncCampaign = null;       // Sync's own campaign, "THE TRIALS" (syncCampaig
 const buildingOccluders = [];  // tall buildings the camera must stay in front of
 let mainStreetWest = -73;      // Main Street runs from US-167 west to the last shopfront
 const camCtl = createCameraController({
-  camera, dom: renderer.domElement, canCapture: () => state.running && !state.over,
+  camera, dom: renderer.domElement,
+  // The dev-mode map editor drives its own free-fly camera and owns
+  // left-click (placing) / right-drag (its own orbit) while it's active —
+  // without this the chase cam's click-to-lock and orbit fought it.
+  canCapture: () => state.running && !state.over && !mapEditor.active,
 });
 // F4: world axes and every system's idea of forward (debug.js); the HUD compass
 const orientDebug = createOrientationDebug({ scene });
@@ -1245,7 +1272,8 @@ function buildHog() {
 const NPC_POIS = [
   // the strip is a row of storefronts: small radii keep loiterers out front
   ...LANDMARKS.map(([, side, z]) => ({ x: ROAD_X + side * (LOT_X - 11), z, r: 6 })),
-  { x: -48, z: 116, r: 12 }, { x: 48, z: 100, r: 9 }, { x: 34, z: 88, r: 5 },
+  { x: -48, z: 116, r: 12 }, { x: -75, z: 120, r: 14 }, // homeless tent camp
+  { x: 48, z: 100, r: 9 }, { x: 34, z: 88, r: 5 },
   ...[-60, -40, -20, 0, 20, 40].map((x) => ({ x, z: -78, r: 6 })),
 ];
 for (let z = MAP.maxZ - 16; z > MAP.minZ + 16; z -= 24) {
@@ -1255,8 +1283,7 @@ const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, boun
 // The Sheriff's search / give-up logic (police.js). The cruisers themselves are
 // driven below in updateSheriffs; the module owns "where do they think you are".
 const police = createPoliceSystem({
-  scene, MAP, npcs, loot, hitPlayer, busted: () => busted(),
-});
+  scene, MAP, npcs, loot, hitPlayer, busted: () => busted(),});
 const npcEnv = {
   player: playerPos,
   driving: false,
@@ -1310,6 +1337,12 @@ function spawnEnemy(typeName, x, z, spot = null) {
     type: typeName, T, spr: view, hp: T.hp, t: rand(0, 3),
     atkCd: 0, dead: false, fade: 1, charge: 0, chargeCd: 0,
   };
+  // Hobos spawned at the tent camp belong there. A soft leash keeps them near
+  // the tents instead of wandering into the trailer rows or being culled as
+  // "too far away" while the player explores the rest of the map.
+  if (typeName === "hobo" && spot && spot.camp === "homeless") {
+    rec.leash = { x: -75, z: 120, r: 18 };
+  }
   // the zone's wander profile (spawnzones.js WANDER): city blocks keep people
   // on short, quick trips, the parish lets them spread out. `spot` is the
   // spawnzones.pick() result; spawners without one get the neutral default.
@@ -1437,7 +1470,16 @@ async function buildLevel() {
     if (!inKeepout(x, z)) makeShroom(x, z);
   }
   if (stop) placeKit(stop, ROAD_X - ROAD_HALF - 1, SPAWN_Z - 24, 0, 1.2);
-  spawnEnemy('hobo', -18, 126); spawnEnemy('hobo', -12, 128); spawnEnemy('hobo', -16, 122);
+  // The camp has a guaranteed population; the general spawner also knows about
+  // hobos, but random roadside rolls should never empty their home base.
+  for (const [x, z] of [[-75, 112], [-76, 119], [-68, 125], [-82, 128], [-69, 132], [-84, 120]]) {
+    spawnEnemy("hobo", x, z, { camp: "homeless", wanderR: 0.55, wanderSpeed: 0.55 });
+  }
+  // Prostitutes work the commercial strip at dusk/night. Seed a few visible
+  // encounters instead of relying on a 10% random roll plus a later night swap.
+  for (const [x, z] of [[-18, 88], [6, 64], [-18, 34], [6, 4]]) {
+    spawnEnemy("prostitute", x, z, { wanderR: 0.8, wanderSpeed: 1.05 });
+  }
     makeWaterTower(64, 2, "TUSOUXROE", ["SOUTH SIDE"]);
   // Tusouxroe's welcome: redevelopment, and the neighbourhood's answer to it
   makeBillboard(ROAD_X - ROAD_HALF - 6, -38, 0.12,
@@ -1465,7 +1507,9 @@ async function buildLevel() {
         const gb = new THREE.Box3().setFromObject(b);
         b.position.y = -gb.min.y;
         scene.add(b);
-        addBlocker(b.position.x, b.position.z, Math.max(sz.x, sz.z) * s * 0.4);
+        // Use the building's diagonal footprint, not an inscribed circle. The
+        // old 0.4 radius left gaps at corners that let the player clip through.
+        addBlocker(b.position.x, b.position.z, Math.hypot(sz.x, sz.z) * s * 0.52);
         // tall enough to swallow the camera: keep the lens in front of it
         const ob = new THREE.Box3().setFromObject(b);
         buildingOccluders.push({ minX: ob.min.x, maxX: ob.max.x, minY: ob.min.y, maxY: ob.max.y, minZ: ob.min.z, maxZ: ob.max.z });
@@ -1978,7 +2022,10 @@ function placeGlbLandmark(src, x, z, rot, target, label, glow, rotOffset = 0) {
   o.position.set(x, 0, z);
   o.rotation.y = rot;
   scene.add(o);
-  addBlocker(x, z, 5);
+  // `target` is the model's horizontal footprint. A fixed 5 m blocker was
+  // smaller than the 22–26 m storefronts, leaving most of each building
+  // walkable even though it was visibly solid.
+  addBlocker(x, z, Math.max(5, target * 0.52));
   poolLight(glow || 0xffe0b0, 40, 30, x, 6, z);
   parkedCarSpots.push({ x, z, rot });
   return true;
@@ -2052,6 +2099,27 @@ function makeTrailerPark(cx, cz) {
   makeBarrel(cx - 18, cz - 6);
   makeBarrel(cx - 17, cz - 4);
   makePallet(cx + 12, cz + 8, 0.5);
+
+  // Homeless camp: these are deliberately visible props rather than only NPC
+  // spawn coordinates, so the trailer park reads as lived-in from a distance.
+  const tentMat = new THREE.MeshStandardMaterial({ color: 0x55483b, roughness: 1, name: "homeless tent canvas" });
+  const tarpMat = new THREE.MeshStandardMaterial({ color: 0x283b3b, roughness: 1, name: "homeless tarp" });
+  const camp = [
+    [cx - 27, cz - 4, 0.15], [cx - 28, cz + 5, -0.2],
+    [cx - 20, cz + 9, 0.35], [cx - 34, cz + 10, -0.35],
+  ];
+  for (const [tx, tz, ry] of camp) {
+    const tent = new THREE.Mesh(new THREE.ConeGeometry(2.2, 2.5, 4), tentMat);
+    tent.position.set(tx, 1.25, tz);
+    tent.rotation.y = Math.PI / 4 + ry;
+    tent.castShadow = true; tent.receiveShadow = true;
+    const tarp = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.06, 2.2), tarpMat);
+    tarp.position.set(tx + 0.4, 0.08, tz + 0.2);
+    tarp.rotation.y = ry;
+    tarp.receiveShadow = true;
+    scene.add(tent, tarp);
+    addBlocker(tx, tz, 1.3);
+  }
 
   loadPed("Character_Male", cx - 12, cz + 2);
   loadPed("Character_Female", cx + 2, cz - 4);
@@ -2348,6 +2416,10 @@ function tryInteract() {
 }
 
 // ---------------------------------------------------------------- combat
+// Distinct gunfire per weapon (human report: "the guns should have sounds,
+// different sounds"). Procedural, via cinema.js's sfx() — see there for the
+// actual noise/filter shaping of each kind.
+const WEAPON_SFX = { pistol: "pistolShot", tec9: "tec9Shot", sawnoff: "shotgun", deerRifle: "rifleShot" };
 const _tmpV = new THREE.Vector3();
 function fire() {
   if (state.fireCd > 0 || state.over || state.cinematic) return;
@@ -2418,6 +2490,7 @@ function fire() {
   if (!gun.melee) {
     spawnTracer(origin, target);
     muzzleFlash(origin, target);
+    cine.sfx(WEAPON_SFX[state.weapon] || "pistolShot");
   }
   arsenal.consume();
 
@@ -2617,7 +2690,7 @@ function tick() {
     if (alternate) alternate.update(dt);
     if (greedoCampaign) greedoCampaign.update(dt);
     if (syncCampaign) syncCampaign.update(dt);
-    mapEditor.update();
+    mapEditor.update(dt);
     updateRemotePlayers(dt);
     if (multiplayerMode && multiplayer?.connected && state.running) {
       networkInputTimer += dt;
@@ -2630,7 +2703,9 @@ function tick() {
       }
     }
     cine.update(dt);
-    if (!cine.hasCamera) {
+    if (!cine.hasCamera && mapEditor.active) {
+      mapEditor.updateCamera(dt);
+    } else if (!cine.hasCamera) {
       camCtl.setAiming(!state.veh && input.isDown("aim"));
       camCtl.update(dt, playerPos, state.veh, blockerGrid, playerMoveHeading);
       if (state.veh && state.veh.jolt > 0) {
@@ -2754,7 +2829,7 @@ function simulate(dt) {
   // blue out of the sky probe, so the whole scene's ambient goes with it.
   const f = (1 - state.dusk * 0.4) * weather.lightMultiplier;
   moon.intensity = 2.8 * f;
-  scene.fog.density = (0.0072 + state.dusk * 0.004) * weather.fogMultiplier;
+  scene.fog.density = (0.0028 + state.dusk * 0.0015) * weather.fogMultiplier;
   MIST.y = (0.04 + state.dusk * 0.025) * weather.mistMultiplier;   // the mist thickens as the night goes on
   const elev = -1.8 - state.dusk * 4.2;
   // re-baking the PMREM probe is expensive — only when it would actually show
@@ -2873,6 +2948,12 @@ function onFootUpdate(dt) {
   if (hijacker.active) {
     attackTimer = Math.max(0, attackTimer - dt);
     player.update(dt, camera);
+    return;
+  }
+  // WASD drives the dev-mode free-fly camera instead while it's active — the
+  // player would otherwise wander off screen unattended the whole time.
+  if (mapEditor.active) {
+    attackTimer = Math.max(0, attackTimer - dt);
     return;
   }
   // Camera-relative: W walks where the camera looks (flattened), D to its right.

@@ -30,6 +30,11 @@ assert.strictEqual(arsenal.stats(false).melee, true, "Bat should be flagged as m
 console.log("✔ Starter weapon is Baseball Bat (melee, infinite durability)");
 
 // 2. Weapon Pickup & Clip vs Reserve
+// createArsenal() now pre-seeds a small starting reserve for every gun (a
+// diagnostic loadout, human request 2026-09-17, so cycleWeapon() can reach
+// every weapon from the start) — zero it here so this test isolates the
+// pickup/reload mechanic itself from that starting-loadout policy.
+state.reserve.tec9 = 0;
 arsenal.give("tec9", 48);
 assert.strictEqual(state.weapon, "tec9", "Equipped weapon should be tec9");
 assert.strictEqual(state.ammo, 32, "Clip ammo should cap at clip size (32)");
@@ -55,6 +60,7 @@ assert.strictEqual(state.ammo, Infinity, "Bat should have infinite ammo");
 console.log("✔ Running out of clip & reserve ammo swaps back to Baseball Bat");
 
 // 5. Manual Reloading (Key R)
+state.reserve.sawnoff = 0;   // same isolation as above
 arsenal.give("sawnoff", 8); // 8 rounds in clip, 0 in reserve
 state.ammo = 3; // simulate partially spent clip
 arsenal.addReserve("sawnoff", 10);

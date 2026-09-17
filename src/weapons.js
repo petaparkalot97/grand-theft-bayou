@@ -31,7 +31,14 @@ export const RARITY = Object.freeze({
  */
 export function createArsenal({ state, flashObjective }) {
   if (!WEAPONS[state.weapon]) state.weapon = "bat";
-  if (!state.reserve) state.reserve = { pistol: 0, tec9: 0, sawnoff: 0, deerRifle: 0 };
+  // Diagnostic starting loadout (human request, 2026-09-17): every character
+  // starts owning every gun — one clip's worth of reserve each, not full
+  // maxReserve — so cycleWeapon() (mouse wheel) can reach all of them
+  // immediately to check animations/sounds/behavior without hunting for
+  // pickups first. cycleWeapon() treats reserve > 0 as "owned".
+  if (!state.reserve) {
+    state.reserve = { pistol: WEAPONS.pistol.clip, tec9: WEAPONS.tec9.clip, sawnoff: WEAPONS.sawnoff.clip, deerRifle: WEAPONS.deerRifle.clip };
+  }
   if (state.ammo == null) state.ammo = WEAPONS[state.weapon].clip;
 
   const hud = document.createElement("div");
@@ -43,8 +50,22 @@ export function createArsenal({ state, flashObjective }) {
   css.textContent = "body.letterbox #weaponHud { opacity: 0; }";
   document.head.appendChild(css);
 
+  // No baseball bat icon exists anywhere in assets/ (checked the whole tree) —
+  // it was mapped to "unarmed.png" (a bare-fists icon), which is the "am I
+  // using my fists?" bug: the HUD visually said unarmed while the bat was
+  // equipped and working fine. Drawn inline instead of adding a new binary
+  // asset — a simple tapered-bar silhouette, same flat icon style as the rest.
+  const BAT_ICON = "data:image/svg+xml;utf8," + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+      <g transform="rotate(-40 32 32)">
+        <rect x="29" y="8" width="6" height="15" rx="3" fill="#5a3a1e"/>
+        <path d="M29 23 h6 v20 a3 3 0 0 1 -3 8 a3 3 0 0 1 -3 -8 z" fill="#c99a5b"/>
+        <rect x="28.5" y="23" width="7" height="3" fill="#5a3a1e"/>
+      </g>
+    </svg>`
+  );
   const ICONS = {
-    bat: "unarmed.png",
+    bat: BAT_ICON,
     pistol: "WEAPON_PISTOL.png",
     tec9: "WEAPON_MICROSMG.png",
     sawnoff: "WEAPON_SHOTGUN.png",
@@ -53,8 +74,9 @@ export function createArsenal({ state, flashObjective }) {
 
   function render() {
     const w = WEAPONS[state.weapon] || WEAPONS.bat;
-    const iconName = ICONS[w.id] || "unarmed.png";
-    const imgHtml = `<div style="background: rgba(0,0,0,0.6); border: 2px solid #000; border-radius: 12px; padding: 4px; display: flex; align-items: center; justify-content: center; width: 64px; height: 64px;"><img src="./assets/ui/weapons/${iconName}" style="width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(2px 2px 0px #000) drop-shadow(-1px -1px 0px #000);"></div>`;
+    const iconName = ICONS[w.id] || BAT_ICON;
+    const iconSrc = iconName.startsWith("data:") ? iconName : `./assets/ui/weapons/${iconName}`;
+    const imgHtml = `<div style="background: rgba(0,0,0,0.6); border: 2px solid #000; border-radius: 12px; padding: 4px; display: flex; align-items: center; justify-content: center; width: 64px; height: 64px;"><img src="${iconSrc}" style="width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(2px 2px 0px #000) drop-shadow(-1px -1px 0px #000);"></div>`;
     const tint = RARITY[w.rarity] ? "#" + RARITY[w.rarity].color.toString(16).padStart(6, "0") : "#f4f1ea";
     
     if (w.melee) {
