@@ -39,6 +39,51 @@ setup existed (TASK-001 … TASK-009).
 # 🧠 DISCOVERIES
 
 ## 2026-09-17 — Claude
+**Type:** DISCOVERY · **Task:** new — hidden dev-mode map editor (human request)
+
+### Finding
+Human wanted an in-game way to place landmark buildings by hand, hidden
+behind a typed cheat code (GTA-style), with live 3D placement (hover/raycast
+in the real world) rather than clicking a 2D map — a top-down click can't
+show ground height, scale, or how something actually looks against nearby
+buildings. Also corrected an assumption I made mid-conversation: this isn't
+a pure static site — `server/index.js` is a real Node process, deployed on
+Render (`wss://grand-theft-bayou.onrender.com`, referenced from
+`index.html`'s `window.__MULTIPLAYER_URL`), currently only used for
+multiplayer rooms.
+
+### Action
+New `src/mapEditor.js`. Type `$DEVMODE69xxx` anywhere during free roam
+(a raw keydown buffer, independent of `input.js`'s action bindings, so it
+can't collide with rebinding) to toggle it on. While active: a translucent
+ghost box follows a simple ray/plane intersection against y = 0 from the
+camera (this game's terrain is flat everywhere placement matters — no scene
+raycast needed, and this codebase had none to reuse); `,`/`.` cycle the
+selected asset (drawn straight from `landmarks.js`'s real catalog — the 10
+city building types, 5 parked cars, 5 other vehicles, gas station, 6twelve,
+gun shop, billboard, bayou stilt hut, maritime cargo, oil derrick, street/
+office clutter — 30+ entries, each calling the exact same function a
+district file would); mouse wheel rotates; left-click calls that function
+live, for real, in the running scene (suppressed the existing click-to-fire
+handler in `main.js` while `mapEditor.active`, one line).
+- `server/index.js`: two new routes, `GET /editor/load` and
+  `POST /editor/save`, with CORS (cross-origin from the Pages domain) and a
+  hand-rolled body reader (no framework here, just `http.createServer`).
+  Deliberately documented as a *shared scratchpad*, not durable storage —
+  most Render web services have ephemeral disk, so a redeploy/restart can
+  wipe `server/editor-placements.json`. Smoke-tested locally (start the
+  server, POST a placement, GET it back) before committing.
+- Client-side: `localStorage` auto-saves every change too (survives a
+  refresh even if the server round-trip fails), and an **Export** button
+  generates the real `placeCityBuilding(ctx, "cottage", 10, 20, 0);`-style
+  source lines — pasting that into a district's build function is the actual
+  "make it permanent" step, same as every other landmark in this game.
+- `node --check` clean on every touched file; `traffic_test`,
+  `factions_test`, `weapons_test`, `pausemenu_test` all still pass. Not yet
+  verified in a real browser (the raycast/ghost feel, the cheat-code entry) —
+  folds into TASK-010.
+
+## 2026-09-17 — Claude
 **Type:** DECISION · **Task:** new character "Sync" and campaign
 
 ### Finding
