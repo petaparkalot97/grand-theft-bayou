@@ -3434,10 +3434,8 @@ async function boot() {
     ...(nolantis ? nolantis.props : []),
     ...(welcomeBack ? welcomeBack.props : []),
     ...(alternate ? alternate.props : []),
-    ...(alternate ? alternate.props : []),
     ...(greedoCampaign ? greedoCampaign.props : []),
     ...(syncCampaign ? syncCampaign.props : []),
-  ]);
     ...(tusouxroeNorth ? tusouxroeNorth.props : []),
     ...(stateWorld ? stateWorld.props : []),
   ]);

@@ -14,9 +14,9 @@ function assert(condition, message) {
 console.log("=== Testing TASK-035: Redneck vs Hoodrat Faction Warfare ===");
 
 // 1. Check ZONE_MIX ratios and border flags
-assert(ZONE_MIX.urban.hoodrat === 0.9 && ZONE_MIX.urban.redneck === 0.1, "Urban zone tightened to 90% Hoodrat / 10% Redneck");
-assert(ZONE_MIX.residential.redneck === 0.92 && ZONE_MIX.residential.hoodrat === 0.08, "Residential zone tightened to 92% Redneck / 8% Hoodrat");
-assert(ZONE_MIX.border_strip.border === true && ZONE_MIX.border_strip.hoodrat === 0.5, "border_strip zone has border flag and 50/50 mix");
+assert(ZONE_MIX.urban.hoodrat === 0.8 && ZONE_MIX.urban.redneck === 0.1 && ZONE_MIX.urban.prostitute === 0.1, "Urban zone: 80% Hoodrat / 10% Redneck / 10% prostitute");
+assert(ZONE_MIX.residential.redneck === 0.82 && ZONE_MIX.residential.hoodrat === 0.08 && ZONE_MIX.residential.prostitute === 0.1, "Residential zone: 82% Redneck / 8% Hoodrat / 10% prostitute");
+assert(ZONE_MIX.border_strip.border === true && ZONE_MIX.border_strip.hoodrat === 0.45 && ZONE_MIX.border_strip.redneck === 0.45 && ZONE_MIX.border_strip.prostitute === 0.1, "border_strip zone has border flag, 45/45 mix + 10% prostitute");
 assert(ZONE_MIX.border_market.border === true && ZONE_MIX.border_market.hoodrat === 0.5, "border_market zone has border flag and 50/50 mix");
 
 // 2. Check createSpawnZones and isBorder
