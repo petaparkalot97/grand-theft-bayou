@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // tusouxroeNorth.js — North Tusouxroe Commercial & Civic District.
 //
 // Expands the world map north from z = −136 up to NORTH_MIN_Z (−440).
@@ -18,7 +18,7 @@
 
 import * as THREE from "three";
 import { createComposer } from "./composer.js";
-import { placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeBillboard, placeParkedCar, placeGunShop } from "./landmarks.js";
+import { placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeBillboard, placeParkedCar, placeGunShop, placeTacos, placeBurgerPiz, placeSixTwelve, placeGasStation } from "./landmarks.js";
 
 export const NORTH_MIN_Z = -440;
 const BOUNDS = { x0: -240, x1: 240, z0: -440, z1: -134 };
@@ -149,6 +149,9 @@ export function createTusouxroeNorth(ctx) {
       scene.add(hLot);
 
       // Fill grid manually to guarantee dense placement
+      const customShops = [
+        placeTacos, placeBurgerPiz, placeSixTwelve, placeGasStation, placeGunShop
+      ];
       for (let z = -210; z >= -380; z -= 35) {
         for (let x = -200; x <= 200; x += 30) {
           // Skip if too close to main roads (North US-167 / Tusouxroe Blvd)
@@ -165,11 +168,21 @@ export function createTusouxroeNorth(ctx) {
           if (Math.abs(x - WEST_STREET_X) < 14) continue;
           if (Math.abs(x - EAST_STREET_X) < 14) continue;
 
-          const types = ["apartments", "offices", "garage", "cafe"]; const kind = types[Math.floor(Math.random() * types.length)];
           const rot = (Math.random() > 0.5) ? 0 : Math.PI / 2;
-          placeCityBuilding(ctx, kind, x, z, rot);
-          addOccluder(x, z, 14, 14, 15);
-          C.minimap.buildings.push({ x0: x - 7, x1: x + 7, z0: z - 7, z1: z + 7 });
+          
+          if (Math.random() < 0.6) {
+            // Place a high-quality 3D asset shop!
+            const placeFn = customShops[Math.floor(Math.random() * customShops.length)];
+            placeFn(ctx, x, z, rot);
+            C.minimap.buildings.push({ x0: x - 8, x1: x + 8, z0: z - 8, z1: z + 8 });
+          } else {
+            // Place a procedural fallback building
+            const types = ["apartments", "offices", "garage", "cafe"];
+            const kind = types[Math.floor(Math.random() * types.length)];
+            placeCityBuilding(ctx, kind, x, z, rot);
+            addOccluder(x, z, 14, 14, 15);
+            C.minimap.buildings.push({ x0: x - 7, x1: x + 7, z0: z - 7, z1: z + 7 });
+          }
         }
       }
 

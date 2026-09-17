@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // landmarks.js — Procedural & model set-dressing kit for world expansion.
 //
 // Provides reusable asset integration and procedural set dressing:
@@ -352,7 +352,7 @@ export function placeCityBuilding(ctx, typeKey, x, z, ry = 0) {
   const glassMat = stdMat(0x1e2b37, 0.3, "building glass", { metalness: 0.4 });
   const roofMat = stdMat(0x3a3d40, 0.9, "roof concrete");
 
-  if (ctx.loadGLB && spec.file) {
+  if (false && ctx.loadGLB && spec.file) {
     ctx.loadGLB(`./assets/city/models/textured/${spec.file}`).then((glb) => {
       if (glb) {
         // Clone the scene and add it to our group
@@ -701,4 +701,43 @@ export function placeGunShop(ctx, x, z, ry = 0) {
   const dx = Math.sin(ry) * -8;
   const dz = Math.cos(ry) * -8;
   placeBillboard(ctx, x + dx, z + dz, ry, "BAYOU ARSENAL - GUNS & AMMO");
+}
+export function placeTacos(ctx, x, z, ry = 0) {
+  const { scene, addBlocker } = ctx;
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+  loadFBX('./assets/models/tacos/Tacos/Models/Tacos.fbx').then((fbx) => {
+    if (fbx) {
+      const model = fbx.clone(true);
+      model.scale.setScalar(0.012);
+      let b = new THREE.Box3().setFromObject(model);
+      const center = b.getCenter(new THREE.Vector3());
+      model.position.set(-center.x, -b.min.y, -center.z);
+      model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; markRealized(o); } });
+      g.add(model);
+    }
+  });
+  scene.add(g);
+  if (addBlocker) addBlocker(x, z, 12);
+}
+
+export function placeBurgerPiz(ctx, x, z, ry = 0) {
+  const { scene, addBlocker } = ctx;
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+  loadFBX('./assets/models/burgerpiz/BurgerPiz/Models/BurgerPiz.fbx').then((fbx) => {
+    if (fbx) {
+      const model = fbx.clone(true);
+      model.scale.setScalar(0.012);
+      let b = new THREE.Box3().setFromObject(model);
+      const center = b.getCenter(new THREE.Vector3());
+      model.position.set(-center.x, -b.min.y, -center.z);
+      model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; markRealized(o); } });
+      g.add(model);
+    }
+  });
+  scene.add(g);
+  if (addBlocker) addBlocker(x, z, 14);
 }
