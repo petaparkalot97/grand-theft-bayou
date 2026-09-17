@@ -1824,15 +1824,6 @@ async function buildLevel() {
                    // measured ~2.4k draw calls, still under the ~4.5k driving budget guardrail
   });
 
-  // ---- the escape truck ----
-
-  // ================= PICKUPS ================= (spread down the highway)
-  makeCan(...landmarkPos(1, 100), true);        // at the 6twelve pumps
-  makeCan(-16, 41, true);                       // out front of the storefront lot (z 52), clear of its walls
-  makeCan(30, 66, true);                        // by a shack
-  makeCan(3, -50, true);                        // out front of the storefront lot (z -34), by the road: (11, -42) ended up inside that building's collision
-  makeCan(ROAD_X - 2, -100, true);              // near the truck
-
   const be = ROAD_X + ROAD_HALF + 8;
   for (const [bx, bz] of [[be, 96], [-be, 62], [be, 30], [-be, 0], [be, -28],
                           [-be, -58], [be, -88], [-be, 118], [30, 74], [-34, 44]]) {
@@ -3352,7 +3343,7 @@ async function boot() {
   // hides itself with everything it owns, and it can be batched safely (TASK-011).
   const moving = new Set([
     player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
-    ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
+    ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
     ...(prologue ? prologue.props : []),
     ...(blueLight ? blueLight.props : []),
     ...(nolantis ? nolantis.props : []),
@@ -3373,7 +3364,7 @@ async function boot() {
   camera.lookAt(playerPos);
   syncHUD();
 
-  window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
+  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
     get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; }, CAN_REACH, CAN_REACH_VEHICLE,
