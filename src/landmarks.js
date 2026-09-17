@@ -31,9 +31,21 @@ function stdMat(color, roughness = 0.7, name = "building mat", extra = {}) {
 }
 
 let _fbxLoader = null;
+// Cached by URL (matches main.js's loadGLB) — without this, every one of this
+// file's ~9 call sites re-fetches and re-parses the same FBX from scratch on
+// every placement (every gas station, every 6twelve, every office building's
+// clutter, ...). Callers reposition/rescale the result and add it straight to
+// their own group without cloning first, so the cache must hand back a fresh
+// clone per call — returning the raw cached object would let two placements
+// fight over one mesh (an Object3D has exactly one parent; the second
+// .add(fbx) would silently steal it from the first).
+const _fbxCache = new Map();   // url -> Promise<THREE.Group|null> (the template; never mutated or added to a scene)
 function loadFBX(url) {
-  if (!_fbxLoader) _fbxLoader = new FBXLoader();
-  return new Promise(r => _fbxLoader.load(url, r, undefined, e => { console.warn("FBX load failed", url, e); r(null); }));
+  if (!_fbxCache.has(url)) {
+    if (!_fbxLoader) _fbxLoader = new FBXLoader();
+    _fbxCache.set(url, new Promise((r) => _fbxLoader.load(url, r, undefined, (e) => { console.warn("FBX load failed", url, e); r(null); })));
+  }
+  return _fbxCache.get(url).then((template) => (template ? template.clone(true) : null));
 }
 
 // A mesh's .material can be a single Material or an array of them (common on
@@ -251,7 +263,7 @@ export function placeGasStation(ctx, x, z, ry = 0) {
   });
   scene.add(g);
   if (ctx.props) ctx.props.push(g);
-  if (addBlocker) addBlocker(x, z, 12);
+  if (addBlocker) addBlocker(x, z, 14);
 }
 
 export function placeSixTwelve(ctx, x, z, ry = 0) {
@@ -281,7 +293,7 @@ export function placeSixTwelve(ctx, x, z, ry = 0) {
   });
   scene.add(g);
   if (ctx.props) ctx.props.push(g);
-  if (addBlocker) addBlocker(x, z, 10);
+  if (addBlocker) addBlocker(x, z, 12);
 }
 
 
@@ -379,10 +391,11 @@ export function placeCityBuilding(ctx, typeKey, x, z, ry = 0) {
 
   scene.add(g);
   if (ctx && ctx.props) ctx.props.push(g);
-  if (ctx.props) ctx.props.push(g);
 
   if (addBlocker) {
-    addBlocker(x, z, Math.max(spec.w, spec.d) / 2);
+    // Circular collision must cover the model's corners as well as its centre.
+    // Using half the largest side left diagonal gaps large enough to walk through.
+    addBlocker(x, z, Math.hypot(spec.w, spec.d) / 2);
   }
   if (addLitSpot) {
     addLitSpot({ x, y: 3.5, z: z + spec.d / 2 + 1.2, warm: 0xffd9a0, power: 80, range: 18 });
@@ -457,7 +470,6 @@ export function placeStreetClutter(ctx, x, z, ry = 0) {
 
   scene.add(g);
   if (ctx && ctx.props) ctx.props.push(g);
-  if (ctx.props) ctx.props.push(g);
   if (addBlocker) addBlocker(x, z, 2.2);
   return g;
 }
@@ -503,7 +515,6 @@ export function placeMaritimeCargo(ctx, x, z, ry = 0) {
 
   scene.add(g);
   if (ctx && ctx.props) ctx.props.push(g);
-  if (ctx.props) ctx.props.push(g);
   if (addBlocker) addBlocker(x, z, 5.0);
   return g;
 }
@@ -554,7 +565,6 @@ export function placeOilDerrick(ctx, x, z, ry = 0) {
 
   scene.add(g);
   if (ctx && ctx.props) ctx.props.push(g);
-  if (ctx.props) ctx.props.push(g);
   if (addBlocker) addBlocker(x, z, 5.5);
   if (addLitSpot) addLitSpot({ x, y: 8.5, z, warm: 0xffaa44, power: 120, range: 30 });
   return g;
@@ -593,7 +603,6 @@ export function placeBillboard(ctx, x, z, ry = 0, title = "BAYOU MOTEL") {
 
   scene.add(g);
   if (ctx && ctx.props) ctx.props.push(g);
-  if (ctx.props) ctx.props.push(g);
   if (addBlocker) addBlocker(x, z, 2.0);
   if (addLitSpot) addLitSpot({ x, y: 13.0, z: z + 0.8, warm: 0xffffff, power: 90, range: 22 });
   return g;
@@ -647,7 +656,6 @@ export function placeBayouStiltHut(ctx, x, z, ry = 0) {
 
   scene.add(g);
   if (ctx && ctx.props) ctx.props.push(g);
-  if (ctx.props) ctx.props.push(g);
   if (addBlocker) addBlocker(x, z, 4.0);
   if (addLitSpot) addLitSpot({ x, y: 4.8, z: z + 5.2, warm: 0xffaa44, power: 85, range: 20 });
   return g;
@@ -676,7 +684,7 @@ export function placeTacos(ctx, x, z, ry = 0) {
     }
   });
   scene.add(g);
-  if (addBlocker) addBlocker(x, z, 12);
+  if (addBlocker) addBlocker(x, z, 14);
 }
 
 export function placeBurgerPiz(ctx, x, z, ry = 0) {
