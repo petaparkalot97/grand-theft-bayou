@@ -121,6 +121,25 @@ character whose `referenceId` just changed to a new value) don't need
    new file isn't pushed, the live game will 404 on it and fall back to the
    robot voice for that line, even though it worked locally.
 
+## Same character, different voice at a different story point
+
+`c.say(who, text, seconds, voiceWho)` — the 4th argument — looks up
+`voiceWho` in `VOICE_CAST` for the audio instead of `who`, while the
+on-screen caption still shows `who`. Use this when a character's actual
+voice changes partway through the story but their name on screen
+shouldn't (as opposed to `" (V.O.)"`, which is for a narration-style
+*display* tag and always resolves to the same voice as the base name).
+
+Example — Keseme's voice in `missionClinic.js` before her surgery:
+```js
+await c.say("KESEME", "Chicken out? I've been waiting twenty-six years, Peta.", undefined, "KESEME_PRE_TRANSITION");
+```
+Displays `KESEME`, plays `KESEME_PRE_TRANSITION`'s voice. Add the
+`voiceWho` key to `VOICE_CAST` like any other entry, generate/cache as
+usual — `--character=` matches against either name. Once a character's
+voice change is permanent going forward, drop back to calling `c.say`
+with just `who` (3 args) so it plays their current standing voice.
+
 ## Adding a brand-new character's voice
 
 1. Get a Fish Audio voice `reference_id` for them — either your own cloned

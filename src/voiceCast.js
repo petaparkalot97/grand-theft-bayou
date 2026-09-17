@@ -22,6 +22,12 @@ export const VOICE_CAST = {
   KESEME: { referenceId: "98655a12fa944e26b274c535e5e03842", label: "Keseme Nadia" },
   KESEM: { referenceId: "98655a12fa944e26b274c535e5e03842", label: "Keseme Nadia" },
   NADIA: { referenceId: "98655a12fa944e26b274c535e5e03842", label: "Keseme Nadia" },
+  // Keseme pre-surgery, in missionClinic.js only: she's still presenting
+  // male at this point in the story (the mission *is* her transition).
+  // Used via c.say("KESEME", text, undefined, "KESEME_PRE_TRANSITION") so
+  // the on-screen name stays "KESEME" while the voice differs. Once she's
+  // out of surgery (mid-mission), her lines switch back to plain "KESEME".
+  KESEME_PRE_TRANSITION: { referenceId: "674a8582a44a49688cef160a56ffff6f", label: "Keseme Nadia (pre-transition)" },
   PETA: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Petaparkalot" },
   PETAPARKALOT: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Petaparkalot" },
 

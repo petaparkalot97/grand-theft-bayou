@@ -316,10 +316,16 @@ export function createCinema({ camera, muted = () => false }) {
     /**
      * One subtitle line. Duration scales with its length, but never cuts off
      * real recorded voice audio short — whichever is longer wins. Enter skips it.
+     *
+     * `voiceWho`, if given, is looked up for the audio/voice cast instead of
+     * `who` while the on-screen name still shows `who` — for a character
+     * whose voice actually changes at some point in the story (e.g. Keseme
+     * pre/post transition in missionClinic.js) without renaming them on
+     * screen.
      */
-    async say(who, text, seconds) {
+    async say(who, text, seconds, voiceWho) {
       await loadVoiceManifest();
-      const audioDur = await playVoiceLine(who, text);
+      const audioDur = await playVoiceLine(voiceWho || who, text);
       const textDur = seconds != null ? seconds : Math.min(6, Math.max(1.7, 1.1 + text.length * 0.055));
       const dur = audioDur > 0 ? Math.max(textDur, audioDur + 0.15) : textDur;
       el.sub.classList.remove("action");

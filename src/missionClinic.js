@@ -49,11 +49,11 @@ export function createMissionClinic(ctx) {
       await c.caption("Today's the day. Keseme's phone buzzes.", 1.8);
       c.sfx("chime", 0.5);
       await c.say("PETA", "You still going through with it? Last chance to chicken out.");
-      await c.say("KESEME", "Chicken out? I've been waiting twenty-six years, Peta. I'm not stalling now over cold feet.");
+      await c.say("KESEME", "Chicken out? I've been waiting twenty-six years, Peta. I'm not stalling now over cold feet.", undefined, "KESEME_PRE_TRANSITION");
       await c.say("PETA", "Just checking. Want me to come with?");
-      await c.say("KESEME", "Nah, I got this. Can't wait to have this cock chopped off — maybe I'll feed it to the hogs later!");
+      await c.say("KESEME", "Nah, I got this. Can't wait to have this cock chopped off — maybe I'll feed it to the hogs later!", undefined, "KESEME_PRE_TRANSITION");
       await c.say("PETA", "...The hogs are gonna need therapy after that.");
-      await c.say("KESEME", "Everybody in Tusouxroe needs therapy, Peta. Wish me luck.");
+      await c.say("KESEME", "Everybody in Tusouxroe needs therapy, Peta. Wish me luck.", undefined, "KESEME_PRE_TRANSITION");
       await c.caption("She hangs up, gets in the car, and points it toward Oyster Bay.", 2.0);
       await c.card("MISSION 1", "TRANSITION DAY", `Drive to ${HOSPITAL.label}`, { center: true, hold: 2.6 });
     }).then(beginDrive, beginDrive);
@@ -82,9 +82,9 @@ export function createMissionClinic(ctx) {
       await c.shot({ from: [ax + 6, 2.2, az - 6], to: [ax + 2, 1.7, az - 3], look: [ax, 1.3, az + 1], dur: 1.4 });
       await c.caption("Oyster Bay Medical. Keseme walks in like she owns the place.", 2.0);
       await c.say("RECEPTIONIST", "Name?");
-      await c.say("KESEME", "Keseme Nadia. I've got an appointment to finally match the outside to the inside.");
+      await c.say("KESEME", "Keseme Nadia. I've got an appointment to finally match the outside to the inside.", undefined, "KESEME_PRE_TRANSITION");
       await c.say("RECEPTIONIST", "...Right. Take a seat, someone will call you back.");
-      await c.say("KESEME", "Try not to lose the piece you're taking out — I hear the hogs out back are hungry.");
+      await c.say("KESEME", "Try not to lose the piece you're taking out — I hear the hogs out back are hungry.", undefined, "KESEME_PRE_TRANSITION");
       await c.caption("A few hours later.", 1.6);
       await c.black(true, 1.0);
       actors.keseme.position.set(ax - 2, 0, az);

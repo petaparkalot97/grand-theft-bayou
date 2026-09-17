@@ -50,14 +50,18 @@ function unescape(s) {
   return s.replace(/\\(.)/g, "$1");
 }
 
-// Matches c.say("WHO", "text" [, seconds]) and say(c, "WHO", "text" [, seconds]),
-// with either quote style, tolerating escaped quotes inside the strings.
+// Matches c.say("WHO", "text" [, seconds] [, "VOICE_WHO"]) and
+// say(c, "WHO", "text" [, seconds] [, "VOICE_WHO"]), with either quote
+// style, tolerating escaped quotes inside the strings. The optional 4th
+// arg (a string) is a voice-cast override — see cinema.js's say() — used
+// when a character's on-screen name should stay the same but their voice
+// needs to differ (e.g. before/after a story event).
 const STR = (n) => `(['"])((?:\\\\.|(?!\\${n}).)*)\\${n}`;
-const SAY_RE_DIRECT = new RegExp(`\\bc\\.say\\(\\s*${STR(1)}\\s*,\\s*${STR(3)}`, "g");
-const SAY_RE_HELPER = new RegExp(`\\bsay\\(c,\\s*${STR(1)}\\s*,\\s*${STR(3)}`, "g");
+const SAY_RE_DIRECT = new RegExp(`\\bc\\.say\\(\\s*${STR(1)}\\s*,\\s*${STR(3)}(?:\\s*,\\s*[^,()'"]*)?(?:\\s*,\\s*${STR(5)})?\\s*\\)`, "g");
+const SAY_RE_HELPER = new RegExp(`\\bsay\\(c,\\s*${STR(1)}\\s*,\\s*${STR(3)}(?:\\s*,\\s*[^,()'"]*)?(?:\\s*,\\s*${STR(5)})?\\s*\\)`, "g");
 
 function extractLines() {
-  const lines = new Map(); // "WHO::text" -> { who, text }
+  const lines = new Map(); // "VOICE_WHO::text" -> { who, text, voiceWho }
   for (const file of readdirSync(SRC_DIR)) {
     if (!file.endsWith(".js")) continue;
     const src = readFileSync(path.join(SRC_DIR, file), "utf8");
@@ -65,8 +69,9 @@ function extractLines() {
       for (const m of src.matchAll(re)) {
         const who = unescape(m[2]);
         const text = unescape(m[4]);
+        const voiceWho = m[6] ? unescape(m[6]) : who;
         if (!who || !text) continue;
-        lines.set(`${who}::${text}`, { who, text });
+        lines.set(`${voiceWho}::${text}`, { who, text, voiceWho });
       }
     }
   }
@@ -143,23 +148,28 @@ async function main() {
   const manifest = existsSync(MANIFEST_PATH) ? JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) : {};
 
   let dialogueLines = extractLines();
-  if (opts.character) dialogueLines = dialogueLines.filter((l) => l.who.toUpperCase() === opts.character);
+  if (opts.character) {
+    dialogueLines = dialogueLines.filter(
+      (l) => l.who.toUpperCase() === opts.character || l.voiceWho.toUpperCase() === opts.character
+    );
+  }
   if (opts.line) dialogueLines = dialogueLines.filter((l) => l.text.toLowerCase().includes(opts.line));
 
   const skippedVoices = new Set();
   const failedLines = [];
   let generated = 0, cached = 0, failed = 0;
 
-  for (const { who, text } of dialogueLines) {
-    const voice = resolveVoice(who);
-    const key = `${who}::${text}`;
-    const label = `[${who}] "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`;
+  for (const { who, text, voiceWho } of dialogueLines) {
+    const voice = resolveVoice(voiceWho);
+    const key = `${voiceWho}::${text}`;
+    const displayWho = voiceWho === who ? who : `${who} as ${voiceWho}`;
+    const label = `[${displayWho}] "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`;
     if (voice.referenceId.startsWith("TODO")) {
-      skippedVoices.add(`${who} (${voice.label})`);
+      skippedVoices.add(`${voiceWho} (${voice.label})`);
       continue;
     }
 
-    const fileName = fileNameFor(who, text, voice.referenceId);
+    const fileName = fileNameFor(voiceWho, text, voice.referenceId);
     const filePath = path.join(OUT_DIR, fileName);
     const alreadyCached = existsSync(filePath);
 
