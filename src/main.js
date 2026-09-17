@@ -707,8 +707,6 @@ function makeFence(x1, z1, x2, z2) {
   scene.add(m);
 }
 
-function settleCans() {}
-
 // ---------------------------------------------------------------- Popeyes (everywhere)
 function signTexture() {
   const c = document.createElement("canvas");
@@ -1015,9 +1013,6 @@ function minimapBlips() {
   }
   const wp = (blueLight && blueLight.waypoint) || (actOne && actOne.waypoint) || (greedoCampaign && greedoCampaign.waypoint) || (syncCampaign && syncCampaign.waypoint) || (prologue && prologue.waypoint);
   if (wp) _blips.push({ kind: "waypoint", x: wp.x, z: wp.z });
-  if (!storyObjective) {
-    // free roam: the escape plan (the cans, then the truck)
-  }
   for (const s of sheriffs) if (!s.dead) _blips.push({ kind: "cop", x: s.obj.position.x, z: s.obj.position.z });
   for (const e of enemies) if (!e.dead && e.state === "hostile") _blips.push({ kind: "hostile", x: e.spr.position.x, z: e.spr.position.z });
   return _blips;
@@ -2812,9 +2807,6 @@ function simulate(dt) {
     updateSheriffs(dt);
   }
 
-  // ---- cans ----
-
-
   // ---- Popeyes buckets (health) ----
   for (const b of buckets) {
     if (b.userData.taken) continue;
@@ -3418,7 +3410,6 @@ async function boot() {
     if (stateWorld) { const m = stateWorld.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water||[])); }
     minimap.build({ roads, areas, water, buildings });
   }
-  settleCans();                  // every blocker exists now: no can may sit inside one
   loadNote.textContent = "ready.";
   startBtn.disabled = false;
   freeBtn.disabled = false;
