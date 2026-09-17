@@ -183,32 +183,7 @@ const TRUCK_FILES = {
 };
 
 export function placeTruck(ctx, type, x, z, ry = 0) {
-  const { scene, addBlocker } = ctx;
-  const file = TRUCK_FILES[type] || "Pick_Up_1.fbx";
-  
-  loadFBX(`./assets/models/vehicles/${file}`).then(fbx => {
-    if (!fbx) return;
-    const model = fbx.clone(true);
-    
-    // Scale down if needed, assuming they need similar scaling
-    model.scale.setScalar(0.015);
-    
-    model.position.set(x, 0, z);
-    model.rotation.y = ry;
-    
-    model.traverse(o => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-        markRealized(o);
-      }
-    });
-    
-    scene.add(model);
-    if (ctx.props) ctx.props.push(model);
-  });
-  
-  if (addBlocker) addBlocker(x, z, 3.5);
+  // Trucks are broken/untextured old assets, skipping spawn.
 }
 
 export function placeShopGLB(ctx, file, x, z, ry = 0, w = 15, h = 10, d = 15) {
@@ -326,7 +301,7 @@ export function placeCityBuilding(ctx, typeKey, x, z, ry = 0) {
   const glassMat = stdMat(0x1e2b37, 0.3, "building glass", { metalness: 0.4 });
   const roofMat = stdMat(0x3a3d40, 0.9, "roof concrete");
 
-  if (false && ctx.loadGLB && spec.file) {
+  if (ctx.loadGLB && spec.file) {
     ctx.loadGLB(`./assets/city/models/textured/${spec.file}`).then((glb) => {
       if (glb) {
         // Clone the scene and add it to our group
@@ -335,27 +310,35 @@ export function placeCityBuilding(ctx, typeKey, x, z, ry = 0) {
         // The procedural boxes assumed +Z is front. Let's trust the GLB or adjust if necessary.
         let b = new THREE.Box3().setFromObject(model);
         const sz = b.getSize(new THREE.Vector3());
-        
+
         // Scale to fit the intended bounds
         const sx = spec.w / Math.max(0.1, sz.x);
         const sy = spec.h / Math.max(0.1, sz.y);
         const sdz = spec.d / Math.max(0.1, sz.z);
         const scale = Math.min(sx, sy, sdz);
         model.scale.setScalar(scale);
-        
+
         // Recenter to ensure it pivots at the bottom center
         b.setFromObject(model);
         const center = b.getCenter(new THREE.Vector3());
         model.position.set(-center.x, -b.min.y, -center.z);
-        
-        // Ensure shadows and materials are prepared
+
+        // Ensure shadows and materials are prepared. markRealized() is the
+        // actual fix for the "white hospital buildings" bug: these GLBs come
+        // pre-textured, but nothing tagged their materials gtbRealized, so
+        // the scene-wide realize() pass (graphics.js) treated them as
+        // un-authored — reclassified them by material name and overwrote
+        // roughness/metalness/color, which is what washed them out white.
+        // A blanket `if (false && ...)` disabled every GLB building instead
+        // of fixing that; this restores real models with the actual fix.
         model.traverse((o) => {
           if (o.isMesh) {
             o.castShadow = true;
             o.receiveShadow = true;
+            markRealized(o);
           }
         });
-        
+
         g.add(model);
       }
     });
