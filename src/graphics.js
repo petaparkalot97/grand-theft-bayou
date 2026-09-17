@@ -816,9 +816,17 @@ function upgrade(mat, context, opts) {
       out.aoMap = maps.orm;
       out.aoMapIntensity = 0.7;
       // roughnessMap.g and metalnessMap.b MULTIPLY the scalars, and the map
-      // already encodes the values we want, so let it pass straight through.
+      // already encodes the values we want, so let it pass straight through —
+      // but only for a rule that actually asked for metal. The photoreal
+      // *default* metalness is 0.04 (a hair of specular sheen on everything,
+      // not literal metal), and 0.04 > 0.001 — so this used to promote every
+      // unrecognized surface (any material with no matching rule, e.g. plain
+      // concrete/asphalt lots) straight to metalness 1.0: a rough mirror that
+      // reflects the sky probe instead of showing its own texture, reading as
+      // a blown-out white/gray sheet. Every real metal rule above uses 0.2 or
+      // higher, so 0.1 cleanly separates "asked for metal" from "the default."
       out.roughness = 1.0;
-      out.metalness = out.metalness > 0.001 ? 1.0 : 0.0;
+      out.metalness = out.metalness > 0.1 ? 1.0 : 0.0;
     }
   } else if (!out.map && !(rule && rule.noDerive) && !opts.noDerive) {
     // Untextured flat-colour geometry: no albedo to derive from, so give it the
