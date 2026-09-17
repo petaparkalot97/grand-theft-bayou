@@ -1,4 +1,7 @@
 import http from "node:http";
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { Room, createRoomCode } from "./Room.js";
 import { MAX_PLAYERS, TICK_RATE, parseMessage, send } from "./protocol.js";
@@ -6,8 +9,56 @@ import { MAX_PLAYERS, TICK_RATE, parseMessage, send } from "./protocol.js";
 const port = Number(process.env.PORT || 8787);
 const rooms = new Map();
 const sockets = new Map();
+
+// mapEditor.js's save/load — a shared scratchpad for the hidden dev-mode
+// placement tool, not a durable store: most Render web services have
+// ephemeral disk, so this file (and everything in it) is lost on restart/
+// redeploy unless a persistent disk is attached. The client also keeps a
+// localStorage copy, and "Export" turns a session into real committed code —
+// that's the actual permanent path, same as every other landmark in the game.
+const EDITOR_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), "editor-placements.json");
+function cors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+function readBody(req, max = 256 * 1024) {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk) => {
+      data += chunk;
+      if (data.length > max) { reject(new Error("payload too large")); req.destroy(); }
+    });
+    req.on("end", () => resolve(data));
+    req.on("error", reject);
+  });
+}
+
 const server = http.createServer((req, res) => {
   if (req.url === "/health") { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true, rooms: rooms.size })); return; }
+
+  if (req.url === "/editor/load" && req.method === "GET") {
+    cors(res);
+    readFile(EDITOR_FILE, "utf8")
+      .then((text) => { res.writeHead(200, { "content-type": "application/json" }); res.end(text); })
+      .catch(() => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ placements: [] })); });
+    return;
+  }
+  if (req.url === "/editor/save" && req.method === "POST") {
+    cors(res);
+    readBody(req).then((raw) => {
+      const body = JSON.parse(raw);
+      if (!Array.isArray(body.placements)) throw new Error("bad payload");
+      return writeFile(EDITOR_FILE, JSON.stringify({ placements: body.placements }, null, 2));
+    }).then(() => {
+      res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true }));
+    }).catch((err) => {
+      res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: false, error: String(err.message || err) }));
+    });
+    return;
+  }
+  if (req.url === "/editor/save" && req.method === "OPTIONS") { cors(res); res.writeHead(204); res.end(); return; }
+
   res.writeHead(404); res.end();
 });
 const wss = new WebSocketServer({ server, maxPayload: 32 * 1024 });

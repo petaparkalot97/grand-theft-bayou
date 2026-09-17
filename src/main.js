@@ -45,6 +45,7 @@ import { createPlayerCharacter, getPlayerCharacter, PLAYER_CHARACTERS } from "./
 import { createAlternateCampaign } from "./alternateCampaign.js";
 import { buildCruiserModel, createPoliceSystem } from "./police.js";
 import { createGreedoCampaign } from "./greedoCampaign.js";
+import { createMapEditor } from "./mapEditor.js";
 import { createSyncCampaign } from "./syncCampaign.js";
 import { createMultiplayer } from "./multiplayer.js";
 import { createStateWorld, STATE_BOUNDS } from "./stateWorld.js";
@@ -400,6 +401,11 @@ function addBlocker(x, z, r) {
   blockerGrid.addStatic(b);
   return b;
 }
+
+// Hidden dev-mode landmark placement tool (type $DEVMODE69xxx during free
+// roam). Needs nothing from the async boot sequence, so it's constructed
+// here rather than in boot().
+const mapEditor = createMapEditor({ scene, camera, addBlocker, addLitSpot: (spot) => litSpots.push(spot) });
 
 // ---------------------------------------------------------------- trees (wall of swamp)
 function buildTrees() {
@@ -1070,7 +1076,7 @@ function minimapBlips() {
 }
 input.onPress("debugOrientation", () => orientDebug.toggle());
 renderer.domElement.addEventListener("mousedown", (e) => {
-  if (state.running && e.button === 0) fire();
+  if (state.running && e.button === 0 && !mapEditor.active) fire();
 });
 
 // ---------------------------------------------------------------- player
@@ -2688,6 +2694,7 @@ function tick() {
     if (alternate) alternate.update(dt);
     if (greedoCampaign) greedoCampaign.update(dt);
     if (syncCampaign) syncCampaign.update(dt);
+    mapEditor.update();
     updateRemotePlayers(dt);
     if (multiplayerMode && multiplayer?.connected && state.running) {
       networkInputTimer += dt;
@@ -3452,7 +3459,7 @@ async function boot() {
   window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
-    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; }, CAN_REACH, CAN_REACH_VEHICLE,
+    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; }, CAN_REACH, CAN_REACH_VEHICLE,
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
       playerPos.set(x, 0, z);

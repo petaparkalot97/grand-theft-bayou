@@ -36,3 +36,8 @@ assets/music/playlist.json
 # deploy — nothing in the build step generates it, see wrangler.jsonc). Files
 # are produced locally by `npm run voiceover` (tools/voiceover-gen.mjs) using
 # FISH_AUDIO_API_KEY in .env, then committed like any other asset.
+
+# mapEditor.js's dev-mode placement sessions — a runtime scratchpad written
+# by server/index.js's /editor/save, not source content. "Export" in the
+# editor is how a placement becomes real, committed code.
+server/editor-placements.json

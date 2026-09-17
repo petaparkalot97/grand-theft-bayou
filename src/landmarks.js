@@ -170,33 +170,7 @@ const CAR_FILES = {
 };
 
 export function placeParkedCar(ctx, carType, x, z, ry = 0) {
-  const { scene, addBlocker } = ctx;
-  const file = CAR_FILES[carType] || "Beatall.fbx";
-  
-  loadFBX(`./assets/models/cars/${file}`).then(fbx => {
-    if (!fbx) return;
-    const model = fbx.clone(true);
-    
-    // Scale down cars as they might be too big
-    model.scale.setScalar(0.015);
-    
-    // Position
-    model.position.set(x, 0, z);
-    model.rotation.y = ry;
-    
-    model.traverse(o => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-        markRealized(o);
-      }
-    });
-    
-    scene.add(model);
-    if (ctx.props) ctx.props.push(model);
-  });
-  
-  if (addBlocker) addBlocker(x, z, 2.5);
+  // Cars are currently broken/non-interactable, so we omit spawning them.
 }
 
 const TRUCK_FILES = {
