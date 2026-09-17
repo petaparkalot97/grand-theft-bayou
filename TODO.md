@@ -360,6 +360,75 @@ real-model swap needs new loader plumbing in `main.js`.
 
 ---
 
+### TASK-044 — Weapon-specific attack animations: bat swing, one-handed fire, two-handed fire (human request, 2026-09-17)
+
+**Status:** `READY` (sequence after TASK-043 lands, or in parallel if you
+coordinate on `characters.js`'s attack block — see below) · **Agent:** `Freebuff`
+**Files / subsystem:** `src/characters.js` (the `anim === "attack"` block),
+`src/weapons_3d.js` (`playFireAnim3D`), `src/weapons.js` (add a grip-type
+field), `src/main.js`'s `fire()` (propose the anim-selection change; Claude
+applies since it's a `main.js` edit).
+
+**Context:** The human's words: *"the attack animations for the baseball bat
+and the firing of two-handed weapons like shotguns, rifles, the one-handed
+guns like pistols, Uzis — we need to have that down."* Verified: right now
+there is exactly **one** attack animation for everything. `main.js`'s
+`fire()` (~line 2437) always calls `player.play("attack", { fps: 12, loop:
+false, force: true })` and `playFireAnim3D(gun.melee)`, whatever weapon is
+equipped. `characters.js`'s `attack` state (~line 717) is a generic
+"alternating straight punches" boxing animation — the bat swing, the pistol
+shot and the shotgun blast all look identical. `weapons_3d.js`'s
+`playFireAnim3D(isMelee)` only takes a boolean, so it already can't
+distinguish one-handed from two-handed either.
+
+**Grip-type data doesn't exist yet.** `weapons.js`'s `WEAPONS` table has
+`melee: true` on `bat` only; there's no `twoHanded`/`grip` field to key
+animations off. Add one (e.g. `grip: "melee" | "one" | "two"` — `bat`: melee,
+`pistol`/`tec9`: one, `sawnoff`/`deerRifle`: two) and route both the body
+animation and the view-model recoil off it.
+
+**Goal:**
+1. Three distinct body-animation states in `characters.js` (replacing the
+   one-size-fits-all `attack`): a bat swing (a real arced swing, not punches),
+   a one-handed fire/recoil pose (pistol/Tec-9 — one arm extended, light
+   snap-back), a two-handed fire/recoil pose (shotgun/rifle — both arms
+   raised, braced stance, heavier kick). Reuse the existing pivot/elbow rig
+   `A.forEach(...)` already exposes — this is new pose math, not a new
+   skeleton.
+2. `weapons_3d.js`'s `playFireAnim3D` takes the grip type instead of a melee
+   boolean, and gives the view-model itself a matching, distinct recoil per
+   grip (a two-handed weapon should kick differently than a one-handed one).
+3. `main.js`'s `fire()` picks the right anim name/grip from the equipped
+   weapon's new field — this is the one `main.js` touch, small and additive,
+   propose it and hand off to Claude.
+
+**Acceptance criteria:**
+- Visibly distinct animations for bat / pistol-or-Tec-9 / shotgun-or-rifle,
+  both on the character body and the view-model, screenshot or clip proof.
+- `tools/qa/weapons_test.mjs` still passes; extend it (or add a new test) to
+  assert the right anim/grip is selected per weapon id.
+- `tools/qa/audio_weapons_test.mjs`'s existing 33 asserts still pass (it
+  covers `updateWeapon3D`/`playFireAnim3D` directly — check the signature
+  change doesn't break its calls).
+- No regression to melee combat feel or fire timing/cooldowns (`gun.cooldown`
+  is unrelated to animation length — don't couple them).
+- No new console errors.
+
+**Out of scope:** the character rig's underlying geometry/proportions
+(TASK-043, Antigravity) — this task is new pose math on the existing rig,
+not a remodel. If TASK-043 changes the pivot structure enough to break your
+pose math, coordinate rather than both editing `characters.js`'s attack
+block blind.
+
+**Integration notes (for Claude):** The `fire()` anim-selection change and
+the `WEAPONS` grip-type field addition are both small and additive — review
+as such. Document the final `grip` values and `playFireAnim3D`'s new
+signature in `AGENT_LOG.md` → Interface contracts.
+
+**Notes:** —
+
+---
+
 ### TASK-040 — Wire the car audio + 3D weapons commit into the game (message 8 follow-up)
 
 **Status:** `REVIEW` (implemented, headless-tested by Freebuff, wiring reviewed and one bug fixed by Claude; real-browser audio check pending, TASK-010) · **Agent:** Freebuff (build), Claude (review)
@@ -1573,6 +1642,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/fx.js` | Claude | TASK-044 (REVIEW) — mirror layer | Available |
 | `tools/qa/mirror.mjs` (new) | Claude | TASK-044 | Available |
 | `src/traffic.js` | Freebuff | TASK-039 (REVIEW) — TASK-012/014 changes go through review | Locked |
+
 | `tools/characters.html` | — | TASK-018 (REVIEW) | Available |
 | `src/audio.js`, `src/weapons_3d.js` | Freebuff | TASK-040 (REVIEW) | Available |
 | `tools/qa/audio_weapons_test.mjs` | Freebuff | TASK-040 | Available |
@@ -1590,6 +1660,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/composer.js` | Claude | TASK-041 (REVIEW) — road options | Available |
 | `tools/qa/roads.mjs` (new), `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs` | Claude | TASK-041 | Available |
 | `tools/qa/traffic_test.mjs` | Freebuff | TASK-039 | Locked |
+
 
 ### Lock rules
 - `LOCKED` means another agent is actively making changes there.
@@ -1623,6 +1694,7 @@ before `COMPLETE`.
   removed from `stateWorld.js` and `tusouxroeNorth.js`. `tools/qa/roads.mjs` 9/9
   (0/9 against HEAD), worldpass 7/7, eastbank 9/9, gameplay pass. Needs a real-GPU
   look at the four districts (TASK-010).
+
 
 - `TASK-040` — Car audio + 3D weapons wiring (Freebuff): `src/audio.js` (lazy
   gesture-safe car audio, player-vehicle gating, `resumeAudio`),
@@ -1759,6 +1831,7 @@ before `COMPLETE`.
   **`three` had to be installed to run any of them:** `npm install three@0.160.0
   --no-save` (matching the CDN r160). `node_modules/` is gitignored and `package.json`
   is untouched, so the game still ships with no npm dependencies.
+
 
 - After TASK-040 (Freebuff, 2026-09-17): `tools/qa/audio_weapons_test.mjs`
   **33/33** (new); `traffic_test.mjs` **11/11** (×4), `factions_test.mjs`,

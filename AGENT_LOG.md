@@ -1141,6 +1141,8 @@ still carried their old scores.
   machine (`three` is a dev-only resolve for those scripts; the game itself loads
   three from the CDN). Do not report their scores from memory.
 
+```
+
 ## 2026-09-17 — Freebuff
 **Type:** WARNING · **Task:** TASK-038 (found while running TASK-040 regressions)
 

@@ -3426,11 +3426,6 @@ async function boot() {
     ...(greedoCampaign ? greedoCampaign.props : []),
     ...(syncCampaign ? syncCampaign.props : []),
   ]);
-  // The districts' culling groups are boundaries: batch inside them, never across
-  // them, or hiding a cluster would leave its batch drawing (TASK-011).
-  const cullGroups = new Set([
-    ...(westParish ? westParish.props : []),
-    ...(eastBank ? eastBank.props : []),
     ...(tusouxroeNorth ? tusouxroeNorth.props : []),
     ...(stateWorld ? stateWorld.props : []),
   ]);
