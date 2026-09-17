@@ -92,17 +92,24 @@ export function createCinema({ camera, muted = () => false }) {
       try { window.speechSynthesis.cancel(); } catch (e) {}
     }
   }
+  // Returns a Promise for the clip's real duration (0 if there's no audio —
+  // muted, skipping, or the browser TTS fallback) so say() can hold the line
+  // on screen at least that long instead of guessing from text length alone.
   function playVoiceLine(who, text) {
     stopVoice();
-    if (muted() || skipping) return;
+    if (muted() || skipping) return Promise.resolve(0);
     if (voiceManifest) {
       const fileName = voiceManifest[`${who}::${text}`];
       if (fileName) {
         const audioEl = new Audio(`./assets/audio/voice/${fileName}`);
         audioEl.volume = 0.95;
-        audioEl.play().catch(() => {});
         activeVoice = audioEl;
-        return;
+        return new Promise((resolve) => {
+          const done = () => resolve(Number.isFinite(audioEl.duration) ? audioEl.duration : 0);
+          audioEl.addEventListener("loadedmetadata", done, { once: true });
+          audioEl.addEventListener("error", () => resolve(0), { once: true });
+          audioEl.play().catch(() => resolve(0));
+        });
       }
     }
     if ("speechSynthesis" in window) {
@@ -112,6 +119,7 @@ export function createCinema({ camera, muted = () => false }) {
         window.speechSynthesis.speak(u);
       } catch (e) {}
     }
+    return Promise.resolve(0);
   }
 
   // ---------------------------------------------------------------- sound
@@ -262,11 +270,15 @@ export function createCinema({ camera, muted = () => false }) {
       el.title.classList.remove("on", "blast");
     },
 
-    /** One subtitle line. Duration scales with its length; Enter skips it. */
+    /**
+     * One subtitle line. Duration scales with its length, but never cuts off
+     * real recorded voice audio short — whichever is longer wins. Enter skips it.
+     */
     async say(who, text, seconds) {
       await loadVoiceManifest();
-      playVoiceLine(who, text);
-      const dur = seconds != null ? seconds : Math.min(6, Math.max(1.7, 1.1 + text.length * 0.055));
+      const audioDur = await playVoiceLine(who, text);
+      const textDur = seconds != null ? seconds : Math.min(6, Math.max(1.7, 1.1 + text.length * 0.055));
+      const dur = audioDur > 0 ? Math.max(textDur, audioDur + 0.15) : textDur;
       el.sub.classList.remove("action");
       el.sub.querySelector("em").textContent = who || "";
       el.sub.querySelector("span").textContent = text;

@@ -83,8 +83,8 @@ Two things, and the second was the expensive one.
   objects that own their contents. A mesh is merged into its nearest boundary
   ancestor (baked into that object's space) instead of the scene root; with no
   boundary above it, it merges at the scene root exactly as before. `main.js` passes
-  the districts' culling groups as boundaries, so a cluster still hides itself with
-  everything it owns — and the districts come out of the exclusion list.
+  the districts' culling groups as boundaries, so a cluster still hides its
+  batch with itself — and the districts come out of the exclusion list.
 - Story props (`prologue`, `blueLight`, `nolantis`, `welcomeBack`, `alternate`) stay
   excluded: those get shown and hidden individually.
 
@@ -280,92 +280,193 @@ this pair; nobody had run it since.
 
 ---
 
-### TASK-041 — One road system per line (TASK-039 integration follow-up)
+### TASK-043 — Player/NPC character revamp: lose the "Roblox" look, GTA III/SA-style fidelity (human request, 2026-09-17)
 
-**Status:** `REVIEW` · **Agent:** Claude
-**Files:** `src/composer.js`, `src/stateWorld.js`, `src/tusouxroeNorth.js`, `tools/qa/roads.mjs` (new), `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs`
+**Status:** `READY` · **Agent:** `Antigravity`
+**Files / subsystem:** `src/characters.js` (the shared `Hoodrat` rig — every
+player, NPC, redneck and cop uses it), `src/playerCharacters.js` (per-character
+model wiring only — not the `campaign`/stat fields, those are settled).
+**Not** `src/weapons_3d.js`, `src/greedoCampaign.js`, `src/main.js`'s `fire()` —
+animation work is TASK-044 (Freebuff), sequenced separately.
 
-#### What changed
-- **Every road line has exactly one surface.** Both state-expansion modules laid a
-  hand-built `PlaneGeometry` road 1–2 mm under the composer road on the same line
-  (composer roads sit at y 0.022; the copies at 0.020–0.0205). Once TASK-039 made
-  `composer.road()` actually build geometry, all nine lines were paved twice —
-  z-fighting at grazing angles and double the road meshes. The hand-built copies
-  are gone; the composer owns the surface, the sidewalks, the markings, the road
-  grid and the minimap entry.
-- **`composer.road()` gained three options** so a district can say what it needs
-  instead of hand-building beside it: `material` (a material or factory — dirt
-  tracks), `sidewalk: 0` (bare verges), `paved: false` (lay no surface, for a
-  stretch something else already paves).
-- **Red Dust Pass is one dirt road.** It used to be an asphalt composer L *plus* a
-  diagonal dirt plane crossing it. Now it is the composer L in dirt, no sidewalks,
-  no centre line.
-- **North US-167** is `paved: false`: `main.js` paves US-167 as a single plane down
-  the whole map, so this stretch only adds sidewalks, the centre line and the grid.
-- **Two QA scripts had rotted** (found by running them, see AGENT_LOG → Warnings):
-  `worldpass.mjs` had crashed since "update 9" (loot gained an `ammo` drop kind and
-  the cash rates were retuned), and `eastbank.mjs` still asserted `MAP.maxX === 380`
-  from before the state-wide expansion (1200 today). Both fixed to read the live
-  values rather than the numbers of the day.
+**Context:** The human's words: *"the player sprites look like they're from
+Roblox or something like that. Terrible... [want] something like the ones
+from Grand Theft Auto 3 or San Andreas."* Root cause, verified by reading
+`characters.js`: every humanoid in the game — player, hoodrat, redneck,
+deputy, every named story character — is one procedural rig (`Hoodrat` class)
+built entirely from primitive `BoxGeometry`/`CylinderGeometry`/`SphereGeometry`
+pieces (a box torso, cylinder limbs, etc.). The file's own header says it was
+built "to the GTA San Andreas-style reference sheets," but boxes-and-cylinders
+construction is exactly what reads as blocky/Roblox in practice, whatever the
+intent was. This is a fidelity/execution problem, not a wrong reference.
 
-#### Testing performed (headless Chromium / SwiftShader, 2026-09-16)
-- `tools/qa/roads.mjs` (new) **9/9**: one road surface per line, before/after
-  screenshots of the north crossroads, the port, the canyon and the causeway.
-  Run against HEAD first, where it failed 0/9 with 2–3 stacked surfaces per line —
-  the check can fail.
-- Regressions: `worldpass.mjs` **7/7**, `eastbank.mjs` **9/9**, `nolantis.mjs`
-  **8/8** (Act One part C, update 11's work), `gameplay.mjs` **pass** (hp 100 and
-  0 hostile at every step). Road planes in the scene 141 → 128. No new console
-  errors — only the known gitignored `assets/city` + voice-manifest 404s.
+**Also found while investigating (same root cause, worth folding in):**
+`playerCharacters.js`'s `makePeta` calls `makeCastMember(makeHoodrat, "keseme",
+...)` — **"Peta" currently has no model of his own; he's visually just
+Keseme's character relabeled.** Confirm and fix if it's still true when you
+pick this up.
 
-#### Known issues
-- Not seen on a real GPU yet (TASK-010). Headless SwiftShader does not reproduce
-  z-fighting faithfully, so the *fix* is verified by mesh count and by the audit,
-  not by the shimmer disappearing on screen.
+**Already done (2026-09-17, Claude, same request):** Chimi was a custom
+`BulbasaurActor` (a green creature) from an earlier, now-reverted decision.
+Swapped to a normal `makeHoodrat()` call — Caucasian male, the game's
+existing `REDNECK_SKIN` palette — in `playerCharacters.js`. That part doesn't
+need redoing; it's the *quality* of the underlying rig everyone (including
+Chimi now) renders through that's the actual ask.
+
+**Assets available** (same libraries as TASK-041 — check licenses):
+`Z:\GITHUB\_ASSETS\3D\Characters-Animations\` (`KayKit_Character_Animations_1.1.zip`,
+`Animations_V1_01.zip`); `Z:\GITHUB\bayou\assets\Hoodrathavoc.zip` is
+**blocked** — `.dff`/`.txd` RenderWare format, no Three.js loader, already
+flagged in TASK-038, don't re-spend time on it. `Trailer_Park.rar` characters
+are already partially used (see `docs/WORLD_BUILDING.md`'s asset table).
+
+**Goal — your judgement call on approach, either is acceptable:**
+1. **Refine the primitive rig itself**: better proportions (less boxy torso/
+   limbs, smoother joints, GTA SA's slightly stylized-but-human silhouette)
+   while keeping the procedural, seed-driven, palette-swappable system that
+   makes crew variety/NPC population cheap. Lowest risk, keeps every existing
+   caller (NPCs, cops, all 5 playable characters, cutscene actors) working
+   unchanged.
+2. **Swap to real character models** for the 5 playable characters
+   specifically (higher fidelity, closer to actual PS2-era GTA), sourced from
+   the asset libraries above, while leaving NPCs on the existing procedural
+   rig (a visible player/NPC quality gap is normal in GTA-likes).
+Whichever you pick, fix Peta's missing model as part of the same pass.
+
+**Acceptance criteria:**
+- Screenshot comparison, before/after, of at least 2 playable characters and
+  1 generic NPC, at a normal gameplay camera distance.
+- Peta has his own distinct look, not Keseme's.
+- No regression to the `play()`/`update()`/`setFlip()`/`material.opacity`
+  surface `npc.js`/`main.js` depend on (`Hoodrat` is a drop-in
+  `AnimatedSprite` replacement today — don't break that contract for NPCs).
+- `tools/qa/worldpass.mjs`, `tools/qa/gameplay.mjs`, `tools/qa/factions.mjs`
+  regressions still pass.
+- Draw calls don't regress past the existing on-foot budget (measure before/
+  after, same convention as prior visual passes).
+- No new console errors.
+
+**Out of scope:** attack/fire animations (TASK-044, Freebuff — don't touch
+the `anim === "attack"` block's *logic*, only its geometry/proportions if
+your approach changes the rig's bone/pivot structure enough to require it;
+coordinate with Freebuff if so, since TASK-044 is about to extend that same
+block).
+
+**Integration notes (for Claude):** None expected if this stays inside
+`characters.js`/`playerCharacters.js`'s existing exports. Flag here if a
+real-model swap needs new loader plumbing in `main.js`.
+
+**Notes:** —
 
 ---
 
 ### TASK-040 — Wire the car audio + 3D weapons commit into the game (message 8 follow-up)
 
-**Status:** `IN PROGRESS` · **Agent:** Freebuff
-**Files:** `src/audio.js`, `src/weapons_3d.js` (both new in commit edca422), `src/main.js` (wiring only — Claude-owned, wiring is additive and listed in Integration notes)
+**Status:** `REVIEW` (implemented, headless-tested by Freebuff, wiring reviewed and one bug fixed by Claude; real-browser audio check pending, TASK-010) · **Agent:** Freebuff (build), Claude (review)
+**Files:** `src/audio.js`, `src/weapons_3d.js` (both rewritten in place), `src/main.js` (additive wiring only — Claude-owned), `src/vehicles.js` (one field, see below), `tools/qa/audio_weapons_test.mjs` (new, 33/33), local three stub extended (untracked, see AGENT_LOG)
 
-#### What's wrong right now
-Commit edca422 added `src/audio.js` (engine loops, tire squeal, startup) and
-`src/weapons_3d.js` (view-model bat/pistol/rifle), but the wiring was never
-finished, so both are dead code:
-- `initAudio(camera)` is imported in `main.js` but never called, so
-  `createCarAudio()` returns early for every vehicle — no engine sounds at all.
-- `updateWeapon3D()` is never called per frame — the 3D weapon never appears.
-- `weapons_3d.js` maps `smg`/`shotgun`/`rifle`; the game's weapon ids are
-  `bat`/`pistol`/`tec9`/`sawnoff`/`deerRifle` — everything would fall back to
-  the boxy pistol proxy.
-- The rifle's texture fix sets `.encoding`, removed in three r152+ (game is
-  r160) — needs `.colorSpace = SRGBColorSpace`.
-- `fire()` gained a vehicle-targeting branch (`bestKind === "vehicle"`) but no
-  damage branch — shooting a car does nothing.
-- `drivingUpdate` keys crash damage off `v.lastImpact`, which nothing ever
-  sets — car damage/explosions from crashes are dead code.
-- Engine audio is created for *every* registered vehicle (traffic pool
-  included) and plays unconditionally — will be gated to the player's vehicle
-  for cost and sanity.
+#### What changed
+`main.js` already carried partial wiring from the merge commits (createCarAudio at
+registration, updateWeapon3D + playFireAnim3D call sites, the vehicle-target
+branch in fire()), but every hook was still dead or broken. Fixed in three layers:
 
-#### Integration notes (for Claude)
-All `main.js` changes are small additive hooks (documented in AGENT_LOG →
-Interface contracts when done):
-1. `initAudio(camera)` right after `soundtrackReady` creation; a one-line
-   `resumeAudio()` on the existing `confirmCharacter` click.
-2. `updateWeapon3D(playerPos, aimDir, state.weapon, dt, aiming)` in `tick()`
-   next to `camCtl.update`, skipped during cinematics.
-3. In `fire()`: a `bestKind === "vehicle"` branch calling
-   `damageVehicle(best, gun.damage * 1.5)`.
-4. In `drivingUpdate`: read the impact magnitude `collisionResponse` now
-   returns and apply crash damage + `explodeCar` at hp ≤ 0 (replaces the
-   `v.lastImpact` dead code).
-5. `audio.update()` called for the player's vehicle only.
+- **`src/audio.js` — lazy, gesture-safe car audio.** `registerVehicle` runs at
+  boot, before any user gesture and before `initAudio()`, so the old eager
+  `createCarAudio` returned `undefined` for every vehicle (dead code forever)
+  and would have leaked `AudioListener`s into every traffic car. Now
+  `createCarAudio` always returns a usable object whose real WebAudio nodes
+  build only when the car is first driven (`update(..., active=true)`);
+  `active=false` (traffic/parked) builds and plays nothing, deactivating tears
+  down, and `destroy()` is idempotent (explodeCar path). Added `resumeAudio()`
+  for the browser's suspended-context rule. Engine loop randomized 0–4 per car,
+  squeal loop gated by `isSkidding`, pitch/volume scaled by speed.
+- **`src/weapons_3d.js` — the ids the game actually uses.** The old smg /
+  shotgun / rifle map never matched `state.weapon`, so every gun rendered as
+  the boxy pistol proxy. Now every arsenal id builds: `bat`, `pistol`, `tec9`,
+  `sawnoff`, `deerRifle` (procedural proxies; unknown ids fall back to the
+  pistol). The gangster rifle glTF (Antigravity's TASK-038 handoff) replaces
+  the deerRifle proxy when it loads — its scale is now measured from the
+  model's bounding box (raw bbox 0.70 × 3.79 × 14.33, normalized to 0.85 m;
+  the old hard-coded 0.05 was luck) and centred on the grip point. `encoding`
+  → `colorSpace = SRGBColorSpace` (three r152+ API; game is r160), and loaded
+  materials are flagged `userData.gtbRealized` so the realize pass leaves them
+  alone. `initWeapons3D` is idempotent and the pivot starts hidden.
+- **`src/main.js` — the five wiring hooks:**
+  1. `initAudio(camera)` right after `soundtrackReady` (the listener must
+     exist before any car audio can build).
+  2. `resumeAudio()` in `confirmCharacter` before `beginGame()` (first user
+     gesture; without it the context stays suspended and nothing plays).
+  3. `updateWeapon3D(...)` moved from `onFootUpdate` to the main tick next to
+     `camCtl.update`, gated `hidden = state.cinematic || !!state.veh` — it
+     previously only ran on foot, so entering a car froze the last pose in the
+     world; the gate also stops the view-model drawing over the dash.
+  4. `fire()`'s `bestKind === "vehicle"` branch calls
+     `damageVehicle(best, gun.damage * 1.5)` — shooting a car does something.
+  5. `drivingUpdate` reads the impact magnitude `collisionResponse` now
+     reports (replacing the `v.lastImpact` dead code): `src/vehicles.js` sets
+     `v.impact = -into` (m/s into the obstacle) on the **first frame** of a
+     contact only, > 6 m/s so scrapes never count; `v.impact * 1.5` becomes hp
+     damage and hp ≤ 0 explodes as before. `registerVehicle` inits `impact: 0`.
 
 #### Testing performed
-- (in progress)
+- `tools/qa/audio_weapons_test.mjs` (new) **33/33**: every arsenal id builds
+  and attaches, unknown ids fall back, holstered pose, the driving/cinematic
+  hide gate, null-pos safety, 40-frame melee swing and gun recoil stay finite,
+  createCarAudio-before-initAudio is a usable no-op, listener attach,
+  resumeAudio flips the context to running, active-only build + teardown +
+  rebuild + destroy idempotence, traffic cars never build audio, and the
+  vehicles.js impact contract (first frame only, scrapes excluded, normal
+  driving untouched).
+- `node --check` clean on audio.js, weapons_3d.js, main.js, vehicles.js.
+- Regressions: `traffic_test` 11/11 (×4 runs; one earlier failure was machine
+  load, consistent with the board's existing flake note), `factions_test`,
+  `weapons_test`, `pausemenu_test` all pass. `police_test` still crashes in
+  `src/police.js` (undefined `targetPos.x` at line 140) — pre-existing, also
+  fails on a clean tree, already reported on this board.
+- **Known pre-existing failure, not mine:** `tools/qa/dressing_test.mjs`
+  asserts `makeDecorativeFence` produces piers/blockers synchronously, but
+  `src/landmarks.js` (from the TASK-038 commit cab6579) returns an empty group
+  and attaches FBX pieces asynchronously, placing no blockers. No loader
+  behaviour can satisfy the test as written — needs Antigravity (files locked
+  under TASK-038). It also exposed that the QA `FBXLoader` stub had gone
+  missing from the local node_modules (untracked); restored, see AGENT_LOG.
+- Headless Node cannot play audio — the real ear test (engine loop, squeal,
+  startup) is a TASK-010 item on a real browser.
+
+#### Integration notes (for Claude)
+All `main.js` hooks are already in place in this branch (listed above, 1–5);
+review them as additive wiring. `src/vehicles.js` adds one field write:
+`v.impact = -into` inside the existing `if (-into > 6)` first-frame branch of
+`collisionResponse`, plus `impact: 0` in `registerVehicle`. Interface
+contract recorded in AGENT_LOG → Interface contracts.
+
+#### Claude's review (2026-09-17)
+- Verified independently: `node --check` clean on all four touched files, own
+  run of `audio_weapons_test.mjs` 33/33, `traffic_test`/`factions_test`/
+  `weapons_test`/`pausemenu_test` all pass, and confirmed `police_test` /
+  `dressing_test` fail identically on a clean tree (unrelated files, not
+  touched by this diff) — both pre-existing, as claimed.
+- **Bug found and fixed:** `simulate(dt)`'s car-audio block only ever called
+  `.update()` on `state.veh` — every exit path (`enterExitVehicle()` and ~8
+  other `state.veh = null` sites) never told the car it was leaving that it
+  was no longer active, so its engine/squeal loop kept playing forever after
+  the player got out (`createCarAudio`'s own `active=false` teardown path was
+  correct in isolation, and the unit test covers it directly, but nothing in
+  `main.js` ever called it on exit — a gap the unit test's `// player got out`
+  line papered over by calling `audio.update(0, false, false)` by hand instead
+  of exercising the real integration). Fixed with a one-variable tracker
+  (`lastVehAudio`) in `simulate(dt)`: when `state.veh` is falsy but the
+  previous frame had a car, that car's audio gets `.update(0, false, false)`
+  once. Re-verified: `audio_weapons_test.mjs` 33/33 and all regressions still
+  pass after the fix.
+
+#### Known issues
+- The rifle's barrel orientation after the bounding-box fit is a best guess
+  (`rotation.y = π`); check the view-model in a real browser and nudge.
+- `engine_start_up_01.wav` exists in assets but is not wired yet (candidate
+  for an ignition stinger on enter).
+- `prostitute_test.mjs` is a Playwright harness module (default-exported), not
+  standalone-runnable — needs the patchright runner, not `node <file>`.
 
 ---
 
@@ -1196,7 +1297,7 @@ once the module is in `REVIEW`.
 
 ### TASK-038 — Wire in the unused-but-usable assets; correct the asset audit
 
-**Status:** `IN PROGRESS` · **Agent:** `Antigravity` —
+**Status:** `REVIEW` · **Agent:** `Antigravity` —
 repo exploration across `assets/`, larger self-contained integration work
 **Files / subsystem:** district/dressing modules only — `src/eastbank.js`,
 `src/westparish.js`, `src/orlearouge.js`, and/or a new `src/landmarks.js` /
@@ -1449,7 +1550,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | Claude | TASK-009; orchestration, review, `main.js` integration | `src/actone.js`, `src/ledgerboard.js`, `src/cinema.js`, `src/prologue.js`, `src/main.js`, `tools/qa/actone.mjs` | Active |
 | Codex | — (suggested: TASK-011, then TASK-012) | — | Available |
 | Antigravity | TASK-038 (TASK-020 & TASK-035 in REVIEW) | `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Active |
-| Freebuff | TASK-040 (wiring the audio/weapons commit); TASK-018 (REVIEW) | `tools/characters.html`, `src/audio.js`, `src/weapons_3d.js` | Active |
+| Freebuff | TASK-040 (REVIEW — Claude wiring review pending); TASK-018 (REVIEW) | `tools/characters.html`, `src/audio.js`, `src/weapons_3d.js` | Active |
 
 > Update this table whenever ownership changes.
 
@@ -1473,7 +1574,8 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `tools/qa/mirror.mjs` (new) | Claude | TASK-044 | Available |
 | `src/traffic.js` | Freebuff | TASK-039 (REVIEW) — TASK-012/014 changes go through review | Locked |
 | `tools/characters.html` | — | TASK-018 (REVIEW) | Available |
-| `src/audio.js`, `src/weapons_3d.js` | Freebuff | TASK-040 | Locked |
+| `src/audio.js`, `src/weapons_3d.js` | Freebuff | TASK-040 (REVIEW) | Available |
+| `tools/qa/audio_weapons_test.mjs` | Freebuff | TASK-040 | Available |
 | `src/factions.js` (new) | — | TASK-035 (REVIEW, integrated) | Available |
 | `src/spawnzones.js` | — | TASK-035 (REVIEW, integrated) | Available |
 | `src/npc.js` | — | TASK-035 (REVIEW, integrated) | Available |
@@ -1521,6 +1623,14 @@ before `COMPLETE`.
   removed from `stateWorld.js` and `tusouxroeNorth.js`. `tools/qa/roads.mjs` 9/9
   (0/9 against HEAD), worldpass 7/7, eastbank 9/9, gameplay pass. Needs a real-GPU
   look at the four districts (TASK-010).
+
+- `TASK-040` — Car audio + 3D weapons wiring (Freebuff): `src/audio.js` (lazy
+  gesture-safe car audio, player-vehicle gating, `resumeAudio`),
+  `src/weapons_3d.js` (correct arsenal ids, r160 colorSpace, bbox-fitted
+  gangster rifle), `src/main.js` (five additive hooks incl. vehicle damage +
+  crash damage via the new `v.impact` from `src/vehicles.js`). Tested via
+  `tools/qa/audio_weapons_test.mjs` (33/33). Needs Claude's wiring review and
+  a real-browser ear/eye check (TASK-010).
 - `TASK-039` — Traffic circuits + sky-sign fix (Freebuff): `src/traffic.js`
   (lane-end handover, `next` pairing, DESPAWN 235 m past WRAP_HIDE 165 m),
   `src/main.js` (auto-pairer over every region's lanes, the four sign clones
@@ -1649,6 +1759,12 @@ before `COMPLETE`.
   **`three` had to be installed to run any of them:** `npm install three@0.160.0
   --no-save` (matching the CDN r160). `node_modules/` is gitignored and `package.json`
   is untouched, so the game still ships with no npm dependencies.
+
+- After TASK-040 (Freebuff, 2026-09-17): `tools/qa/audio_weapons_test.mjs`
+  **33/33** (new); `traffic_test.mjs` **11/11** (×4), `factions_test.mjs`,
+  `weapons_test.mjs`, `pausemenu_test.mjs` pass. `police_test.mjs` crashes in
+  `src/police.js` (pre-existing). `dressing_test.mjs` has a pre-existing
+  test/implementation mismatch around `makeDecorativeFence` (TASK-038 files).
 - After TASK-035 integration (2026-09-14): `tools/qa/factions.mjs` **12/12**, `factions_test.mjs` **14/14**, `worldpass.mjs` **7/7**, `gameplay.mjs` **pass** (HP 100 at every step, 0 hostile after the shots; 2 hostile while passing the strip border zone, consistent with one turf-fight pair), 0 console errors in all runs.
 - After the character-select merge (dc84b97…089983f) and Keseme restored as the default character: `controls.mjs` **32/32**, `worldpass.mjs` **7/7**, character-select probe (Keseme first and default, story mode with her, Dixon still swaps the model). All 14 `tools/qa` scripts now confirm the character select and fire with a left click on the game canvas.
 - Controls + gas cans (`tools/qa/controls.mjs`): **32/32** (re-run after TASK-034: all 5 cans reachable, 2 m on foot, driving past 2.8 m off, glow columns).

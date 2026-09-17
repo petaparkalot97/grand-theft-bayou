@@ -22,7 +22,7 @@
 import * as THREE from "three";
 import { createComposer } from "./composer.js";
 import { makeChurch } from "./church.js";
-import { makeDecorativeFence, placeOfficeClutter, placeCityBuilding } from "./landmarks.js";
+import { makeDecorativeFence, placeOfficeClutter, placeCityBuilding, placeParkedCar } from "./landmarks.js";
 
 export const EAST_MAX_X = 380;
 const CORE = { x0: 121, x1: 376, z0: -134, z1: 60 };            // streets and buildings: a "town" zone
@@ -147,6 +147,11 @@ export function createEastBank(ctx) {
       }
       placeOfficeClutter(ctx, r.x0 + 4, r.z0 + 5);
       ctx.addLitSpot({ x: c.x, y: 8.5, z: c.z, warm: 0xffbf74, power: 150, range: 30, pole: true });
+      placeParkedCar(ctx, "beatall", r.x0 + 5, r.z0 + 4, 0);
+      placeParkedCar(ctx, "doclorean", r.x0 + 11.4, r.z0 + 4, 0);
+      placeParkedCar(ctx, "landyroamer", r.x0 + 17.8, r.z0 + 4, 0);
+      placeParkedCar(ctx, "tristar", r.x0 + 8.2, r.z1 - 4, Math.PI);
+      placeParkedCar(ctx, "toyoyo", r.x0 + 21, r.z1 - 4, Math.PI);
     } });
     C.openArea("market", { color: "#6b5a44", zoneName: "market_row", build: (r, c) => {
       const dirt = ctx.surface("dirt", 512).material(1);

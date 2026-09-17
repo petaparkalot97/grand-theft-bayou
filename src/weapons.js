@@ -36,23 +36,34 @@ export function createArsenal({ state, flashObjective }) {
 
   const hud = document.createElement("div");
   hud.id = "weaponHud";
-  hud.style.cssText = "position:fixed;top:124px;right:16px;z-index:20;pointer-events:none;" +
-    "font:700 13px/1 system-ui,sans-serif;letter-spacing:.06em;color:#f4f1ea;text-shadow:0 1px 3px #000;" +
-    "background:rgba(0,0,0,.35);padding:5px 9px;border-radius:12px;transition:opacity .4s";
+  hud.style.cssText = "position:fixed;top:85px;right:16px;z-index:20;pointer-events:none;" +
+    "display:flex;flex-direction:column;align-items:flex-end;gap:4px;transition:opacity .4s";
   document.body.appendChild(hud);
   const css = document.createElement("style");
   css.textContent = "body.letterbox #weaponHud { opacity: 0; }";
   document.head.appendChild(css);
 
+  const ICONS = {
+    bat: "unarmed.png",
+    pistol: "WEAPON_PISTOL.png",
+    tec9: "WEAPON_MICROSMG.png",
+    sawnoff: "WEAPON_SHOTGUN.png",
+    deerRifle: "WEAPON_ASSAULTRIFLE.png"
+  };
+
   function render() {
     const w = WEAPONS[state.weapon] || WEAPONS.bat;
+    const iconName = ICONS[w.id] || "unarmed.png";
+    // San Andreas style weapon icons are typically drawn large with an outline/shadow
+    const imgHtml = `<img src="./assets/weapons/${iconName}" style="height:55px; object-fit:contain; filter:drop-shadow(2px 2px 0px #000) drop-shadow(-1px -1px 0px #000);">`;
     const tint = RARITY[w.rarity] ? "#" + RARITY[w.rarity].color.toString(16).padStart(6, "0") : "#f4f1ea";
+    
     if (w.melee) {
-      hud.innerHTML = `<span style="color:${tint}">${w.name}</span> · —`;
+      hud.innerHTML = `${imgHtml}`;
     } else {
       const clip = Number.isFinite(state.ammo) ? state.ammo : "∞";
       const res = state.reserve && state.reserve[w.id] != null ? state.reserve[w.id] : 0;
-      hud.innerHTML = `<span style="color:${tint}">${w.name}</span> · ${clip}/${res}`;
+      hud.innerHTML = `${imgHtml}<div style="font:900 18px/1 'Arial Black',sans-serif;color:${tint};text-shadow:0 2px 2px #000, 0 0 4px #000;">${clip}-${res}</div>`;
     }
   }
   render();

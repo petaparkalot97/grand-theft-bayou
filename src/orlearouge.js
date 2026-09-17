@@ -19,7 +19,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
-import { makeDecorativeFence, placeOfficeClutter, placeCityBuilding } from "./landmarks.js";
+import { makeDecorativeFence, placeOfficeClutter, placeCityBuilding, placeParkedCar } from "./landmarks.js";
 
 export const CAUSEWAY = { minZ: 136, maxZ: 192 };
 export const CITY = { minX: -136, maxX: 136, minZ: 196, maxZ: 382 };
@@ -460,6 +460,16 @@ export function createOrleaRouge(ctx) {
     riverfront();
     // street corners along the boulevard are where people hang out
     for (const z of STREETS) pois.push({ x: ctx.ROAD_X + 10, z: z + 7, r: 5 }, { x: ctx.ROAD_X - 10, z: z - 7, r: 5 });
+
+    // Add parked cars to some streets
+    const cars = ["beatall", "doclorean", "landyroamer", "toyoyo", "tristar"];
+    let c = 0;
+    for (const z of STREETS) {
+      if (z > 210) { // Don't park on the causeway boundary
+        placeParkedCar(ctx, cars[c++ % cars.length], ctx.ROAD_X + 20, z - 4.5, -Math.PI / 2);
+        placeParkedCar(ctx, cars[c++ % cars.length], ctx.ROAD_X - 30, z + 4.5, Math.PI / 2);
+      }
+    }
   }
 
   return {

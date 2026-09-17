@@ -1,0 +1,7 @@
+Crayon City Architecture Asset License v1.1
+
+You may use and modify these assets in personal and commercial games, simulations,
+films, renders, and interactive projects. Attribution is appreciated but not required.
+You may redistribute the source assets, modified or unmodified, provided they remain
+free of charge. You may not sell the assets themselves, individually, as an asset pack,
+or as a competing library. Copyright remains with Crayon.

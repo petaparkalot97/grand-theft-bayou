@@ -10,7 +10,7 @@ import { addLamp, createHeadlights, createWetRoads, updateFx } from "./fx.js";
 import { BlockerGrid } from "./spatial.js";
 import { createSoundtrack } from "./music.js";
 import { batchStatic } from "./merge.js";
-import { initAudio, createCarAudio } from "./audio.js";
+import { initAudio, createCarAudio, resumeAudio } from "./audio.js";
 import { initWeapons3D, updateWeapon3D, playFireAnim3D } from "./weapons_3d.js";
 import { createNpcSystem } from "./npc.js";
 import { createCameraController } from "./camera.js";
@@ -44,6 +44,8 @@ import { createWestParish, onParishHighway, PARISH_MIN_X } from "./westparish.js
 import { createPlayerCharacter, getPlayerCharacter, PLAYER_CHARACTERS } from "./playerCharacters.js";
 import { createAlternateCampaign } from "./alternateCampaign.js";
 import { buildCruiserModel, createPoliceSystem } from "./police.js";
+import { createGreedoCampaign } from "./greedoCampaign.js";
+import { createSyncCampaign } from "./syncCampaign.js";
 import { createMultiplayer } from "./multiplayer.js";
 import { createStateWorld, STATE_BOUNDS } from "./stateWorld.js";
 
@@ -937,6 +939,7 @@ const state = {
   cinematic: false,   // a cutscene owns the world: simulation and input pause
 };
 const vehicles = [];   // every drivable car
+let lastVehAudio = null;   // the previous frame's state.veh.audio, so exiting a car tears its sound down
 const sheriffs = [];   // active police units
 const cashEl = document.getElementById("cash");
 const starsEl = document.getElementById("stars");
@@ -944,6 +947,7 @@ const vehIndic = document.getElementById("vehIndic");
 const music = document.getElementById("music");
 // Soundtrack: every audio file in assets/music/ (see the README there), shuffled.
 const soundtrackReady = createSoundtrack(music, { fallback: "./assets/audio/theme.mp3" });
+initAudio(camera);   // THREE.AudioListener on the camera; car audio builds from it lazily (audio.js)
 document.getElementById("mute").onclick = () => toggleMute();
 function toggleMute() {
   music.muted = !music.muted;
@@ -956,7 +960,7 @@ function registerVehicle(obj, r = 1.8, opts = {}) {
     audio: createCarAudio(obj),
     obj, heading: obj.rotation.y, speed: 0, hp: opts.hp || 40,
     sheriff: !!opts.sheriff, blocker: { x: obj.position.x, z: obj.position.z, r },
-    r, wob: 0,
+    r, wob: 0, impact: 0,   // impact: set by collisionResponse on the first frame of a hard hit (crash damage)
     def: obj.userData.vehicleDef || null,          // vehicles.js definition (class, model forward)
     seats: createSeats(obj.userData.vehicleDef),   // driver first; see vehicles.js for hijacking
   };
@@ -1007,6 +1011,8 @@ let stateWorld = null;         // State-Wide Expansion (stateWorld.js)
 let nolantis = null;           // Act One continued underground: Nirbayou Nolantis (nolantis.js)          // a story chapter can catch WASTED / BUSTED and respawn instead
 let welcomeBack = null;        // Act One part C: the Sheriff's Office, the montage, the surface (welcomeback.js)
 let alternate = null;
+let greedoCampaign = null;     // Gr33do's own campaign, "FIND PETA" (greedoCampaign.js)
+let syncCampaign = null;       // Sync's own campaign, "THE TRIALS" (syncCampaign.js)
 const buildingOccluders = [];  // tall buildings the camera must stay in front of
 let mainStreetWest = -73;      // Main Street runs from US-167 west to the last shopfront
 const camCtl = createCameraController({
@@ -1050,7 +1056,7 @@ function minimapBlips() {
   if (pauseMenu && pauseMenu.customWaypoint) {
     _blips.push({ kind: "waypoint", x: pauseMenu.customWaypoint.x, z: pauseMenu.customWaypoint.z });
   }
-  const wp = (blueLight && blueLight.waypoint) || (actOne && actOne.waypoint) || (prologue && prologue.waypoint);
+  const wp = (blueLight && blueLight.waypoint) || (actOne && actOne.waypoint) || (greedoCampaign && greedoCampaign.waypoint) || (syncCampaign && syncCampaign.waypoint) || (prologue && prologue.waypoint);
   if (wp) _blips.push({ kind: "waypoint", x: wp.x, z: wp.z });
   if (!storyObjective) {
     // free roam: the escape plan (the cans, then the truck)
@@ -1114,6 +1120,7 @@ function confirmCharacter() {
     multiplayer.selectCharacter(id); characterSelect.hidden = true; multiplayerPanel.hidden = false; mpMessage.textContent = `${cfg.name} selected. Ready when you are.`; return;
   }
   if (!beginGame || gameLaunched) return;
+  resumeAudio();   // the AudioContext starts suspended until a user gesture — this click is one
   // Launch once. The select used to stay open under the hidden overlay, so every later Enter
   // (next cutscene line) or Space (jump) confirmed the character again and restarted the game:
   // the story opening queued again and again, and free roam reset on every jump.
@@ -1121,6 +1128,8 @@ function confirmCharacter() {
   characterSelect.hidden = true;
   beginGame();
   if (cfg.campaign === "alternate") { prologue.skip(); alternate.start(); return; }
+  if (cfg.campaign === "greedo") { prologue.skip(); greedoCampaign.start(); return; }
+  if (cfg.campaign === "sync") { prologue.skip(); syncCampaign.start(); return; }
   if (pendingLaunch === "story") prologue.start();
   else { prologue.skip(); music.volume = 0.55; soundtrackReady.then((s) => s.play()); flashObjective("Click the game to look around with the mouse · Esc releases it"); }
 }
@@ -1851,8 +1860,10 @@ async function buildLevel() {
       }
       return all;
     })(),
-    perLane: 4,
-    maxCars: 16,
+    perLane: 5,
+    maxCars: 28,   // TASK-042 (Freebuff): the state-wide map is 5x the old one; spawn/despawn
+                   // are player-relative so this is a density tune, not a correctness fix —
+                   // measured ~2.4k draw calls, still under the ~4.5k driving budget guardrail
   });
 
   // ---- the escape truck ----
@@ -2485,6 +2496,8 @@ function fire() {
   } else if (bestKind === "sheriff") {
     crime(0.4);
     damageVehicle(best, gun.damage * 2);
+  } else if (bestKind === "vehicle") {
+    damageVehicle(best, gun.damage * 1.5);   // shooting a car now does something
   }
 }
 
@@ -2668,6 +2681,8 @@ function tick() {
     if (nolantis) nolantis.update(dt);
     if (welcomeBack) welcomeBack.update(dt);
     if (alternate) alternate.update(dt);
+    if (greedoCampaign) greedoCampaign.update(dt);
+    if (syncCampaign) syncCampaign.update(dt);
     updateRemotePlayers(dt);
     if (multiplayerMode && multiplayer?.connected && state.running) {
       networkInputTimer += dt;
@@ -2689,6 +2704,10 @@ function tick() {
         camera.position.y += (Math.random() - 0.5) * 0.35 * j;
       }
     }
+    // View-model weapon: runs from the tick, not just on foot, so switching to
+    // the bat / a gun is instant. Hidden while driving (the car is the view) and
+    // during cutscenes — without the gate its last pose froze in the world.
+    updateWeapon3D(playerPos, _camFwd, state.weapon, dt, input.isDown("aim"), state.cinematic || !!state.veh);
     compass.update(camCtl.heading);
     minimap.visible = !(nolantis && nolantis.inside);
     minimap.update({
@@ -2821,11 +2840,17 @@ function simulate(dt) {
   if (state.veh) drivingUpdate(dt);
   else onFootUpdate(dt);
 
-  for (const v of vehicles) {
-    if (v.audio) {
-      const isSkidding = v === state.veh ? (input.isDown("brake") && Math.abs(v.speed) > 5) || (Math.abs(input.axis("left", "right")) > 0.5 && Math.abs(v.speed) > 25) : false;
-      v.audio.update(Math.abs(v.speed * 3.6), isSkidding);
-    }
+  // Car audio: the player's car only — the traffic pool never builds or plays.
+  // Every exit path (walking out, hijacked, crashed) just clears state.veh, so
+  // tear the *previous* car's audio down here instead of at each exit site.
+  if (state.veh && state.veh.audio) {
+    const v = state.veh;
+    const isSkidding = (input.isDown("brake") && Math.abs(v.speed) > 5) || (Math.abs(input.axis("left", "right")) > 0.5 && Math.abs(v.speed) > 25);
+    v.audio.update(Math.abs(v.speed * 3.6), isSkidding, true);
+    lastVehAudio = v.audio;
+  } else if (lastVehAudio) {
+    lastVehAudio.update(0, false, false);
+    lastVehAudio = null;
   }
 
   // keep the moon's shadow box over the player
@@ -2969,7 +2994,6 @@ function onFootUpdate(dt) {
   attackTimer = Math.max(0, attackTimer - dt);
   if (attackTimer <= 0) player.play(moving ? "walk" : "idle", { fps: moving ? 10 : 5 });
   player.update(dt, camera);
-  updateWeapon3D(playerPos, _camFwd, state.weapon, dt, input.isDown("aim"));
 }
 
 // ============================================================ DRIVING
@@ -3011,9 +3035,10 @@ function drivingUpdate(dt) {
     }
     v.lastHole = hit ? hit.hole : null;
   }
-  if (v.lastImpact > 10) {
-    v.hp -= v.lastImpact * 1.5;
-    v.lastImpact = 0;
+  // Crash damage (vehicles.js sets v.impact on the first frame of a hit)
+  if (v.impact > 0) {
+    v.hp -= v.impact * 1.5;
+    v.impact = 0;
     if (v.hp <= 0 && !v.exploded) { crime(0.5); explodeCar(v); }
   }
   if (v.jolt > 0) {
@@ -3348,6 +3373,22 @@ async function boot() {
     flashObjective,
   });
   alternate.buildSet();
+  greedoCampaign = createGreedoCampaign({
+    scene, cine, state, playerPos, getPlayer: () => player, makeHoodrat,
+    makeActor: (id) => createPlayerCharacter(id, {
+      makePeta: () => makeCastMember(makeHoodrat, "keseme", { height: 1.74 }), makeHoodrat,
+    }),
+    flashObjective, setObjective: setStoryObjective,
+  });
+  greedoCampaign.buildSet();
+  syncCampaign = createSyncCampaign({
+    scene, cine, state, playerPos, getPlayer: () => player,
+    makeActor: (id) => createPlayerCharacter(id, {
+      makePeta: () => makeCastMember(makeHoodrat, "keseme", { height: 1.74 }), makeHoodrat,
+    }),
+    flashObjective, setObjective: setStoryObjective,
+  });
+  syncCampaign.buildSet();
 
   // Final sweep: the hand-built landmarks (Popeyes, trailers, water towers,
   // sheds) are plain coloured boxes straight out of the builders. Everything
@@ -3381,6 +3422,9 @@ async function boot() {
     ...(nolantis ? nolantis.props : []),
     ...(welcomeBack ? welcomeBack.props : []),
     ...(alternate ? alternate.props : []),
+    ...(alternate ? alternate.props : []),
+    ...(greedoCampaign ? greedoCampaign.props : []),
+    ...(syncCampaign ? syncCampaign.props : []),
   ]);
   // The districts' culling groups are boundaries: batch inside them, never across
   // them, or hiding a cluster would leave its batch drawing (TASK-011).
@@ -3404,7 +3448,7 @@ async function boot() {
   window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
-    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; }, CAN_REACH, CAN_REACH_VEHICLE,
+    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; }, CAN_REACH, CAN_REACH_VEHICLE,
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
       playerPos.set(x, 0, z);

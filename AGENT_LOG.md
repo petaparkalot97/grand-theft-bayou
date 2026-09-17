@@ -38,6 +38,347 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-17 — Claude
+**Type:** DECISION · **Task:** new character "Sync" and campaign
+
+### Finding
+The human's initial brief for Sync's campaign centered the mission mechanic
+on driving around picking up prostitutes and trying to get them pregnant "as
+many as possible," with heavy emphasis on an uncle's obsession with Sync
+having children. Declined to build that specific mechanic/theme — it's a
+scored objective built around non-consensual reproductive coercion targeting
+sex workers, materially different from the game's existing crude-but-
+transactional prostitute mechanic (which mirrors GTA's own). Asked the human
+for an alternative mission shape; the human held the reproduction angle as
+non-negotiable on the first follow-up, so declined a second time, firmly.
+The human then agreed to drop it.
+
+### Action
+Built the rest of the concept with a different mission premise: Sync's uncle
+(Roscoe, voice-only, never seen) threatens to cut Sync out of his
+inheritance unless he completes four family "Trials" by sundown. Same
+ensemble cast-intro structure, same "you wouldn't understand, just help me"
+beat, same GTA-style drive-around mission shape, same "lots of references"
+to the uncle's obsession — just about an absurd inheritance ultimatum
+instead of reproduction. New playable character (`playerCharacters.js`),
+new `src/syncCampaign.js`, wired the same additive way as every other
+campaign module. Generated all 15 of Sync's lines (plus 20 previously-missed
+Greedo campaign lines and a few other stragglers — 36 total) via the
+voiceover pipeline; manifest now covers all 292 dialogue lines in the game.
+`index.html`'s character grid widened from 5 to 6 columns for the new roster
+slot.
+
+## 2026-09-17 — Claude
+**Type:** DISCOVERY · **Task:** TASK-043/TASK-044 (new — human request: player sprite revamp, weapon-specific animations, per-character campaigns)
+
+### Finding
+Three-part human request, investigated before writing tasks:
+1. **"Player sprites look like Roblox"**: every humanoid (player, NPC,
+   redneck, cop, every story character) is one procedural rig
+   (`characters.js`'s `Hoodrat`) built from primitive box/cylinder/sphere
+   geometry. The file's own header claims a GTA San Andreas reference, but
+   the primitive construction reads as blocky regardless of intent — a
+   fidelity/execution gap, not a wrong reference. Also found while in there:
+   `playerCharacters.js`'s `makePeta` calls `makeCastMember(makeHoodrat,
+   "keseme", ...)` — Peta has no model of his own, he's visually Keseme
+   relabeled.
+2. **"Attack animations for bat/one-handed/two-handed guns"**: verified only
+   one animation exists for everything. `main.js`'s `fire()` always calls
+   `player.play("attack", ...)`; `characters.js`'s `attack` state is a single
+   generic "alternating straight punches" animation reused for the bat swing
+   and every gun. `weapons_3d.js`'s `playFireAnim3D(isMelee)` only takes a
+   boolean, so the view-model can't distinguish one-handed from two-handed
+   either. `weapons.js`'s `WEAPONS` table has no grip-type field to key off.
+3. **Per-character campaigns**: `alternateCampaign.js` (the "Jazz
+   Cigarettes"/"Save the Hogs" opening) already had `chimi.campaign =
+   "alternate"` — no change needed there. `gr33do` shared the same
+   "alternate" value with Chimi and Dixon (not a real per-character split).
+
+### Action
+- Chimi: swapped the `BulbasaurActor` (an earlier, now-reverted decision) for
+  a normal `makeHoodrat()` call — Caucasian male, the game's existing
+  `REDNECK_SKIN` palette. Removed the now-dead `BulbasaurActor` class.
+- New `src/greedoCampaign.js`: Gr33do's own campaign, "FIND PETA", built from
+  the human's script (door-knock cold open, XC reveal, a checkpoint chase
+  across the state reusing `bluelight.js`'s proven lead/distance pattern,
+  ending at a Keseme resolution beat). `gr33do.campaign` now points to
+  `"greedo"` instead of sharing `"alternate"`. Wired into `main.js` the same
+  additive way every other campaign module is (construction, `buildSet()`,
+  `update(dt)`, `props` batching exclusion, minimap waypoint chain, `__game`
+  exposure). Peta's porch is a sealed set at y = −40, same convention as Act
+  One's kitchen / Welcome Back's Sheriff's Office.
+- **Separately, mid-session:** human reported cutscene dialogue cutting off
+  before its voice audio finished. Root cause: `cinema.js`'s `say()` held
+  each line on screen using a pure text-length guess with zero connection to
+  the actual audio clip; `playVoiceLine()` fired the `Audio` element and
+  returned immediately without learning its real duration. Easy to miss
+  before today's earlier fix shipped the voice manifest/mp3s to the live
+  deploy — most lines were silently hitting the browser-TTS fallback before
+  that. Fixed: `playVoiceLine()` now resolves a Promise with the real clip
+  duration (via `loadedmetadata`); `say()` takes `max(text/explicit estimate,
+  real audio duration + 0.15s)`.
+- Wrote `TASK-043` (Antigravity — character rig visual revamp, GTA III/SA
+  fidelity, fix Peta's missing model) and `TASK-044` (Freebuff —
+  weapon-specific attack animations: bat/one-handed/two-handed, needs a new
+  `grip` field on `WEAPONS`) into `TODO.md`.
+- Verified: `node --check` clean on every touched file; `traffic_test`,
+  `factions_test`, `weapons_test`, `pausemenu_test`, `stateworld_traffic` all
+  still pass. Not yet verified in a real browser (campaign playthrough,
+  dialogue pacing feel) — folds into TASK-010.
+
+## 2026-09-17 — Antigravity (Follow-up)
+**Type:** UPDATE · **Task:** Fill Empty Spaces
+
+### Finding
+The user requested continuing to build the city and fill empty space using available assets. 
+
+### Action
+- Designed and built a 4th major region: **Oyster Bay (Southeast corner: x 400..1100, z 400..1100)**. It is a coastal town featuring a medical center, farmer's market, apartments, a high school, and a seafood diner. 
+- Connected Oyster Bay to US-167 via `Oyster Highway` at `z = 600`, generating procedural `C.road` meshes and populating the `minimapLayers`, `lanes`, and `pois`.
+- Implemented `placeParkedCar()` in `landmarks.js` to parse and instantiate low-poly vehicle FBX assets (`Beatall`, `docLorean`, `Landyroamer`, `Toyoyo Highlight`, `Tristar Racer`).
+- Placed multiple static parked cars across parking lots in **Tusouxroe North** and **Oyster Bay**, and along the streets of **OrleaRouge** and **East Bank** to add ambient life.
+- Integrated `Tacos.glb` (Taco Stand), `BurgerPiz.glb` (BurgerPiz), `Gas_station.fbx` (Gas Station) and `6twelve.fbx` (6/12 Outpost) assets into the world map, replacing generic placeholder blocks in **Lakeshore Marsh**, **Cypress Hills**, **West Parish**, and **Oyster Bay**.
+- Cleaned up manual `PlaneGeometry` road meshes in `tusouxroeNorth.js` which were causing z-fighting with the `composer.js` procedural roads (similar to the fix in TASK-041).
+
+## 2026-09-17 — Claude
+**Type:** TEST · **Task:** TASK-041/TASK-042 (review)
+
+### Finding
+Reviewed both. TASK-041 (Antigravity, `220f6d9`): road/lane/building diffs
+verified directly against `stateWorld.js` — genuine, not stubs. Found the
+new `tools/qa/stateworld.mjs` reads `g.STATE_WORLD` (uppercase) but
+`main.js` only exposes lowercase `stateWorld` on `__game`, so its
+connectivity assertion ran against `[] .every(...)` — true by vacuous
+default, not because anything was checked. TASK-042 (Freebuff): ran
+`stateworld_traffic.mjs` myself before trusting the "55/55 ALL PASS" log
+entry — got 54/55 on the first run (one despawn-range timing flake at
+Cypress Hills), 3/3 clean on immediate reruns; the asserts that matter
+(lane pairing, circuit resolution, spawn/recycle, audio lazy-build/teardown)
+held across all 4 runs.
+
+### Action
+- Fixed the `STATE_WORLD`/`stateWorld` casing bug in `stateworld.mjs` and
+  added an explicit non-empty-lanes assertion so the same silent-pass
+  failure mode can't recur. Not independently re-run in a real browser (no
+  `browser.mjs` harness present this session) — verified by inspection plus
+  `stateworld_traffic.mjs`'s independent real-`traffic.js` check of the same
+  lane data.
+- Applied Freebuff's proposed pool tune (`main.js`: `perLane: 4→5`,
+  `maxCars: 16→28`) after confirming the math and re-running every affected
+  QA script clean, including `stateworld_traffic.mjs` with its own hardcoded
+  pool constants updated to match (it wasn't importing the real value).
+- Deferred the `lane.link` junction-handover design (real AI through-traffic
+  between US-167 and the state regions) — a genuine design change, not a
+  tuning constant, and player driving already works fine either way. Left as
+  an open backlog item in TASK-042 rather than designing it under a review
+  pass.
+- Both tasks stay `REVIEW`: TASK-041's core acceptance criterion (drive
+  there from the existing city in a real browser) is still unverified —
+  folds into TASK-010.
+
+## 2026-09-17 — Freebuff
+**Type:** TEST · **Task:** TASK-042 (audit phase; verified against TASK-041's lanes from `220f6d9`)
+
+### Finding
+`tools/qa/stateworld_traffic.mjs` — 55 headless asserts, ALL PASS, zero
+Playwright dependency. It extracts the REAL lane literals out of
+`stateWorld.js` source (regex + `JSON.parse`), so it automatically tracks
+future lane edits, and imports the real `traffic.js` for pairing/spawning.
+
+Covers: every lane (US-167 + state) pairs into a resolving circuit; region
+runs at all three state centroids (cars present on state lanes, within
+despawn range, no NaN, recycling when the focus moves region-to-region);
+cruise motion; far-from-center car audio (lazy build → attach → exit
+teardown, per the TASK-040 `lastVehAudio` contract); vehicle variety (9
+models drawn from the pool).
+
+**Topology audit (informational, not asserted): the map is 7 disjoint
+traffic components** — US-167 alone + 6 state-only loops. The state lanes
+touch `x = -6` but `traffic.js` hands over only at lane ENDS, and US-167's
+ends (z ≈ ±1198) are far from the three junctions (z ≈ 785 / −20 / −765),
+so no car ever turns between US-167 and a state road. Local traffic per
+road is correct; through-traffic does not exist. Full analysis + proposal
+in `TODO.md` → TASK-042 (audit results §2 + blocked-proposal).
+
+### Impact
+- Future lane edits to `stateWorld.js` are regression-guarded — run
+  `node --experimental-detect-module tools/qa/stateworld_traffic.mjs`.
+- Pool sizing: the cap is density-based (player-relative spawn/despawn,
+  `traffic.js:105-107`), so the 5× map does NOT need a bigger pool for
+  correctness — only for feel. Proposal (Claude's call, `main.js:1858`):
+  `maxCars: 16 → 28`, `perLane: 4 → 5` (~2.4k draw calls measured vs the
+  ~4.5k driving-budget guardrail).
+- Through-traffic needs midpoint junction handovers — cannot be fixed from
+  lane data alone; design options are in TASK-042.
+
+### Action
+- Run the new test alongside `traffic_test.mjs` after any lane/pool change.
+- Claude: review the TASK-042 proposal in `TODO.md` (pool constants + the
+  optional `lane.link` junction-handover design).
+
+---
+
+## 2026-09-17 — Antigravity
+**Type:** HANDOFF · **Task:** TASK-041 to TASK-042 (Freebuff) & Claude
+
+### Finding
+The `stateWorld.js` regions (Port Calypso, Cypress Hills, Lakeshore Marsh) were isolated floating islands. I have connected them directly to the main N-S highway (US-167 at `ROAD_X = -6`) using `C.road()`, and extended their lanes to touch `x = -6`. I also added new buildings (Apartments, School, Tower, Cafe, Market), fences, POIs, and clutter to densify these regions so they read as actual populated places. The manual redundant `PlaneGeometry` roads were removed to prevent z-fighting with the `composer` roads.
+
+### Impact
+For Claude:
+- `stateWorld.js` exports `lanes`, `pois`, `occluders`, `minimap`, and `props`. Continue wiring these into `main.js` as you have done for other districts (like `eastbank` and `orlearouge`).
+
+For Freebuff (TASK-042):
+- The new road lanes have been extended to meet `US-167` (`x = -6`). 
+- **Port Calypso:** `port-hwy-east` starts at `[-6, -596]`, `port-hwy-west` ends at `[-6, -604]`.
+- **Cypress Hills (Red Dust Pass):** `red-dust-pass-w` starts at `[-6, -597]`, `red-dust-pass-e` ends at `[-6, -603]`. (There is also the diagonal trail `red-dust-east`/`west` starting from `-400`).
+- **Lakeshore Causeway:** `causeway-west` starts at `[-6, 746]`, `causeway-east` ends at `[-6, 754]`.
+- You can now add traffic spawning/routing to these lanes safely.
+
+### Action
+- Freebuff: Implement traffic on the new `STATE_WORLD.lanes`.
+- Claude: Wire `STATE_WORLD` outputs (lanes, minimap, pois) in `main.js`.
+
+## 2026-09-17 — Claude
+**Type:** DISCOVERY · **Task:** TASK-041/TASK-042 (new — human report: "huge empty space", "no new NPCs", "generic robot voice")
+
+### Finding
+Investigated all three human complaints instead of assigning generic
+follow-up tasks:
+1. **Empty space / no NPCs:** `src/stateWorld.js` (the ±1200 state-wide map
+   expansion) only builds 3 of the 6 regions its own header promises (Port
+   Calypso, Cypress Hills, Lakeshore Marsh), each just 2–4 buildings across a
+   ~700 m corner of a 2,400×2,400 m square. It has no task owner (listed
+   `Unclaimed` in the file-lock table), no QA coverage at all, and — checked
+   via grep — **zero road connections to the existing map**; the 3 built
+   regions are floating islands a player can't discover by driving.
+2. **Robot voice — two layers, one now fixed:**
+   - `tools/voiceover-gen.mjs` (Fish Audio generator) was missing 71 of 262
+     dialogue lines across 13 speakers, not just the new Nolantis scene.
+     Enhanced the script (retries+backoff, `--force`/`--character=`/
+     `--line=`/`--dry-run`, audio-byte validation, no silent voice fallback on
+     failure) and ran it for real: 71/71 generated, 0 failed. Human confirmed
+     via a live test file that the cloned voice quality is good (the 0
+     Developer Credits problem in `FISH_AUDIO_EXPLANATION.md` is apparently
+     no longer blocking cloning, or wasn't as bad as diagnosed there).
+   - **Root cause of why this never reached the live game:** `.gitignore` had
+     `assets/audio/voice/` *and* `/assets/city/` excluded as "regenerable" /
+     "external bundle." Neither is regenerated by the actual build
+     (`npm run build` only runs `tools/music-playlist.mjs`, per
+     `wrangler.jsonc`), so **the Cloudflare Pages deploy has always served
+     both paths as 404s** — every voice line fell back to
+     `window.speechSynthesis` (the literal browser robot voice) in
+     production, and every `placeCityBuilding()` call (the 10-building kit
+     used by every district) silently rendered nothing (`loadGLB` resolves
+     `null` on 404). This is likely a real chunk of the "no new buildings"
+     complaint too, independent of TASK-041.
+
+### Action
+- Fixed `.gitignore`; committed `assets/city/` (24 files, Crayon City license
+  permits commercial redistribution) and the 262 manifest-referenced voice
+  files (left ~205 orphaned/stale-hash mp3s on disk, untracked — dead weight
+  from earlier `voiceCast.js` reference_id changes, not referenced by
+  anything). Commit `3ca852d`, pushed.
+- Wrote `TASK-041` (Antigravity — connect + densify the state-wide regions,
+  points at both `assets/` and the newly available `Z:\GITHUB\_ASSETS`
+  library) and `TASK-042` (Freebuff — traffic/vehicle life on the new roads,
+  blocked on TASK-041's road data landing) into `TODO.md`.
+
+## 2026-09-17 — Claude
+**Type:** DISCOVERY · **Task:** TASK-040 (review)
+
+### Finding
+Reviewed Freebuff's TASK-040 wiring (audio.js, weapons_3d.js, main.js,
+vehicles.js). Independently reran `audio_weapons_test.mjs` (33/33), the
+stated regressions, and confirmed `police_test`/`dressing_test` fail
+identically on files this diff never touches (pre-existing, not a
+regression). Read the `main.js` diff line by line.
+
+Found one real gap: `simulate(dt)`'s new car-audio block only calls
+`v.audio.update(...)` while `v === state.veh`. Every place that exits a
+vehicle (`enterExitVehicle()`'s step-out path plus ~8 other `state.veh =
+null` sites — hijack, crash, cutscene teleports) just clears `state.veh` and
+never calls `.update(0, false, false)` on the car being left. `audio.js`'s
+own `active=false` teardown is correct and covered by a direct unit test, but
+that test calls `audio.update(0, false, false)` by hand with a `// player got
+out` comment — it verifies the module in isolation, not that `main.js` ever
+actually calls it. Net effect before the fix: get out of any car and its
+engine/tire-squeal loop plays forever from that spot.
+
+### Action
+Fixed in `main.js`: a one-variable tracker (`lastVehAudio`, declared next to
+`vehicles`) remembers the previous frame's active car audio; when `state.veh`
+is falsy and `lastVehAudio` is set, it gets one `.update(0, false, false)`
+call and is cleared. Re-verified `audio_weapons_test.mjs` 33/33 and all
+regressions after the fix. `TASK-040` → `REVIEW` in `TODO.md` updated with
+the full review note.
+
+## 2026-09-17 — Freebuff
+**Type:** DISCOVERY · **Task:** TASK-040
+
+### Finding
+- `registerVehicle` runs at boot (traffic pool + story cars), i.e. before any user gesture and before `initAudio()`. An eager `createCarAudio` therefore returned `undefined` for every vehicle and could never have played anything — the wiring bug was structural, not just a missing call. It would also have leaked a `THREE.AudioListener` (cyclic WebAudio refs) into every car.
+- Browsers start an AudioContext `suspended` until a user gesture; even a correct `initAudio` at boot stays silent without a `resume()` on the first click.
+- The local three QA stub (untracked, node_modules) had lost its `addons/loaders` stubs — `GLTFLoader.js` / `FBXLoader.js` were missing, breaking any test importing `landmarks.js`. Rebuilt both as failing-loader stubs; extended `index.js` additively (Camera / PerspectiveCamera, AudioListener / PositionalAudio with a fake context, `Vector3.clone`, `Object3D.lookAt`, `Group` type fields, BufferGeometry transforms). The stub's legacy `Box3` values were left byte-compatible — composer / landmarks / fx assert against the fixed unit-cube values.
+- `main.js` already carried partial TASK-040 wiring from the merge commits; the dead hooks were: `initAudio` never called, `updateWeapon3D` running on foot only, `v.lastImpact` set by nothing, and no vehicle-damage branch in `fire()`.
+
+### Impact
+Car audio must be built lazily and gated by an `active` flag — traffic cars must never build WebAudio nodes. Anyone touching the QA stub: keep the stub's legacy `Box3` values untouched.
+
+### Action
+Implemented in TASK-040 (see the task and Interface contracts). `createCarAudio` now returns `{ update(speedKmh, isSkidding, active), destroy, started, engine, squeal }`.
+
+## 2026-09-17 — Antigravity
+**Type:** HANDOFF · **Task:** TASK-038 to TASK-036 (gangster_rifle)
+
+### Finding
+The `gangster_rifle.zip` asset contains a valid glTF model at `./assets/models/weapons/gangster_rifle/scene.gltf`. It loads via `GLTFLoader`. 
+Like other models, its scale and orientation will need normalization when loaded into the game. A safe way to handle its scale is to use bounding box normalization as seen in `loadDsCar` or `placeCityBuilding`.
+
+### Impact
+For Freebuff (TASK-036): The asset is available on disk and ready to be wired into `weapons.js`. You do not need to extract or convert it.
+
+### Action
+- Freebuff: When implementing the new weapon, use `GLTFLoader` on `./assets/models/weapons/gangster_rifle/scene.gltf`.
+- Recommended scaling approach: `model.scale.setScalar(targetLength / Math.max(size.x, size.y, size.z))` where `targetLength` is around 0.8 to 1.0 (meters).
+- I have added office-space clutter and decorative fencing using the new FBX packs in `landmarks.js`, successfully implementing procedural FBX loading.
+
+## 2026-09-17 — Claude
+**Type:** DISCOVERY · **Task:** (none — build-breaking bug found during session start)
+
+### Finding
+Commit d23dc01 ("Fix Cloudflare Pages deployment: remove git conflict markers
+from main.js") did not actually remove them. `src/main.js` still had two
+unresolved `<<<<<<< HEAD` / `=======` / `>>>>>>> 917ab85` blocks (an import
+line at the top, and the `npcs`/`npcEnv` construction around line ~1295), and
+`src/npc.js` had two more (the `MAX_HOSTILE`/`MARKET_OPEN` block, and a
+duplicate `release()` function). The file has never actually parsed as valid
+JS since that merge — this broke the Cloudflare Pages deploy *and* local dev,
+despite the commit message.
+
+### Impact
+Both sides of every conflict were live features already referenced elsewhere
+in the file (TASK-035's `factionWar`/`createFactionWar` alongside
+`tusouxroeNorth`; TASK-035's turf-war `npcEnv.killEnemy` alongside the
+prostitute-service `npcEnv.veh/state/syncHUD/flashObjective`; `release()`'s
+rival-cleanup alongside its `solicitVeh`/sprite-visibility cleanup). This
+wasn't a "pick a side" conflict — it needed an actual merge of both features.
+
+### Action
+- `src/main.js`: kept both import lines; merged `createNpcSystem(...)` (added
+  `worldTime`) and `npcEnv` (combined `driving`, `get veh()`, `state`,
+  `syncHUD`, `flashObjective`, `others`, and `killEnemy`).
+- `src/npc.js`: kept `export const MAX_HOSTILE` (factions.js imports it) plus
+  `MARKET_OPEN`/`MARKET_CLOSE`; merged the two `release()` bodies (rival/hostile
+  cleanup + solicitVeh/sprite cleanup) into the one at line ~118, removed the
+  duplicate.
+- Verified: no `<<<<<<<`/`=======`/`>>>>>>>` markers remain anywhere in the
+  repo (`grep -rl` over `src/`, `tools/`, root, excluding `node_modules`);
+  `node --check` clean on every file in `src/`; `tools/qa/factions_test.mjs`
+  26/26 (exercises the merged `npc.js` paths directly — faction war, market
+  hours, rival combat, `MAX_HOSTILE` cap).
+- Not committed — left for the human to review and commit.
+
 ## 2026-09-14 — Freebuff
 **Type:** TEST · **Task:** TASK-039 — traffic circuits + sky-sign fix
 
@@ -800,6 +1141,19 @@ still carried their old scores.
   machine (`three` is a dev-only resolve for those scripts; the game itself loads
   three from the CDN). Do not report their scores from memory.
 
+## 2026-09-17 — Freebuff
+**Type:** WARNING · **Task:** TASK-038 (found while running TASK-040 regressions)
+
+### Finding
+- `tools/qa/dressing_test.mjs` fails on a clean tree, independent of TASK-040: it asserts `makeDecorativeFence(...)` returns a group with `children.length > 5` and `blockers.length >= 2` synchronously, but `src/landmarks.js` (commit cab6579) returns an empty group and attaches the FBX pieces in an async `.then`, placing no fence blockers at all. No loader behaviour can satisfy the test as written — either the implementation needs a procedural immediate fallback plus blockers, or the test needs to await the async build. Both files are TASK-038 (Antigravity, locked).
+- Also found: the local QA three stub had lost `addons/loaders/GLTFLoader.js` + `FBXLoader.js` (node_modules is gitignored, so stub work doesn't survive machine changes). Restored as failing-loader stubs; dressing_test now gets past the import and reaches the real assertion above.
+
+### Impact
+Don't burn time re-diagnosing dressing_test — it's a known test/implementation mismatch, not a regression from your change.
+
+### Action
+Left for TASK-038's owner. My stub restorations are additive and untracked (see DISCOVERIES, 2026-09-17 — Freebuff).
+
 ## 2026-09-15 — Claude
 **Type:** WARNING · **Task:** deploy (merge of 917ab85 into the TASK-035 integration)
 
@@ -886,6 +1240,14 @@ scripts.
 ---
 
 # 🧪 TEST RESULTS
+
+## 2026-09-17 — Freebuff
+**Type:** TEST · **Task:** TASK-040
+
+- Environment: headless Node 26 (`node tools/qa/audio_weapons_test.mjs`) against the local three stub. Node has no WebAudio, so the sound itself is a TASK-010 real-browser item.
+- New `tools/qa/audio_weapons_test.mjs`: **33/33** — arsenal id coverage (bat / pistol / tec9 / sawnoff / deerRifle build and attach), unknown-id pistol fallback, holstered pose, driving/cinematic hide gate, null-pos safety, 40-frame melee/recoil anims stay finite, createCarAudio before initAudio is a usable no-op, listener attach, resumeAudio flips the fake context to running, active-only build, teardown/rebuild on exit/re-enter, destroy idempotence, traffic cars never build audio, and the vehicles.js impact contract (first frame only, scrapes excluded, normal driving untouched).
+- Regressions: `traffic_test` **11/11** (×4; one earlier failure was machine load, consistent with the board's flake note), `factions_test`, `weapons_test`, `pausemenu_test` pass. `police_test` crashes in `src/police.js` (`targetPos.x` undefined, line 140) — pre-existing. `dressing_test` fails on the TASK-038 mismatch (see WARNINGS).
+- `node --check` clean: `src/audio.js`, `src/weapons_3d.js`, `src/main.js`, `src/vehicles.js`.
 
 ## 2026-09-14 — Freebuff
 **Type:** TEST · **Task:** TASK-018
@@ -1499,6 +1861,24 @@ makeHoodrat({ sex: "m"|"f", crew: "red"|"blue"|{cloth, chain, shoe, hat}, seed, 
 
 ### `src/main.js`
 - `spawnEnemy(type, x, z)` now returns the record. `__game.spawnEnemy` and `__game.factionWar` are exposed for QA.
+
+## 2026-09-17 — Freebuff (TASK-040: car audio + 3D weapons)
+
+### `src/audio.js`
+- `initAudio(camera)`: idempotent; adds a `THREE.AudioListener` to the camera. Call once at boot (main.js does, right after `soundtrackReady`).
+- `resumeAudio()`: resumes the suspended AudioContext; call on the first user gesture (main.js does, in `confirmCharacter`).
+- `createCarAudio(carObj)` → `{ update(speedKmh, isSkidding, active), destroy(), started, engine, squeal }`
+  - Lazy + gated: real nodes build on the first `update(..., active === true)` **after** `initAudio`. `active === false` never builds and tears down an existing build (safe to call every frame for every car). `destroy()` is idempotent (`explodeCar` calls it).
+  - main.js calls `update` for the player's vehicle only; traffic cars stay silent.
+
+### `src/weapons_3d.js`
+- `initWeapons3D(scene)`: idempotent; builds the procedural view-models and loads the gangster rifle glTF (bbox-normalized to 0.85 m, `rotation.y = π`) over the deerRifle fallback. Loaded materials get `userData.gtbRealized = true` and `map.colorSpace = SRGBColorSpace`.
+- `updateWeapon3D(playerPos, aimDir, stateWeapon, dt, isAiming, hidden = false)`: call every frame from the tick (main.js does, next to `camCtl.update`), **not** from `onFootUpdate` only. `hidden` should be `state.cinematic || !!state.veh`; `hidden` (or a null `playerPos`) hides the pivot instead of throwing.
+- Weapon ids are the arsenal's: `bat` / `pistol` / `tec9` / `sawnoff` / `deerRifle`; unknown ids render the pistol proxy.
+- `playFireAnim3D(isMelee)`: `fire()` already calls it on foot; the view-model is hidden while driving, so no call is needed from the car branch.
+
+### `src/vehicles.js` (one field)
+- `collisionResponse` sets `v.impact = -into` (m/s into the obstacle) on the **first frame** of a contact only, and only when `-into > 6` — scrapes never set it. `main.js`'s `drivingUpdate` turns it into hp damage (`v.impact * 1.5`) and explodes at hp ≤ 0; `registerVehicle` inits `impact: 0`.
 
 ---
 
