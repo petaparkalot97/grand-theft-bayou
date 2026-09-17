@@ -3441,7 +3441,6 @@ async function boot() {
   ]);
   const batch = batchStatic(scene, {
     exclude: (root) => moving.has(root),
-    boundary: (o) => cullGroups.has(o),
   });
   console.info(`[gfx] static batching: ${batch.meshes} meshes -> ${batch.meshes - batch.removed} (${batch.batches} batches)`);
   updateGfxLabel();
