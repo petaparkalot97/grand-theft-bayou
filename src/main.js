@@ -56,7 +56,7 @@ import { createStateWorld, STATE_BOUNDS } from "./stateWorld.js";
 const WORLD = 136;           // half-width of the map (x), and its northern extent
 // State-Wide GTA San Andreas scale map bounds (~5 km x 5 km)
 const MAP = { minX: STATE_BOUNDS.minX, maxX: STATE_BOUNDS.maxX, minZ: STATE_BOUNDS.minZ, maxZ: STATE_BOUNDS.maxZ };
-const CAN_GOAL = 4;
+
 const CAN_REACH = 2.4;          // on foot, measured flat (x/z): the can bobs half a metre off the ground
 const CAN_REACH_VEHICLE = 3.4;  // in a car: drive through one to grab it
 const ROAD_X = -6;           // the highway runs N/S along this line
@@ -126,7 +126,7 @@ const startBtn = document.getElementById("startBtn");
 const freeBtn = document.getElementById("freeBtn");
 const hpFill = document.getElementById("hpFill");
 const spFill = document.getElementById("spFill");
-const cansEl = document.getElementById("cans");
+
 const objEl = document.getElementById("objective");
 const crosshair = document.getElementById("crosshair");
 const introPanel = document.getElementById("introPanel");
@@ -707,56 +707,7 @@ function makeFence(x1, z1, x2, z2) {
   scene.add(m);
 }
 
-// ---------------------------------------------------------------- gas cans
-const cans = [];
-function makeCan(x, z) {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(0.6, 0.75, 0.32),
-    new THREE.MeshStandardMaterial({ color: 0xe23a1e, roughness: 0.5, emissive: 0xd23010, emissiveIntensity: 0.9 })
-  );
-  body.castShadow = true;
-  const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3),
-    new THREE.MeshStandardMaterial({ color: 0x333333 }));
-  spout.position.set(0.22, 0.5, 0); spout.rotation.z = 0.5;
-  g.add(body, spout);
-  // a faint glow column, so a can reads from across a lot and not just on the radar
-  const beamMat = new THREE.MeshBasicMaterial({
-    color: 0xff7a2a, transparent: true, opacity: 0.13, depthWrite: false,
-    blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-  });
-  beamMat.userData.gtbRealized = true;
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 7, 12, 1, true), beamMat);
-  beam.position.y = 3.5 - 0.55;
-  g.add(beam);
-  g.position.set(x, 0.55, z);
-  g.userData = { taken: false, baseY: 0.55 };
-  scene.add(g);
-  cans.push(g);
-}
-
-/**
- * Keep every can reachable. A can whose spot ended up inside something's
- * collision (a building added or swapped later, a parked car) moves to the
- * nearest clear ground around it. Runs once, when every blocker exists.
- */
-function settleCans() {
-  const clear = (x, z) => blockers.every((b) => Math.hypot(b.x - x, b.z - z) > b.r + 0.9);
-  for (const c of cans) {
-    const { x, z } = c.position;
-    if (clear(x, z)) continue;
-    search: for (let r = 1; r <= 10; r += 0.75) {
-      for (let a = 0; a < 16; a++) {
-        const nx = x + Math.cos((a / 16) * Math.PI * 2) * r, nz = z + Math.sin((a / 16) * Math.PI * 2) * r;
-        if (!clear(nx, nz)) continue;
-        c.position.x = nx;
-        c.position.z = nz;
-        console.info(`[cans] a can at (${x.toFixed(1)}, ${z.toFixed(1)}) was inside collision; moved to (${nx.toFixed(1)}, ${nz.toFixed(1)})`);
-        break search;
-      }
-    }
-  }
-}
+function settleCans() {}
 
 // ---------------------------------------------------------------- Popeyes (everywhere)
 function signTexture() {
@@ -1066,10 +1017,7 @@ function minimapBlips() {
   if (wp) _blips.push({ kind: "waypoint", x: wp.x, z: wp.z });
   if (!storyObjective) {
     // free roam: the escape plan (the cans, then the truck)
-    if (state.cans >= CAN_GOAL) _blips.push({ kind: "waypoint", x: truckPos.x, z: truckPos.z });
-    else for (const c of cans) if (!c.userData.taken) _blips.push({ kind: "can", x: c.position.x, z: c.position.z });
   }
-  _blips.push({ kind: "truck", x: truckPos.x, z: truckPos.z });
   for (const s of sheriffs) if (!s.dead) _blips.push({ kind: "cop", x: s.obj.position.x, z: s.obj.position.z });
   for (const e of enemies) if (!e.dead && e.state === "hostile") _blips.push({ kind: "hostile", x: e.spr.position.x, z: e.spr.position.z });
   return _blips;
@@ -1393,7 +1341,6 @@ function trafficObstacles() {
   }
   return _obstacles;
 }
-const truckPos = new THREE.Vector3(-6, 0, TRUCK_Z);
 
 // ---------------------------------------------------------------- build the level
 async function buildLevel() {
@@ -1873,16 +1820,6 @@ async function buildLevel() {
   });
 
   // ---- the escape truck ----
-  truck = truckMesh || fallbackCar(null);
-  truck.position.copy(truckPos);
-  truck.rotation.y = Math.PI / 2;
-  scene.add(truck);
-  addBlocker(truckPos.x, truckPos.z, 2.4);
-  truckMarker = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.6, 4),
-    new THREE.MeshBasicMaterial({ color: 0x7ee87e }));
-  truckMarker.position.set(truckPos.x, 5.5, truckPos.z);
-  scene.add(truckMarker);
-  poolLight(0x7ee87e, 26, 34, truckPos.x, 4, truckPos.z);
 
   // ================= PICKUPS ================= (spread down the highway)
   makeCan(...landmarkPos(1, 100), true);        // at the 6twelve pumps
@@ -2417,11 +2354,6 @@ function placeParked(obj, x, z, rot) {
 // ---------------------------------------------------------------- interactions
 function tryInteract() {
   if (!state.running) return;
-  // near truck?
-  if (playerPos.distanceTo(truckPos) < 4.5) {
-    if (state.cans >= CAN_GOAL) return win();
-    flashObjective(`The tank is dry — need ${CAN_GOAL - state.cans} more can(s).`);
-  }
 }
 
 // ---------------------------------------------------------------- combat
@@ -2545,7 +2477,7 @@ function killEnemy(e, { turf = false } = {}) {
 function syncHUD() {
   hpFill.style.width = Math.max(0, state.hp) + "%";
   spFill.style.width = Math.max(0, state.sp) + "%";
-  cansEl.innerHTML = `${state.cans} <small>/ ${CAN_GOAL}</small>`;
+
   cashEl.textContent = "$" + state.cash.toLocaleString();
   let s = "";
   if (copsActive()) for (let i = 0; i < 5; i++) s += `<span class="${i < state.wanted ? "on" : "off"}">★</span>`;
@@ -2596,8 +2528,8 @@ function win() {
 function lose() {
   if (storyFail && storyFail("wasted")) return;   // a mission may respawn you instead
   endScreen('<span style="color:#b8202a;font-style:italic">WASTED</span>',
-    `The swamp took you back. ${state.cans}/${CAN_GOAL} gas cans, and the truck's
-     still sitting up past the city line with the keys in it.<br><br>${scoreLine()}`,
+    `
+    The swamp took you back.<br><br>`,
     "Respawn");
 }
 function busted() {
@@ -2755,11 +2687,7 @@ function tick() {
     pos.needsUpdate = true;
   }
 
-  for (const c of cans) {
-    if (c.userData.taken) continue;
-    c.rotation.y += dt * 1.4;
-    c.position.y = c.userData.baseY + Math.sin(time * 2 + c.position.x) * 0.12;
-  }
+
   if (truckMarker) {
     truckMarker.rotation.y += dt * 2;
     truckMarker.position.y = 5.2 + Math.sin(time * 3) * 0.25;
@@ -2889,20 +2817,7 @@ function simulate(dt) {
   }
 
   // ---- cans ----
-  for (const c of cans) {
-    if (c.userData.taken) continue;
-    const at = state.veh ? state.veh.obj.position : playerPos;
-    const reach = state.veh ? CAN_REACH_VEHICLE : CAN_REACH;
-    if (Math.hypot(at.x - c.position.x, at.z - c.position.z) < reach) {
-      c.userData.taken = true;
-      c.visible = false;
-      state.cans = Math.min(CAN_GOAL, state.cans + 1);
-      syncHUD();
-      flashObjective(state.cans >= CAN_GOAL
-        ? "Tank's full — get to the truck on the road!"
-        : `Gas can! ${state.cans}/${CAN_GOAL}. Keep looking.`);
-    }
-  }
+
 
   // ---- Popeyes buckets (health) ----
   for (const b of buckets) {
@@ -2922,7 +2837,6 @@ function simulate(dt) {
   loot.update(dt);
 
   // ---- truck proximity / auto win ----
-  if (state.cans >= CAN_GOAL && playerPos.distanceTo(truckPos) < 4.2) win();
 
   // ---- enemies ----
   const a0 = performance.now();
@@ -2955,9 +2869,7 @@ function setStoryObjective(text) {
 function defaultObjective() {
   if (storyObjective) return storyObjective;
   if (copsActive() && state.wanted >= 1) return "Lose the Sheriff.";
-  return state.cans >= CAN_GOAL
-    ? "Get to the truck past the Tusouxroe city limits."
-    : `Jack a ride · rob gas cans: ${state.cans}/${CAN_GOAL}`;
+  return "Explore the Bayou.";
 }
 
 function hitPlayer(dmg) {
@@ -3615,4 +3527,6 @@ window.addEventListener("keydown", (e) => {
     }
   }
 });
+
+
 

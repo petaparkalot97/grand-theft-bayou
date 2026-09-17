@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // prologue.js — PROLOGUE "Mud, Blood & Magnolia" and MISSION 1 "Hog Wild".
 //
 // Follows the script: a radio-dial cold open over Dixie Beaux, Keseme's GPS and
@@ -701,7 +701,7 @@ export function createPrologue(ctx) {
     if (bravado) bravado.locked = false;
     ctx.setPopulation(true);
     ctx.setObjective(null);
-    ctx.flashObjective("The ledger's hot. Scrounge 4 gas cans and get the truck out past Tusouxroe.");
+    ctx.flashObjective("The ledger's hot. Explore the Bayou.");
   }
 
   return {

@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // actone.js — ACT ONE "Welcome Home": Tusouxroe.
 //
 // From the script: Keseme drives into Tusouxroe to the radio's redevelopment
@@ -439,7 +439,7 @@ export function createActOne(ctx) {
     phase = "done";
     if (marker) marker.visible = false;
     ctx.setObjective(null);
-    ctx.flashObjective("The coordinates point south to OrleaRouge. For now: gas cans, and the truck.");
+    ctx.flashObjective("The coordinates point south to OrleaRouge. For now: Explore the Bayou.");
     if (ctx.startNext) ctx.startNext();
   }
 
