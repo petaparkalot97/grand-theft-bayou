@@ -39,6 +39,44 @@ setup existed (TASK-001 … TASK-009).
 # 🧠 DISCOVERIES
 
 ## 2026-09-20 — Claude
+**Type:** HANDOFF · **Task:** TASK-052 R2 upload finished (1873/1873, 0 failed); free roam tweaks; TASK-054 radio; TASK-053/055 logged
+
+### Finding
+The R2 bulk upload from the previous entry finished clean (1873 total, 1873
+ok, 0 failed) — `tools/r2-manifest.json` is now valid (462 model entries
+across the 5 categories) and committed. Re-ran the full editor regression
+plus a manifest-specific end-to-end test against the real, complete
+manifest: all pass, no new console errors beyond the already-documented
+texture-path limitation for oddly-structured packs.
+
+Also handled this session, smaller items: bumped player sprint speed 11→12.5
+(human: "increase the run speed a lil bit"); the Free Roam button now just
+says "Free Roam" (human wanted the earlier "· as Keseme" wording gone); Free
+Roam now grants every gun with true infinite ammo (`state.freeRoam` flag
+checked directly in `weapons.js`'s `cycleWeapon()`/`give()`/`addReserve()`
+so it survives weapon switches and pickups, not just the initial grant —
+the existing "everyone starts with one clip's reserve of everything"
+diagnostic loadout was too finite for what was asked). Built TASK-054 (new
+`src/radio.js`, in-vehicle radio cycling 4 tracks the human's team supplied
+via SoundCloud, downloaded with `yt-dlp` already present in the dev
+environment) — music half done and tested, DJ-host voice-line half is
+logged only, not built (needs a real script + the Fish Audio pipeline,
+see TASK-054 in `TODO.md`).
+
+### Impact
+TASK-052 is now fully shippable (all 3 remaining checklist items were
+already done pre-upload). TASK-053 (batched-building copy+select, real
+parked cars, POI-based ped/traffic density, right-click color editor,
+combat feel overhaul, motorbikes) and TASK-055 (loyal hog companions) are
+both logged in `TODO.md` from a live conversation with the human but **not
+implemented** — next agent picking either up should read the human's exact
+words quoted there before assuming scope.
+
+### Action
+See `TODO.md` TASK-052 (now shippable), TASK-053 (7-item backlog, suggested
+order included), TASK-054 (radio, partially done), TASK-055 (hogs, backlog).
+
+## 2026-09-20 — Claude
 **Type:** HANDOFF · **Task:** TASK-052 — map editor round 2: mode UX/drag-select/copy-paste/edit-anything done; R2 library code done, upload still running
 
 ### Finding
