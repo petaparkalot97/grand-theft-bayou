@@ -57,6 +57,61 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-047 — Two districts never had a culling pass (human request: "go fix the culling")
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/main.js`, `src/tusouxroeNorth.js`, `src/stateWorld.js`
+
+#### What was wrong
+Three separate faults, found by measuring rather than by reading:
+1. **`tusouxroeNorth` and `stateWorld` exposed no `update()` at all**, so the composer's
+   distance culling never ran for them. East Bank and West Parish had it and were being
+   culled; those two drew **8,690 + 3,700 meshes from anywhere on the map, at every
+   camera, always**. This was the bulk of it.
+2. **The `boundary` predicate was still missing** from the `batchStatic` call
+   (`eff285d` deleted the line instead of restoring the `cullGroups` Set a merge had
+   dropped), while West Parish and East Bank were *out* of the exclusion list — so their
+   scenery was batched into the scene root where their working culling could not hide it.
+3. **`...cans` had been dropped from the exclusion list**, so a gas can could be merged
+   into a static batch — and a batched can cannot hide itself when you pick it up. It
+   would stand there, collected.
+
+#### What changed
+- `tusouxroeNorth.js` and `stateWorld.js` expose `update(dt, playerPos)` that drives their
+  composers' culling from the camera, exactly as `eastbank.js` does. `stateWorld` builds
+  with four composers (one per region), so it drives all four.
+- `main.js` calls both every frame, next to the other two districts.
+- The districts are excluded from batching again (the `0edb70d` list) and `...cans` is
+  back in it. The `boundary` predicate is restored for completeness, but note it is **not
+  doing anything for these two districts**: their `props` arrays hold landmark groups,
+  not the composer's cluster groups, so nothing matches. See Known issues.
+
+#### Testing performed (2026-09-19)
+Scenery-only draw calls, fixed cameras, everything that moves hidden:
+
+| view | as found today | with culling wired |
+|---|---|---|
+| north crossroads | 19,138 | **11,130** (−42%) |
+| Lafourchette | 21,613 | **11,937** (−45%) |
+| US-167 strip | 12,667 | **6,756** (−47%) |
+| OrleaRouge | 3,599 | **1,695** (−53%) |
+
+- `eastbank.mjs` **9/9**, including the culling assertion (22/28 clusters drawn from the
+  strip vs 25/28 in town) and the frame-time check.
+- `gascans.mjs` **5/5** — the objective still completes with the cans out of the batcher.
+- `gameplay.mjs` — see Testing status.
+
+#### Known issues
+- **Still heavy: ~11,000 scenery draw calls standing in Tusouxroe North.** That is now
+  density, not a culling failure — 8,690 meshes inside one district, most of them within
+  the composer's 300 m draw distance when you are stood in it. The fix is batching *inside*
+  the clusters (TASK-045's `boundary`), which needs `tusouxroeNorth` and `stateWorld` to
+  expose their composers' cluster groups (`C.props`) the way `eastbank.js` does
+  (`get props() { return C.props; }`). Not done: it is a perf change, not a culling fix,
+  and the human asked for the culling.
+
+---
+
 ### TASK-046 — Restore Keseme's original story and the gas-can objective (human request)
 
 **Status:** `REVIEW` · **Agent:** Claude · **Requested by:** the human, 2026-09-18, twice and emphatically:

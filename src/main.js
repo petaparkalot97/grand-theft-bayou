@@ -2772,6 +2772,8 @@ function tick() {
     if (blueLight) blueLight.update(dt);
     if (westParish) westParish.update(dt, playerPos);
     if (eastBank) eastBank.update(dt, playerPos);
+    if (tusouxroeNorth) tusouxroeNorth.update(dt, playerPos);
+    if (stateWorld) stateWorld.update(dt, playerPos);
     hijacker.update(dt);
     if (nolantis) nolantis.update(dt);
     if (welcomeBack) welcomeBack.update(dt);
@@ -3525,9 +3527,13 @@ async function boot() {
   // scenery drawing one mesh at a time (162 separate fence rails in one view of the
   // strip). batchStatic merges siblings into their own parent now, so a cluster still
   // hides itself with everything it owns, and it can be batched safely (TASK-011).
+  // Anything that moves, or that a set piece shows and hides, stays out of the
+  // batcher entirely. `...cans` matters: a gas can hides itself when you pick it up
+  // (`c.visible = false`), and a can merged into a static batch cannot do that — it
+  // would sit there, collected but still standing.
   const moving = new Set([
     player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
-    ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
+    ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
     ...(missionClinic ? missionClinic.props : []),
     ...(prologue ? prologue.props : []),
     ...(blueLight ? blueLight.props : []),
@@ -3536,11 +3542,24 @@ async function boot() {
     ...(alternate ? alternate.props : []),
     ...(greedoCampaign ? greedoCampaign.props : []),
     ...(syncCampaign ? syncCampaign.props : []),
+    ...(westParish ? westParish.props : []),
+    ...(eastBank ? eastBank.props : []),
+    ...(tusouxroeNorth ? tusouxroeNorth.props : []),
+    ...(stateWorld ? stateWorld.props : []),
+  ]);
+  // The districts' culling groups are boundaries, not exclusions: batch *inside* each
+  // cluster, never across them. A cluster hides itself by going invisible, so a batch
+  // lifted out of one into the scene root would keep drawing after the cluster hid —
+  // which is exactly what has been happening since the `boundary` line was dropped.
+  const cullGroups = new Set([
+    ...(westParish ? westParish.props : []),
+    ...(eastBank ? eastBank.props : []),
     ...(tusouxroeNorth ? tusouxroeNorth.props : []),
     ...(stateWorld ? stateWorld.props : []),
   ]);
   const batch = batchStatic(scene, {
     exclude: (root) => moving.has(root),
+    boundary: (o) => cullGroups.has(o),
   });
   console.info(`[gfx] static batching: ${batch.meshes} meshes -> ${batch.meshes - batch.removed} (${batch.batches} batches)`);
   updateGfxLabel();
