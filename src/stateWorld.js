@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // stateWorld.js — State-Wide World Expansion System (Dixie Beaux).
 //
 // Expands Grand Theft Bayou into a massive state-scale map (~5 km x 5 km)
@@ -27,6 +27,9 @@ export function createStateWorld(ctx) {
   const occluders = [];
   const pois = [];
   const props = [];
+  // Each region builds with its own composer; the culling pass has to drive all of
+  // them (see update() below).
+  const composers = [];
   ctx.props = props;
   const lanes = [];
   const minimapLayers = { roads: [], buildings: [], areas: [
@@ -52,6 +55,7 @@ export function createStateWorld(ctx) {
       zones: { core: { x0: 420, x1: 1100, z0: -1050, z1: -420 } },
       seed: 88412,
     });
+    composers.push(C);
 
     const ROAD_Y = 0.02;
     const roadMat = typeof roadMaterial === "function" ? roadMaterial() : new THREE.MeshStandardMaterial({ color: 0x333538 });
@@ -65,15 +69,15 @@ export function createStateWorld(ctx) {
     placeCityBuilding(ctx, "garage", 620, -720, 0);
     addOccluder(620, -720, 18, 16, 8);
     pois.push({ x: 620, z: -720, r: 14, label: "Calypso Cargo Alpha" });
-
-
+    placeTruck(ctx, "truck", 635, -710, Math.PI / 2);
+    placeTruck(ctx, "van", 605, -710, -Math.PI / 2);
 
     // 2. Shipping Terminal Offices
     placeCityBuilding(ctx, "offices", 880, -720, Math.PI / 2);
     addOccluder(880, -720, 22, 18, 20);
     placeOfficeClutter(ctx, 880, -710, 0);
     pois.push({ x: 880, z: -720, r: 12, label: "Port Terminal HQ" });
-
+    placeTruck(ctx, "pickup", 870, -700, Math.PI);
 
     // 3. Port Calypso Supermarket / Supply Depot
     placeCityBuilding(ctx, "market", 620, -480, Math.PI);
@@ -179,6 +183,7 @@ export function createStateWorld(ctx) {
       zones: { wild: { x0: -1100, x1: -400, z0: -1050, z1: -420 } },
       seed: 55193,
     });
+    composers.push(C);
 
     const dirtMat = new THREE.MeshStandardMaterial({ color: 0x8a5a3a, roughness: 0.95 });
     dirtMat.userData.gtbRealized = true;
@@ -295,6 +300,7 @@ export function createStateWorld(ctx) {
       zones: { wild: { x0: -1100, x1: -400, z0: 420, z1: 1100 } },
       seed: 44102,
     });
+    composers.push(C);
 
     const roadMat = typeof roadMaterial === "function" ? roadMaterial() : new THREE.MeshStandardMaterial({ color: 0x3a3a40 });
 
@@ -360,6 +366,7 @@ export function createStateWorld(ctx) {
       zones: { core: { x0: 400, x1: 1100, z0: 420, z1: 1050 } },
       seed: 12345,
     });
+    composers.push(C);
 
     // Main Coastal Highway
     C.road("Oyster Highway", [[-6, 600], [1050, 600]], { width: 10 });
@@ -431,6 +438,17 @@ export function createStateWorld(ctx) {
     occluders,
     pois,
     props,
+
+    /**
+     * Distance culling for all four regions, as East Bank and West Parish already
+     * had it. Without this nothing ever hid these clusters: 3,700 meshes drew from
+     * anywhere on the map, at every camera, forever.
+     */
+    update(dt, playerPos) {
+      const eye = ctx.camera ? ctx.camera.position : playerPos;
+      for (const C of composers) C.update(dt, eye);
+    },
+
     lanes,
     minimap: minimapLayers,
     zoneAt(x, z) {

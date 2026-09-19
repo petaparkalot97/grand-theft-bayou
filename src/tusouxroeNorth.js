@@ -247,6 +247,16 @@ export function createTusouxroeNorth(ctx) {
     occluders,
     pois,
     props,
+
+    /**
+     * Distance culling, as East Bank and West Parish already had it. Without this
+     * the composer's clusters were never hidden: 7,313 meshes drew from anywhere on
+     * the map, at every camera, forever.
+     */
+    update(dt, playerPos) {
+      C.update(dt, ctx.camera ? ctx.camera.position : playerPos);
+    },
+
     lanes: [
       { name: "northbound-ext", points: [[ROAD_X + 2.4, -136], [ROAD_X + 2.4, -400]], cruise: [14, 20] },
       { name: "southbound-ext", points: [[ROAD_X - 2.4, -400], [ROAD_X - 2.4, -136]], cruise: [14, 20] },

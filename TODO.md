@@ -57,6 +57,14 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+> **Task-ID collision, 2026-09-19:** two separate Claude sessions independently
+> used TASK-046, TASK-047 and TASK-048 for six unrelated pieces of work,
+> landed within the same window and merged together here. Both sets are kept
+> below, unrenumbered (consistent with how earlier collisions in this file
+> were left for a human pass rather than silently renumbered) — the
+> map-editor/white-sheet session's entries first, then the
+> restore-the-story/culling/land-format session's entries.
+
 ### TASK-048 — $DEVMODE69xxx: searchable library, delete mode, named save slots, AI placement (human request, 2026-09-19)
 
 **Status:** `REVIEW` · **Agent:** Claude
@@ -172,15 +180,184 @@ normal gameplay height (15 m — puddle sheen and reflections still visible in
 a normal free-roam screenshot). No console errors.
 
 #### Known issues
-- A separate floating gas-station-shaped object from the human's original
-  screenshot could not be reproduced: its HUD text ("rob gas cans: 0/4")
-  doesn't exist anywhere in current `src/` (`clean.py` shows it was
-  deliberately removed earlier), so that screenshot is from an older
-  deployed build, not current `main`. Worth checking whether
-  `grand-theft-bayou-c2l.pages.dev` needs a redeploy.
+- **Correction after merging with `origin/main`:** at the time this was
+  written, the gas-can HUD text from the human's original screenshot
+  ("rob gas cans: 0/4") genuinely didn't exist in this session's checkout
+  (`clean.py` had removed it), so the floating gas-station object looked
+  like it had to be from a stale deployed build. It wasn't — a concurrent
+  session's TASK-046 (below) had it removed *and then restored* on `main`
+  in between; this session's local checkout was just behind, not the
+  deployed site. Never independently reproduced or fixed here; if the
+  floating-object glitch is still visible after this merge, it needs its
+  own look with the gas-can/gas-station code actually present.
 - A plain light-gray concrete overpass/bridge deck is visible from the map
   editor's aerial view and looks flat/undetailed up close — likely just a
   simple, intentionally low-detail asset, not the same bug; not touched.
+
+---
+
+### TASK-048 — The land in Chatboro and Tusouxroe (human request: "fix the land format")
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/main.js`
+
+#### What was wrong
+Four different ground surfaces were all laid at **exactly y = 0.02**: US-167 itself, the
+road aprons that link the lots to the shoulder, the junkyard dirt pad, and the trailer
+park's gravel at Chatboro. Wherever two of them overlap they fight for the same depth
+value, and the land shimmers — worst at Chatboro (the gravel against the highway apron)
+and on the strip. An audit on a 10 m grid found stacks separated by **0.0000 m** at four
+sample points in Chatboro and three on the strip; Tusouxroe had 4–5 mm stacks between the
+truck lot, an apron and Main Street.
+
+#### What changed
+One stated ladder, `GROUND_Y` in `main.js`, so every decal has its own height and the next
+person adding a pad knows where it goes. Bottom to top: dirt pads 0.012, lots 0.014,
+gravel 0.016, aprons 0.018, side streets 0.019 (unchanged), US-167 0.02 (unchanged).
+Nothing moved horizontally, no collision changed, no art was redesigned.
+
+#### Testing performed (2026-09-19)
+- The overlap audit re-run: **no two surfaces share a depth** in Chatboro, Tusouxroe or
+  the strip; the closest pair is now 2 mm apart. No water sits over a road anywhere.
+- `gameplay.mjs` **pass** (hp 100 at every step, 0 new console errors), `gascans.mjs` **5/5**.
+- Before/after photographs of both towns in `tools/qa/out/land-*.png`.
+
+#### What I did NOT change, and why
+Three things about those two towns look wrong to me but are **style, not defect**, and the
+human has not asked for them:
+1. **The bayou band is three big rectangles** (x −140…410, z 132…196) whose northern edge is
+   a ruler-straight line 20 m south of Chatboro. A real shoreline would be irregular.
+2. **The swamp water is a mirror** (`clearcoat: 1, clearcoatRoughness: 0.12`) at road level,
+   so at dusk it reflects the sky probe as a flat white sheet — it reads as polished
+   concrete, not bayou. One value per module would change that.
+3. **The land is unlit** outside dusk→night, so ground reads near-black at any hour. That is
+   the known missing day cycle, not a Chatboro/Tusouxroe problem.
+
+---
+
+### TASK-047 — Two districts never had a culling pass (human request: "go fix the culling")
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/main.js`, `src/tusouxroeNorth.js`, `src/stateWorld.js`
+
+#### What was wrong
+Three separate faults, found by measuring rather than by reading:
+1. **`tusouxroeNorth` and `stateWorld` exposed no `update()` at all**, so the composer's
+   distance culling never ran for them. East Bank and West Parish had it and were being
+   culled; those two drew **8,690 + 3,700 meshes from anywhere on the map, at every
+   camera, always**. This was the bulk of it.
+2. **The `boundary` predicate was still missing** from the `batchStatic` call
+   (`eff285d` deleted the line instead of restoring the `cullGroups` Set a merge had
+   dropped), while West Parish and East Bank were *out* of the exclusion list — so their
+   scenery was batched into the scene root where their working culling could not hide it.
+3. **`...cans` had been dropped from the exclusion list**, so a gas can could be merged
+   into a static batch — and a batched can cannot hide itself when you pick it up. It
+   would stand there, collected.
+
+#### What changed
+- `tusouxroeNorth.js` and `stateWorld.js` expose `update(dt, playerPos)` that drives their
+  composers' culling from the camera, exactly as `eastbank.js` does. `stateWorld` builds
+  with four composers (one per region), so it drives all four.
+- `main.js` calls both every frame, next to the other two districts.
+- The districts are excluded from batching again (the `0edb70d` list) and `...cans` is
+  back in it. The `boundary` predicate is restored for completeness, but note it is **not
+  doing anything for these two districts**: their `props` arrays hold landmark groups,
+  not the composer's cluster groups, so nothing matches. See Known issues.
+
+#### Testing performed (2026-09-19)
+Scenery-only draw calls, fixed cameras, everything that moves hidden:
+
+| view | as found today | with culling wired |
+|---|---|---|
+| north crossroads | 19,138 | **11,130** (−42%) |
+| Lafourchette | 21,613 | **11,937** (−45%) |
+| US-167 strip | 12,667 | **6,756** (−47%) |
+| OrleaRouge | 3,599 | **1,695** (−53%) |
+
+- `eastbank.mjs` **9/9**, including the culling assertion (22/28 clusters drawn from the
+  strip vs 25/28 in town) and the frame-time check.
+- `gascans.mjs` **5/5** — the objective still completes with the cans out of the batcher.
+- `gameplay.mjs` — see Testing status.
+
+#### Known issues
+- **Still heavy: ~11,000 scenery draw calls standing in Tusouxroe North.** That is now
+  density, not a culling failure — 8,690 meshes inside one district, most of them within
+  the composer's 300 m draw distance when you are stood in it. The fix is batching *inside*
+  the clusters (TASK-045's `boundary`), which needs `tusouxroeNorth` and `stateWorld` to
+  expose their composers' cluster groups (`C.props`) the way `eastbank.js` does
+  (`get props() { return C.props; }`). Not done: it is a perf change, not a culling fix,
+  and the human asked for the culling.
+
+---
+
+### TASK-046 — Restore Keseme's original story and the gas-can objective (human request)
+
+**Status:** `REVIEW` · **Agent:** Claude · **Requested by:** the human, 2026-09-18, twice and emphatically:
+*"Keep Keseme's Original Story Script and Plot intact!!!"* and *"We must get the original
+story, script and plot for Keseme back!!!! This and also the gas can objective!!!!!!"*
+**Files:** `src/main.js`, `src/prologue.js`, `src/actone.js`, `index.html`, `src/stateWorld.js`,
+`tools/qa/gascans.mjs` (new)
+
+#### What had happened
+Two commits on 2026-09-17 changed Keseme's story after "update 11":
+- **`9d1a81b` + `41fc830` — the gas-can objective was deleted.** The cans, the escape
+  truck, `CAN_GOAL`, the HUD counter, `settleCans()`, the pickup logic, the waypoint and
+  the win condition all came out of `main.js`; the HUD label came out of `index.html`;
+  and the two lines that carry the plan between story beats were rewritten to
+  "Explore the Bayou." — in the prologue's hand-off *and* at the end of Act One.
+- **`208391a` — a new Mission 1, "Transition Day" (`missionClinic.js`), was inserted
+  ahead of the prologue**, and story mode was pointed at it instead of `prologue.start()`.
+  "Hog Wild" was demoted to MISSION 2 in the card the player sees and in the file header.
+
+#### What was restored
+- **The script and the plot, exactly.** `prologue.js`, `actone.js`, `nolantis.js`,
+  `welcomeback.js`, `bluelight.js` and `alternateCampaign.js` are now **byte-for-byte
+  identical to `0edb70d` ("update 11")** — verified with `git diff`. "Hog Wild" is
+  MISSION 1 again, in the card and the header.
+- **The opening.** Story mode calls `prologue.start()` again. `missionClinic.js` is left
+  on disk untouched but is not created, not built and not started, so nothing of that
+  work is lost and re-wiring it is a five-line change (`main.js` says exactly where).
+- **The gas-can objective, whole.** The cans and their glow columns, the escape truck and
+  its marker light, `CAN_GOAL`, `settleCans()`, the pickup rules (2.4 m on foot, 3.4 m in
+  a car), the HUD counter and label, the minimap waypoint that switches to the truck on
+  the fourth can, the win condition, and both story hand-off lines.
+- **Kept, deliberately:** Keseme's real female voice id in `voiceCast.js`
+  (`208391a`, human-provided). That is a voice for lines she already had, not the script
+  or the plot — the original held a `TODO_…PASTE_FISH_AUDIO_REFERENCE_ID` placeholder and
+  she was reading in the male voice she used to share with Peta. **Say the word and it
+  goes back too.**
+
+#### Testing performed (2026-09-18)
+- `tools/qa/prologue.mjs` **pass** — the run opens on the PROLOGUE (radio dial cold open),
+  HUD reads "Steal a ride. Scrounge 4 gas cans. Get to the truck and get out of Dixie
+  Beaux.", and every beat plays through to "ACT ONE — Welcome Home". 0 new console errors.
+- `tools/qa/actone.mjs` **pass** — all beats, ending on Solange and the southern coordinates.
+- `tools/qa/controls.mjs` **32/32**, including the seven gas-can checks that had been dead
+  since the removal: all five cans reachable and clear of collision, reach 2.4 m / 3.4 m,
+  every can has its glow column. (`__game.cans` had to be put back on the debug surface —
+  the tests were still in the file and crashing on `cans is not iterable`.)
+- `tools/qa/gascans.mjs` (new) **5/5** — the objective end to end: four cans and a truck
+  with the plan on the HUD, walking over a can counts it, the objective still names the
+  plan part-way, at 4/4 it points at the truck, and reaching the truck wins the run.
+- `tools/qa/gameplay.mjs` **pass** — hp 100 at every step, 0 hostile, no new console errors.
+
+#### Known issues
+- **Separate and serious, found while verifying this (not touched, awaiting a decision):
+  distance culling is defeated across the whole state map.** `eff285d` ("Fix live crash:
+  cullGroups was never defined") deleted the `boundary:` line from the `batchStatic` call
+  instead of restoring the `cullGroups` Set that a merge had dropped — but the districts
+  stayed *out* of the `moving` exclusion list. So their scenery is batched into the scene
+  root, where the composer's cluster culling can no longer hide it. Scenery-only draw
+  calls, same fixed cameras as TASK-045, everything that moves hidden:
+  north crossroads **268 → 19,138**, Lafourchette **919 → 21,613**, the strip
+  **907 → 12,667**, OrleaRouge **890 → 3,599**; scene meshes 3,903 → 18,362. Part of that
+  is the world getting denser since, but the shape of it is the missing boundary. The fix
+  is to put the `cullGroups` Set back and restore the one line.
+- Not mine, but loud: the dev-mode map editor (`94f8ee6`) fetches
+  `https://grand-theft-bayou.onrender.com/editor/load` on a loop and it is blocked by
+  CORS — **326 failed requests in one Act One run**. It does not affect the story.
+- `controls.mjs` went 22 → 32 tests with the cans back; the ten gas-can assertions had
+  been silently skipped, not deleted.
 
 ---
 

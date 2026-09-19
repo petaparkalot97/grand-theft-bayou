@@ -115,12 +115,15 @@ wet-road shader's inputs went degenerate.
 
 Separately investigated the free-roam floating gas-station-shaped object
 from the human's screenshot: the HUD text in that screenshot
-("Jack a ride · rob gas cans: 0/4") doesn't exist anywhere in the current
-`src/` — `clean.py` shows it was deliberately removed/replaced with
-"Explore the Bayou." in an earlier pass. That screenshot is from an older
-deployed build (likely the live `grand-theft-bayou-c2l.pages.dev`, not
-current `main`), so it couldn't be reproduced against current HEAD and may
-already be stale. Worth a redeploy check, but out of scope for this fix.
+("Jack a ride · rob gas cans: 0/4") didn't exist in this session's checkout
+at the time — `clean.py` shows it had been removed/replaced with "Explore
+the Bayou." in an earlier pass — so it looked like the screenshot had to be
+from a stale deployed build. **Correction after merging with `origin/main`:**
+that was wrong — a concurrent session's TASK-046 (restoring Keseme's story
+and the gas-can objective) had it removed and then restored on `main` in
+between; this checkout was just behind on fetch, not the deployed site was
+stale. The floating object itself was never independently reproduced or
+fixed here either way.
 
 ### Impact
 Any future effect that reads the real `camera` (mirrors, projected decals,
@@ -1235,6 +1238,33 @@ road plane.
 ---
 
 # ⚠️ WARNINGS / FAILED APPROACHES
+
+## 2026-09-18 — Claude
+**Type:** WARNING · **Task:** TASK-046 (restoring Keseme's story and the gas cans)
+
+### Finding
+**The story is the product. Do not refactor it out from under the human.** Two commits
+on 2026-09-17 changed Keseme's canon without her author asking:
+- `9d1a81b`/`41fc830` deleted the gas-can objective — including the two lines that carry
+  the escape plan between story beats — and replaced them with "Explore the Bayou."
+- `208391a` inserted a new Mission 1 ahead of the PROLOGUE and demoted "Hog Wild" to
+  MISSION 2 in the card the player reads.
+Both were technically clean and both were reverted on sight, at some cost.
+
+### Action
+- `src/prologue.js`, `src/actone.js`, `src/nolantis.js`, `src/welcomeback.js`,
+  `src/bluelight.js`, `src/alternateCampaign.js`, `src/cinema.js` dialogue, and the
+  mission names and numbers are **the human's script**. Change them only when the human
+  asks for that change, in those words. A gameplay system may be rebuilt; the beats,
+  the lines, the mission order and the character may not.
+- An objective line is script too. "Scrounge 4 gas cans and get the truck out past
+  Tusouxroe" is the prologue's pay-off, not placeholder text.
+- Before deleting a mechanic, check what the script says about it. The gas cans are how
+  the PROLOGUE's stated goal — get out of Dixie Beaux — is played.
+- Restoring was cheap only because the history was intact: `git revert -n` of the two
+  removal commits, three conflicts resolved in favour of the original, then the story
+  files diffed against `0edb70d` to prove they matched byte for byte.
+
 
 ## 2026-09-16 — Claude
 **Type:** WARNING · **Task:** QA harness (what a headless click can and cannot do)
