@@ -335,7 +335,7 @@ export function createHeadlights(scene) {
 const WET_PARS = /* glsl */ `
   uniform sampler2D uReflect;
   uniform mat4 uReflectMat;
-  uniform float uReflectOn, uWetness, uReflectStrength;
+  uniform float uReflectOn, uWetness, uReflectStrength, uWetFade;
   varying vec3 vWetWorld;
   float gtbWetHash(vec2 p) {
     p = fract(p * vec2(233.34, 851.73));
@@ -366,11 +366,19 @@ const WET_PARS = /* glsl */ `
 
 // after roughnessmap_fragment: diffuseColor and roughnessFactor both exist
 const WET_SURFACE = /* glsl */ `
-  float gtbPuddle = gtbPuddles(vWetWorld.xz);
-  float gtbWet = max(uWetness, gtbPuddle);
+  // uWetFade fades the whole wet look out with camera height (see
+  // MAX_EYE_HEIGHT below) — a road's roughness drops to 0.03 for standing
+  // water, and from the dev-mode map editor's near-vertical, far-zoomed-out
+  // camera that mirror-smooth surface catches the moon as a blown-out white
+  // highlight band across the whole visible road at once. Not reachable from
+  // any normal gameplay camera, only the free-fly one, so fading it out by
+  // height (rather than retuning the specular response) leaves ground-level
+  // wet asphalt untouched.
+  float gtbPuddle = gtbPuddles(vWetWorld.xz) * uWetFade;
+  float gtbWet = max(uWetness * uWetFade, gtbPuddle);
   // water fills the pores: the surface goes darker and far glossier
   diffuseColor.rgb *= mix(1.0, 0.55, gtbWet);
-  roughnessFactor = mix(roughnessFactor * mix(1.0, 0.5, uWetness), 0.03, gtbPuddle);
+  roughnessFactor = mix(roughnessFactor * mix(1.0, 0.5, uWetness * uWetFade), 0.03, gtbPuddle);
 `;
 
 // a puddle's surface is flat water, whatever the aggregate under it does
@@ -408,6 +416,7 @@ export function createWetRoads(renderer, scene, camera) {
     uReflectOn: { value: 0 },
     uWetness: { value: 0.6 },
     uReflectStrength: { value: 1.0 },
+    uWetFade: { value: 1 },
   };
 
   const vcam = new THREE.PerspectiveCamera();
@@ -452,11 +461,24 @@ export function createWetRoads(renderer, scene, camera) {
   const clip = new THREE.Vector4();
   const q = new THREE.Vector4();
 
+  const MAX_EYE_HEIGHT = 50;   // see below
+
   function mirror() {
     eye.setFromMatrixPosition(camera.matrixWorld);
     onPlane.set(eye.x, PLANE_Y, eye.z);
     view.subVectors(onPlane, eye);
     if (view.dot(n) > 0) return false;               // camera under the road
+    // The reflected camera sits at -eye.y below the plane. Normal gameplay
+    // (chase cam, cinematics) never puts the real camera this high, but the
+    // dev-mode map editor's free-fly camera does (up to ~340 m, near-vertical
+    // pitch) — at that height the reflected camera is so far underground its
+    // far plane (130 m, "the mist swallows anything further") never reaches
+    // any real geometry, so it renders nothing but background sky, which then
+    // gets composited onto every asphalt surface in the world at once: a
+    // flat white/gray "sheet" over every road and lot, reported repeatedly as
+    // a graphics bug. A puddle reflection isn't meaningful from a satellite
+    // view anyway, so just skip it above chase-cam height.
+    if (eye.y > MAX_EYE_HEIGHT) return false;
     view.reflect(n).negate().add(onPlane);
 
     rot.extractRotation(camera.matrixWorld);
@@ -520,11 +542,17 @@ export function createWetRoads(renderer, scene, camera) {
     },
     resize,
     render() {
+      // The WET_SURFACE roughness/puddle effect runs unconditionally in every
+      // patched material's shader, independent of the mirror texture below —
+      // so its height fade has to update even when reflections are off for
+      // this graphics tier (`scale <= 0`) or this isn't a re-render frame.
+      camera.updateMatrixWorld();
+      eye.setFromMatrixPosition(camera.matrixWorld);
+      uniforms.uWetFade.value = 1 - THREE.MathUtils.smoothstep(eye.y, MAX_EYE_HEIGHT, MAX_EYE_HEIGHT + 80);
       if (scale <= 0 || !meshes.length) return;
       // A skipped frame keeps the previous image AND its matrix, so the pair
       // stays consistent; in rippled puddles one frame of lag is invisible.
       if (++frame % interval !== 0) return;
-      camera.updateMatrixWorld();
       if (!mirror()) {
         uniforms.uReflectOn.value = 0;
         return;

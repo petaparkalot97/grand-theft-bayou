@@ -38,6 +38,140 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-19 — Claude
+**Type:** HANDOFF · **Task:** TASK-048 — map editor: library search, delete mode, save slots, AI placement
+
+### Finding
+Expanded `$DEVMODE69xxx` per human request: searchable/categorized asset
+library, a "Delete: ON/OFF" mode (removes the tool's own placements only —
+human explicitly declined deleting baked-in world landmarks), named save
+slots (`server/index.js` gained `/editor/slots`, `slot=` on save/load), and
+an "Ask AI" natural-language placement box. The human specifically asked for
+OpenRouter with a model fallback chain for the AI part.
+
+### Impact
+The AI feature needs `OPENROUTER_API_KEY` set in the environment (or a
+repo-root `.env`, same convention as `FISH_AUDIO_API_KEY` for
+`tools/voiceover-gen.mjs`) on whatever process runs `server/index.js`. The
+human supplied a key, now in the local `.env` (gitignored) — **but that only
+covers local runs**; the deployed Render service needs its own copy added
+to its env vars for the live game to have AI placement.
+
+Also: the moment a real key was used, `server/ai.js`'s default model list's
+first two entries 404'd — OpenRouter's free-tier lineup had already moved
+past them. Cross-checked live against `GET /api/v1/models` and replaced
+with currently-valid free ids. Whoever next touches this should re-check
+that list against the live endpoint rather than trust it, since it clearly
+doesn't stay accurate for long.
+
+### Action
+See TASK-048 in `TODO.md` for the full breakdown. Verified with curl using
+the real key: a natural-language prompt returned sensible, correctly-scaled
+placements from `nvidia/nemotron-3-ultra-550b-a55b:free` (the chain's 2nd
+entry — the 1st failed silently and the fallback caught it as designed).
+The client UI's request/response wiring was verified separately (previous
+turn, no-key error path); the two weren't re-verified together in one
+browser session because the Chrome extension disconnected mid-task.
+
+## 2026-09-19 — Claude
+**Type:** DISCOVERY · **Task:** new — the recurring white/washed-out sheet, found live (human report + screenshots)
+
+### Finding
+Human reported the white/washed-out-surfaces glitch again (b29599d was NOT
+the last cause), this time as a huge flat gray/white "sheet" over roads and
+buildings, both during normal free roam (a floating gas-station-shaped
+object) and heavily in the new `$DEVMODE69xxx` map editor's aerial camera.
+Reproduced live in a real browser (Chrome via the extension, localhost
+serve.mjs): entering dev mode and zooming/pitching the free-fly camera way
+out reliably painted every road in the world flat white/gray at once.
+
+Root-caused in `src/fx.js`'s `createWetRoads()` (the planar wet-road mirror
++ "wetness" roughness effect, patched onto every `surfaceKind: "asphalt"`
+material). It was built assuming a camera that stays near ground level
+(chase cam, cinematics):
+1. `mirror()` reflects the real camera across the road plane (y=0.03) to get
+   a virtual camera for the reflection render. At normal height this sits
+   just under the road; but the map editor's free-fly cam can go to ~340 m
+   near-vertical, so the *reflected* camera ends up ~300+ m **underground**,
+   looking up through empty space — its 130 m far plane never reaches any
+   real geometry, so it renders nothing but background sky into the
+   reflection buffer. That flat, bright buffer then gets composited onto
+   every asphalt surface in the world simultaneously via the `uReflect`
+   sampler in `WET_REFLECT` — the reported "sheet".
+2. Independently, `WET_SURFACE` drives `roughnessFactor` down to as low as
+   0.03 ("standing water") unconditionally, every frame, regardless of the
+   mirror texture. At the extreme low/near-vertical grazing angles the dev
+   camera enables, that near-mirror roughness plus the moon's directional
+   light (intensity 2.8) produces a blown-out specular highlight band across
+   whatever road segment satisfies the reflection angle — a second,
+   independent way to get the same "white sheet" symptom, not fixed by only
+   touching the mirror render.
+
+Confirmed by toggling `wetRoads.uniforms.uReflectOn.value = 0` live in the
+console mid-bug: the sheet vanished immediately and the real (correctly
+textured, correctly lit) world was underneath it the whole time. Nothing
+was actually floating or reclassified — the ground truth was fine; only the
+wet-road shader's inputs went degenerate.
+
+Separately investigated the free-roam floating gas-station-shaped object
+from the human's screenshot: the HUD text in that screenshot
+("Jack a ride · rob gas cans: 0/4") didn't exist in this session's checkout
+at the time — `clean.py` shows it had been removed/replaced with "Explore
+the Bayou." in an earlier pass — so it looked like the screenshot had to be
+from a stale deployed build. **Correction after merging with `origin/main`:**
+that was wrong — a concurrent session's TASK-046 (restoring Keseme's story
+and the gas-can objective) had it removed and then restored on `main` in
+between; this checkout was just behind on fetch, not the deployed site was
+stale. The floating object itself was never independently reproduced or
+fixed here either way.
+
+### Impact
+Any future effect that reads the real `camera` (mirrors, projected decals,
+planar reflections) needs to handle the map editor's free-fly camera range
+(up to ~340 m, near-vertical pitch) or it will hit the same class of bug —
+this is the third time a "white/washed-out surfaces" report has traced back
+to a *different* mechanism (metalness promotion in `graphics.js`'s
+`upgrade()`, un-tagged GLB materials in `landmarks.js`, and now this).
+
+### Action
+`src/fx.js`: added `MAX_EYE_HEIGHT = 50` in `createWetRoads()`. `mirror()`
+now bails out (same as its existing "camera under the road" guard) when the
+real camera is above that height — a puddle reflection isn't meaningful
+from a satellite view anyway. Added a second uniform, `uWetFade`, computed
+every frame from camera height (`1 - smoothstep(eye.y, 50, 130)`) and
+multiplied into both the puddle/roughness term (`WET_SURFACE`) and the
+mirror sample (`WET_REFLECT`), so the *whole* wet-road look — not just the
+mirror texture — fades out smoothly above chase-cam height instead of
+snapping or leaving the specular-hotspot path unguarded. Verified live:
+disabled at dev-mode altitude (`uWetFade`/`uReflectOn` read back as `0`
+above 130 m), full-strength at normal gameplay height (`1`/`1` at 15 m,
+puddle sheen and reflections still visible in a normal free-roam
+screenshot), no console errors.
+
+## 2026-09-19 — Claude
+**Type:** HANDOFF · **Task:** new — free roam skips character select (human request)
+
+### Finding
+Human wanted "Choose character · Free roam" on the title screen to drop
+straight into the map as Keseme, no character-select screen. `freeBtn.onclick`
+in `src/main.js` (boot()) now sets `pendingLaunch = "free"`, picks Keseme's
+index, and calls `confirmCharacter()` directly instead of `openCharacterSelect("free")`.
+Story mode (`startBtn`) is untouched — it still opens the select screen.
+
+### Impact
+Any QA script that clicks `#freeBtn` no longer sees `#characterSelect` become
+visible, so the old `waitForFunction(...characterSelect...hidden...)` +
+`click("#confirmCharacter")` pair after `#freeBtn` clicks would hang/timeout.
+
+### Action
+Stripped that dead wait+confirm pair from all 18 `tools/qa/*.mjs` scripts that
+click `#freeBtn` (gameplay, controls, factions, hijack, hoodrats, mirror,
+minimap, nolantis, police, potholes, prostitute_test, roads, stateworld,
+westparish, worldpass, bluelight, eastbank, orlearouge). `actone.mjs` and
+`prologue.mjs` use `#startBtn` (story mode) and were left alone. New QA
+scripts that free-roam should click `#freeBtn` and go straight to
+`window.__game.state.running` — don't wait on `#characterSelect`.
+
 ## 2026-09-17 — Claude
 **Type:** DISCOVERY · **Task:** new — hidden dev-mode map editor (human request)
 

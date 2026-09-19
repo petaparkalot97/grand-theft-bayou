@@ -57,9 +57,6 @@ export default async function run(page) {
     return b && !b.disabled;
   }, null, { timeout: 240000 });
   await page.click("#freeBtn");
-  // the title buttons open the character select: confirm the default pick (Keseme Nadia)
-  await page.waitForFunction(() => { const s = document.getElementById("characterSelect"); return !s || !s.hidden; }, null, { timeout: 20000 });
-  if (await page.$("#characterSelect:not([hidden]) #confirmCharacter")) await page.click("#confirmCharacter");
   await pressUntil(null, `g.state.running`, "free roam running", { every: 300 });
 
   // ---- the chapter starts (normally from the end of "Welcome Home") ----
