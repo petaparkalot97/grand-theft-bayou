@@ -302,6 +302,18 @@ function groundTexture() {
   return t;
 }
 
+// Ground decals stack in a fixed order, and every one of them gets its own height:
+// two surfaces at the same y fight for the same depth and the land shimmers wherever
+// they overlap. Bottom to top: pads and lots, aprons, side streets, US-167, markings.
+const GROUND_Y = Object.freeze({
+  dirtPad: 0.012,        // junkyard / shack dirt
+  lot: 0.014,            // the truck lot outside Tusouxroe
+  gravel: 0.016,         // the trailer-park pad at Chatboro
+  apron: 0.018,          // asphalt linking a lot to the highway shoulder
+  street: 0.019,         // Main Street and the side streets
+  highway: 0.02,         // US-167 itself
+});
+
 let ground;
 function buildGround() {
   ground = new THREE.Mesh(
@@ -1448,7 +1460,7 @@ async function buildLevel() {
   // US-167 runs the whole length of the map, and becomes OrleaRouge's main boulevard
   const road = new THREE.Mesh(new THREE.PlaneGeometry(10, MAP.maxZ - MAP.minZ + 40), roadMat);
   road.rotation.x = -Math.PI / 2;
-  road.position.set(ROAD_X, 0.02, (MAP.maxZ + MAP.minZ) / 2);
+  road.position.set(ROAD_X, GROUND_Y.highway, (MAP.maxZ + MAP.minZ) / 2);
   road.receiveShadow = true;
   scene.add(road);
   const lineMat = new THREE.MeshStandardMaterial({
@@ -1585,7 +1597,7 @@ async function buildLevel() {
   lotMat.color.setHex(0xb9b9c2);
   const lot = new THREE.Mesh(new THREE.PlaneGeometry(70, 44), lotMat);
   lot.rotation.x = -Math.PI / 2;
-  lot.position.set(ROAD_X, 0.015, -98);
+  lot.position.set(ROAD_X, GROUND_Y.lot, -98);
   lot.receiveShadow = true;
   scene.add(lot);
   makeWaterTower(52, -92, "TUSOUXROE", ["CITY LIMITS"]);
@@ -1727,7 +1739,7 @@ async function buildLevel() {
     for (const t of [mat.map, mat.normalMap, mat.roughnessMap]) if (t) t.repeat.set(len / 9, 1);
     const mainStreet = new THREE.Mesh(new THREE.PlaneGeometry(len, 9), mat);
     mainStreet.rotation.x = -Math.PI / 2;
-    mainStreet.position.set(ROAD_X - ROAD_HALF - len / 2, 0.019, -78);
+    mainStreet.position.set(ROAD_X - ROAD_HALF - len / 2, GROUND_Y.street, -78);
     mainStreet.receiveShadow = true;
     scene.add(mainStreet);
   }
@@ -2004,7 +2016,7 @@ function roadApron(side, z, depth) {
     asphaltMat
   );
   p.rotation.x = -Math.PI / 2;
-  p.position.set((inner + outer) / 2, 0.02, z);
+  p.position.set((inner + outer) / 2, GROUND_Y.apron, z);
   p.receiveShadow = true;
   scene.add(p);
 }
@@ -2119,7 +2131,7 @@ function makeJunkyard(cx, cz) {
   const dirt = new THREE.Mesh(new THREE.PlaneGeometry(34, 34),
     new THREE.MeshStandardMaterial({ map: shackTex.concrete, roughness: 1 }));
   dirt.rotation.x = -Math.PI / 2;
-  dirt.position.set(cx, 0.02, cz);
+  dirt.position.set(cx, GROUND_Y.dirtPad, cz);
   dirt.receiveShadow = true;
   scene.add(dirt);
   makeShed(cx - 8, cz - 8, 0.2, 9, 6);
@@ -2140,7 +2152,7 @@ function makeTrailerPark(cx, cz) {
   const gravel = new THREE.Mesh(new THREE.PlaneGeometry(46, 40),
     new THREE.MeshStandardMaterial({ color: 0x4a453a, roughness: 1 }));
   gravel.rotation.x = -Math.PI / 2;
-  gravel.position.set(cx, 0.02, cz);
+  gravel.position.set(cx, GROUND_Y.gravel, cz);
   gravel.receiveShadow = true;
   scene.add(gravel);
 

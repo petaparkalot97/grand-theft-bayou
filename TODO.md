@@ -57,6 +57,45 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-048 — The land in Chatboro and Tusouxroe (human request: "fix the land format")
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/main.js`
+
+#### What was wrong
+Four different ground surfaces were all laid at **exactly y = 0.02**: US-167 itself, the
+road aprons that link the lots to the shoulder, the junkyard dirt pad, and the trailer
+park's gravel at Chatboro. Wherever two of them overlap they fight for the same depth
+value, and the land shimmers — worst at Chatboro (the gravel against the highway apron)
+and on the strip. An audit on a 10 m grid found stacks separated by **0.0000 m** at four
+sample points in Chatboro and three on the strip; Tusouxroe had 4–5 mm stacks between the
+truck lot, an apron and Main Street.
+
+#### What changed
+One stated ladder, `GROUND_Y` in `main.js`, so every decal has its own height and the next
+person adding a pad knows where it goes. Bottom to top: dirt pads 0.012, lots 0.014,
+gravel 0.016, aprons 0.018, side streets 0.019 (unchanged), US-167 0.02 (unchanged).
+Nothing moved horizontally, no collision changed, no art was redesigned.
+
+#### Testing performed (2026-09-19)
+- The overlap audit re-run: **no two surfaces share a depth** in Chatboro, Tusouxroe or
+  the strip; the closest pair is now 2 mm apart. No water sits over a road anywhere.
+- `gameplay.mjs` **pass** (hp 100 at every step, 0 new console errors), `gascans.mjs` **5/5**.
+- Before/after photographs of both towns in `tools/qa/out/land-*.png`.
+
+#### What I did NOT change, and why
+Three things about those two towns look wrong to me but are **style, not defect**, and the
+human has not asked for them:
+1. **The bayou band is three big rectangles** (x −140…410, z 132…196) whose northern edge is
+   a ruler-straight line 20 m south of Chatboro. A real shoreline would be irregular.
+2. **The swamp water is a mirror** (`clearcoat: 1, clearcoatRoughness: 0.12`) at road level,
+   so at dusk it reflects the sky probe as a flat white sheet — it reads as polished
+   concrete, not bayou. One value per module would change that.
+3. **The land is unlit** outside dusk→night, so ground reads near-black at any hour. That is
+   the known missing day cycle, not a Chatboro/Tusouxroe problem.
+
+---
+
 ### TASK-047 — Two districts never had a culling pass (human request: "go fix the culling")
 
 **Status:** `REVIEW` · **Agent:** Claude
