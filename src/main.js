@@ -13,6 +13,8 @@ import { batchStatic } from "./merge.js";
 import { initAudio, createCarAudio, resumeAudio } from "./audio.js";
 import { initWeapons3D, updateWeapon3D, playFireAnim3D } from "./weapons_3d.js";
 import { createNpcSystem } from "./npc.js";
+import { bumpLine, fightLine } from "./pedestrianChatter.js";
+import { pedestrianVoiceWho } from "./voiceCast.js";
 import { createCameraController } from "./camera.js";
 import { createTraffic } from "./traffic.js";
 import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo } from "./characters.js";
@@ -1209,6 +1211,7 @@ const _mv = new THREE.Vector3(), _step = new THREE.Vector3(), _aim = new THREE.V
 const _camFwd = new THREE.Vector3(), _camRight = new THREE.Vector3();
 let playerMoveHeading = null;   // heading the player is walking (null standing), for camera recentring
 let attackTimer = 0;
+let bumpCd = 0;   // one pedestrian bark at a time, not a crowd shouting in unison
 
 // ---------------------------------------------------------------- enemies
 // Bayou trouble: Feral Hogs, Rednecks, Hoodrats, Prostitutes.
@@ -2510,10 +2513,13 @@ function fire() {
 
   if (bestKind === "enemy") {
     best.hp -= gun.damage;
+    // first blow of a fight, not a follow-up hit on someone already swinging/running
+    const freshFight = best.state !== "hostile" && best.state !== "flee";
     npcs.provoke(best);
     if (best.type !== "hog") { best.spr.play("hurt", { loop: false, force: true }); best.t = 0; }
     else best.spr.position.addScaledVector(best.spr.position.clone().sub(playerPos).setY(0).normalize(), 0.4);
     if (best.hp <= 0) { killEnemy(best); if (best.type !== "hog") crime(1.2); }
+    else if (freshFight) speakPedestrian(best, fightLine(best.type, best.T.label, best.mood));
   } else if (bestKind === "sheriff") {
     crime(0.4);
     damageVehicle(best, gun.damage * 2);
@@ -2991,7 +2997,9 @@ function onFootUpdate(dt) {
     playerFacing.copy(mv);
     const next = _step.copy(playerPos).addScaledVector(mv, speed * dt);
     resolveCollision(playerPos, next, 0.6);
+    checkPedestrianBump();
   }
+  bumpCd = Math.max(0, bumpCd - dt);
   if (!(nolantis && nolantis.inside)) {
     playerPos.x = THREE.MathUtils.clamp(playerPos.x, MAP.minX + 4, MAP.maxX - 4);
     playerPos.z = THREE.MathUtils.clamp(playerPos.z, MAP.minZ + 4, MAP.maxZ - 4);
@@ -3009,6 +3017,37 @@ function onFootUpdate(dt) {
     }
   }
   player.update(dt, camera);
+}
+
+// Flashes a pedestrianChatter.js line and, if the archetype has a Fish Audio
+// voice (voiceCast.js — hogs don't), plays it. `e.spr.female` only exists on
+// the 3D-rig archetypes (hoodrat/hobo/thug/prostitute — characters.js
+// Hoodrat); the flat-sprite archetypes ignore the female arg entirely
+// (pedestrianVoiceWho only branches gender for hoodrat/hobo/thug).
+function speakPedestrian(e, line) {
+  flashObjective(line.display);
+  const voiceWho = pedestrianVoiceWho(e.type, !!e.spr.female);
+  if (voiceWho) cine.playVoiceLine(voiceWho, line.text);
+}
+
+// A calm pedestrian jostled on the sidewalk gets a one-liner and a shove out
+// of the way — no damage, no aggro, just flavor. Hostile/fleeing/dead NPCs
+// and hogs mid-charge are left alone; the fight lines in fire() cover those.
+const BUMP_R = 1.15;
+function checkPedestrianBump() {
+  if (bumpCd > 0) return;
+  for (const e of enemies) {
+    if (e.dead || e.state === "hostile" || e.state === "flee" || e.state === "in_car" || e.state === "approaching_car") continue;
+    const dx = e.spr.position.x - playerPos.x, dz = e.spr.position.z - playerPos.z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 > BUMP_R * BUMP_R) continue;
+    const d = Math.sqrt(d2) || 1;
+    e.spr.position.x += (dx / d) * 0.6;
+    e.spr.position.z += (dz / d) * 0.6;
+    speakPedestrian(e, bumpLine(e.type, e.T.label));
+    bumpCd = 2.2;
+    break;
+  }
 }
 
 // ============================================================ DRIVING
@@ -3518,7 +3557,7 @@ async function boot() {
   };
   beginGame = begin;
   startBtn.onclick = () => openCharacterSelect("story");
-  freeBtn.onclick = () => openCharacterSelect("free");
+  freeBtn.onclick = () => { pendingLaunch = "free"; selectionIndex = characterIds.indexOf("keseme"); confirmCharacter(); };
 }
 
 startBtn.disabled = true;

@@ -40,9 +40,6 @@ async function tests(page, log) {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.waitForFunction(() => { const b = document.getElementById("freeBtn"); return b && !b.disabled; }, null, { timeout: 240000 });
   await page.click("#freeBtn");
-  // the title buttons open the character select: confirm the default pick (Keseme Nadia)
-  await page.waitForFunction(() => { const s = document.getElementById("characterSelect"); return !s || !s.hidden; }, null, { timeout: 20000 });
-  if (await page.$("#characterSelect:not([hidden]) #confirmCharacter")) await page.click("#confirmCharacter");
   await page.waitForFunction(() => window.__game && window.__game.state.running, null, { timeout: 60000 });
 
   const info = await js(`return { ok: !!W, length: Math.round(W.length), samples: W.samples.length, trees: W.trees, lanes: W.lanes.map((l) => l.name + " (" + l.points.length + ")"), pois: W.pois.length, MAP: g.MAP, rest: W.restStop };`);

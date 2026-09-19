@@ -41,9 +41,6 @@ export default async function run(page) {
     return b && !b.disabled;
   }, null, { timeout: 240000 });
   await page.click("#freeBtn");                  // free roam: no story cutscenes
-  // the title buttons open the character select: confirm the default pick (Keseme Nadia)
-  await page.waitForFunction(() => { const s = document.getElementById("characterSelect"); return !s || !s.hidden; }, null, { timeout: 20000 });
-  if (await page.$("#characterSelect:not([hidden]) #confirmCharacter")) await page.click("#confirmCharacter");
   for (let i = 0; i < 3; i++) { await page.keyboard.press("BracketRight"); await page.waitForTimeout(150); }
   await page.keyboard.press("BracketLeft");      // -> HIGH
   await page.waitForTimeout(5000);

@@ -18,9 +18,17 @@
 //
 // The ghost is the real object, loaded and built the same way it will be
 // placed, just translucent — not a solid green stand-in box — with a thin
-// wire outline for its footprint. The asset picker mirrors this: each tile's
-// thumbnail is a real render of that object, snapshotted once (off-screen,
-// via a render target — never flashed to the visible canvas) and cached.
+// wire outline for its footprint. The asset picker is a searchable library
+// (search box + category tabs above the grid), not a flat scroll — each
+// tile's thumbnail is a real render of that object, snapshotted once
+// (off-screen, via a render target — never flashed to the visible canvas)
+// and cached.
+//
+// "Delete: ON" (a button, next to Undo) turns left-click into removal
+// instead of placement — same as Backspace/Undo but for any editor-placed
+// object nearby, not just the last one. It only ever touches things this
+// tool placed (this session, or replayed from a save); the world's own
+// authored landmarks aren't editable here.
 //
 // The ghost's ground target follows a simple ray/plane intersection against
 // y = 0 from the camera — this game's terrain is flat everywhere placements
@@ -32,10 +40,21 @@
 //     session isn't lost to a different device/tab (best-effort: most
 //     Render web services have ephemeral disk, so this is a *shared
 //     scratchpad*, not guaranteed durable storage — see server/index.js)
+//   - separately, "Save As" / "Load" / "Delete slot" snapshot the current
+//     session under a name on that same server, so you can keep several
+//     named layouts and switch between them ("Load" replaces the current
+//     session, same as opening a different file)
 //   - exportable as real code (the Export button) — pasting that into a
 //     district file's build function is how a placement becomes permanent,
 //     shared world content, the same way every other landmark in this game
 //     is authored.
+//
+// The "Ask AI" box sends a free-text prompt plus grounding (the ghost's
+// current ground point as an anchor, and whatever's already placed nearby)
+// to server/index.js's /editor/ai, which proxies to an LLM over OpenRouter
+// with a model fallback chain (server/ai.js) and hands back a short list of
+// placements to drop exactly as if you'd clicked them. Needs
+// OPENROUTER_API_KEY set on the server — see server/ai.js's header.
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
@@ -49,13 +68,14 @@ import {
 const CHEAT_CODE = "$DEVMODE69xxx";
 const LS_KEY = "gtb_mapEditor_placements_v1";
 
-// One entry per placeable asset: { key, label, w, d, place(ctx, x, z, ry) }.
+// One entry per placeable asset: { key, label, category, w, d, place(ctx, x, z, ry) }.
 // `w`/`d` size the ghost's footprint outline; `place` calls the exact real
 // landmarks.js function this catalog entry represents, and `code(x, z, ry)`
-// renders the matching source line for the Export panel.
+// renders the matching source line for the Export panel. `category` groups
+// the library/search UI (below) into sections instead of one flat grid.
 const CATALOG = [
   ...Object.entries(CITY_BUILDING_TYPES).map(([key, spec]) => ({
-    key: `building:${key}`, label: spec.label, w: spec.w, d: spec.d,
+    key: `building:${key}`, label: spec.label, category: "Buildings", w: spec.w, d: spec.d,
     place: (ctx, x, z, ry) => placeCityBuilding(ctx, key, x, z, ry),
     code: (x, z, ry) => `placeCityBuilding(ctx, "${key}", ${x}, ${z}, ${ry});`,
   })),
@@ -63,34 +83,35 @@ const CATALOG = [
   // landmarks.js ("cars/trucks are broken/non-interactable" — both are no-op
   // stubs) — omitted here rather than offer a catalog entry that silently
   // places nothing when clicked.
-  { key: "gasStation", label: "Gas station", w: 18, d: 14,
+  { key: "gasStation", label: "Gas station", category: "Infrastructure", w: 18, d: 14,
     place: (ctx, x, z, ry) => placeGasStation(ctx, x, z, ry),
     code: (x, z, ry) => `placeGasStation(ctx, ${x}, ${z}, ${ry});` },
-  { key: "sixTwelve", label: "6twelve store", w: 14, d: 12,
+  { key: "sixTwelve", label: "6twelve store", category: "Infrastructure", w: 14, d: 12,
     place: (ctx, x, z, ry) => placeSixTwelve(ctx, x, z, ry),
     code: (x, z, ry) => `placeSixTwelve(ctx, ${x}, ${z}, ${ry});` },
-  { key: "gunShop", label: "Gun shop (Bayou Arsenal)", w: 16, d: 14,
+  { key: "gunShop", label: "Gun shop (Bayou Arsenal)", category: "Infrastructure", w: 16, d: 14,
     place: (ctx, x, z, ry) => placeGunShop(ctx, x, z, ry),
     code: (x, z, ry) => `placeGunShop(ctx, ${x}, ${z}, ${ry});` },
-  { key: "billboard", label: "Billboard", w: 10, d: 1,
+  { key: "billboard", label: "Billboard", category: "Infrastructure", w: 10, d: 1,
     place: (ctx, x, z, ry) => placeBillboard(ctx, x, z, ry),
     code: (x, z, ry) => `placeBillboard(ctx, ${x}, ${z}, ${ry});` },
-  { key: "stiltHut", label: "Bayou stilt hut", w: 6.4, d: 6.4,
+  { key: "stiltHut", label: "Bayou stilt hut", category: "Infrastructure", w: 6.4, d: 6.4,
     place: (ctx, x, z, ry) => placeBayouStiltHut(ctx, x, z, ry),
     code: (x, z, ry) => `placeBayouStiltHut(ctx, ${x}, ${z}, ${ry});` },
-  { key: "cargo", label: "Maritime cargo stack", w: 8, d: 8,
+  { key: "cargo", label: "Maritime cargo stack", category: "Infrastructure", w: 8, d: 8,
     place: (ctx, x, z, ry) => placeMaritimeCargo(ctx, x, z, ry),
     code: (x, z, ry) => `placeMaritimeCargo(ctx, ${x}, ${z}, ${ry});` },
-  { key: "derrick", label: "Oil derrick", w: 6, d: 6,
+  { key: "derrick", label: "Oil derrick", category: "Infrastructure", w: 6, d: 6,
     place: (ctx, x, z, ry) => placeOilDerrick(ctx, x, z, ry),
     code: (x, z, ry) => `placeOilDerrick(ctx, ${x}, ${z}, ${ry});` },
-  { key: "streetClutter", label: "Street clutter", w: 4, d: 4,
+  { key: "streetClutter", label: "Street clutter", category: "Clutter", w: 4, d: 4,
     place: (ctx, x, z, ry) => placeStreetClutter(ctx, x, z, ry),
     code: (x, z, ry) => `placeStreetClutter(ctx, ${x}, ${z}, ${ry});` },
-  { key: "officeClutter", label: "Office clutter", w: 3, d: 3,
+  { key: "officeClutter", label: "Office clutter", category: "Clutter", w: 3, d: 3,
     place: (ctx, x, z, ry) => placeOfficeClutter(ctx, x, z, ry),
     code: (x, z, ry) => `placeOfficeClutter(ctx, ${x}, ${z}, ${ry});` },
 ];
+const CATEGORIES = ["All", ...new Set(CATALOG.map((c) => c.category))];
 
 function httpBaseFor(wsUrl) {
   if (!wsUrl) return null;
@@ -108,6 +129,7 @@ export function createMapEditor(ctx) {
   let active = false;
   let catalogIndex = 0;
   let ry = 0;
+  let deleteMode = false;
   const placements = [];   // { id, catalogKey, x, z, ry, created, createdBlockers, createdLitSpots }
   let nextId = 1;
 
@@ -287,29 +309,98 @@ export function createMapEditor(ctx) {
     "padding:10px 12px;border:1px solid #38ff9e;border-radius:6px;white-space:pre;display:none;max-width:340px;";
   document.body.appendChild(panel);
   const controls = document.createElement("div");
-  controls.style.cssText = "position:fixed;left:16px;top:150px;z-index:40;display:none;flex-direction:column;gap:6px;pointer-events:auto;";
-  const btnRow = document.createElement("div");
-  btnRow.style.cssText = "display:flex;gap:6px;";
-  function makeBtn(label, fn) {
+  controls.style.cssText = "position:fixed;left:16px;top:172px;z-index:40;display:none;flex-direction:column;gap:6px;pointer-events:auto;max-width:340px;";
+  function row() {
+    const r = document.createElement("div");
+    r.style.cssText = "display:flex;gap:6px;align-items:center;flex-wrap:wrap;";
+    controls.appendChild(r);
+    return r;
+  }
+  function makeBtn(parent, label, fn) {
     const b = document.createElement("button");
     b.textContent = label;
     b.style.cssText = "font:12px Consolas,monospace;padding:4px 8px;cursor:pointer;background:#0c3324;color:#c9ffdf;border:1px solid #38ff9e;border-radius:4px;";
     b.onclick = fn;
-    btnRow.appendChild(b);
+    parent.appendChild(b);
     return b;
   }
-  makeBtn("Undo", () => undo());
-  makeBtn("Export", () => showExport());
-  makeBtn("Save", () => saveRemote());
-  controls.appendChild(btnRow);
+  function makeInput(parent, placeholder, width) {
+    const i = document.createElement("input");
+    i.type = "text";
+    i.placeholder = placeholder;
+    i.style.cssText = `font:12px Consolas,monospace;padding:4px 6px;width:${width}px;` +
+      "background:#08140f;color:#c9ffdf;border:1px solid #1c5a3e;border-radius:4px;";
+    // typing in a field must not also feed the cheat-code buffer or fire ,/./Q/E
+    i.addEventListener("keydown", (e) => e.stopPropagation());
+    parent.appendChild(i);
+    return i;
+  }
+
+  const mainRow = row();
+  makeBtn(mainRow, "Undo", () => undo());
+  makeBtn(mainRow, "Export", () => showExport());
+  const deleteBtn = makeBtn(mainRow, "Delete: OFF", () => setDeleteMode(!deleteMode));
+
+  const slotRow = row();
+  const slotInput = makeInput(slotRow, "slot name", 90);
+  makeBtn(slotRow, "Save As", () => saveSlot(slotInput.value));
+  const slotSelect = document.createElement("select");
+  slotSelect.style.cssText = "font:12px Consolas,monospace;padding:4px;max-width:110px;" +
+    "background:#08140f;color:#c9ffdf;border:1px solid #1c5a3e;border-radius:4px;";
+  slotSelect.addEventListener("keydown", (e) => e.stopPropagation());
+  slotRow.appendChild(slotSelect);
+  makeBtn(slotRow, "Load", () => loadSlot(slotSelect.value));
+  makeBtn(slotRow, "Delete slot", () => deleteSlotUI(slotSelect.value));
+  const slotStatus = document.createElement("div");
+  slotStatus.style.cssText = "font:11px Consolas,monospace;color:#8fd9b6;min-height:14px;";
+  controls.appendChild(slotStatus);
+
+  const aiRow = row();
+  const aiInput = makeInput(aiRow, "ask AI to place something…", 220);
+  const aiBtn = makeBtn(aiRow, "Ask AI", () => runAI());
+  aiInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runAI(); });
+  const aiStatus = document.createElement("div");
+  aiStatus.style.cssText = "font:11px Consolas,monospace;color:#8fd9b6;min-height:14px;max-width:340px;";
+  controls.appendChild(aiStatus);
+
   document.body.appendChild(controls);
 
   // --------------------------------------------------------- asset picker
   // A visual library of every placeable asset (real thumbnails, not a text
-  // dropdown) — click a tile to select it, same as `,` / `.`.
+  // dropdown), with a search box and category tabs — click a tile to select
+  // it, same as `,` / `.`.
+  const libraryBar = document.createElement("div");
+  libraryBar.style.cssText = "position:fixed;left:16px;top:326px;z-index:40;display:none;flex-direction:column;gap:6px;pointer-events:auto;max-width:340px;";
+  const searchInput = makeInput(libraryBar, "search assets…", 180);
+  searchInput.style.width = "180px";
+  searchInput.addEventListener("input", () => filterPicker());
+  const tabRow = document.createElement("div");
+  tabRow.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;";
+  libraryBar.appendChild(tabRow);
+  document.body.appendChild(libraryBar);
+
+  let activeCategory = "All";
+  const tabButtons = CATEGORIES.map((cat) => {
+    const b = document.createElement("button");
+    b.textContent = cat;
+    b.style.cssText = "font:11px Consolas,monospace;padding:3px 7px;cursor:pointer;border-radius:4px;" +
+      "background:#0c2318;color:#8fd9b6;border:1px solid #1c5a3e;";
+    b.onclick = () => { activeCategory = cat; filterPicker(); highlightTabs(); };
+    tabRow.appendChild(b);
+    return { cat, b };
+  });
+  function highlightTabs() {
+    for (const { cat, b } of tabButtons) {
+      const on = cat === activeCategory;
+      b.style.borderColor = on ? "#38ff9e" : "#1c5a3e";
+      b.style.color = on ? "#c9ffdf" : "#8fd9b6";
+    }
+  }
+  highlightTabs();
+
   const picker = document.createElement("div");
-  picker.style.cssText = "position:fixed;left:16px;top:192px;z-index:40;display:none;" +
-    "grid-template-columns:repeat(4, 66px);gap:6px;max-height:62vh;overflow-y:auto;" +
+  picker.style.cssText = "position:fixed;left:16px;top:376px;z-index:40;display:none;" +
+    "grid-template-columns:repeat(4, 66px);gap:6px;max-height:52vh;overflow-y:auto;" +
     "background:rgba(0,20,10,.78);border:1px solid #38ff9e;border-radius:6px;padding:8px;pointer-events:auto;";
   document.body.appendChild(picker);
   const pickerCells = [];
@@ -337,12 +428,24 @@ export function createMapEditor(ctx) {
       pickerCells.push(cell);
     });
     highlightPicker();
+    filterPicker();
   }
   function highlightPicker() {
     pickerCells.forEach((c, i) => {
       const on = i === catalogIndex;
       c.style.borderColor = on ? "#38ff9e" : "#1c5a3e";
       c.style.boxShadow = on ? "0 0 6px #38ff9e" : "none";
+    });
+  }
+  // Combines the search text and the active category tab — a plain visual
+  // filter (hide non-matching tiles) so index-based selection (`,`/`.`,
+  // click) keeps working unchanged against the full CATALOG.
+  function filterPicker() {
+    const q = searchInput.value.trim().toLowerCase();
+    CATALOG.forEach((spec, i) => {
+      const catOk = activeCategory === "All" || spec.category === activeCategory;
+      const textOk = !q || spec.label.toLowerCase().includes(q) || spec.category.toLowerCase().includes(q);
+      if (pickerCells[i]) pickerCells[i].style.display = catOk && textOk ? "" : "none";
     });
   }
   let thumbsStarted = false;
@@ -372,7 +475,7 @@ export function createMapEditor(ctx) {
     panel.textContent =
       `DEV MODE — MAP EDITOR\n` +
       `asset: ${spec.label} (${catalogIndex + 1}/${CATALOG.length})\n` +
-      `placed: ${placements.length}\n` +
+      `placed: ${placements.length}${deleteMode ? "  [DELETE MODE]" : ""}\n` +
       `WASD pan · wheel zoom · right-drag orbit\n` +
       `, / . cycle · Q/E rotate · click place\n` +
       `Backspace undo · F9 exit`;
@@ -396,13 +499,13 @@ export function createMapEditor(ctx) {
   function onClick(e) {
     if (!active || e.button !== 0) return;
     if (exportBox.style.display !== "none") return;   // don't place while reading the export box
-    // Clicking Undo/Export/Save or a picker tile is a mousedown too, and it
-    // bubbles to window same as a click on the world — without this guard
-    // every button click also placed a fresh object right before acting on
-    // it (e.g. Undo silently placing-then-undoing its own new object, which
-    // looks exactly like Undo doing nothing).
-    if (controls.contains(e.target) || picker.contains(e.target)) return;
-    place();
+    // Clicking a button, the picker, or one of the new panels is a
+    // mousedown too, and it bubbles to window same as a click on the world —
+    // without this guard every button click also placed (or deleted) a
+    // fresh object right before acting on it.
+    if (controls.contains(e.target) || picker.contains(e.target) || libraryBar.contains(e.target)) return;
+    if (deleteMode) deleteNear(ghost.position.x, ghost.position.z);
+    else place();
   }
   window.addEventListener("mousedown", onClick);
 
@@ -460,13 +563,25 @@ export function createMapEditor(ctx) {
   }
 
   // ------------------------------------------------------------- lifecycle
+  function setDeleteMode(v) {
+    deleteMode = v;
+    deleteBtn.textContent = v ? "Delete: ON" : "Delete: OFF";
+    deleteBtn.style.background = v ? "#3a0c0c" : "#0c3324";
+    deleteBtn.style.borderColor = v ? "#ff6b6b" : "#38ff9e";
+    ghostEdgeMat.color.setHex(v ? 0xff6b6b : 0x38ff9e);
+    ghost.visible = active && !v;   // no point aiming a placement ghost while deleting
+    updateHUD();
+  }
+
   function toggle() {
     active = !active;
-    ghost.visible = active;
+    ghost.visible = active && !deleteMode;
     panel.style.display = active ? "block" : "none";
     controls.style.display = active ? "flex" : "none";
+    libraryBar.style.display = active ? "flex" : "none";
     picker.style.display = active ? "grid" : "none";
     if (active) {
+      refreshSlots();
       // Gameplay may still have the pointer locked (hidden OS cursor, only
       // relative movement) from before the cheat code was typed — release it
       // so there's a visible, clickable cursor for the picker and buttons.
@@ -501,32 +616,67 @@ export function createMapEditor(ctx) {
     }
   }
 
-  function place() {
-    const spec = CATALOG[catalogIndex];
-    const p = ghost.position;
+  // Shared by a click, a replayed save, and an AI placement — the only
+  // difference between them is where x/z/ry/spec come from.
+  function placeAt(spec, x, z, placeRy) {
     const propsBefore = placeCtx.props.length;
     trackedBlockers = [];
     trackedLitSpots = [];
-    spec.place(placeCtx, p.x, p.z, ry);
+    spec.place(placeCtx, x, z, placeRy);
     const created = placeCtx.props.slice(propsBefore);
     const createdBlockers = trackedBlockers;
     const createdLitSpots = trackedLitSpots;
     trackedBlockers = null;
     trackedLitSpots = null;
-    const id = nextId++;
-    placements.push({ id, catalogKey: spec.key, x: p.x, z: p.z, ry, created, createdBlockers, createdLitSpots });
+    const entry = { id: nextId++, catalogKey: spec.key, x, z, ry: placeRy, created, createdBlockers, createdLitSpots };
+    placements.push(entry);
+    return entry;
+  }
+
+  function place() {
+    const spec = CATALOG[catalogIndex];
+    const p = ghost.position;
+    placeAt(spec, p.x, p.z, ry);
     updateHUD();
     persist();
+  }
+
+  function destroyPlacement(entry) {
+    for (const obj of entry.created || []) scene.remove(obj);
+    for (const b of entry.createdBlockers || []) removeBlocker(b);
+    for (const l of entry.createdLitSpots || []) removeLitSpot(l);
   }
 
   function undo() {
     const last = placements.pop();
     if (!last) return;
-    for (const obj of last.created || []) scene.remove(obj);
-    for (const b of last.createdBlockers || []) removeBlocker(b);
-    for (const l of last.createdLitSpots || []) removeLitSpot(l);
+    destroyPlacement(last);
     updateHUD();
     persist();
+  }
+
+  // Delete mode: remove whatever editor-placed object is nearest the ghost's
+  // ground point, as long as it's actually close enough to be "that one" —
+  // this only ever finds objects THIS tool tracks in `placements` (its own
+  // session, or a loaded save), never the world's authored landmarks.
+  function deleteNear(x, z) {
+    let best = -1, bestDist = Infinity;
+    placements.forEach((entry, i) => {
+      const spec = CATALOG.find((s) => s.key === entry.catalogKey);
+      const radius = (spec ? Math.max(spec.w, spec.d) : 6) / 2 + 1.5;
+      const d = Math.hypot(entry.x - x, entry.z - z);
+      if (d <= radius && d < bestDist) { bestDist = d; best = i; }
+    });
+    if (best === -1) return;
+    destroyPlacement(placements[best]);
+    placements.splice(best, 1);
+    updateHUD();
+    persist();
+  }
+
+  function clearAllPlacements() {
+    for (const entry of placements) destroyPlacement(entry);
+    placements.length = 0;
   }
 
   // ------------------------------------------------------------ persistence
@@ -556,19 +706,117 @@ export function createMapEditor(ctx) {
     } catch { return null; }
   }
 
+  // --------------------------------------------------------- named slots
+  // Layered on top of the single auto-saved session above: "Save As" snaps
+  // a copy of the current session under a name on the server; "Load"
+  // replaces the current session with a saved one (and that replacement
+  // then becomes the thing auto-saving, same as any other change).
+  function setSlotStatus(text) { slotStatus.textContent = text; }
+  async function refreshSlots() {
+    slotSelect.innerHTML = "";
+    if (!httpBase) { setSlotStatus("no server reachable — slots need it"); return; }
+    try {
+      const res = await fetch(`${httpBase}/editor/slots`);
+      const data = await res.json();
+      const slots = Array.isArray(data.slots) ? data.slots : [];
+      if (!slots.length) { const o = document.createElement("option"); o.textContent = "(no saved slots)"; o.disabled = true; slotSelect.appendChild(o); return; }
+      for (const s of slots) {
+        const o = document.createElement("option");
+        o.value = o.textContent = s.name;
+        slotSelect.appendChild(o);
+      }
+      setSlotStatus(`${slots.length} saved slot${slots.length === 1 ? "" : "s"}`);
+    } catch { setSlotStatus("couldn't reach the server"); }
+  }
+  async function saveSlot(name) {
+    name = (name || "").trim();
+    if (!name) { setSlotStatus("type a name first"); return; }
+    if (!httpBase) { setSlotStatus("no server reachable — slots need it"); return; }
+    try {
+      const res = await fetch(`${httpBase}/editor/save?slot=${encodeURIComponent(name)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placements: serialize() }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "save failed");
+      setSlotStatus(`saved "${name}"`);
+      slotInput.value = "";
+      refreshSlots();
+    } catch (err) { setSlotStatus(`save failed: ${err.message || err}`); }
+  }
+  async function loadSlot(name) {
+    if (!name) { setSlotStatus("pick a slot to load"); return; }
+    if (!httpBase) { setSlotStatus("no server reachable — slots need it"); return; }
+    try {
+      const res = await fetch(`${httpBase}/editor/load?slot=${encodeURIComponent(name)}`);
+      const data = await res.json();
+      if (!Array.isArray(data.placements)) throw new Error("bad save data");
+      clearAllPlacements();
+      for (const entry of data.placements) replayPlacement(entry);
+      updateHUD();
+      persist();   // the loaded slot is now the current (auto-saving) session
+      setSlotStatus(`loaded "${name}" (${data.placements.length})`);
+    } catch (err) { setSlotStatus(`load failed: ${err.message || err}`); }
+  }
+  async function deleteSlotUI(name) {
+    if (!name) { setSlotStatus("pick a slot to delete"); return; }
+    if (!httpBase) { setSlotStatus("no server reachable — slots need it"); return; }
+    try {
+      await fetch(`${httpBase}/editor/delete-slot?slot=${encodeURIComponent(name)}`, { method: "POST" });
+      setSlotStatus(`deleted "${name}"`);
+      refreshSlots();
+    } catch (err) { setSlotStatus(`delete failed: ${err.message || err}`); }
+  }
+
+  // ------------------------------------------------------------------- AI
+  // Natural-language placement: send the prompt plus grounding (an anchor —
+  // the ghost's current ground point — and whatever's already nearby) to
+  // the server, which proxies to an LLM and hands back a short list of
+  // { catalogKey, x, z, ry } to place exactly like a click would.
+  async function runAI() {
+    const prompt = aiInput.value.trim();
+    if (!prompt) return;
+    if (!httpBase) { aiStatus.textContent = "AI needs the multiplayer server (not reachable)"; return; }
+    const anchor = { x: ghost.position.x, z: ghost.position.z };
+    const nearby = placements
+      .map((p) => ({ catalogKey: p.catalogKey, dx: p.x - anchor.x, dz: p.z - anchor.z, d: Math.hypot(p.x - anchor.x, p.z - anchor.z) }))
+      .filter((p) => p.d < 80)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 12);
+    const catalog = CATALOG.map((c) => ({ key: c.key, label: c.label, w: c.w, d: c.d }));
+    aiBtn.disabled = true;
+    aiStatus.textContent = "thinking…";
+    try {
+      const res = await fetch(`${httpBase}/editor/ai`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, anchor, nearby, catalog }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "AI request failed");
+      let placed = 0;
+      for (const p of data.placements) {
+        const spec = CATALOG.find((s) => s.key === p.catalogKey);
+        if (!spec) continue;
+        placeAt(spec, p.x, p.z, p.ry || 0);
+        placed++;
+      }
+      updateHUD();
+      persist();
+      aiStatus.textContent = placed
+        ? `placed ${placed} via ${data.model}`
+        : "AI replied but nothing matched a valid asset";
+      if (placed) aiInput.value = "";
+    } catch (err) {
+      aiStatus.textContent = String(err.message || err);
+    } finally {
+      aiBtn.disabled = false;
+    }
+  }
+
   function replayPlacement(entry) {
     const spec = CATALOG.find((s) => s.key === entry.catalogKey);
     if (!spec) return;
-    const propsBefore = placeCtx.props.length;
-    trackedBlockers = [];
-    trackedLitSpots = [];
-    spec.place(placeCtx, entry.x, entry.z, entry.ry);
-    const created = placeCtx.props.slice(propsBefore);
-    const createdBlockers = trackedBlockers;
-    const createdLitSpots = trackedLitSpots;
-    trackedBlockers = null;
-    trackedLitSpots = null;
-    placements.push({ id: nextId++, catalogKey: entry.catalogKey, x: entry.x, z: entry.z, ry: entry.ry, created, createdBlockers, createdLitSpots });
+    placeAt(spec, entry.x, entry.z, entry.ry);
   }
 
   async function loadSaved() {

@@ -15,8 +15,6 @@ export default async function run(page) {
   await page.waitForFunction(() => { const b = document.getElementById("freeBtn"); return b && !b.disabled; }, null, { timeout: 240000 });
   await page.click("#freeBtn");
   
-  await page.waitForFunction(() => { const s = document.getElementById("characterSelect"); return !s || !s.hidden; }, null, { timeout: 20000 });
-  if (await page.$("#characterSelect:not([hidden]) #confirmCharacter")) await page.click("#confirmCharacter");
   await page.waitForFunction(() => window.__game && window.__game.state.running, null, { timeout: 60000 });
 
   // Test setup & night prostitute mechanics

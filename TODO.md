@@ -57,6 +57,133 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-048 — $DEVMODE69xxx: searchable library, delete mode, named save slots, AI placement (human request, 2026-09-19)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/mapEditor.js`, `server/index.js`, `server/ai.js` (new)
+
+#### What changed
+Four additions to the hidden dev-mode map editor, all opt-in on top of the
+existing session:
+- **Searchable library.** A search box and category tabs (All / Buildings /
+  Infrastructure / Clutter, from a new `category` field on each `CATALOG`
+  entry) filter the asset picker grid in place — index-based selection
+  (`,`/`.`, click) is unchanged, this only hides non-matching tiles.
+- **Delete mode.** A button next to Undo toggles left-click from "place" to
+  "remove nearest editor-placed object" (`deleteNear`), by design scoped to
+  *this tool's own placements* only (this session or a loaded save) — the
+  world's own authored landmarks are untouched, per the human's answer to
+  "should this also delete baked-in world buildings?" (no).
+- **Named save slots.** "Save As" / a slot dropdown / "Load" / "Delete slot",
+  layered on the existing single auto-saved session: `server/index.js` grew
+  `/editor/slots` (list), and `slot=` query support on the existing
+  `/editor/save` and `/editor/load`, storing each named slot as its own file
+  under `server/editor-slots/`. "Load" clears the current session and
+  replays the slot, which then becomes what auto-saves.
+- **"Ask AI" natural-language placement**, per the human's answer ("use
+  OpenRouter with a fallback chain"). New `server/ai.js`: proxies a prompt
+  plus grounding context (an anchor point, nearby placements, the exact
+  valid `CATALOG` keys) to OpenRouter's chat completions, walking a
+  configurable model fallback list (`OPENROUTER_MODELS`, default is a few
+  free-tier models) until one returns parseable JSON. Requires
+  `OPENROUTER_API_KEY` in the environment or repo-root `.env` (same loader
+  `tools/voiceover-gen.mjs` uses) — the human supplied a key, now in the
+  local `.env` (gitignored). **Still needs adding to the Render service's
+  env vars for the deployed game to have it** — a repo-root `.env` only
+  covers local runs of `server/index.js`.
+
+#### Testing performed (2026-09-19, live in a real browser + a real key)
+- Server endpoints exercised directly with curl: slot save → list → load →
+  delete round-trip — all correct.
+- Client UI exercised live against a local instance of `server/index.js`
+  (temporarily pointed `window.__MULTIPLAYER_URL` at `ws://localhost:8787`,
+  reverted after): search filter, category filter, place → delete-mode
+  click → gone, save-as → clear via Undo → load → placements back, delete
+  slot → dropdown empties, and the AI box's "no key" failure path — all
+  correct, no console errors.
+- Once the human supplied a real `OPENROUTER_API_KEY`: the default model
+  list's **first two entries 404'd** (OpenRouter's free lineup had already
+  moved on) — confirmed live against `/api/v1/models` and replaced with
+  currently-valid free ids. A real request ("place a small residential
+  cottage right next to the gas station, and a school a bit further down
+  the road") then returned sensible, correctly-scaled coordinates from
+  `nvidia/nemotron-3-ultra-550b-a55b:free` (the fallback chain's 2nd entry —
+  its 1st, deepseek, silently failed and the chain caught it exactly as
+  designed). Not re-verified through the actual game UI end-to-end (the
+  Chrome extension disconnected between turns) — the server round-trip with
+  a real prompt and the client's request/response wiring were each verified
+  separately, just not simultaneously in one browser session.
+
+#### Known issues
+- The free-tier model list in `server/ai.js` is a snapshot (already had to
+  be corrected once during this same task); OpenRouter's free lineup moves
+  fast — if every model in the default chain starts failing, check
+  `/api/v1/models` for current free ids rather than guessing.
+- The AI's spatial reasoning is only as good as the `nearby` context sent
+  (12 closest placements within 80 m of the anchor) — it has no map/road
+  data, so "near the highway" only works if something is already placed
+  near the highway.
+- Panel layout is a little tight at the default game window size (the AI
+  status line can wrap against the search box); functional, not polished.
+
+---
+
+### TASK-047 — The recurring white/washed-out sheet: found live, root-caused for real this time (human request + screenshots, 2026-09-19)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/fx.js`
+
+#### What was wrong
+Third time this class of bug has been reported and root-caused as a
+*different* mechanism each time (see TASK history: metalness promotion in
+`graphics.js`, un-tagged GLB materials in `landmarks.js`). This time:
+`createWetRoads()`'s planar mirror + "wetness" roughness effect
+(`src/fx.js`) assumes the camera stays near ground level. The map editor's
+free-fly camera (TASK from 2026-09-17) can reach ~340 m at a near-vertical
+pitch, and at that height:
+1. The mirror's reflected camera ends up ~300+ m **underground** looking up
+   at nothing but background sky (its 130 m far plane never reaches real
+   geometry) — that flat bright buffer gets composited onto every asphalt
+   surface in the world at once via `uReflect`.
+2. Independently, the "wetness" effect drives `roughnessFactor` down to
+   0.03 unconditionally, every frame — at extreme grazing angles that plus
+   the moon's directional light blows out a specular highlight band, a
+   second route to the same symptom.
+
+Confirmed live by setting `wetRoads.uniforms.uReflectOn.value = 0` in the
+console mid-bug — the sheet vanished immediately over an otherwise correctly
+lit and textured world.
+
+#### What changed
+Added `MAX_EYE_HEIGHT = 50` in `createWetRoads()`: `mirror()` now bails out
+above that height (same as its existing "camera under the road" guard — a
+puddle reflection isn't meaningful from a satellite view anyway). Added a
+`uWetFade` uniform, computed every frame from camera height
+(`1 - smoothstep(eye.y, 50, 130)`), multiplied into both the roughness/puddle
+term and the mirror sample — so the whole wet-road look fades smoothly with
+height instead of leaving the specular path unguarded.
+
+#### Testing performed (2026-09-19, live in a real browser)
+Reproduced by entering `$DEVMODE69xxx` and zooming/pitching the free camera
+out — every road painted flat white/gray at once, matching the human's
+screenshots exactly. After the fix: `uWetFade`/`uReflectOn` read back `0`
+above ~130 m (sheet gone, world underneath renders correctly) and `1`/`1` at
+normal gameplay height (15 m — puddle sheen and reflections still visible in
+a normal free-roam screenshot). No console errors.
+
+#### Known issues
+- A separate floating gas-station-shaped object from the human's original
+  screenshot could not be reproduced: its HUD text ("rob gas cans: 0/4")
+  doesn't exist anywhere in current `src/` (`clean.py` shows it was
+  deliberately removed earlier), so that screenshot is from an older
+  deployed build, not current `main`. Worth checking whether
+  `grand-theft-bayou-c2l.pages.dev` needs a redeploy.
+- A plain light-gray concrete overpass/bridge deck is visible from the map
+  editor's aerial view and looks flat/undetailed up close — likely just a
+  simple, intentionally low-detail asset, not the same bug; not touched.
+
+---
+
 ### TASK-045 — Batch by material signature, and stop excluding half the world (TASK-011)
 
 **Status:** `REVIEW` · **Agent:** Claude
@@ -122,6 +249,150 @@ across them at the scene root. That is what the boundary predicate is for.)
   trade the signature makes.
 - Unbatched still: NPC bodies (they move), the pine cones and lamp posts that are
   not siblings inside one cluster, and everything a set piece owns.
+
+---
+
+### TASK-046 — Pedestrian bark lines: bump commentary + fight taunts (human request, 2026-09-19)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/pedestrianChatter.js` (new), `src/main.js`
+
+#### What changed
+New content module `src/pedestrianChatter.js`: three line buckets per civilian
+type (`bump`, `fightBack`, `flee`) for all nine speaking NPC types
+(redneck/hoodrat/hobo/prostitute/dockworker/mechanic/suit/tourist/thug) plus a
+non-verbal set for hogs (`*SQUEAL*` etc.), exporting `bumpLine(type, label)`
+and `fightLine(type, label, mood)`.
+
+Wired into `main.js`:
+- `onFootUpdate()` gained `checkPedestrianBump()`, called while the player is
+  moving on foot: any calm (not hostile/fleeing/in a vehicle) NPC within
+  `BUMP_R` (1.15) gets nudged aside and `flashObjective()` shows a bump line.
+  A 2.2s global cooldown (`bumpCd`) keeps it to one bark at a time instead of
+  a crowd shouting in unison.
+- `fire()`'s existing `npcs.provoke(best)` call site (covers both the bat and
+  every gun, since melee routes through the same function) now shows a
+  `fightLine()` the first time a calm NPC gets hurt — `freshFight` guards
+  against re-barking on every subsequent hit of an already-hostile/fleeing
+  NPC. Which bucket (`fightBack` vs `flee`) plays is decided by `e.mood`
+  (npc.js `temperament()`), matching what `npc.js decide()` will actually do
+  a moment later.
+- Roadkill (`drivingUpdate()`'s `npcs.provoke(e)` for cars hitting people)
+  was deliberately left alone — multiple NPCs can be hit in one frame at
+  speed, and stacking chat lines there is churn, not flavor.
+
+#### Testing performed (2026-09-19)
+- `node --check` on both files.
+- Booted the actual game (`node serve.mjs 8899`) in Chrome and confirmed no
+  import/module errors (`GLTFLoader` texture warning present is pre-existing
+  and unrelated).
+- Could **not** get a live visual bump/fight playtest: the automated Chrome
+  tab never received OS focus in this environment (`document.hidden` stayed
+  `true`, `requestAnimationFrame` never fired — confirmed with a 3s rAF
+  counter that stayed at 0), so the game's own tick loop never advanced no
+  matter what input was sent. This is an automation-environment limitation,
+  not a code issue.
+- Instead verified the content module directly: dynamically `import()`ed
+  `pedestrianChatter.js` in the page console and called `bumpLine`/`fightLine`
+  for every type — all returned well-formed `"LABEL: line"` strings with no
+  throws.
+
+#### Known issues
+- **Not yet playtested for real** (see above) — a human should confirm the
+  bump nudge/cooldown feels right and the fight line doesn't overlap
+  awkwardly with the `"${label} down."` kill-count flash on a one-shot kill.
+- Bump detection loops `enemies` (up to `ENEMY_CAP` = 48) once per on-foot
+  frame while moving; trivial at this count, but if the pedestrian pool grows
+  a lot this is the place to add a spatial cutoff.
+
+---
+
+### TASK-047 — Real voices for pedestrian barks (human request, 2026-09-19, follow-up to TASK-046)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/voiceCast.js`, `src/pedestrianChatter.js`, `src/cinema.js`,
+`src/main.js`, `tools/pedestrian-voiceover-gen.mjs` (new),
+`assets/audio/voice/` (239 new mp3s + manifest.json), `docs/VOICE_GENERATION.md`
+
+#### What changed
+The human supplied 9 Fish Audio voice links (4 female, 5 male) for the
+TASK-046 pedestrian barks. Researched each one on fish.audio (name,
+description, tags) before assigning anything — two were literally named
+"redneck"/"Halpin (Redneck)", three were "slut"-variants clearly meant for
+Prostitute, and one of the human's "male" links ("Rednex") is tagged **Female**
+by Fish Audio itself; flagged that to the human and they said keep it anyway.
+Asked the human how to spread 9 voices over 9 archetypes (only Prostitute is
+guaranteed female in-game; hoodrat/hobo/thug spawn either sex at random —
+characters.js `randomHoodrat`/`randomHobo`; redneck/dockworker/mechanic/suit/
+tourist are fixed 2D sprites) — they picked gender-aware pooling over a naive
+1:1 mapping.
+
+- `voiceCast.js`: 12 new `VOICE_CAST` entries (`REDNECK`, `DOCKWORKER`,
+  `MECHANIC`, `SUIT`, `TOURIST`, `PROSTITUTE` — one voice each — plus
+  `HOODRAT_M/_F`, `HOBO_M/_F`, `THUG_M/_F`) and `pedestrianVoiceWho(type,
+  female)`, which returns the right key (or `null` for hogs — non-verbal).
+- `pedestrianChatter.js`: `bumpLine()`/`fightLine()` now return `{ text,
+  display }` instead of a bare string (`text` for the voice lookup, `display`
+  for `flashObjective()`) — **breaking change from TASK-046**, main.js
+  updated. Added `allVoiceLines()`, the single source of truth the generator
+  reads from (239 lines: every archetype × bucket, ×2 for the gendered ones).
+- `cinema.js`: exposed `playVoiceLine` on the returned API (was internal-only,
+  used by `say()`) so main.js can play a bark's audio without opening a full
+  cutscene/subtitle.
+- `main.js`: new `speakPedestrian(e, line)` helper — flashes `line.display`
+  and, if `pedestrianVoiceWho` returns a key, calls `cine.playVoiceLine`. Both
+  TASK-046 call sites (`checkPedestrianBump`, the `fire()` fresh-fight hook)
+  now go through it.
+- `tools/pedestrian-voiceover-gen.mjs`: sibling to `tools/voiceover-gen.mjs`,
+  same Fish Audio synth/cache/manifest logic, but reads lines from
+  `allVoiceLines()` instead of regex-scanning `c.say()` calls — pedestrian
+  barks are data, not scripted dialogue. Writes into the *same*
+  `assets/audio/voice/manifest.json`; `cinema.js` doesn't care which
+  generator produced an entry. Documented in `docs/VOICE_GENERATION.md`.
+
+#### Testing performed (2026-09-19)
+- `node --check` on every touched/new file.
+- `--dry-run` confirmed all 239 lines resolve to the right voice key before
+  spending any API calls.
+- Ran the real generator. **Gotcha hit twice:** the script only
+  `writeFileSync`s `manifest.json` once, at the very end of the whole run —
+  individual mp3s are written per-line immediately, but the manifest update
+  lives in memory until then. Two of my `run_in_background` invocations died
+  silently partway through (no error, no stack trace — first one exited 0
+  because I'd piped through `tee`, which masked node's real status; even with
+  that fixed, the second still died with exit 1 and no diagnostic, likely an
+  environment-imposed time limit on backgrounded shells here, not a script
+  bug) — so 199 of 239 mp3s existed on disk but `manifest.json` only had the
+  24 from the very first small test run. Fix: reran the generator plain (no
+  `--force`) — it treats "the mp3 already exists on disk" as the cache check,
+  independent of manifest.json, so it found all 199 orphaned files for free
+  and just rebuilt the manifest; only the missing 40 (Thug's two voices) had
+  to actually regenerate, done in two small foreground `--character=`
+  batches that each finished cleanly. **If this happens again:** don't
+  re-run with `--force` (that would burn API calls regenerating files that
+  already exist) — just re-run plain; it's idempotent by file presence, and
+  prefer smaller `--character=`-scoped batches or a longer explicit
+  `timeout` over one big backgrounded all-in-one run.
+- Verified: `--dry-run` now reports `Cached: 239, Generated: 0` (every
+  archetype's manifest key count matches `allVoiceLines()`'s expected count
+  exactly), no zero-byte mp3s, `git status` shows exactly 239 new mp3s + the
+  manifest diff.
+- **Not playtested live in-browser** — same Chrome-automation tab-focus
+  limitation noted in TASK-046 (rAF never fires because `document.hidden`
+  stays true in this environment). Content/pipeline verified structurally;
+  actually *hearing* a bark in the running game still wants a human pass.
+
+#### Known issues
+- Same open item as TASK-046: a human should playtest bump/fight barks in a
+  real browser, this time also listening for volume balance against
+  `sfx()`/music and whether `playVoiceLine`'s `stopVoice()` ever clips a bark
+  short in practice.
+- Voice-to-archetype assignment (see table in `docs/VOICE_GENERATION.md`'s
+  new section, or `voiceCast.js`'s comments) is a judgment call the human
+  made from tag/description research, not from actually listening to the
+  clones — if any archetype's voice sounds wrong once heard in-game, the fix
+  is a one-line `referenceId` swap in `voiceCast.js` plus `node
+  tools/pedestrian-voiceover-gen.mjs --force --character=THAT_KEY`.
 
 ---
 
