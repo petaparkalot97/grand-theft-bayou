@@ -57,6 +57,88 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-051 — $DEVMODE69xxx follow-up: shop-pack white materials, missing assets, layout, select/move tool (human report + screenshots, 2026-09-20)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/landmarks.js`, `src/mapEditor.js`
+
+#### What was wrong, and what changed
+1. **The 6twelve/gas-station/Tacos/BurgerPiz "weird white colour."** These FBX
+   packs embed the *original artist's* absolute Windows texture paths
+   (`C:\Users\srkak\Music\pasto\...\Plastic_04.jpg`). FBXLoader already has a
+   built-in workaround for exactly this — it strips an absolute reference
+   down to the filename and resolves it against the FBX's *own* directory
+   before a `LoadingManager`'s URL modifier ever sees it — but every one of
+   these packs keeps its real textures one level down, in its own
+   `Textures/` folder, not beside the FBX. `landmarks.js`'s FBX loader also
+   had no `LoadingManager` at all until now. Net effect: every texture
+   404'd, every material fell back to its base color (`#cccccc`), which
+   reads as flat white/gray on a lit surface — the report's "weird white
+   colour." Fixed with a per-pack `LoadingManager` that redirects any
+   texture-extension request not already resolving into `Textures/` to
+   `<pack root>/Textures/<filename>`, guarded to extension-only requests so
+   it never touches the `.fbx` file's own load.
+2. **Missing catalog entries.** `placeTacos`/`placeBurgerPiz` already existed
+   in `landmarks.js` but were never wired into the editor's `CATALOG`; added.
+   Also added two new functions: `placePopeyes` (procedural, a simplified
+   stand-in for main.js's private inline Popeyes builder — no shared canvas
+   sign texture or strip-specific parked-car list, those are that scene's
+   own furniture) and `placeStreetLamp` (the shared urban kit's streetlamp
+   model via `ctx.loadGLB`, left to its own `realize()` pass for materials).
+3. **Cheat code alias.** `#DEVx` now toggles the editor same as
+   `$DEVMODE69xxx` — either buffer match works.
+4. **Crowded UI.** The old layout hand-picked a pixel `top:` offset per
+   panel, so any panel that grew shoved the next one halfway underneath it.
+   Replaced with two flexbox columns (controls on the left, the whole
+   searchable asset library on its own column on the right) that lay out
+   naturally, plus the game's own `#hud` now hides itself while the editor's
+   panels are up instead of showing through behind them.
+5. **No way to move or remove a placed object without re-placing over it.**
+   New "Select" tool (third mode alongside Place/Delete): click picks the
+   nearest editor-placed object, its ghost preview swaps to match (turns
+   yellow), a second click drops it at the new spot, Q/E rotates it in
+   place (destroy + recreate at the adjusted `ry`, since arbitrary created
+   object graphs aren't safe to live-transform), Backspace/"Delete
+   selected" removes it, "Deselect" lets go without moving it.
+
+#### Testing performed (2026-09-20, live, headless Chromium via Playwright — the
+Chrome extension wasn't reachable this session, so a local Playwright
+install stood in for it)
+- Both cheat codes toggle the editor on/off correctly, including toggling
+  off with one and back on with the other.
+- Catalog now lists 23 tiles (was 19), including Tacos stand, BurgerPiz,
+  Popeyes, Street lamp — confirmed by reading every tile's `title`.
+- Placed a 6twelve store and read every mesh's material back from the live
+  scene: before the fix, every textured material's `map.image` was empty
+  (0 width) with real network 404s for e.g.
+  `sixtwelve/Plastic_04.jpg`/`gasstation/6twelve.jpg`/
+  `burgerpiz/BurgerPiz/Models/Wall.jpg`/`tacos/Tacos/Models/Shelf_B.png` —
+  after the fix, the same materials report real image data (e.g.
+  `.../sixtwelve/Textures/Mostrador.jpg`, 562px wide, `complete: true`).
+  Confirmed this reproduces during **normal world boot** too (westparish/
+  tusouxroeNorth place these same packs), not just the editor — this was a
+  live, game-wide bug, not editor-specific.
+- Select → move → delete exercised end to end: select reports "selected
+  6twelve store — click the world to move it here, Q/E to rotate";
+  clicking elsewhere relocates it (placement count unchanged, not
+  duplicated); "Delete selected" removes it (count back to 0).
+- No new console errors from any of the above.
+
+#### Known issues
+- Three individual 6twelve textures (`Food_shelf_04`, `ice_cream_popsicles`,
+  `Parking_lot`) still 404: the FBX references `.jpg`, the real files on
+  disk are `.png`. Not chased — three props out of a ~200-mesh model, not
+  the systemic bug.
+- `placePopeyes` is a simplified stand-in, not main.js's actual strip
+  Popeyes (no shared sign texture, no parked-car integration) — fine for
+  editor prototyping, not a drop-in replacement for the real one.
+- Slot/AI features still show "couldn't reach the server" against the
+  *deployed* Render service until it picks up last session's
+  `server/index.js` changes (and gets `OPENROUTER_API_KEY` in its own env —
+  a local `.env` only covers local runs).
+
+---
+
 ### TASK-050 — The white layers over Chatboro, Tusouxroe and elsewhere (human report)
 
 **Status:** `REVIEW` · **Agent:** Claude

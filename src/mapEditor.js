@@ -3,32 +3,43 @@
 //
 // Type $DEVMODE69xxx anywhere during free roam (a GTA-style typed cheat code,
 // buffered from raw keydown, not tied to input.js's action bindings) to turn
-// it on. While active, WASD and the mouse drive a free-fly "city builder"
-// camera instead of the player (who just stands still, unattended):
+// it on — or the shorter alias #DEVx, same switch either way. While active,
+// WASD and the mouse drive a free-fly "city builder" camera instead of the
+// player (who just stands still, unattended), and the game's own HUD hides
+// itself so it doesn't fight the editor's panels for space:
 //   WASD          pan the camera across the map, at any distance
 //   mouse wheel   zoom, from street level out to a near-satellite overview
 //   right-drag    orbit the camera
-//   , / .         cycle the selected asset (or click a tile in the picker)
-//   Q / E         rotate the ghost preview
+//   , / .         cycle the selected asset (or click a tile in the library)
+//   Q / E         rotate the ghost preview (or the Select tool's selection)
 //   left click    place the real object (calls straight into landmarks.js —
-//                 what you see is the actual placement function running live)
-//   Backspace     undo the last placement (really removes it: mesh, its
-//                 collision blocker and any light it added)
-//   F9            toggle off (retyping the code also works)
+//                 what you see is the actual placement function running
+//                 live) — or act on the current tool, see below
+//   Backspace     undo the last placement, or delete the current Select
+//                 tool selection if one is active
+//   F9            toggle off ($DEVMODE69xxx / #DEVx also work)
 //
 // The ghost is the real object, loaded and built the same way it will be
 // placed, just translucent — not a solid green stand-in box — with a thin
-// wire outline for its footprint. The asset picker is a searchable library
-// (search box + category tabs above the grid), not a flat scroll — each
-// tile's thumbnail is a real render of that object, snapshotted once
-// (off-screen, via a render target — never flashed to the visible canvas)
-// and cached.
+// wire outline for its footprint. The asset library (its own column, on the
+// right) is searchable (search box + category tabs above the grid), not a
+// flat scroll — each tile's thumbnail is a real render of that object,
+// snapshotted once (off-screen, via a render target — never flashed to the
+// visible canvas) and cached.
 //
-// "Delete: ON" (a button, next to Undo) turns left-click into removal
-// instead of placement — same as Backspace/Undo but for any editor-placed
-// object nearby, not just the last one. It only ever touches things this
-// tool placed (this session, or replayed from a save); the world's own
-// authored landmarks aren't editable here.
+// Three tools, one active at a time (Place is the default with neither
+// button on):
+//   Delete    left-click removes the nearest editor-placed object instead
+//             of placing one — same reach as Backspace/Undo, but for any
+//             placement nearby, not just the last one.
+//   Select    left-click picks the nearest editor-placed object; its ghost
+//             preview swaps to match it (so what you see is what moves),
+//             turns yellow, and a second click drops it at the new spot —
+//             Q/E rotates it in place, Backspace or "Delete selected"
+//             removes it, "Deselect" lets go without moving it.
+// Both tools only ever touch objects THIS tool tracks in `placements` (this
+// session, or replayed from a save) — the world's own authored landmarks
+// aren't editable here.
 //
 // The ghost's ground target follows a simple ray/plane intersection against
 // y = 0 from the camera — this game's terrain is flat everywhere placements
@@ -62,10 +73,13 @@ import { cameraYawToHeading, forwardFromHeading, rightFromHeading } from "./worl
 import {
   CITY_BUILDING_TYPES, placeCityBuilding, placeBillboard, placeGunShop, placeGasStation, placeSixTwelve,
   placeBayouStiltHut, placeMaritimeCargo, placeOilDerrick,
-  placeStreetClutter, placeOfficeClutter,
+  placeStreetClutter, placeOfficeClutter, placeTacos, placeBurgerPiz, placePopeyes, placeStreetLamp,
 } from "./landmarks.js";
 
-const CHEAT_CODE = "$DEVMODE69xxx";
+// Either code turns the editor on (or back off) — "#DEVx" is the same switch
+// under a shorter alias, for anyone who doesn't want to type the whole thing.
+const CHEAT_CODES = ["$DEVMODE69xxx", "#DEVx"];
+const CHEAT_MAXLEN = Math.max(...CHEAT_CODES.map((c) => c.length));
 const LS_KEY = "gtb_mapEditor_placements_v1";
 
 // One entry per placeable asset: { key, label, category, w, d, place(ctx, x, z, ry) }.
@@ -104,6 +118,18 @@ const CATALOG = [
   { key: "derrick", label: "Oil derrick", category: "Infrastructure", w: 6, d: 6,
     place: (ctx, x, z, ry) => placeOilDerrick(ctx, x, z, ry),
     code: (x, z, ry) => `placeOilDerrick(ctx, ${x}, ${z}, ${ry});` },
+  { key: "tacos", label: "Tacos stand", category: "Infrastructure", w: 8, d: 5,
+    place: (ctx, x, z, ry) => placeTacos(ctx, x, z, ry),
+    code: (x, z, ry) => `placeTacos(ctx, ${x}, ${z}, ${ry});` },
+  { key: "burgerPiz", label: "BurgerPiz", category: "Infrastructure", w: 12, d: 9,
+    place: (ctx, x, z, ry) => placeBurgerPiz(ctx, x, z, ry),
+    code: (x, z, ry) => `placeBurgerPiz(ctx, ${x}, ${z}, ${ry});` },
+  { key: "popeyes", label: "Popeyes", category: "Infrastructure", w: 12, d: 10,
+    place: (ctx, x, z, ry) => placePopeyes(ctx, x, z, ry),
+    code: (x, z, ry) => `placePopeyes(ctx, ${x}, ${z}, ${ry});` },
+  { key: "streetLamp", label: "Street lamp", category: "Infrastructure", w: 1.5, d: 1.5,
+    place: (ctx, x, z, ry) => placeStreetLamp(ctx, x, z, ry),
+    code: (x, z, ry) => `placeStreetLamp(ctx, ${x}, ${z}, ${ry});` },
   { key: "streetClutter", label: "Street clutter", category: "Clutter", w: 4, d: 4,
     place: (ctx, x, z, ry) => placeStreetClutter(ctx, x, z, ry),
     code: (x, z, ry) => `placeStreetClutter(ctx, ${x}, ${z}, ${ry});` },
@@ -129,9 +155,11 @@ export function createMapEditor(ctx) {
   let active = false;
   let catalogIndex = 0;
   let ry = 0;
-  let deleteMode = false;
+  let mode = "place";        // "place" | "delete" | "select"
+  let selected = null;       // the placement entry under the Select tool, or null
   const placements = [];   // { id, catalogKey, x, z, ry, created, createdBlockers, createdLitSpots }
   let nextId = 1;
+  const gameHud = document.getElementById("hud");   // hidden while the editor's own panels are up
 
   // Placements a click actually creates go straight into `scene` — same as
   // every other landmark in the game. Tracked here only so Undo can find and
@@ -303,13 +331,31 @@ export function createMapEditor(ctx) {
   }
 
   // ------------------------------------------------------------------- HUD
+  // Two fixed columns, each laid out with plain flexbox flow instead of
+  // hand-picked `top:` offsets per panel — the old layout guessed a pixel
+  // offset for every box, so any panel that grew (more buttons, a status
+  // line) shoved the next one halfway underneath it. The left column is the
+  // info readout and every action; the whole searchable asset library moved
+  // to its own column on the right, instead of stacking under the controls
+  // on the left — that alone was most of the crowding.
+  const leftCol = document.createElement("div");
+  leftCol.style.cssText = "position:fixed;left:16px;top:16px;z-index:40;display:none;flex-direction:column;" +
+    "gap:8px;max-width:300px;max-height:calc(100vh - 32px);overflow-y:auto;";
+  document.body.appendChild(leftCol);
+  const rightCol = document.createElement("div");
+  rightCol.style.cssText = "position:fixed;right:16px;top:16px;z-index:40;display:none;flex-direction:column;" +
+    "gap:8px;max-width:300px;max-height:calc(100vh - 32px);overflow-y:auto;align-items:flex-end;";
+  document.body.appendChild(rightCol);
+
   const panel = document.createElement("div");
-  panel.style.cssText = "position:fixed;left:16px;top:16px;z-index:40;pointer-events:none;" +
-    "font:12px/1.5 Consolas,monospace;color:#c9ffdf;background:rgba(0,20,10,.78);" +
-    "padding:10px 12px;border:1px solid #38ff9e;border-radius:6px;white-space:pre;display:none;max-width:340px;";
-  document.body.appendChild(panel);
+  panel.style.cssText = "box-sizing:border-box;pointer-events:none;" +
+    "font:12px/1.5 Consolas,monospace;color:#c9ffdf;background:rgba(0,20,10,.85);" +
+    "padding:10px 12px;border:1px solid #38ff9e;border-radius:6px;white-space:pre;";
+  leftCol.appendChild(panel);
   const controls = document.createElement("div");
-  controls.style.cssText = "position:fixed;left:16px;top:172px;z-index:40;display:none;flex-direction:column;gap:6px;pointer-events:auto;max-width:340px;";
+  controls.style.cssText = "box-sizing:border-box;display:flex;flex-direction:column;gap:6px;pointer-events:auto;" +
+    "background:rgba(0,20,10,.85);border:1px solid #38ff9e;border-radius:6px;padding:8px;";
+  leftCol.appendChild(controls);
   function row() {
     const r = document.createElement("div");
     r.style.cssText = "display:flex;gap:6px;align-items:center;flex-wrap:wrap;";
@@ -339,13 +385,26 @@ export function createMapEditor(ctx) {
   const mainRow = row();
   makeBtn(mainRow, "Undo", () => undo());
   makeBtn(mainRow, "Export", () => showExport());
-  const deleteBtn = makeBtn(mainRow, "Delete: OFF", () => setDeleteMode(!deleteMode));
+  const modeRow = row();
+  const deleteBtn = makeBtn(modeRow, "Delete: OFF", () => setMode(mode === "delete" ? "place" : "delete"));
+  const selectBtn = makeBtn(modeRow, "Select: OFF", () => setMode(mode === "select" ? "place" : "select"));
+
+  // Only meaningful once something is selected — hidden the rest of the time
+  // instead of sitting there disabled, since "Select" already reads as the
+  // mode toggle and these are its follow-up actions.
+  const selectStatus = document.createElement("div");
+  selectStatus.style.cssText = "font:11px Consolas,monospace;color:#ffe066;min-height:14px;display:none;";
+  controls.appendChild(selectStatus);
+  const selectRow = row();
+  selectRow.style.display = "none";
+  makeBtn(selectRow, "Delete selected", () => deleteSelected());
+  makeBtn(selectRow, "Deselect", () => setSelected(null));
 
   const slotRow = row();
-  const slotInput = makeInput(slotRow, "slot name", 90);
+  const slotInput = makeInput(slotRow, "slot name", 84);
   makeBtn(slotRow, "Save As", () => saveSlot(slotInput.value));
   const slotSelect = document.createElement("select");
-  slotSelect.style.cssText = "font:12px Consolas,monospace;padding:4px;max-width:110px;" +
+  slotSelect.style.cssText = "font:12px Consolas,monospace;padding:4px;max-width:100px;" +
     "background:#08140f;color:#c9ffdf;border:1px solid #1c5a3e;border-radius:4px;";
   slotSelect.addEventListener("keydown", (e) => e.stopPropagation());
   slotRow.appendChild(slotSelect);
@@ -356,28 +415,28 @@ export function createMapEditor(ctx) {
   controls.appendChild(slotStatus);
 
   const aiRow = row();
-  const aiInput = makeInput(aiRow, "ask AI to place something…", 220);
+  const aiInput = makeInput(aiRow, "ask AI to place something…", 170);
   const aiBtn = makeBtn(aiRow, "Ask AI", () => runAI());
   aiInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runAI(); });
   const aiStatus = document.createElement("div");
-  aiStatus.style.cssText = "font:11px Consolas,monospace;color:#8fd9b6;min-height:14px;max-width:340px;";
+  aiStatus.style.cssText = "font:11px Consolas,monospace;color:#8fd9b6;min-height:14px;";
   controls.appendChild(aiStatus);
-
-  document.body.appendChild(controls);
 
   // --------------------------------------------------------- asset picker
   // A visual library of every placeable asset (real thumbnails, not a text
   // dropdown), with a search box and category tabs — click a tile to select
-  // it, same as `,` / `.`.
+  // it, same as `,` / `.`. Its own column, on the right, so a long catalog
+  // never pushes into the controls on the left.
   const libraryBar = document.createElement("div");
-  libraryBar.style.cssText = "position:fixed;left:16px;top:326px;z-index:40;display:none;flex-direction:column;gap:6px;pointer-events:auto;max-width:340px;";
-  const searchInput = makeInput(libraryBar, "search assets…", 180);
-  searchInput.style.width = "180px";
+  libraryBar.style.cssText = "box-sizing:border-box;display:flex;flex-direction:column;gap:6px;pointer-events:auto;" +
+    "background:rgba(0,20,10,.85);border:1px solid #38ff9e;border-radius:6px;padding:8px;width:100%;";
+  rightCol.appendChild(libraryBar);
+  const searchInput = makeInput(libraryBar, "search assets…", 0);
+  searchInput.style.width = "100%";
   searchInput.addEventListener("input", () => filterPicker());
   const tabRow = document.createElement("div");
   tabRow.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;";
   libraryBar.appendChild(tabRow);
-  document.body.appendChild(libraryBar);
 
   let activeCategory = "All";
   const tabButtons = CATEGORIES.map((cat) => {
@@ -399,10 +458,10 @@ export function createMapEditor(ctx) {
   highlightTabs();
 
   const picker = document.createElement("div");
-  picker.style.cssText = "position:fixed;left:16px;top:376px;z-index:40;display:none;" +
-    "grid-template-columns:repeat(4, 66px);gap:6px;max-height:52vh;overflow-y:auto;" +
-    "background:rgba(0,20,10,.78);border:1px solid #38ff9e;border-radius:6px;padding:8px;pointer-events:auto;";
-  document.body.appendChild(picker);
+  picker.style.cssText = "box-sizing:border-box;display:none;" +
+    "grid-template-columns:repeat(4, 1fr);gap:6px;max-height:60vh;overflow-y:auto;width:100%;" +
+    "background:rgba(0,20,10,.85);border:1px solid #38ff9e;border-radius:6px;padding:8px;pointer-events:auto;";
+  rightCol.appendChild(picker);
   const pickerCells = [];
   function selectCatalog(i) {
     catalogIndex = i;
@@ -415,7 +474,7 @@ export function createMapEditor(ctx) {
     CATALOG.forEach((spec, i) => {
       const cell = document.createElement("button");
       cell.title = spec.label;
-      cell.style.cssText = "width:66px;height:66px;padding:0;border:1px solid #1c5a3e;border-radius:4px;" +
+      cell.style.cssText = "aspect-ratio:1;width:100%;padding:0;border:1px solid #1c5a3e;border-radius:4px;" +
         "background-color:#0c2318;background-size:cover;background-position:center;" +
         "color:#c9ffdf;font:9px/1.15 Consolas,monospace;cursor:pointer;" +
         "display:flex;align-items:flex-end;justify-content:center;text-align:center;overflow:hidden;";
@@ -472,27 +531,29 @@ export function createMapEditor(ctx) {
   function updateHUD() {
     if (!active) return;
     const spec = CATALOG[catalogIndex];
+    const modeLine = mode === "delete" ? "  [DELETE MODE]" : mode === "select" ? "  [SELECT MODE]" : "";
     panel.textContent =
       `DEV MODE — MAP EDITOR\n` +
       `asset: ${spec.label} (${catalogIndex + 1}/${CATALOG.length})\n` +
-      `placed: ${placements.length}${deleteMode ? "  [DELETE MODE]" : ""}\n` +
+      `placed: ${placements.length}${modeLine}\n` +
       `WASD pan · wheel zoom · right-drag orbit\n` +
       `, / . cycle · Q/E rotate · click place\n` +
-      `Backspace undo · F9 exit`;
+      `Backspace undo · F9 or #DEVx exit`;
   }
 
   // -------------------------------------------------------- cheat code buf
   let buf = "";
   function onKeydownGlobal(e) {
-    buf = (buf + e.key).slice(-CHEAT_CODE.length);
-    if (buf.toLowerCase() === CHEAT_CODE.toLowerCase()) { toggle(); buf = ""; }
+    buf = (buf + e.key).slice(-CHEAT_MAXLEN);
+    const lower = buf.toLowerCase();
+    if (CHEAT_CODES.some((c) => lower.endsWith(c.toLowerCase()))) { toggle(); buf = ""; }
     if (!active) return;
     if (e.code === "F9") { e.preventDefault(); toggle(); }
     else if (e.code === "Comma") { selectCatalog((catalogIndex - 1 + CATALOG.length) % CATALOG.length); }
     else if (e.code === "Period") { selectCatalog((catalogIndex + 1) % CATALOG.length); }
-    else if (e.code === "KeyQ") { ry -= 0.2; }
-    else if (e.code === "KeyE") { ry += 0.2; }
-    else if (e.code === "Backspace") { e.preventDefault(); undo(); }
+    else if (e.code === "KeyQ") { if (mode === "select" && selected) moveSelectedTo(selected.x, selected.z, selected.ry - 0.2); else ry -= 0.2; }
+    else if (e.code === "KeyE") { if (mode === "select" && selected) moveSelectedTo(selected.x, selected.z, selected.ry + 0.2); else ry += 0.2; }
+    else if (e.code === "Backspace") { e.preventDefault(); if (mode === "select" && selected) deleteSelected(); else undo(); }
   }
   window.addEventListener("keydown", onKeydownGlobal);
 
@@ -503,9 +564,14 @@ export function createMapEditor(ctx) {
     // mousedown too, and it bubbles to window same as a click on the world —
     // without this guard every button click also placed (or deleted) a
     // fresh object right before acting on it.
-    if (controls.contains(e.target) || picker.contains(e.target) || libraryBar.contains(e.target)) return;
-    if (deleteMode) deleteNear(ghost.position.x, ghost.position.z);
-    else place();
+    if (leftCol.contains(e.target) || rightCol.contains(e.target)) return;
+    if (mode === "delete") { deleteNear(ghost.position.x, ghost.position.z); return; }
+    if (mode === "select") {
+      if (!selected) selectNear(ghost.position.x, ghost.position.z);
+      else moveSelectedTo(ghost.position.x, ghost.position.z, selected.ry);
+      return;
+    }
+    place();
   }
   window.addEventListener("mousedown", onClick);
 
@@ -563,23 +629,83 @@ export function createMapEditor(ctx) {
   }
 
   // ------------------------------------------------------------- lifecycle
-  function setDeleteMode(v) {
-    deleteMode = v;
-    deleteBtn.textContent = v ? "Delete: ON" : "Delete: OFF";
-    deleteBtn.style.background = v ? "#3a0c0c" : "#0c3324";
-    deleteBtn.style.borderColor = v ? "#ff6b6b" : "#38ff9e";
-    ghostEdgeMat.color.setHex(v ? 0xff6b6b : 0x38ff9e);
-    ghost.visible = active && !v;   // no point aiming a placement ghost while deleting
+  // Three mutually exclusive tools. "select" keeps the ghost visible (it
+  // doubles as the move target once something is picked) while "delete"
+  // hides it — there's nothing to aim.
+  function updateGhostColor() {
+    ghostEdgeMat.color.setHex(mode === "delete" ? 0xff6b6b : (mode === "select" && selected) ? 0xffe066 : 0x38ff9e);
+  }
+  function setMode(next) {
+    mode = next;
+    deleteBtn.textContent = mode === "delete" ? "Delete: ON" : "Delete: OFF";
+    deleteBtn.style.background = mode === "delete" ? "#3a0c0c" : "#0c3324";
+    deleteBtn.style.borderColor = mode === "delete" ? "#ff6b6b" : "#38ff9e";
+    selectBtn.textContent = mode === "select" ? "Select: ON" : "Select: OFF";
+    selectBtn.style.background = mode === "select" ? "#0c2a3a" : "#0c3324";
+    selectBtn.style.borderColor = mode === "select" ? "#66c8ff" : "#38ff9e";
+    if (mode !== "select") setSelected(null);
+    ghost.visible = active && mode !== "delete";
+    updateGhostColor();
     updateHUD();
+  }
+  // Select tool: pick the nearest editor-placed object to `x, z` (same reach
+  // as Delete's own nearest-search) and make it the active selection —
+  // its ghost preview swaps to match, so what you see is what will move.
+  function selectNear(x, z) {
+    let best = -1, bestDist = Infinity;
+    placements.forEach((entry, i) => {
+      const spec = CATALOG.find((s) => s.key === entry.catalogKey);
+      const radius = (spec ? Math.max(spec.w, spec.d) : 6) / 2 + 1.5;
+      const d = Math.hypot(entry.x - x, entry.z - z);
+      if (d <= radius && d < bestDist) { bestDist = d; best = i; }
+    });
+    if (best === -1) { selectStatus.textContent = "nothing nearby to select"; selectStatus.style.display = "block"; return; }
+    setSelected(placements[best]);
+  }
+  function setSelected(entry) {
+    selected = entry;
+    selectRow.style.display = entry ? "flex" : "none";
+    selectStatus.style.display = entry || mode === "select" ? "block" : "none";
+    if (entry) {
+      const spec = CATALOG.find((s) => s.key === entry.catalogKey);
+      const idx = spec ? CATALOG.indexOf(spec) : -1;
+      if (idx !== -1) { catalogIndex = idx; rebuildGhost(); highlightPicker(); }
+      ry = entry.ry;
+      selectStatus.textContent = `selected ${spec ? spec.label : entry.catalogKey} — click the world to move it here, Q/E to rotate`;
+    } else if (mode === "select") {
+      selectStatus.textContent = "click something placed to select it";
+    }
+    updateGhostColor();
+  }
+  function moveSelectedTo(x, z, moveRy) {
+    if (!selected) return;
+    const spec = CATALOG.find((s) => s.key === selected.catalogKey);
+    if (!spec) return;
+    destroyPlacement(selected);
+    const i = placements.indexOf(selected);
+    if (i !== -1) placements.splice(i, 1);
+    const entry = placeAt(spec, x, z, moveRy);
+    setSelected(entry);
+    updateHUD();
+    persist();
+  }
+  function deleteSelected() {
+    if (!selected) return;
+    destroyPlacement(selected);
+    const i = placements.indexOf(selected);
+    if (i !== -1) placements.splice(i, 1);
+    setSelected(null);
+    updateHUD();
+    persist();
   }
 
   function toggle() {
     active = !active;
-    ghost.visible = active && !deleteMode;
-    panel.style.display = active ? "block" : "none";
-    controls.style.display = active ? "flex" : "none";
-    libraryBar.style.display = active ? "flex" : "none";
+    ghost.visible = active && mode !== "delete";
+    leftCol.style.display = active ? "flex" : "none";
+    rightCol.style.display = active ? "flex" : "none";
     picker.style.display = active ? "grid" : "none";
+    if (gameHud) gameHud.style.display = active ? "none" : "";   // the editor's own panels replace it, don't fight it for space
     if (active) {
       refreshSlots();
       // Gameplay may still have the pointer locked (hidden OS cursor, only
@@ -613,6 +739,7 @@ export function createMapEditor(ctx) {
     } else {
       if (savedFar != null) { camera.far = savedFar; camera.updateProjectionMatrix(); savedFar = null; }
       exportBox.style.display = "none";
+      setMode("place");
     }
   }
 

@@ -38,6 +38,35 @@ setup existed (TASK-001 … TASK-009).
 
 # 🧠 DISCOVERIES
 
+## 2026-09-20 — Claude
+**Type:** DISCOVERY · **Task:** TASK-051 — the shop packs' "weird white colour" was a texture-path bug, not a map bug
+
+### Finding
+Human reported the 6twelve store (and, it turned out, the gas station,
+Tacos and BurgerPiz too) previewing wrong and placing white in the map
+editor. Root cause: these FBX packs embed the original artist's absolute
+Windows path for every texture. FBXLoader already strips that down to a
+filename resolved against the FBX's own directory before a
+`LoadingManager` URL modifier sees it — so a naive "detect C:\ and
+redirect" check (what I tried first) never fires. Every one of these packs
+actually keeps its textures in a `Textures/` subfolder, not beside the
+FBX, so every request 404'd and every material silently rendered its base
+`#cccccc` color instead. Confirmed live (Playwright, headless) this
+happens during **normal world boot** too, not just the editor — westparish
+and tusouxroeNorth place these same packs.
+
+### Impact
+Any *other* FBX pack placed via `landmarks.js`'s `loadFBX()` with the same
+authoring quirk (absolute artist-machine texture paths) is now covered
+automatically by the same fix — no per-pack special-casing needed, it
+redirects any texture-extension request that isn't already resolving into
+`Textures/` to `<that FBX's own pack root>/Textures/<filename>`.
+
+### Action
+See TASK-051 in `TODO.md` for the full breakdown (also: cheat code alias
+`#DEVx`, four new catalog entries, a layout rebuild, and a Select tool to
+move/delete a placed object without re-placing over it).
+
 ## 2026-09-19 — Claude
 **Type:** HANDOFF · **Task:** TASK-048 — map editor: library search, delete mode, save slots, AI placement
 

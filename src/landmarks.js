@@ -30,7 +30,6 @@ function stdMat(color, roughness = 0.7, name = "building mat", extra = {}) {
   return m;
 }
 
-let _fbxLoader = null;
 // Cached by URL (matches main.js's loadGLB) — without this, every one of this
 // file's ~9 call sites re-fetches and re-parses the same FBX from scratch on
 // every placement (every gas station, every 6twelve, every office building's
@@ -68,10 +67,41 @@ function isBackdrop(o) {
 export const SITE_CLUTTER =
   /ground|asphalt|parking|road|street|sidewalk|pavement|terrain|grass|bush|plant|tree|curb|soil|sand|dirt|cable/i;
 
+// These shop packs (6twelve, Gas_station, Tacos, BurgerPiz) were authored on
+// someone else's machine and every material still points at ITS absolute
+// Windows path for its texture — e.g. "C:\Users\srkak\Music\pasto\...\
+// Plastic_04.jpg". FBXLoader already has its own workaround for exactly this
+// (it strips a Windows-absolute reference down to the filename and resolves
+// it against the FBX's own directory *before* a LoadingManager ever sees
+// the URL — a manager-level check for "C:\" never fires), so what actually
+// reaches this loader is "<fbx's own folder>/Plastic_04.jpg". That's still
+// wrong: every one of these packs keeps its real textures one level down,
+// in its own Textures/ folder, not beside the FBX — so it 404s and the
+// material loads with no map and renders flat white. Redirect by filename
+// into this pack's Textures/ folder instead; main.js's own FBX loader
+// already patches an unrelated pair of packs (Designersoup cars, Trailer
+// Park characters) the same way, this loader just never had a
+// LoadingManager at all before now.
+function packTextureRoot(fbxUrl) {
+  const dir = fbxUrl.slice(0, fbxUrl.lastIndexOf("/") + 1);
+  // Tacos/BurgerPiz keep the FBX in its own Models/ folder, with Textures/ a
+  // sibling of Models/, not a child of it; gas station/6twelve have no
+  // Models/ folder, so Textures/ sits right next to the FBX.
+  return /\/models\/$/i.test(dir) ? dir.slice(0, dir.lastIndexOf("/", dir.length - 2) + 1) : dir;
+}
 function loadFBX(url, cullRe) {
   if (!_fbxCache.has(url)) {
-    if (!_fbxLoader) _fbxLoader = new FBXLoader();
-    _fbxCache.set(url, new Promise((r) => _fbxLoader.load(url, r, undefined, (e) => { console.warn("FBX load failed", url, e); r(null); })));
+    const textureRoot = packTextureRoot(url);
+    const manager = new THREE.LoadingManager();
+    manager.setURLModifier((u) => {
+      // Only texture files, and only ones not already resolving into the
+      // real Textures/ folder — this manager also carries the .fbx file's
+      // own request, which must pass through untouched.
+      if (u.includes("/Textures/") || !/\.(jpe?g|png|tga|bmp|exr|tif?f|webp)$/i.test(u)) return u;
+      return `${textureRoot}Textures/${u.split(/[\\/]/).pop()}`;
+    });
+    const loader = new FBXLoader(manager);
+    _fbxCache.set(url, new Promise((r) => loader.load(url, r, undefined, (e) => { console.warn("FBX load failed", url, e); r(null); })));
   }
   return _fbxCache.get(url).then((template) => {
     if (!template) return null;
@@ -803,4 +833,78 @@ export function placeBurgerPiz(ctx, x, z, ry = 0) {
   });
   scene.add(g);
   if (addBlocker) addBlocker(x, z, 14);
+}
+
+/**
+ * A Popeyes-style storefront — procedural, not a model pack, same as the
+ * fast-food building main.js builds inline for the highway strip. This is a
+ * simplified stand-in for the map editor's catalog (no shared canvas-drawn
+ * sign texture or the strip's own parked-car spawn list — those are that
+ * scene's own furniture, not something a generic ctx placement needs).
+ */
+export function placePopeyes(ctx, x, z, ry = 0) {
+  const { scene, addBlocker, addLitSpot } = ctx;
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+
+  const wallMat = stdMat(0xe8681c, 0.85, "popeyes wall");
+  const trimMat = stdMat(0x8f2016, 0.8, "popeyes trim");
+  const roofMat = stdMat(0x2f241c, 0.9, "popeyes roof");
+  const signMat = stdMat(0x1e1e1e, 0.6, "popeyes sign", { emissive: 0xff8a2c, emissiveIntensity: 1.0 });
+
+  const box = new THREE.Mesh(new THREE.BoxGeometry(11, 5, 9), wallMat);
+  box.position.y = 2.5; box.castShadow = box.receiveShadow = true;
+  const band = new THREE.Mesh(new THREE.BoxGeometry(11.3, 1.1, 9.3), trimMat);
+  band.position.y = 4.6;
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(11.6, 0.5, 9.6), roofMat);
+  roof.position.y = 5.3;
+
+  // pylon sign, taller than the roofline so it reads from the road
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 20, 10), stdMat(0x1e1e1e, 0.6, "pole"));
+  pole.position.set(9, 10, 7);
+  const board = new THREE.Mesh(new THREE.BoxGeometry(12, 6, 0.6), signMat);
+  board.position.set(9, 19, 7);
+  board.castShadow = true;
+
+  const wsign = new THREE.Mesh(new THREE.PlaneGeometry(8, 2.6), signMat);
+  wsign.position.set(0, 3.2, 4.55);
+
+  g.add(box, band, roof, pole, board, wsign);
+  scene.add(g);
+  if (ctx.props) ctx.props.push(g);
+  for (const [bx, bz] of [[0, 4.5], [0, -4.5], [5.5, 0], [-5.5, 0], [0, 0]]) {
+    const wx = x + bx * Math.cos(ry) - bz * Math.sin(ry);
+    const wz = z + bx * Math.sin(ry) + bz * Math.cos(ry);
+    if (addBlocker) addBlocker(wx, wz, 2.6);
+  }
+  if (addLitSpot) addLitSpot({ x, y: 19, z, warm: 0xff8a2c, power: 100, range: 26 });
+}
+
+/**
+ * A single street lamp from the shared urban kit (the same model the
+ * highway's spaced streetlamps use) — placeable on its own for gaps the
+ * procedural spacing doesn't reach. Left to `ctx.loadGLB`'s own `realize()`
+ * pass for materials, same as `placeCityBuilding`, rather than force-applying
+ * main.js's shared "urban" texture atlas (that's a private module texture,
+ * not something a generic ctx placement can reach).
+ */
+export function placeStreetLamp(ctx, x, z, ry = 0) {
+  const { scene, addBlocker, addLitSpot } = ctx;
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+
+  if (ctx.loadGLB) {
+    ctx.loadGLB("./assets/models/urban/Streetlamp/streetlamp_01.gltf").then((glb) => {
+      if (!glb) return;
+      const model = glb.clone(true);
+      model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; markRealized(o); } });
+      g.add(model);
+    });
+  }
+  scene.add(g);
+  if (ctx.props) ctx.props.push(g);
+  if (addBlocker) addBlocker(x, z, 0.6);
+  if (addLitSpot) addLitSpot({ x, y: 5.5, z, warm: 0xffdca0, power: 70, range: 16 });
 }
