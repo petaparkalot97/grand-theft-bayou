@@ -59,8 +59,9 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 ### TASK-052 — $DEVMODE69xxx round 2: full asset library via R2, mode UX, drag-select, copy/paste, edit-anything (human request, 2026-09-20) — TOP PRIORITY
 
-**Status:** `IN PROGRESS` · **Agent:** Claude
-**Files (expected):** `src/mapEditor.js`, `src/landmarks.js`, `server/index.js`, possibly a new `server/assets.js` or R2-listing endpoint
+**Status:** `REVIEW` (items 2-6 done and Playwright-tested; item 1's code is done
+and tested, R2 upload still running in the background — see below) · **Agent:** Claude
+**Files:** `src/mapEditor.js`, `src/landmarks.js`, `tools/upload-assets-to-r2.sh`, `tools/r2-manifest.json`
 
 **Human's own words:** *"OK WE NEED TO FIX THE MAP EDITOR. ITS TOTALLY SHIT."* — six numbered
 points, verbatim intent below. Also directed: "start uploading to cloudflare
@@ -104,17 +105,55 @@ editor changes too!!"
    individually pickable without further work — flag what's actually
    feasible here rather than silently no-op'ing on the hard cases.
 
-#### Notes for whoever picks this up (including a future me)
-- This was scoped and started while the human was stepping away
-  (`/bg`, terminal closing) — no live check-ins possible mid-task. Where a
-  point above has a real judgment call baked in (especially #6's "how far
-  does edit-anything actually go"), the implementing agent made the call,
-  did the work, and left a clear note here and in `AGENT_LOG.md` rather
-  than blocking.
-- Item #1 (R2) is infrastructure, not just code — check `wrangler.jsonc` /
-  `server/index.js` / whatever this task's implementation added for the
-  bucket name, manifest shape and CORS config before assuming asset paths
+#### Status as of this commit (Claude, 2026-09-20, while the human was away)
+- **Items 2-6: done, Playwright-tested, this commit.** Mode UX rebuilt (ghost
+  only shows in Place mode; Select marks picks with wireframe boxes instead),
+  right-click cancels/deselects, drag-box multi-select, Ctrl+C/X/V
+  copy/cut/paste with a holographic multi-preview, and Select now falls back
+  to raycasting the live scene for district-authored objects when nothing
+  editor-placed is nearby (reports "merged into a shared batch, can't
+  isolate" for `merge.js`'s batched meshes rather than silently no-op'ing —
+  confirmed hitting real named objects like `parish:rest-stop` in testing).
+  Full interaction model documented in `src/mapEditor.js`'s file header.
+- **Item 1 (R2 asset library): code done and tested, upload still running.**
+  `tools/upload-assets-to-r2.sh` extracted and is uploading ~1873 files
+  (~684 MB, 5 categories: Buildings-Shops, Props-Furniture,
+  Roads-Infrastructure, Vehicles, Dungeons-Interiors — Characters-Animations
+  and Weapons-Tech deliberately excluded) from `Z:\GITHUB\_ASSETS\_extracted`
+  to the `bayou-assets` R2 bucket, building `tools/r2-manifest.json`
+  alongside it. At this commit the upload is roughly 35% done (background
+  job, hours not minutes at this rate) — **`r2-manifest.json` isn't
+  committed yet because the running script hasn't closed its JSON array**;
+  it'll land in a follow-up commit once `grep "UPLOAD COMPLETE"
+  tools/upload-log.txt` shows it's finished. `src/mapEditor.js` fetches it
+  lazily (first editor toggle-on) and merges one catalog entry per unique
+  model into new `R2: <category>` tabs — verified end-to-end against a
+  frozen snapshot of the real, already-uploaded entries (manifest fetch →
+  tabs appear → search finds the asset → placing it actually loads the real
+  model from R2). `src/landmarks.js`'s new `placeR2Model()` handles both
+  GLB/GLTF (self-contained) and loose FBX (reuses the existing
+  Textures/-folder redirect) — **known limitation**: that redirect assumes
+  the common "pack/pack/Models/ + pack/pack/Textures/" layout, which several
+  packs don't follow (nested subfolders like `Models/Stops/`, or per-model
+  `.fbm/` folders) — those will show flat/white materials until someone
+  hand-curates them, same class of limitation as item 6's batched-mesh case.
+  Not fixed: with ~30 unrelated, unrelated-authored packs, a fully general
+  texture-path resolver isn't feasible without bucket-listing support R2's
+  public domain doesn't expose.
+  The picker is now paginated (48/page) instead of one long scroll, and
+  "Ask AI" no longer sends the whole (now 400+ entry) catalog on every
+  request — it sends the curated set plus only R2 entries whose label
+  keyword-matches the prompt.
+- Item #1 (R2) is infrastructure, not just code — check `wrangler.jsonc` for
+  the bucket name and CORS config (already confirmed working, incl.
+  cross-origin fetch from the R2 public domain) before assuming asset paths
   work the same way they used to.
+
+**Next step for whoever picks this up:** once the upload finishes, run
+`node -e "JSON.parse(require('fs').readFileSync('tools/r2-manifest.json'))"`
+to confirm it's valid, commit it, and spot-check a few packs per category in
+the live editor (the texture-path limitation above means some will need a
+per-pack fix or a "known broken" label rather than silent white materials).
 
 ---
 

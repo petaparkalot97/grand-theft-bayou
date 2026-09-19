@@ -355,6 +355,55 @@ export function placeShopGLB(ctx, file, x, z, ry = 0, w = 15, h = 10, d = 15) {
   if (addBlocker) addBlocker(x, z, Math.max(w, d) / 2);
 }
 
+/**
+ * Places any model by URL, GLB/GLTF or FBX, sight unseen — the map editor's
+ * bulk R2 asset library (hundreds of packs pulled from a folder never meant
+ * for this game, with no curated size/scale metadata for any of them) uses
+ * this instead of a bespoke placeXxx() per model. Centres the model at its
+ * own footprint and sits it on the ground the same way every curated
+ * placement above does; unlike placeShopGLB() it does NOT force-fit a target
+ * box, since that would just as happily crush an actual building down to
+ * clutter size — it trusts the pack's authored scale and only steps in for
+ * the pathological cases (a pack modelled in centimetres reading as a 1000 m
+ * building, or a prop sitting at a 0.001 scale), which a fixed target box
+ * can't tell apart from a real 1000 m stadium anyway. FBX packs get the same
+ * Textures/-folder redirect as the curated shop packs (loadFBX already does
+ * this for any URL, not just the four it was written for); GLB/GLTF need no
+ * redirect since their textures are either embedded or resolve relative to
+ * their own URL.
+ */
+export function placeR2Model(ctx, url, x, z, ry = 0) {
+  const { scene, addBlocker } = ctx;
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+
+  const isGlbLike = /\.(glb|gltf)$/i.test(url);
+  const load = isGlbLike && ctx.loadGLB ? ctx.loadGLB(url) : loadFBX(url, null);
+  load.then((template) => {
+    if (!template) return;
+    const model = template.clone(true);
+    let box = new THREE.Box3().setFromObject(model);
+    let size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.z, 0.001);
+    if (maxDim > 60 || maxDim < 0.1) {
+      model.scale.setScalar(6 / maxDim);
+      box = new THREE.Box3().setFromObject(model);
+    }
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.set(-center.x, -box.min.y, -center.z);
+    model.traverse((o) => {
+      if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; markRealized(o); }
+    });
+    g.add(model);
+  });
+
+  scene.add(g);
+  if (ctx.props) ctx.props.push(g);
+  if (addBlocker) addBlocker(x, z, 4);
+  return g;
+}
+
 export function placeGasStation(ctx, x, z, ry = 0) {
   const { scene, addBlocker } = ctx;
   const g = new THREE.Group();
