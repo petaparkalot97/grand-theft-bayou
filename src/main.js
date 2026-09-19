@@ -561,6 +561,12 @@ function fallbackCar(tex) {
 // --- generic GLB loader (keeps embedded materials, just tweaks them) ---
 // cullRe: drop interior clutter / scenery meshes we don't need (perf)
 const glbCache = new Map();
+// Asset packs ship painted backdrop cards — "Background", "Trees_Background" and
+// the like: 300-500 m planes hung 13-17 m up so a pack looks good in isolation.
+// In a world with its own sky and horizon they read as a grey ceiling over the
+// town. Dropped on load, from every pack, whatever else the caller asks for.
+const BACKDROP_RE = /^(background|backdrop|skybox|sky_?dome|trees_background)/i;
+
 function loadGLB(path, cullRe, keepRe) {
   const key = path + (cullRe ? "|c" + cullRe.source : "") + (keepRe ? "|k" + keepRe.source : "");
   if (glbCache.has(key)) return glbCache.get(key);
@@ -570,6 +576,9 @@ function loadGLB(path, cullRe, keepRe) {
       g.scene.traverse((o) => {
         if (o.isMesh) {
           const nm = o.name || "";
+          // packs name the card on the mesh or only on its material
+          const matNm = (o.material && !Array.isArray(o.material) && o.material.name) || "";
+          if (BACKDROP_RE.test(nm) || BACKDROP_RE.test(matNm)) { doomed.push(o); return; }
           if (keepRe && !keepRe.test(nm)) { doomed.push(o); return; }
           if (cullRe && cullRe.test(nm)) { doomed.push(o); return; }
           o.castShadow = true; o.receiveShadow = true;
@@ -2049,7 +2058,9 @@ function makeGasStation(x, z, rot = 0, o = {}) {
   const shop = new THREE.Mesh(new THREE.BoxGeometry(12, 4.6, 7), white);
   shop.position.set(0, 2.3, -4); shop.castShadow = true; shop.receiveShadow = true;
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(12.2, 0.8, 7.2), red);
-  stripe.position.set(0, 4.2, -4);
+  // 2 cm proud of the roof: at 4.2 its top sat at exactly the shop's 4.6, and the
+  // white roof z-fought through the red in stripes on every 6twelve and gas station
+  stripe.position.set(0, 4.22, -4);
   const wsign = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), sign());
   wsign.position.set(0, 3, -0.4);
 
@@ -2116,10 +2127,23 @@ function placeGlbLandmark(src, x, z, rot, target, label, glow, rotOffset = 0) {
   o.position.set(x, 0, z);
   o.rotation.y = rot;
   scene.add(o);
-  // `target` is the model's horizontal footprint. A fixed 5 m blocker was
-  // smaller than the 22–26 m storefronts, leaving most of each building
-  // walkable even though it was visibly solid.
-  addBlocker(x, z, Math.max(5, target * 0.52));
+  // Collision follows the model's actual footprint. A single circle of
+  // `target * 0.52` used the model's WIDTH as a radius in every direction, so a
+  // 26 m-wide, 15 m-deep BurgerPiz blocked 13.5 m to its south as well — which
+  // closed the Mission 1 dirt road at z 43, six metres from the nearest wall.
+  // Now: circles the size of the short side, laid along the long one.
+  o.updateMatrixWorld(true);
+  const fb = new THREE.Box3().setFromObject(o);
+  const halfX = (fb.max.x - fb.min.x) / 2, halfZ = (fb.max.z - fb.min.z) / 2;
+  const r = Math.max(3, Math.min(halfX, halfZ));
+  const alongX = halfX >= halfZ;
+  const long = Math.max(halfX, halfZ);
+  const n = Math.max(1, Math.ceil(long / r));
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : (i / (n - 1)) * 2 - 1;        // -1 … 1 along the long side
+    const off = t * Math.max(0, long - r);
+    addBlocker(x + (alongX ? off : 0), z + (alongX ? 0 : off), r);
+  }
   poolLight(glow || 0xffe0b0, 40, 30, x, 6, z);
   parkedCarSpots.push({ x, z, rot });
   return true;

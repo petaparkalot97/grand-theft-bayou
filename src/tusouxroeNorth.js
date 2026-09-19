@@ -18,7 +18,7 @@
 
 import * as THREE from "three";
 import { createComposer } from "./composer.js";
-import { placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeBillboard, placeParkedCar, placeGunShop, placeTacos, placeBurgerPiz, placeSixTwelve, placeGasStation } from "./landmarks.js";
+import { CITY_BUILDING_TYPES, placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeBillboard, placeParkedCar, placeGunShop, placeTacos, placeBurgerPiz, placeSixTwelve, placeGasStation } from "./landmarks.js";
 
 export const NORTH_MIN_Z = -440;
 const BOUNDS = { x0: -240, x1: 240, z0: -440, z1: -134 };
@@ -38,6 +38,19 @@ export function createTusouxroeNorth(ctx) {
   const BLVD_Z = -260;
   const WEST_STREET_X = -110;
   const EAST_STREET_X = 110;
+
+  // the named buildings' footprints: the radar draws them, and the filler grid keeps off them
+  const LANDMARK_FOOTPRINTS = [
+    { x0: -79, x1: -51, z0: BLVD_Z + 11, z1: BLVD_Z + 33 }, // Hospital
+    { x0: 50, x1: 70, z0: BLVD_Z + 12, z1: BLVD_Z + 28 },   // Market
+    { x0: -53, x1: -37, z0: -187, z1: -173 },              // Garage
+    { x0: 38, x1: 52, z0: -186, z1: -174 },               // Cafe
+    { x0: WEST_STREET_X - 27, x1: WEST_STREET_X - 9, z0: -217, z1: -203 }, // Fire Station
+    { x0: WEST_STREET_X - 34, x1: WEST_STREET_X - 10, z0: -329, z1: -311 }, // School
+    { x0: EAST_STREET_X + 9, x1: EAST_STREET_X + 31, z0: -219, z1: -201 }, // Offices
+    { x0: EAST_STREET_X + 10, x1: EAST_STREET_X + 26, z0: -326, z1: -314 }, // Apartments
+    { x0: ROAD_X - 10, x1: ROAD_X + 10, z0: -410, z1: -390 }, // Cloudline Tower
+  ];
 
   const occluders = [];
   const pois = [];
@@ -148,11 +161,42 @@ export function createTusouxroeNorth(ctx) {
       hLot.receiveShadow = true;
       scene.add(hLot);
 
-      // Fill grid manually to guarantee dense placement
-      const customShops = [
-        placeTacos, placeBurgerPiz, placeSixTwelve, placeGasStation, placeGunShop
+      // Fill grid manually to guarantee dense placement. A shop only goes down
+      // where its REAL footprint clears every road and every filler already
+      // placed: the pack shops are 32-62 m sites, not the 16 m this grid was
+      // drawn for, and on the old rows (z -210 and -315, 10 m and 5 m off North
+      // Ave 1 and 2) their roofs and canopies lay across the avenues. The rows
+      // now run down the middle of the blocks.
+      const customShops = [          // w along x, d along z at rot 0, metres
+        { place: placeTacos, w: 8, d: 5 },
+        { place: placeBurgerPiz, w: 32, d: 49 },
+        { place: placeSixTwelve, w: 48, d: 52 },
+        { place: placeGasStation, w: 46, d: 63 },
+        { place: placeGunShop, w: 16, d: 18 },
       ];
-      for (let z = -210; z >= -380; z -= 35) {
+      const roads = [
+        { x0: ROAD_X - 5, x1: ROAD_X + 5, z0: -420, z1: -136 },
+        { x0: -190, x1: 190, z0: BLVD_Z - 5.5, z1: BLVD_Z + 5.5 },
+        ...[-200, -320, -380].map((rz) => ({ x0: -190, x1: 190, z0: rz - 4.5, z1: rz + 4.5 })),
+        ...[WEST_STREET_X, EAST_STREET_X].map((rx) => ({ x0: rx - 4.5, x1: rx + 4.5, z0: -420, z1: -160 })),
+      ];
+      const placed = [
+        ...LANDMARK_FOOTPRINTS,
+        { x0: EAST_STREET_X + 13, x1: EAST_STREET_X + 31, z0: -278, z1: -262 },   // gun shop + its billboard
+        { x0: -151, x1: -139, z0: -265, z1: -255 }, { x0: 139, x1: 151, z0: -265, z1: -255 },   // cottages
+        { x0: 42, x1: 78, z0: BLVD_Z - 22, z1: BLVD_Z + 6 },     // market lot
+        { x0: -86, x1: -44, z0: BLVD_Z - 26, z1: BLVD_Z + 6 },   // hospital lot
+      ];
+      const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.z0 < b.z1 && b.z0 < a.z1;
+      const footprint = (x, z, w, d, rot) => {
+        const [hw, hd] = rot ? [d / 2, w / 2] : [w / 2, d / 2];
+        return { x0: x - hw, x1: x + hw, z0: z - hd, z1: z + hd };
+      };
+      const fits = (f) => {
+        const m = { x0: f.x0 - 1, x1: f.x1 + 1, z0: f.z0 - 1, z1: f.z1 + 1 };   // a metre of kerb
+        return !roads.some((r) => overlaps(m, r)) && !placed.some((p) => overlaps(m, p));
+      };
+      for (const z of [-230, -290, -350]) {
         for (let x = -200; x <= 200; x += 30) {
           // Skip if too close to main roads (North US-167 / Tusouxroe Blvd)
           if (Math.abs(x - ROAD_X) < 18) continue;
@@ -168,21 +212,30 @@ export function createTusouxroeNorth(ctx) {
           if (Math.abs(x - WEST_STREET_X) < 14) continue;
           if (Math.abs(x - EAST_STREET_X) < 14) continue;
 
-          const rot = (Math.random() > 0.5) ? 0 : Math.PI / 2;
-          
+          const rots = (Math.random() > 0.5) ? [0, Math.PI / 2] : [Math.PI / 2, 0];
+
           if (Math.random() < 0.6) {
-            // Place a high-quality 3D asset shop!
-            const placeFn = customShops[Math.floor(Math.random() * customShops.length)];
-            placeFn(ctx, x, z, rot);
-            C.minimap.buildings.push({ x0: x - 8, x1: x + 8, z0: z - 8, z1: z + 8 });
-          } else {
-            // Place a procedural fallback building
-            const types = ["apartments", "offices", "garage", "cafe"];
-            const kind = types[Math.floor(Math.random() * types.length)];
-            placeCityBuilding(ctx, kind, x, z, rot);
-            addOccluder(x, z, 14, 14, 15);
-            C.minimap.buildings.push({ x0: x - 7, x1: x + 7, z0: z - 7, z1: z + 7 });
+            // Place a high-quality 3D asset shop, turned whichever way fits
+            const shop = customShops[Math.floor(Math.random() * customShops.length)];
+            const rot = rots.find((r) => fits(footprint(x, z, shop.w, shop.d, r)));
+            if (rot !== undefined) {
+              const f = footprint(x, z, shop.w, shop.d, rot);
+              shop.place(ctx, x, z, rot);
+              placed.push(f);
+              C.minimap.buildings.push(f);
+              continue;
+            }
           }
+          // Place a procedural fallback building (also where the shop didn't fit)
+          const types = ["apartments", "offices", "garage", "cafe"];
+          const kind = types[Math.floor(Math.random() * types.length)];
+          const spec = CITY_BUILDING_TYPES[kind];
+          const f = footprint(x, z, spec.w, spec.d, rots[0]);
+          if (!fits(f)) continue;
+          placeCityBuilding(ctx, kind, x, z, rots[0]);
+          addOccluder(x, z, f.x1 - f.x0, f.z1 - f.z0, spec.h);
+          placed.push(f);
+          C.minimap.buildings.push(f);
         }
       }
 
@@ -279,18 +332,7 @@ export function createTusouxroeNorth(ctx) {
           { points: [[EAST_STREET_X, -380], [EAST_STREET_X, -160]], width: 8 },
           ...C.minimap.roads
         ],
-        buildings: [
-          { x0: -79, x1: -51, z0: BLVD_Z + 11, z1: BLVD_Z + 33 }, // Hospital
-          { x0: 50, x1: 70, z0: BLVD_Z + 12, z1: BLVD_Z + 28 },   // Market
-          { x0: -53, x1: -37, z0: -187, z1: -173 },              // Garage
-          { x0: 38, x1: 52, z0: -186, z1: -174 },               // Cafe
-          { x0: WEST_STREET_X - 27, x1: WEST_STREET_X - 9, z0: -217, z1: -203 }, // Fire Station
-          { x0: WEST_STREET_X - 34, x1: WEST_STREET_X - 10, z0: -329, z1: -311 }, // School
-          { x0: EAST_STREET_X + 9, x1: EAST_STREET_X + 31, z0: -219, z1: -201 }, // Offices
-          { x0: EAST_STREET_X + 10, x1: EAST_STREET_X + 26, z0: -326, z1: -314 }, // Apartments
-          { x0: ROAD_X - 10, x1: ROAD_X + 10, z0: -410, z1: -390 }, // Cloudline Tower
-          ...C.minimap.buildings
-        ],
+        buildings: [...LANDMARK_FOOTPRINTS, ...C.minimap.buildings],
         areas: [
           ...C.minimap.areas,
           { x0: CORE.x0, x1: CORE.x1, z0: CORE.z0, z1: CORE.z1, color: "#2d332d" },

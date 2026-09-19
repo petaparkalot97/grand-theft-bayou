@@ -57,6 +57,125 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-050 — The white layers over Chatboro, Tusouxroe and elsewhere (human report)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/landmarks.js`, `src/graphics.js`, `src/tusouxroeNorth.js`, `src/main.js`,
+`src/eastbank.js`, `src/orlearouge.js`, `src/westparish.js`
+**Reported:** *"Fix and remove bug causing there to be white layers on Chatboro, Tusouxroe,
+and other places"* — after TASK-049. Found by ray-picking the pale pixels in the live scene.
+Five separate causes:
+
+1. **The shop packs brought their whole neighbourhood.** BurgerPiz ships four houses
+   ("Building".."Building003") 70–190 m out, Tacos ~60 buildings plus power lines at 11–16 m,
+   the gas station a buried pump part. TASK-049's name cull can't catch a house, and the
+   model was centred on everything that survived, so those houses landed across roads: their
+   flat grey roofs at 9.8 m sat between the camera and the player in Tusouxroe North.
+   `trimToSite()` in `landmarks.js` keeps only the shop's own footprint (+4–5 m) and stands
+   the model on the shop's floor, not its lowest mesh (the gas station was floating 4.8 m;
+   18 m before TASK-049). Tacos is its taco stand now (the pack's OXXO is scenery); its
+   blocker shrank from 14 m to 3.5 m to match.
+2. **TASK-049's cull deleted the shops themselves.** Matching ANY material name killed the
+   6twelve store and the gas station's shop (each has a strip of its own "Asphalt"). Now a
+   mesh is culled by material only when EVERY material is scenery.
+3. **Lit-sign glow matched the file name and the parent.** `realize()` tested EMISSIVE
+   against hint + mesh + parent names, so "harbor**light**-hospital.glb" made every curb,
+   paving slab and wall of the hospital glow warm white (the "white hospital" bug `c77c278`
+   never fixed — its `markRealized` runs after the glow is applied), "Toyoyo_High**light**"
+   the whole truck, and the city packs' "-light" shades (stone-light, paving-light…) glowed
+   everywhere. Now own names only, and "-light" shades / sign backs are excluded.
+   ~5,000 m² of pale surfaces stopped glowing; the packs' real lamps/windows keep theirs.
+4. **Every strip 6twelve and gas station (Chatboro → Tusouxroe) z-fought white stripes**
+   through its red roof: the stripe's top and the shop's roof were both at y 4.6.
+5. **The swamp's clearcoat** (TASK-049 blurred it to 0.45) spread the moon into a pale
+   glaze over half the bayou. Clearcoat removed in all three modules.
+
+Also: Tusouxroe North's filler grid ran two rows 5–10 m off North Ave 1 and 2 and assumed
+16 m buildings; with real-size shops their canopies lay across the avenues. Rows now run
+mid-block, and a filler only goes down where its real footprint clears every road, every
+named building and every earlier filler.
+
+#### Testing performed (2026-09-19), HEAD vs this change, headless (SwiftShader)
+- Camera→player line of sight at 209 road points × 4 headings: **490 of 836 blocked → 25**
+  (what's left: real buildings beside the sample point, the overpass the camera already
+  ducks, three named buildings that sit on roads — see Known issues).
+- Pale glowing area: **29,850 m² → 16,384 m²**; the remainder is the OrleaRouge / Nolantis
+  towers' authored window glow.
+- Coplanar raised surfaces: HEAD's pack ground sheets at y 1.8 over Tusouxroe North (100k+ m²
+  of overlap) gone; the four strip roofs gone.
+- `gameplay.mjs` hp 100 throughout, 0 new console errors; `gascans.mjs` **5/5** (4/5 once
+  when run alongside another headless game — the objective-text timer; 5/5 alone);
+  `prologue.mjs` all eight stages, chase screenshot clean.
+
+#### Known issues
+- Named buildings on roads (not layers, pre-existing): the Sunbeam Cottages (±145, −260) sit
+  on Tusouxroe Blvd; Willowbrook School and Meadow Apartments on North Ave 2 (z −320).
+- The hospital and market parking aprons are across the Boulevard from their buildings.
+- Street-lamp models still glow along the whole pole (mesh named "lamp").
+
+---
+
+### TASK-049 — The blocked dirt road, and the grey sheets over the towns (human reports)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/main.js`, `src/landmarks.js`, `src/eastbank.js`, `src/orlearouge.js`, `src/westparish.js`
+**Reported:** *"can not go down the road where green Bravado stops at"* and *"the grey area
+over Chatboro and Tusouxroe needs to be fixed and removed from sight or at least
+transparent enough to see the road and cars"*.
+
+#### 1. The Mission 1 dirt road was closed by a collision circle
+`placeGlbLandmark` gave every storefront one blocker of `target * 0.52` — the model's
+**width** used as a radius in every direction. The BurgerPiz on the east lot at z 56 is
+26 m wide and 15 m deep, so its circle reached 13.5 m south to z 42.5 and sealed the dirt
+road at z 43 — **six metres from the nearest wall**. Measured: the building's geometry
+spans z 48.4…63.6; nothing was ever in the road.
+Collision now follows the footprint: circles the size of the short side, laid along the
+long one. Buildings stay as solid as before; the road is clear.
+
+#### 2. The grey over the towns was the asset packs' own scenery
+A shop pack is authored as a whole scene — the building plus the pack's ground,
+sidewalks, grass, trees and a painted backdrop card, at scene scale. `main.js`'s
+`loadFbxScene()` has always culled that (`SITE_CLUTTER`); **`landmarks.js` has its own
+`loadFBX()` that culled nothing**, and it is what the districts place. Around Tusouxroe
+North that put down, among 283 oversized plates:
+- `sidewalk001` — **475 × 324 m**, floating at y 1.7
+- `Ground` — 281 × 151 m hanging at **y 17.9**
+- `Grass_` 220 × 181, `Trees` 222 × 156, `Asphalt` 219 × 145
+- `Background` / `Trees_Background` backdrop cards, 474 × 320 m at y 17.1, one directly
+  over Tusouxroe
+Fixed in two places: `loadGLB` (main.js) now drops backdrop cards from every pack by mesh
+**or material** name, and `landmarks.js`'s `loadFBX` takes a cull, with the four scene
+packs (gas station, 6twelve, Tacos, BurgerPiz) passing `SITE_CLUTTER`. Props — the Fence
+Pack, the office clutter — deliberately do not, since that list would eat the fences.
+
+#### Testing performed (2026-09-19)
+- Route audit over the chase line (highway → dirt road → crash site), 49 samples:
+  **nothing blocks the dirt road** (was: two circles, 9 and 3 samples, up to 2.42 m deep).
+- Overhead-surface audit: **0 big planes above the towns** (was 11).
+- Plates over Tusouxroe North 283 → 249, and every oversized floating one is gone; what
+  remains is roads and power cables.
+- `prologue.mjs` **pass** (the chase drives that road), `gameplay.mjs` **pass**,
+  `gascans.mjs` **5/5**, 0 new console errors — and `gameplay.mjs` again after the water
+  change, also clean.
+- Before/after photographs in `tools/qa/out/land-*.png`, `fixed-*.png`, `clean-*.png`.
+
+#### Known issues
+- Tusouxroe North is still visually rough — it was built by a "manual grid loop" and reads
+  as flat grey plates under hard shadows even with the pack scenery gone. That is a
+  content problem in the district, not scenery leaking in from the packs.
+- Chatboro's grey was a different thing from Tusouxroe's: the **bayou band** (three
+  rectangles, x −140…410, z 132…196) at ground level, not pack scenery overhead. Its
+  water had `clearcoat: 1` at 0.12 roughness, so it mirrored the whole dusk sky as a flat
+  grey sheet. Taking the human's "or at least transparent enough to see the road and
+  cars" literally: blurred and dimmed (`clearcoatRoughness` 0.45, `envMapIntensity` 0.35)
+  and see-through (`opacity` 0.6), in all three modules that build it. **Superseded by
+  TASK-050:** the blurred coat spread the moon into a pale glaze over half the swamp; the
+  clearcoat is now gone. **What is still true:** the band itself is three big rectangles
+  with a ruler-straight northern edge 20 m from the town. Reshaping that is a design change
+  nobody has asked for.
+
+---
+
 ### TASK-048 — The land in Chatboro and Tusouxroe (human request: "fix the land format")
 
 **Status:** `REVIEW` · **Agent:** Claude

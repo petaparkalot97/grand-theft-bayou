@@ -40,12 +40,101 @@ let _fbxLoader = null;
 // fight over one mesh (an Object3D has exactly one parent; the second
 // .add(fbx) would silently steal it from the first).
 const _fbxCache = new Map();   // url -> Promise<THREE.Group|null> (the template; never mutated or added to a scene)
-function loadFBX(url) {
+// These packs ship painted backdrop cards — "Background", "Trees_Background" —
+// hundreds of metres wide and hung 13-17 m up so the pack looks good on its own.
+// main.js's loadFbxScene() has always dropped them (SITE_CLUTTER); this loader
+// never did, so every gas station and 6twelve outpost placed out in the state
+// brought a grey ceiling with it, over Tusouxroe among others. Only the backdrop
+// family is culled here — the full SITE_CLUTTER list would eat the Fence Pack.
+const BACKDROP_RE = /^(background|backdrop|skybox|sky_?dome|trees_background)/i;
+function isBackdrop(o) {
+  if (BACKDROP_RE.test(o.name || "")) return true;
+  for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+    if (m && BACKDROP_RE.test(m.name || "")) return true;
+  }
+  return false;
+}
+
+/**
+ * A shop pack is authored as a whole scene: the building, and around it the
+ * pack's own ground, sidewalks, grass, trees, power lines and painted backdrop,
+ * at scene scale. Placing one unfiltered drops a 475 x 324 m sidewalk and a
+ * "Ground" mesh 18 m up over whatever town it landed in — which is what had
+ * happened to Tusouxroe North. `SITE_CLUTTER` is main.js's list, plus the
+ * packs' overhead cables; pass it whenever the pack is a scene rather than a
+ * prop. Props (the Fence Pack, the office clutter) must NOT use it — it would
+ * eat the fences.
+ */
+export const SITE_CLUTTER =
+  /ground|asphalt|parking|road|street|sidewalk|pavement|terrain|grass|bush|plant|tree|curb|soil|sand|dirt|cable/i;
+
+function loadFBX(url, cullRe) {
   if (!_fbxCache.has(url)) {
     if (!_fbxLoader) _fbxLoader = new FBXLoader();
     _fbxCache.set(url, new Promise((r) => _fbxLoader.load(url, r, undefined, (e) => { console.warn("FBX load failed", url, e); r(null); })));
   }
-  return _fbxCache.get(url).then((template) => (template ? template.clone(true) : null));
+  return _fbxCache.get(url).then((template) => {
+    if (!template) return null;
+    const copy = template.clone(true);
+    const doomed = [];
+    copy.traverse((o) => {
+      if (!o.isMesh) return;
+      if (isBackdrop(o)) { doomed.push(o); return; }
+      if (!cullRe) return;
+      // By material only when EVERY material is scenery: the 6twelve store and
+      // the gas station's shop are single meshes that include a strip of their
+      // own "Asphalt", and matching any one material deleted the building.
+      const mats = (Array.isArray(o.material) ? o.material : [o.material]).filter(Boolean);
+      if (cullRe.test(o.name || "") || (mats.length && mats.every((m) => cullRe.test(m.name || "")))) doomed.push(o);
+    });
+    for (const m of doomed) m.parent && m.parent.remove(m);
+    return copy;
+  });
+}
+
+/**
+ * Keeps the shop, drops the rest of the pack's demo neighbourhood. The packs
+ * surround their shop with other buildings that no name list can catch —
+ * BurgerPiz ships four houses called "Building".."Building003" 70-190 m out,
+ * Tacos about sixty "buildings_NN" around a taco stand, the gas station a
+ * block of trees and bushes — and the model used to be centred on all of it,
+ * so those houses landed across whatever roads were near the shop. Their flat
+ * grey roofs, 9.8 m up, are what sat between the camera and the player in
+ * Tusouxroe North.
+ *
+ * The site is the `anchor` meshes' footprint grown by `margin` metres. A mesh
+ * stays if its centre is on the site and it isn't much bigger than the site
+ * (a 76 m row of lamp posts can have its centre there too). Call it after
+ * scaling, before centring.
+ *
+ * Returns the height of the shop's own floor (null if no anchor was found).
+ * Stand the model on that, not on its lowest mesh: the gas station hides a
+ * pump part 4.8 m under its forecourt, and lifting by the lowest mesh floated
+ * the whole station that far off the ground (18 m while its bushes were in).
+ */
+function trimToSite(model, anchorRe, margin) {
+  model.updateMatrixWorld(true);
+  const box = (o) => {
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    return o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);
+  };
+  const site = new THREE.Box3();
+  model.traverse((o) => { if (o.isMesh && anchorRe.test(o.name || "")) site.union(box(o)); });
+  if (site.isEmpty()) return null;     // a pack laid out differently: leave it whole
+  const floor = site.min.y;
+  site.expandByVector(new THREE.Vector3(margin, 0, margin));
+  const w = (site.max.x - site.min.x) * 1.25, d = (site.max.z - site.min.z) * 1.25;
+  const doomed = [];
+  const c = new THREE.Vector3();
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    const b = box(o);
+    b.getCenter(c);
+    const onSite = c.x >= site.min.x && c.x <= site.max.x && c.z >= site.min.z && c.z <= site.max.z;
+    if (!onSite || b.max.x - b.min.x > w || b.max.z - b.min.z > d) doomed.push(o);
+  });
+  for (const o of doomed) o.parent && o.parent.remove(o);
+  return floor;
 }
 
 // A mesh's .material can be a single Material or an array of them (common on
@@ -242,15 +331,17 @@ export function placeGasStation(ctx, x, z, ry = 0) {
   g.position.set(x, 0, z);
   g.rotation.y = ry;
   
-  loadFBX('./assets/models/gasstation/Gas_station.fbx').then((fbx) => {
+  loadFBX('./assets/models/gasstation/Gas_station.fbx', SITE_CLUTTER).then((fbx) => {
     if (fbx) {
       const model = fbx.clone(true);
       model.scale.setScalar(0.015);
-      
+      // the canopy, the station's store 38 m behind it, and the restrooms
+      const floor = trimToSite(model, /^(The_ceiling|6twelve|Bathrooms)$/, 5);
+
       let b = new THREE.Box3().setFromObject(model);
       const center = b.getCenter(new THREE.Vector3());
-      model.position.set(-center.x, -b.min.y, -center.z);
-      
+      model.position.set(-center.x, -(floor ?? b.min.y), -center.z);
+
       model.traverse((o) => {
         if (o.isMesh) {
           o.castShadow = true;
@@ -272,15 +363,16 @@ export function placeSixTwelve(ctx, x, z, ry = 0) {
   g.position.set(x, 0, z);
   g.rotation.y = ry;
   
-  loadFBX('./assets/models/sixtwelve/6twelve.fbx').then((fbx) => {
+  loadFBX('./assets/models/sixtwelve/6twelve.fbx', SITE_CLUTTER).then((fbx) => {
     if (fbx) {
       const model = fbx.clone(true);
       model.scale.setScalar(0.015);
-      
+      const floor = trimToSite(model, /^6twelve$/, 5);
+
       let b = new THREE.Box3().setFromObject(model);
       const center = b.getCenter(new THREE.Vector3());
-      model.position.set(-center.x, -b.min.y, -center.z);
-      
+      model.position.set(-center.x, -(floor ?? b.min.y), -center.z);
+
       model.traverse((o) => {
         if (o.isMesh) {
           o.castShadow = true;
@@ -314,7 +406,10 @@ export function placeCityBuilding(ctx, typeKey, x, z, ry = 0) {
   const roofMat = stdMat(0x3a3d40, 0.9, "roof concrete");
 
   if (ctx.loadGLB && spec.file) {
-    ctx.loadGLB(`./assets/city/models/textured/${spec.file}`).then((glb) => {
+    // These packs ship painted backdrop cards — "Background", "Trees_Background" —
+    // 474 x 320 m planes that the pack puts at y 13-17. Dropped on load: they hung
+    // over Tusouxroe and Chatboro as a grey ceiling with the town underneath it.
+    ctx.loadGLB(`./assets/city/models/textured/${spec.file}`, /background|backdrop|skybox/i).then((glb) => {
       if (glb) {
         // Clone the scene and add it to our group
         const model = glb.clone(true);
@@ -672,19 +767,21 @@ export function placeTacos(ctx, x, z, ry = 0) {
   const g = new THREE.Group();
   g.position.set(x, 0, z);
   g.rotation.y = ry;
-  loadFBX('./assets/models/tacos/Tacos/Models/Tacos.fbx').then((fbx) => {
+  loadFBX('./assets/models/tacos/Tacos/Models/Tacos.fbx', SITE_CLUTTER).then((fbx) => {
     if (fbx) {
       const model = fbx.clone(true);
       model.scale.setScalar(0.012);
+      // the stand and its grills, tables and chairs; the pack's OXXO next door is scenery
+      const floor = trimToSite(model, /^Taco_stand$/, 4);
       let b = new THREE.Box3().setFromObject(model);
       const center = b.getCenter(new THREE.Vector3());
-      model.position.set(-center.x, -b.min.y, -center.z);
+      model.position.set(-center.x, -(floor ?? b.min.y), -center.z);
       model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; markRealized(o); } });
       g.add(model);
     }
   });
   scene.add(g);
-  if (addBlocker) addBlocker(x, z, 14);
+  if (addBlocker) addBlocker(x, z, 3.5);     // the stand's 7 x 4 m, not the 14 m block it used to bring
 }
 
 export function placeBurgerPiz(ctx, x, z, ry = 0) {
@@ -692,13 +789,14 @@ export function placeBurgerPiz(ctx, x, z, ry = 0) {
   const g = new THREE.Group();
   g.position.set(x, 0, z);
   g.rotation.y = ry;
-  loadFBX('./assets/models/burgerpiz/BurgerPiz/Models/BurgerPiz.fbx').then((fbx) => {
+  loadFBX('./assets/models/burgerpiz/BurgerPiz/Models/BurgerPiz.fbx', SITE_CLUTTER).then((fbx) => {
     if (fbx) {
       const model = fbx.clone(true);
       model.scale.setScalar(0.012);
+      const floor = trimToSite(model, /^BurgerPiz$/, 5);
       let b = new THREE.Box3().setFromObject(model);
       const center = b.getCenter(new THREE.Vector3());
-      model.position.set(-center.x, -b.min.y, -center.z);
+      model.position.set(-center.x, -(floor ?? b.min.y), -center.z);
       model.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; markRealized(o); } });
       g.add(model);
     }

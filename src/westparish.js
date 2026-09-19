@@ -485,8 +485,9 @@ export function createWestParish(ctx) {
     }
 
     const water = new THREE.MeshPhysicalMaterial({
-      color: 0x06110e, roughness: 0.18, metalness: 0, envMapIntensity: 1.0,
-      clearcoat: 1, clearcoatRoughness: 0.12, name: "swamp water",
+      // see eastbank.js: no clearcoat, so it reads as water, not a grey-white sheet
+      color: 0x06110e, roughness: 0.18, metalness: 0, envMapIntensity: 0.35,
+      transparent: true, opacity: 0.6, name: "swamp water",
     });
     water.userData.gtbRealized = true;
     for (const wt of WATER) {

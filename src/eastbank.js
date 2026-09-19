@@ -187,9 +187,13 @@ export function createEastBank(ctx) {
       ctx.addBlocker(c.x - 3, r.z1 - 3.5, 2.5); ctx.addBlocker(c.x + 3, r.z1 - 3.5, 2.5);
       for (const x of [r.x0 + 2, r.x1 - 2]) ctx.addLitSpot({ x, y: 10, z: r.z0 + 4, warm: 0xf4f8ff, power: 160, range: 34, pole: true });
     } });
+    // Bayou water, not a mirror, and no clearcoat. At 0.12 roughness the coat reflected
+    // the whole dusk sky; blurred to 0.45 it spread the moon into a pale glaze over half
+    // the swamp. Either way it read as a flat grey-white sheet beside the town. The
+    // water's own 0.2 roughness keeps a tight moon glint and a dim sky reflection.
     const swamp = new THREE.MeshPhysicalMaterial({
-      color: 0x07120f, roughness: 0.2, metalness: 0, transparent: true, opacity: 0.92,
-      clearcoat: 1, clearcoatRoughness: 0.12, envMapIntensity: 0.9, name: "swamp water",
+      color: 0x07120f, roughness: 0.2, metalness: 0, transparent: true, opacity: 0.6,
+      envMapIntensity: 0.35, name: "swamp water",
     });
     swamp.userData.gtbRealized = true;
     C.water(BAYOU, swamp);

@@ -656,7 +656,17 @@ const RULES = [
     set: { metalness: 0, roughness: 0.74, envMapIntensity: 0.7 }, normalScale: 1.2, tiles: 11 },
 ];
 
+// Lit signage. Judged on a surface's OWN names — its material's and its mesh's —
+// never the call-site hint or the parent: "harborLIGHT-hospital.glb" lit every
+// curb, paving slab and wall of the hospital, and "Toyoyo_HighLIGHT" the whole
+// truck, so both glowed warm white at any hour. NOT_LIT catches the rest of
+// what reads as a light and isn't: the city packs' "-light" SHADES
+// (stone-light, paving-light, brick-light, their "-surface" twins) and the
+// grey back of a sign. The packs' real light sources — lamp lenses, lit
+// windows, beacons, "…-glow" — are named for it and keep their own emissive.
 const EMISSIVE = /neon|emiss|\bled\b|lamp|light|glow|sign|logo|lottery|price|menu|billboard|display|bulb|marquee/i;
+const NOT_LIT = /-light(?:-surface)?$|\bback\b/i;
+const isLit = (n) => !!n && EMISSIVE.test(n) && !NOT_LIT.test(n);
 
 /**
  * Repair normals that would light as NaN. A zero-length (or non-finite) normal
@@ -734,13 +744,13 @@ export function realize(root, opts) {
     const context = [o.hint || "", node.name || "", node.parent ? node.parent.name : ""].join(" ");
     const single = !Array.isArray(node.material);
     const mats = single ? [node.material] : node.material;
-    const next = mats.map((m) => upgrade(m, context, o));
+    const next = mats.map((m) => upgrade(m, context, o, node.name || ""));
     node.material = single ? next[0] : next;
   });
   return root;
 }
 
-function upgrade(mat, context, opts) {
+function upgrade(mat, context, opts, meshName) {
   if (!mat || mat.userData.gtbRealized) return mat;
 
   // Unlit, untextured overlays (tracers, markers, HUD blobs) stay unlit.
@@ -841,8 +851,8 @@ function upgrade(mat, context, opts) {
     out.aoMapIntensity = 0.35;
   }
 
-  // lit signage
-  if (EMISSIVE.test(name)) {
+  // lit signage (see EMISSIVE: own names only)
+  if (isLit(mat.name) || isLit(meshName)) {
     out.emissive = new THREE.Color(0xffd9a0);
     out.emissiveIntensity = 1.15 * (opts.emissiveBoost || 1);
     if (out.map) out.emissiveMap = out.map;
