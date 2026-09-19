@@ -57,6 +57,77 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-046 — Restore Keseme's original story and the gas-can objective (human request)
+
+**Status:** `REVIEW` · **Agent:** Claude · **Requested by:** the human, 2026-09-18, twice and emphatically:
+*"Keep Keseme's Original Story Script and Plot intact!!!"* and *"We must get the original
+story, script and plot for Keseme back!!!! This and also the gas can objective!!!!!!"*
+**Files:** `src/main.js`, `src/prologue.js`, `src/actone.js`, `index.html`, `src/stateWorld.js`,
+`tools/qa/gascans.mjs` (new)
+
+#### What had happened
+Two commits on 2026-09-17 changed Keseme's story after "update 11":
+- **`9d1a81b` + `41fc830` — the gas-can objective was deleted.** The cans, the escape
+  truck, `CAN_GOAL`, the HUD counter, `settleCans()`, the pickup logic, the waypoint and
+  the win condition all came out of `main.js`; the HUD label came out of `index.html`;
+  and the two lines that carry the plan between story beats were rewritten to
+  "Explore the Bayou." — in the prologue's hand-off *and* at the end of Act One.
+- **`208391a` — a new Mission 1, "Transition Day" (`missionClinic.js`), was inserted
+  ahead of the prologue**, and story mode was pointed at it instead of `prologue.start()`.
+  "Hog Wild" was demoted to MISSION 2 in the card the player sees and in the file header.
+
+#### What was restored
+- **The script and the plot, exactly.** `prologue.js`, `actone.js`, `nolantis.js`,
+  `welcomeback.js`, `bluelight.js` and `alternateCampaign.js` are now **byte-for-byte
+  identical to `0edb70d` ("update 11")** — verified with `git diff`. "Hog Wild" is
+  MISSION 1 again, in the card and the header.
+- **The opening.** Story mode calls `prologue.start()` again. `missionClinic.js` is left
+  on disk untouched but is not created, not built and not started, so nothing of that
+  work is lost and re-wiring it is a five-line change (`main.js` says exactly where).
+- **The gas-can objective, whole.** The cans and their glow columns, the escape truck and
+  its marker light, `CAN_GOAL`, `settleCans()`, the pickup rules (2.4 m on foot, 3.4 m in
+  a car), the HUD counter and label, the minimap waypoint that switches to the truck on
+  the fourth can, the win condition, and both story hand-off lines.
+- **Kept, deliberately:** Keseme's real female voice id in `voiceCast.js`
+  (`208391a`, human-provided). That is a voice for lines she already had, not the script
+  or the plot — the original held a `TODO_…PASTE_FISH_AUDIO_REFERENCE_ID` placeholder and
+  she was reading in the male voice she used to share with Peta. **Say the word and it
+  goes back too.**
+
+#### Testing performed (2026-09-18)
+- `tools/qa/prologue.mjs` **pass** — the run opens on the PROLOGUE (radio dial cold open),
+  HUD reads "Steal a ride. Scrounge 4 gas cans. Get to the truck and get out of Dixie
+  Beaux.", and every beat plays through to "ACT ONE — Welcome Home". 0 new console errors.
+- `tools/qa/actone.mjs` **pass** — all beats, ending on Solange and the southern coordinates.
+- `tools/qa/controls.mjs` **32/32**, including the seven gas-can checks that had been dead
+  since the removal: all five cans reachable and clear of collision, reach 2.4 m / 3.4 m,
+  every can has its glow column. (`__game.cans` had to be put back on the debug surface —
+  the tests were still in the file and crashing on `cans is not iterable`.)
+- `tools/qa/gascans.mjs` (new) **5/5** — the objective end to end: four cans and a truck
+  with the plan on the HUD, walking over a can counts it, the objective still names the
+  plan part-way, at 4/4 it points at the truck, and reaching the truck wins the run.
+- `tools/qa/gameplay.mjs` **pass** — hp 100 at every step, 0 hostile, no new console errors.
+
+#### Known issues
+- **Separate and serious, found while verifying this (not touched, awaiting a decision):
+  distance culling is defeated across the whole state map.** `eff285d` ("Fix live crash:
+  cullGroups was never defined") deleted the `boundary:` line from the `batchStatic` call
+  instead of restoring the `cullGroups` Set that a merge had dropped — but the districts
+  stayed *out* of the `moving` exclusion list. So their scenery is batched into the scene
+  root, where the composer's cluster culling can no longer hide it. Scenery-only draw
+  calls, same fixed cameras as TASK-045, everything that moves hidden:
+  north crossroads **268 → 19,138**, Lafourchette **919 → 21,613**, the strip
+  **907 → 12,667**, OrleaRouge **890 → 3,599**; scene meshes 3,903 → 18,362. Part of that
+  is the world getting denser since, but the shape of it is the missing boundary. The fix
+  is to put the `cullGroups` Set back and restore the one line.
+- Not mine, but loud: the dev-mode map editor (`94f8ee6`) fetches
+  `https://grand-theft-bayou.onrender.com/editor/load` on a loop and it is blocked by
+  CORS — **326 failed requests in one Act One run**. It does not affect the story.
+- `controls.mjs` went 22 → 32 tests with the cans back; the ten gas-can assertions had
+  been silently skipped, not deleted.
+
+---
+
 ### TASK-045 — Batch by material signature, and stop excluding half the world (TASK-011)
 
 **Status:** `REVIEW` · **Agent:** Claude
