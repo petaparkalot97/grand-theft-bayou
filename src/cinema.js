@@ -273,6 +273,11 @@ export function createCinema({ camera, muted = () => false }) {
 
     wait,
     sfx,
+    // Ambient one-liners (pedestrianChatter.js) that need real audio but no
+    // on-screen subtitle or scene ownership — say() drives both; this is the
+    // bare audio half. Returns a Promise for the clip's duration (0 if muted,
+    // skipping, or no manifest entry — falls back to browser speechSynthesis).
+    playVoiceLine,
 
     letterbox(on) { document.body.classList.toggle("letterbox", !!on); },
 

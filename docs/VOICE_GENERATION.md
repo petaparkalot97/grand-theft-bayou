@@ -4,6 +4,28 @@ How cutscene dialogue gets turned into real spoken audio, and how to add
 more of it. Read this before writing new dialogue in a cutscene, or if a
 line is playing as a robotic browser voice instead of a real one.
 
+> **Two generators, one manifest.** This doc is written around cutscene
+> dialogue (`c.say(...)` calls scanned out of `src/*.js` by
+> `tools/voiceover-gen.mjs`). Open-world **pedestrian barks** — the
+> bump-into-an-NPC and fight one-liners in `src/pedestrianChatter.js` — are a
+> second, parallel pipeline: `tools/pedestrian-voiceover-gen.mjs` reads its
+> lines directly from that file's `allVoiceLines()` (data, not code calls)
+> instead of regex-scanning scene files, but resolves voices through the same
+> `src/voiceCast.js` and writes into the same `assets/audio/voice/manifest.json`
+> that `cinema.js`'s `playVoiceLine()` reads — so everything below about the
+> model, the filename hash, caching and troubleshooting applies to both.
+> Pedestrian voice keys are `REDNECK`, `DOCKWORKER`, `MECHANIC`, `SUIT`,
+> `TOURIST`, `PROSTITUTE` (one voice each — those archetypes are flat 2D
+> sprites, no visual gender variance) and `HOODRAT_M`/`_F`, `HOBO_M`/`_F`,
+> `THUG_M`/`_F` (those three spawn as either sex at random — see
+> `characters.js`'s `randomHoodrat`/`randomHobo` — so `voiceCast.js`'s
+> `pedestrianVoiceWho(type, female)` picks the matching voice from the NPC's
+> own rolled sex, `spr.female`, at speak time). Hogs are non-verbal — no
+> voice entry, no generation, just the grunt/squeal text in the HUD flash.
+> Run it the same way: `node tools/pedestrian-voiceover-gen.mjs [--force]
+> [--character=REDNECK] [--dry-run]` (no `--line=` filter — there's no
+> reason to regenerate a single pedestrian line by substring).
+
 ## Workflow: dialogue → voice
 
 The whole pipeline, start to finish:

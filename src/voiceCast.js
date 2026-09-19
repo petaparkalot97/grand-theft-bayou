@@ -66,7 +66,39 @@ export const VOICE_CAST = {
   // Sync's campaign (syncCampaign.js)
   SYNC: { referenceId: "d269c1a386044cb183bbf7e4a02eb919", label: "Sync" },
   UNCLE: { referenceId: "f212cebdad124957908119daa634037c", label: "Uncle Scunter" },
+
+  // Pedestrian barks (bump/fight one-liners) — src/pedestrianChatter.js,
+  // human-provided Fish Audio voices, 2026-09-19. Fixed-look archetypes (flat
+  // 2D sprite atlases: redneck/dockworker/mechanic/suit/tourist — no gender
+  // variance) get one voice each. The 3D-rig archetypes that spawn either sex
+  // at random (hoodrat/hobo/thug — characters.js randomHoodrat/randomHobo)
+  // get a _M and _F voice, picked at runtime by the NPC's own rolled sex
+  // (spr.female). Prostitute is always female (randomProstitute). See
+  // pedestrianVoiceWho() below for the lookup. Hogs are non-verbal — no entry.
+  REDNECK: { referenceId: "fee420f4813d4318bfea84f8f6cac53f", label: "Redneck pedestrian ('redneck')" },
+  DOCKWORKER: { referenceId: "1444a58d66a44522b37a220991eeaa92", label: "Dockworker ('Halpin')" },
+  MECHANIC: { referenceId: "78eda55526de4a1aa02d5f1ff5b0112b", label: "Mechanic ('gangster')" },
+  SUIT: { referenceId: "2096c0a564a84411aaf66ac5c529276b", label: "Suit ('The gangster')" },
+  // Fish Audio's own tag says this voice is Female, despite being filed under
+  // the human's "male" list — flagged and kept here per their call (2026-09-19).
+  TOURIST: { referenceId: "8ecf92e817ef45e081c45da1919352fc", label: "Tourist ('Rednex')" },
+  PROSTITUTE: { referenceId: "dd45c68688f34c3bac818c5b30acf927", label: "Prostitute ('sexy slut')" },
+  HOODRAT_M: { referenceId: "2096c0a564a84411aaf66ac5c529276b", label: "Hoodrat, male ('The gangster')" },
+  HOODRAT_F: { referenceId: "8b72b4a3a27a4d89821ca6e556984ec3", label: "Hoodrat, female ('SluT')" },
+  HOBO_M: { referenceId: "1444a58d66a44522b37a220991eeaa92", label: "Hobo, male ('Halpin')" },
+  HOBO_F: { referenceId: "55a1a59b8b444e5296bf074bf1d9bc8f", label: "Hobo, female ('Black')" },
+  THUG_M: { referenceId: "78eda55526de4a1aa02d5f1ff5b0112b", label: "Thug, male ('gangster')" },
+  THUG_F: { referenceId: "ae1ddccb96a144e399daa1aaac37b8d5", label: "Thug, female ('Slut')" },
 };
+
+/** Which VOICE_CAST key a pedestrian bark should use, or null for the
+ * non-verbal types (hogs only grunt — see pedestrianChatter.js). */
+export function pedestrianVoiceWho(type, female) {
+  const t = String(type || "").toUpperCase();
+  if (t === "HOG") return null;
+  if (t === "HOODRAT" || t === "HOBO" || t === "THUG") return `${t}_${female ? "F" : "M"}`;
+  return t;
+}
 
 export const STREET_NPC_VOICE_IDS = [
   "54e995c017564b558940e09ba3572d76",
