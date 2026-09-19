@@ -57,6 +57,67 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-052 — $DEVMODE69xxx round 2: full asset library via R2, mode UX, drag-select, copy/paste, edit-anything (human request, 2026-09-20) — TOP PRIORITY
+
+**Status:** `IN PROGRESS` · **Agent:** Claude
+**Files (expected):** `src/mapEditor.js`, `src/landmarks.js`, `server/index.js`, possibly a new `server/assets.js` or R2-listing endpoint
+
+**Human's own words:** *"OK WE NEED TO FIX THE MAP EDITOR. ITS TOTALLY SHIT."* — six numbered
+points, verbatim intent below. Also directed: "start uploading to cloudflare
+bucket and begin working on the editor. Make sure to commit and push the
+editor changes too!!"
+
+1. **Not all 3D assets are accessible in the editor.** Root cause found: the
+   full asset library lives in a *separate* local repo, `Z:\GITHUB\_ASSETS`
+   — not inside `bayou` at all, and not even extracted (the packs are raw
+   `.rar`/`.zip` archives, ~2 GB). The deployed game and the editor can only
+   ever see files inside `bayou`'s own `assets/` folder — this was never
+   going to work without an actual pipeline. Decision (human confirmed):
+   host the extracted library on **Cloudflare R2** (account already has API
+   access; free tier covers this — 2 GB is well under the 10 GB free
+   allowance) rather than committing 2 GB of binaries into `bayou`'s git
+   history. Needs: an R2 bucket, the archives extracted into real
+   FBX/GLB/OBJ + texture files and uploaded, a listing/manifest mechanism
+   (this doubles as the pagination the human asked for if the container
+   can't list everything at once), CORS so the game's origin can fetch from
+   it, and the editor's catalog/loader pointed at R2 URLs instead of
+   `./assets/...`.
+2. **Select/Delete mode toggling is unintuitive**, and worse: **Select
+   mode still leaves the ghost armed to place a new object** — trying to
+   click something to select it instead drops a fresh building, since only
+   Delete mode clears the "about to place" cursor state. Needs a real
+   rethink of the mode model, not just relabeling.
+3. **Right-click currently does nothing** (well — it's bound to camera
+   orbit-drag, but reads as dead to the human). Make it useful.
+4. **Click-and-drag box-select** for multiple placed objects at once.
+5. **Copy / cut / paste.** Drag-select multiple objects, Ctrl+C or Ctrl+X
+   (cut) picks them up as a holographic preview following the cursor,
+   click or Ctrl+V drops them.
+6. **Select/move/edit/remove objects the editor didn't place** — i.e. the
+   world's own authored landmarks, not just this session's placements.
+   **This explicitly reverses the "editor-placed objects only" scope the
+   human confirmed for TASK-051's Select tool** — they now want the editor
+   to be able to touch anything in the scene. Needs a real object registry
+   (id + source + how to remove/rebuild it) for landmarks that were never
+   designed to be deleted at runtime; district-authored geometry that's
+   just one mesh among thousands (batched, procedural) may not be
+   individually pickable without further work — flag what's actually
+   feasible here rather than silently no-op'ing on the hard cases.
+
+#### Notes for whoever picks this up (including a future me)
+- This was scoped and started while the human was stepping away
+  (`/bg`, terminal closing) — no live check-ins possible mid-task. Where a
+  point above has a real judgment call baked in (especially #6's "how far
+  does edit-anything actually go"), the implementing agent made the call,
+  did the work, and left a clear note here and in `AGENT_LOG.md` rather
+  than blocking.
+- Item #1 (R2) is infrastructure, not just code — check `wrangler.jsonc` /
+  `server/index.js` / whatever this task's implementation added for the
+  bucket name, manifest shape and CORS config before assuming asset paths
+  work the same way they used to.
+
+---
+
 ### TASK-051 — $DEVMODE69xxx follow-up: shop-pack white materials, missing assets, layout, select/move tool (human report + screenshots, 2026-09-20)
 
 **Status:** `REVIEW` · **Agent:** Claude
