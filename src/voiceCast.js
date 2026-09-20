@@ -63,6 +63,15 @@ export const VOICE_CAST = {
   EXECUTIVE: { referenceId: "54e995c017564b558940e09ba3572d76", label: "Corporate executive" },
   VOICE: { referenceId: "504f3f5d6567435aad64c130fb448c2f", label: "Unknown caller (distorted)" },
 
+  // The cemetery cameo (cemetery.js). Marie Laveau has no voice of her own yet
+  // — this is the female street-pool stand-in, same arrangement as GAYMAN /
+  // LESBIAN above. When she gets one, drop the id in here and run
+  // `npm run voiceover -- --force --character=MARIE_LAVEAU`.
+  MARIE: { referenceId: "55a1a59b8b444e5296bf074bf1d9bc8f", label: "Marie Laveau (stand-in voice)" },
+  LAVEAU: { referenceId: "55a1a59b8b444e5296bf074bf1d9bc8f", label: "Marie Laveau (stand-in voice)" },
+  "MARIE LAVEAU": { referenceId: "55a1a59b8b444e5296bf074bf1d9bc8f", label: "Marie Laveau (stand-in voice)" },
+  MARIE_LAVEAU: { referenceId: "55a1a59b8b444e5296bf074bf1d9bc8f", label: "Marie Laveau (stand-in voice)" },
+
   // Sync's campaign (syncCampaign.js)
   SYNC: { referenceId: "d269c1a386044cb183bbf7e4a02eb919", label: "Sync" },
   UNCLE: { referenceId: "f212cebdad124957908119daa634037c", label: "Uncle Scunter" },

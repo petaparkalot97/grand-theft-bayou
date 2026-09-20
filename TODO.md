@@ -78,6 +78,165 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 > technique worth reusing rather than inventing a second one — see the note
 > added there too.
 
+### TASK-065 — St. Louis No. 1: the OrleaRouge cemetery rebuilt above ground, + the ghost of Marie Laveau (human request, 2026-09-20)
+
+**Status:** `REVIEW` · **Agent:** Claude · **Files:** `src/cemetery.js` (new),
+`src/orlearouge.js`, `src/main.js`, `src/voiceCast.js`, `tools/qa/cemetery.mjs` (new)
+
+Human's request: *"change the graveyard in Orlearouge to resemble the Official
+St. Louis Cemetery in New Orleans in terms of the coffins and caskets being
+above ground. Should also have the Ghost of Marie Leavux as a cameo in which her
+ghost haunts and looks after the cemetery."*
+
+**What was there:** `orlearouge.js`'s `cemetery(b)` — a 0.5 m brick wall and
+fifteen 2.2 x 2.4 x 3 boxes with pyramid lids on an 8.5 x 8 m lattice. Nothing
+above ground about it beyond the boxes, and wide enough to drive a bus through,
+which quietly undercut `bluelight.js`'s *"Lose them among the tombs — the
+cruisers can't follow between the tombs."*
+
+**What changed:**
+1. New module `src/cemetery.js` builds the whole block. `orlearouge.js`'s
+   `cemetery(b)` is now three lines that call it, so the big new surface lives
+   outside Antigravity's TASK-038 file (see *Lock note* below).
+2. **Oven vaults.** The perimeter wall is the cemetery: stacked rented vaults,
+   three tablets high, plastered and closed with engraved marble, drawn as one
+   tiled canvas texture per wall rather than ~380 tablet meshes.
+3. **Above-ground step tombs.** ~40 plastered family tombs of two or three
+   receding tiers with cornices and a cross or urn, in four staggered rows,
+   deterministic from one seed. Two benevolent-society tombs and a pyramid.
+4. **The alleys are the point.** Blocker radius 1.45 at a 4.7 m row pitch and a
+   3.2 m column pitch: 1.8 m of alley (a walker is 1.2 m across, a car 3.6), and
+   0.3 m along a row — impassable. The gate's clear opening is 2.7 m, so nothing
+   with wheels gets inside at all. **`bluelight.js`'s claim is now literally true.**
+5. **The Glapion tomb**, three tiers, with the XXX tablet and the offerings
+   people leave at its foot — beads, coins, votive candles that gutter, a rum
+   bottle — under a warm pooled light.
+6. **The ghost.** Built on the `characters.js` rig, then washed pale, lit from
+   inside, depth-write off, legs hidden under a shift and skirt, a tignon on her
+   head, hovering. She appears after dark only, walks a fixed round down the
+   alleys and home to her own tomb, carries a cold pooled light, and fades with
+   distance as well as with the hour.
+7. **She looks after the place.** First approach at night plays a short scene.
+   `F` at her step leaves an offering: $20 for +35 HP and a line back, on a 45 s
+   cooldown. Fire a gun inside the walls and she objects and withdraws for 26 s
+   (detected off a rise in `state.fireCd`, so no new hook in `main.js`).
+
+**Two bugs found and fixed on the way:**
+- **Firing was dead in the whole game.** `main.js` registered
+  `input.onPress("fire", ...)`, and there is no `"fire"` action — `input.js`
+  dispatches `"attack"` on LMB and has no `fire` in `DEFAULT_BINDINGS`, so the
+  handler hung off a name nothing raises. Verified headlessly before and after:
+  LMB left `state.fireCd` at 0 and ammo untouched; now `fireCd 0.42`, ammo 50 to 49.
+  Bound to `"attack"`. **This was not specific to the cemetery — the player
+  could not shoot or swing at anything, anywhere.**
+- `main.js`'s `poolLight()` returned nothing, so a light could never be moved.
+  It now returns its spot (purely additive; every existing caller ignores it).
+
+**Testing performed** (headless Chromium via the browser-automation runner,
+`tools/qa/cemetery.mjs`, screenshots in the scratchpad — SwiftShader, so fps is
+meaningless and is not reported):
+- Layout builds: 38 blockers inside the walls, tightest gap 0.30 m, 12 gaps
+  punched through the rows, gate at (-114, 337), her tomb at (-114, 359.6).
+- **Reachability flood-fill** over the real blocker grid, from the sidewalk
+  outside the gate, at both radii: walker reaches 13,908 cells including her
+  step and the far alleys; **a car reaches 523 — the street only.** It cannot
+  get through the gate, let alone to the tomb.
+- Day (13:00): ghost absent, `presence` 0. Night (23:00): `presence` 0 to 0.89 to
+  1.0, visible, moving down the alley; her greeting scene plays.
+- Offering: prompt shows at her step, `F` takes $200 to $180 and 40 to 75 HP.
+- Gunshot inside the walls: objective reads *MARIE LAVEAU: "Not in here. Not
+  over my dead."*, `presence` 1 to 0.35 to 0.01 and she goes invisible.
+- Draw calls at the cemetery **393** vs. French District 381, downtown 379,
+  hospital 532 at the same hour — the ~250 new meshes batch away as intended.
+- No new console errors. The only failures are the pre-existing sixtwelve
+  texture 404s and the tacos/burgerpiz directory 403s.
+
+**Known issues / not done:**
+- Marie Laveau has **no voice of her own** — `voiceCast.js` maps her to the
+  female street-pool stand-in, same as GAYMAN/LESBIAN. Her lines fall back to
+  browser speech synthesis until someone records them.
+- Tomb closure tablets all face +z; in the real place they face their alley.
+- She has no reaction to anything but gunfire (running over a tomb, say).
+
+**Lock note:** `src/orlearouge.js` is marked LOCKED to Antigravity under
+TASK-038. The human asked for this directly and the graveyard lives in that
+file, so it was taken — but deliberately kept to **three lines plus an import**
+by putting everything new in `src/cemetery.js`. Antigravity: your TASK-038 work
+should merge cleanly; if it touched `cemetery(b)`, take this version.
+
+---
+
+### TASK-066 — Keseme vs. the Klan: who actually came after her mother (human request, 2026-09-20)
+
+**Status:** `READY` · **Agent:** `UNASSIGNED`
+**Files / subsystem:**
+- `src/klan.js`                (new — the faction and its set pieces)
+- `src/characters.js`          (edit — robed/hooded look on the existing rig)
+- `src/factions.js`            (edit — a third faction in the turf logic)
+- `src/main.js`                (Claude only — spawn table, wiring)
+- `src/spawnzones.js`          (edit — where they turn out, and when)
+- `src/voiceCast.js`, `TODO.md`, `AGENT_LOG.md`
+
+**Dependencies:** none blocking. Reads on TASK-035 (faction warfare, COMPLETE)
+and the Act One / Nolantis story files.
+
+**Context — the thread is already open and currently unanswered.**
+In `nolantis.js` (~line 938) a distorted **VOICE** calls Keseme:
+
+> "You should have given Sheriff Mercer the book." / "Go back to Tusouxroe." /
+> **"Your mother's house is very pretty."**
+
+Keseme's answer, in the elevator at the end of the same file (~line 1028), is
+the spine of everything after it: **"Find out who threatened my mother."**
+`actone.js` picks it straight up — `protectMama()`, `MAMA_OBJECTIVE`, the run
+north to Mama Emiko's door in South Tusouxroe — and then the question is simply
+never answered. Nothing in the repo currently says who the VOICE is.
+
+**Goal:** the Klan is the answer. They are who came after Emiko, and Keseme
+fights them. Concretely: the voice on that phone, the pressure behind Sheriff
+Mercer's department, and the muscle for whoever owns Pelican Crown are the same
+people in three different sets of clothes — which is the point the story is
+already making about Dixie Beaux and has not yet named.
+
+**Why this fits what's built:** the game already has a Redneck faction, a
+sheriff's department that leans on Keseme, a corporate villain (Pelican Crown /
+`EXECUTIVE`), and a Black trans protagonist whose mother has been threatened by
+an anonymous caller. The Klan is not a new theme here — it is the name for the
+one that is already running.
+
+**Acceptance criteria:**
+- A new NPC type ("klansman") on the existing `characters.js` rig: white robe
+  and hood over the redneck build, so it costs a palette and two meshes, not a
+  new model. Must not be mistakable for the plain Redneck at a glance.
+- They do **not** spawn in ordinary daytime free roam. They turn out at night,
+  in numbers, and only where the story or a set piece calls them — a rally, a
+  night ride past Mama's house, a roadblock on US-167.
+- `factions.js` treats them as a third faction: Hoodrats fight them on sight;
+  Rednecks do not.
+- At least one playable mission that answers the question: Keseme finds out who
+  made the call and gets Emiko out. It should connect to what is already there —
+  Mercer, the ledger, Pelican Crown — not sit beside it.
+- The cemetery is a good place for a beat: `cemetery.js` (TASK-065) gives an
+  enclosed, pedestrian-only space with a fixed non-combatant in it.
+- A `tools/qa/klan.mjs` headless walkthrough, same shape as `tools/qa/actone.mjs`.
+- No new console errors; anything that moves stays out of `batchStatic`.
+
+**Out of scope:** real-world names, real organisations, recruitment language, or
+anything that reads as their case rather than as Keseme's. They are the
+antagonist: hooded, anonymous, and beaten.
+
+**Notes / decisions the human may want to make first:**
+1. **How far up does it go?** Is Sheriff Mercer one of them, or leaned on by
+   them? The ledger board (`ledgerboard.js`) is built to carry either answer.
+2. **Where does it land in the act structure?** Act One is "Welcome Home" in
+   Tusouxroe; OrleaRouge is being built out now. A Klan arc could be the back
+   half of Act One (it is Emiko's story, and she lives in South Tusouxroe) or
+   its own Act Two.
+3. **Does Emiko survive it?** Everything downstream changes on that answer, so
+   it should be decided before anyone writes the mission.
+
+---
+
 ### TASK-056 — Bug fixes: free-roam police never turning out, devmode drag-select and Cut ignoring world buildings (human report, 2026-09-20)
 
 **Status:** `REVIEW` · **Agent:** Claude · **Files:** `src/main.js`, `src/mapEditor.js`
@@ -3176,7 +3335,10 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `tools/qa/police.mjs` (new), `tools/qa/police_test.mjs` | Claude | TASK-042 | Available |
 | `src/characters.js` | — | TASK-020 (REVIEW) | Available |
 | `src/weapons.js`, `src/loot.js` | — | TASK-036 | Available |
-| `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Antigravity | TASK-038 | Locked |
+| `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Antigravity | TASK-038 | Locked — `orlearouge.js` taken briefly for TASK-065 (3 lines + an import; see the task) |
+| `src/cemetery.js` (new), `tools/qa/cemetery.mjs` (new) | Claude | TASK-065 (REVIEW) | Available |
+| `src/voiceCast.js` | All agents | Speaker to voice map | Shared |
+| `src/klan.js` (new) | — | TASK-066 (READY) | Available |
 | `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
 | `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |
 | `src/stateWorld.js`, `src/tusouxroeNorth.js` | Antigravity (unclaimed — see AGENT_LOG) | State-wide expansion | Unclaimed, fixes by Freebuff and Claude (TASK-041) applied |

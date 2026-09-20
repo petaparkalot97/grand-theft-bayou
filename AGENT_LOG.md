@@ -39,6 +39,136 @@ setup existed (TASK-001 … TASK-009).
 # 🧠 DISCOVERIES
 
 ## 2026-09-20 — Claude
+
+### TASK-065 — the cemetery, and two bugs it dragged out with it
+
+**WARNING / FAILED ASSUMPTION — firing has been dead in this build.**
+`main.js` had `input.onPress("fire", () => { if (state.running) fire(); })`, with
+a comment claiming "Space / LMB fires". There **is no `"fire"` action.**
+`input.js` dispatches `"aim"` on mouse button 2 and `"attack"` on button 0, and
+`DEFAULT_BINDINGS` has `jump: ["Space"]` and no `fire` at all. So the handler was
+registered under a name nothing ever raises, and `fire()` was unreachable: the
+player could not shoot a gun or swing a bat anywhere in the game.
+
+Measured before the fix, headless, with a pistol given and `window.__qaAim` set:
+LMB down/up → `state.fireCd 0`, ammo 50 (unchanged). Space → the same. After
+rebinding to `"attack"`: `state.fireCd 0.42`, ammo 49.
+
+Two lessons for anyone else in here:
+1. **`input.onPress` fails silently on an unknown action.** It just appends to a
+   handler list nobody reads. If you add a binding, add it to `DEFAULT_BINDINGS`
+   or use an action `input.js` actually dispatches (`aim`, `attack`,
+   `nextWeapon`, `prevWeapon`, or a bound key).
+2. **Playwright's `page.mouse.down()` does not reach the game.** The canvas/
+   pointer-lock setup swallows it. To drive firing from a QA script, dispatch it
+   yourself inside the page:
+   `window.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true }))`
+   — and set `window.__qaAim = true` first, because `fire()` requires the aim
+   button to be held on foot. `tools/qa/cemetery.mjs` does both.
+
+### INTERFACE — `poolLight()` now returns its spot
+
+`main.js`'s `poolLight(color, power, range, x, y, z, group)` used to return
+nothing, so a pooled light could never be moved after it was placed. It now
+returns the `litSpots` entry it pushed. Write `x` / `z` / `power` on that object
+and `updateLightPool` picks the change up on its next 4 Hz re-sort. Purely
+additive — every existing caller ignores the return value. `cemetery.js` uses it
+to carry a cold light along with Marie Laveau's ghost.
+
+### INTERFACE — `src/cemetery.js`
+
+`createCemetery(ctx, b)` builds the whole cemetery block and returns
+`{ update(dt), interact(), props, debug }`.
+
+`ctx` (handed down from `main.js` through `orlearouge.js`): `scene`,
+`addBlocker(x, z, r)`, `poolLight(...)`, `state`, `playerPos`, `cine`,
+`flashObjective(text)`, `syncHUD()`, `isNight()`, `makeHoodrat(opts)`.
+`b` is a block rect from `orlearouge.js`'s `blocks()`:
+`{ x0, x1, z0, z1, cx, cz }`.
+
+`orlearouge.js` now exposes `props` (the ghost — `main.js` must keep her out of
+`batchStatic`), `interact()` (chained in `main.js`'s interact handler, before
+`enterExitVehicle`), and `cemetery` (the handle, for QA). `orlea.update(dt)`
+drives it.
+
+`debug` gives QA `{ tomb, offering, gate, path, gaps, ghost, presence }`.
+
+### DISCOVERY — how to make a ghost out of the Hoodrat rig without wrecking every other Hoodrat
+
+`characters.js` shares geometry **and materials** across every Hoodrat in the
+level. Writing `.opacity` or `.emissive` on a mesh's material therefore fades or
+lights the entire crew. The rig already solves this: its `material.opacity`
+setter clones every one of its own meshes' materials on first write (the
+`_faded` guard). So the order matters —
+
+```js
+ghost.material.opacity = 0.44;   // clones this actor's materials off the cache
+ghost.traverse((o) => { /* now safe to recolour / add emissive per mesh */ });
+```
+
+Do it the other way round and you tint every Hoodrat in the parish.
+
+Two more things that caught me:
+- **`baseY`, not `position.y`.** The idle and walk clips both end with
+  `this.position.y = this.baseY || 0`, so a hover written to `position.y` is
+  wiped every frame. Set `ghost.baseY` instead.
+- **`realize(scene)` sweeps the whole scene at the end of `boot()`** and will
+  hand a ghost its skin back. Every material you have deliberately made
+  translucent or emissive needs `userData.gtbRealized = true`.
+
+### DISCOVERY — sizing blockers so a walker fits and a car does not
+
+`main.js` resolves the player at radius **0.6** and a vehicle at **1.8**
+(`registerVehicle`'s default `r`). So for two blockers of radius `R` at centre
+distance `D`, the clear gap is `D − 2R`, and:
+
+- a walker gets through when `D − 2R > 1.2`
+- a car gets through when `D − 2R > 3.6`
+
+The cemetery's alleys are deliberately sized into that window: `R = 1.45` at a
+row pitch of 4.7 gives 1.8 m (walker yes, car no), and a column pitch of 3.2
+gives 0.3 m (nobody). The gate's clear opening is 2.7 m for the same reason.
+This is how `bluelight.js`'s "the cruisers can't follow between the tombs"
+became true instead of aspirational.
+
+**Verify a claim like that with a flood-fill, not by walking.** `tools/qa/
+cemetery.mjs` rasterises the block on a 0.25 m grid against the real
+`blockerGrid`, floods from the sidewalk at each radius, and reports what each
+can reach: walker 13,908 cells including her tomb; car 523 — the street. Two
+earlier attempts to test it by holding `W` proved nothing, because `W` is
+camera-relative and the camera starts facing south.
+
+### WARNING — a "marker" position can be inside a blocker
+
+`cemetery.js`'s offering spot was first placed at `tomb.z − 2.4`, and the tomb's
+own blocker is `r 1.8`; plus the player's 0.6 that is exactly 2.4, so floating
+point decided it and the one spot the game called "her step" was unstandable.
+The last row of tombs then stood 1.25 m off her tomb — a gap a 1.2 m-wide walker
+does not fit through. Both fixed (a forecourt is now cleared in front of her
+tomb), but the general point stands: **if you publish a position for the player
+to stand on, flood-fill to it.**
+
+### DECISION — `src/orlearouge.js` taken briefly, against its TASK-038 lock
+
+The human asked for the graveyard directly and the graveyard is in that file.
+Rather than rewrite inside Antigravity's locked module, the whole cemetery went
+into a new `src/cemetery.js` and `orlearouge.js` kept **three lines and an
+import**. Flagged on TASK-065 and in the lock table. Antigravity: if your
+TASK-038 work touched `cemetery(b)`, take this version.
+
+### DISCOVERY — the story has an open question nobody has answered
+
+`nolantis.js` (~938) has an anonymous distorted **VOICE** threaten Keseme's
+mother — *"Your mother's house is very pretty."* — and Keseme's stated goal for
+everything after it (~1028) is *"Find out who threatened my mother."*
+`actone.js` runs with it (`protectMama()`, `MAMA_OBJECTIVE`, the run to Mama
+Emiko's door) and **nothing in the repo says who the VOICE is.** The human has
+now answered it: the Klan. Written up as TASK-066, with the existing hooks named
+so whoever takes it does not have to re-find them.
+
+---
+
+## 2026-09-20 — Claude
 **Type:** HANDOFF · **Task:** TASK-052 R2 upload finished (1873/1873, 0 failed); free roam tweaks; TASK-054 radio; TASK-053/055 logged
 
 ### Finding

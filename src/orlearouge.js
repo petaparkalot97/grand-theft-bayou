@@ -19,7 +19,8 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
-import { makeDecorativeFence, placeOfficeClutter, placeCityBuilding, placeParkedCar } from "./landmarks.js";
+import { placeOfficeClutter, placeCityBuilding, placeParkedCar } from "./landmarks.js";
+import { createCemetery } from "./cemetery.js";
 
 export const CAUSEWAY = { minZ: 136, maxZ: 192 };
 export const CITY = { minX: -136, maxX: 136, minZ: 196, maxZ: 382 };
@@ -66,6 +67,7 @@ export function createOrleaRouge(ctx) {
   const neon = [];          // { mat, base, speed, phase } — flickered in update()
   const pois = [];
   const occluders = [];     // overhead boxes the camera must not look through
+  let graveyard = null;     // cemetery.js — holds the ghost, so it has an update and props
   let entered = false;
 
   // ---------------------------------------------------------------- helpers
@@ -360,29 +362,12 @@ export function createOrleaRouge(ctx) {
     pois.push({ x: b.cx, z: b.z0 - 4, r: 7 });
   }
 
+  // St. Louis No. 1: oven vaults, above-ground family tombs in narrow alleys,
+  // the Glapion tomb, and Marie Laveau's ghost keeping the place after dark.
+  // It used to be fifteen boxes with pyramid lids on a lawn. See cemetery.js.
   function cemetery(b) {
-    const stone = std("marble tomb", 0xd9d6cc), wallMat = std("brick wall", 0x9a8a7a);
-    const w = b.x1 - b.x0, d = b.z1 - b.z0;
-    makeDecorativeFence(ctx, b.x0 + 1, b.z0, b.x1 - 1, b.z0);
-    for (const [ww, dd, x, z] of [[w, 0.5, b.cx, b.z0], [w, 0.5, b.cx, b.z1], [0.5, d, b.x0, b.cz], [0.5, d, b.x1, b.cz]]) {
-      if (z === b.z0) {
-        // leave a gate in the street-side wall
-        mesh(new THREE.BoxGeometry(w / 2 - 2, 2.2, 0.5), wallMat, b.x0 + (w / 2 - 2) / 2, 1.1, z);
-        mesh(new THREE.BoxGeometry(w / 2 - 2, 2.2, 0.5), wallMat, b.x1 - (w / 2 - 2) / 2, 1.1, z);
-      } else {
-        mesh(new THREE.BoxGeometry(ww, 2.2, dd), wallMat, x, 1.1, z);
-      }
-    }
-    for (let i = 0; i < 5; i++) {
-      for (let j = 0; j < 3; j++) {
-        const x = b.x0 + 4 + i * (w - 8) / 4, z = b.z0 + 6 + j * (d - 10) / 2;
-        mesh(new THREE.BoxGeometry(2.2, 2.4, 3), stone, x, 1.2, z);
-        const roof = mesh(new THREE.ConeGeometry(1.9, 1.1, 4), stone, x, 2.95, z);
-        roof.rotation.y = Math.PI / 4;
-        ctx.addBlocker(x, z, 1.6);
-      }
-    }
-    pois.push({ x: b.cx, z: b.z0 - 3, r: 6 });
+    graveyard = createCemetery(ctx, b);
+    pois.push({ x: b.cx, z: b.z0 - 3, r: 6 });     // mourners and tour groups outside the gate
   }
 
   function construction(b) {
@@ -486,6 +471,11 @@ export function createOrleaRouge(ctx) {
     grid: { avenues: AVENUES, streets: STREETS, width: STREET_W, city: CITY, causeway: CAUSEWAY },
     get pois() { return pois; },
     get occluders() { return occluders; },
+    /** Anything in the city that moves — main.js keeps these out of batchStatic. */
+    get props() { return graveyard ? graveyard.props : []; },
+    /** F at Marie Laveau's tomb. main.js tries this in its interact chain. */
+    interact() { return graveyard ? graveyard.interact() : false; },
+    get cemetery() { return graveyard; },
     get entered() { return entered; },
     /** Keep trees and scattered decor out. */
     contains(x, z) { return z > CAUSEWAY.minZ; },
@@ -500,6 +490,7 @@ export function createOrleaRouge(ctx) {
     ],
 
     update(dt) {
+      if (graveyard) graveyard.update(dt);
       const t = performance.now() / 1000;
       for (const n of neon) {
         // mostly steady, with the occasional sputter

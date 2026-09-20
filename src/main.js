@@ -392,13 +392,18 @@ function initLightPool(n = 8) {
 // the scene is evaluated for every lit pixel on screen, so ~20 always-on lights
 // were the single biggest shading cost; pooled, only the nearest 8 are real.
 // `group`: position is local to a builder's group (converted to world here).
+// Returns the spot, so a caller with a light that travels (cemetery.js's ghost)
+// can move it by writing x/z/power on it — the pool re-sorts at 4 Hz and picks
+// it up on its own.
 function poolLight(color, power, range, x, y, z, group) {
   const p = new THREE.Vector3(x, y, z);
   if (group) {
     group.updateMatrixWorld(true);
     p.applyMatrix4(group.matrixWorld);
   }
-  litSpots.push({ x: p.x, y: p.y, z: p.z, warm: color, power, range, fx: false });
+  const spot = { x: p.x, y: p.y, z: p.z, warm: color, power, range, fx: false };
+  litSpots.push(spot);
+  return spot;
 }
 
 // Street lamps (addLitSpot) fade out in daylight; fires, neon and interior glows
@@ -1072,7 +1077,7 @@ const mapEditor = createMapEditor({
   removeLitSpot: (spot) => { const i = litSpots.indexOf(spot); if (i >= 0) litSpots.splice(i, 1); },
 });
 
-input.onPress("interact", () => { if (services.interact() || nightlife.interact()) return; enterExitVehicle(); tryInteract(); });
+input.onPress("interact", () => { if (services.interact() || nightlife.interact() || (orlea && orlea.interact())) return; enterExitVehicle(); tryInteract(); });
 input.onPress("mute", () => toggleMute());
 input.onPress("nextTrack", () => soundtrackReady.then((s) => s.next()));
 // [ / ] step the graphics tier down / up; once you touch it, the auto
@@ -1842,6 +1847,9 @@ async function buildLevel() {
     addLitSpot: (spot) => litSpots.push(spot),
     getSheriffProto: () => sheriffProto,
     cine, state, playerPos, ROAD_X, ROAD_HALF, addService,
+    // cemetery.js, on the block at (-110, 350): the ghost needs a body, the hour,
+    // and the HUD to hand back a blessing with
+    makeHoodrat, flashObjective, syncHUD, isNight: () => worldTime.isNight(),
     // whole blocks other modules build on, in place of the French District rowhouses
     lots: [
       { at: [-66, 230], build: (b) => payNSprayLot(b, "OrleaRouge Pay 'n' Spray") },
@@ -3823,6 +3831,7 @@ async function boot() {
     player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
     ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
     ...services.props, ...nightlife.props,      // garage doors, markers, club cutaways: they move
+    ...(orlea ? orlea.props : []),              // Marie Laveau's ghost, drifting the cemetery alleys
     ...(missionClinic ? missionClinic.props : []),
     ...(prologue ? prologue.props : []),
     ...(blueLight ? blueLight.props : []),
@@ -4000,8 +4009,13 @@ function honkHorn() {
   }
 }
 
-// Space / LMB fires (edge-triggered through input.js)
-input.onPress("fire", () => { if (state.running) fire(); });
+// LMB fires (edge-triggered through input.js).
+// This was `onPress("fire", …)` — and there is no "fire" action. input.js
+// dispatches "attack" on button 0 and has no "fire" in DEFAULT_BINDINGS, so the
+// handler was registered against a name nothing ever raises and the player
+// could not shoot or swing at all. Found while testing the cemetery's reaction
+// to a gunshot (cemetery.js), which is how it finally showed up.
+input.onPress("attack", () => { if (state.running) fire(); });
 input.onPress("reload", () => { if (state.running) arsenal.reload(); });
 input.onPress("equipBat", () => { if (state.running) arsenal.give("bat"); });
 input.onPress("nextWeapon", () => { if (state.running) arsenal.cycleWeapon(1); });
