@@ -2038,6 +2038,9 @@ async function buildLevel() {
   newton = createNewton({
     scene, state, playerPos, cine, flashObjective, syncHUD,
     makeHoodrat, poolLight, addBlocker, worldTime,
+    // he has one thing to say about the night ride, and nothing to say until
+    // it has happened (klan.js)
+    getKlanPhase: () => klan.missionPhase,
   }, { x: -132 + 9, z: -320 + 11, ry: 0 });
   // ---- State-Wide Expansion: Port Calypso Docks, Cypress Badlands, Lakeshore Marsh ----
   stateWorld = createStateWorld({

@@ -40,6 +40,22 @@ setup existed (TASK-001 … TASK-009).
 
 ## 2026-09-20 — Claude
 
+### TASK-067 (cont.) — the two arcs touch
+
+`newton.js` now takes `getKlanPhase()` from `main.js` (`klan.missionPhase`) and
+plays one scene when it reads `"done"`. That is the whole hook, and it is worth
+copying rather than inventing a new one: **a character reacting to a mission is
+a phase read plus a `saidX` flag**, not an event bus. `cinema.js` queues scenes,
+so firing it in the same tick as the greeting is safe — both play, in order.
+
+Design note so nobody trims it: his speech is the in-fiction explanation of the
+copwatch mechanic he already has ("we started with law books, followed the cars,
+stood where they could see us"), and its last beat is the explanation of the
+free breakfast ("a building burns in a night; a thing people need every morning
+is harder to get rid of"). The mechanics came first and the dialogue was written
+to them. If someone rewrites the lines, the mechanics stop being explained
+anywhere.
+
 ### TASK-068 — two ghosts, two ways to deal with the police
 
 `cemetery.js` and `newton.js` both now do something about a wanted level, and

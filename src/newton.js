@@ -49,7 +49,7 @@ const COPWATCH_DRAIN = 0.6; // heat per second, on top of the game's own decay
  * @param {object} ctx from main.js:
  *   scene, state, playerPos, cine, flashObjective(text), syncHUD(),
  *   makeHoodrat(opts), poolLight(color, power, range, x, y, z),
- *   addBlocker(x, z, r), worldTime
+ *   addBlocker(x, z, r), worldTime, getKlanPhase()
  * @param {{x:number, z:number, ry:number}} at  the schoolyard (tusouxroeNorth.js)
  */
 export function createNewton(ctx, at) {
@@ -61,6 +61,7 @@ export function createNewton(ctx, at) {
   let fedOnDay = -1;          // one breakfast per morning, by worldTime.day
   let prompt = false;
   let watching = 0;           // seconds he has been watching, for the one-off line
+  let saidKlan = false;       // he only makes the Tusouxroe speech once
   let t = 0;
 
   const matCache = new Map();
@@ -231,15 +232,55 @@ export function createNewton(ctx, at) {
     });
   }
 
+  // ------------------------------------------------- what he makes of TASK-066
+  // The one thing he is actually here to say. The Panthers formed because of
+  // precisely the dynamic klan.js builds — a night ride, and a sheriff parked up
+  // the street with his lights off — and Willowbrook is twenty minutes up the
+  // road from Emiko's house. If those two arcs never touch, both of them are
+  // just decoration.
+  //
+  // He is not written as the moral of the story. He is written as somebody who
+  // has already had this exact week and is tired of it. The last line is the
+  // argument, and it is the same argument as the table he is standing behind.
+  function klanTalk() {
+    saidKlan = true;
+    ctx.cine.scene(async (c) => {
+      await c.say("NEWTON", "I heard about Tusouxroe.");
+      await c.say("KESEME", "You heard.");
+      await c.say("NEWTON", "The dead hear everything. It is the only advantage.");
+      await c.wait(0.6);
+      await c.say("NEWTON", "Six of them, your mother's house, and how many of you?");
+      await c.say("KESEME", "…One.");
+      await c.say("NEWTON", "That's not you being brave. That's the whole design working.");
+      await c.wait(0.5);
+      await c.say("NEWTON", "Here's the part nobody writes down. We didn't start with the guns.");
+      await c.say("NEWTON", "We started with law books. Followed the cars. Stood where they could see us and read the code out loud.");
+      await c.say("NEWTON", "Because what they need most is for nobody to be looking.");
+      await c.wait(0.5);
+      await c.say("KESEME", "There was a sheriff up the street. Lights off. Whole time.");
+      await c.say("NEWTON", "Then he isn't your enemy, he's your evidence. An enemy would have got out of the car.");
+      await c.wait(0.7);
+      await c.say("NEWTON", "And we fed the children. Every morning, before the bell.");
+      await c.say("KESEME", "…Why does that come after the rest of it?");
+      await c.say("NEWTON", "Because a building burns in a night. A thing people need every morning is a great deal harder to get rid of.");
+      await c.say("NEWTON", "Your mother's house is gone, Keseme. Build the other thing.");
+    });
+  }
+
   /** The breakfast. No price, on purpose. */
   function interact() {
     if (!prompt || state.veh || state.cinematic) return false;
     state.hp = Math.min(100, state.hp + HEAL);
     ctx.syncHUD();
     fedOnDay = ctx.worldTime.day;
+    const after = ctx.getKlanPhase && ctx.getKlanPhase() === "done";
     ctx.cine.scene(async (c) => {
       await c.caption("Grits, eggs, a slice of ham and coffee that could strip a fence.");
-      await c.say("NEWTON", "Eat it sitting down. You've got a hole in you and a list in your head.");
+      if (after) {
+        await c.say("NEWTON", "Sit down. Whatever you're going to do about them, you'll do it better fed.");
+      } else {
+        await c.say("NEWTON", "Eat it sitting down. You've got a hole in you and a list in your head.");
+      }
     });
     return true;
   }
@@ -272,6 +313,10 @@ export function createNewton(ctx, at) {
     ghost._cloth.opacity = 0.56 * solid;
 
     if (!met && near < 14 && !state.cinematic && !state.veh) greet();
+    // queued behind the greeting if they arrive having already done the ride —
+    // cinema.js plays scenes one after another, so both land in order
+    if (met && !saidKlan && near < 14 && !state.veh && !state.cinematic
+        && ctx.getKlanPhase && ctx.getKlanPhase() === "done") klanTalk();
 
     // ---- copwatch ----
     // Stars on you, standing in his yard: the heat drains, because somebody is
@@ -316,6 +361,7 @@ export function createNewton(ctx, at) {
     get props() { return props; },
     get present() { return presence > 0.5; },
     debug: { table: TABLE, yardR: YARD_R, get ghost() { return ghost; },
-      get presence() { return presence; }, get fedOnDay() { return fedOnDay; } },
+      get presence() { return presence; }, get fedOnDay() { return fedOnDay; },
+      get met() { return met; }, get saidKlan() { return saidKlan; } },
   };
 }

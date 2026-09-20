@@ -298,13 +298,48 @@ card on the table says the hours and nothing else.
 department had formally taken an interest. Keyed off `state.heat` instead, which
 is the real quantity.
 
+---
+
+**He has his say about the night ride (human request, same day).** The two arcs
+now touch, which is the only thing that makes either of them more than
+decoration: the Panthers formed because of precisely the dynamic TASK-066
+builds — a night ride, and a sheriff parked up the street with his lights off —
+and Willowbrook is twenty minutes up the road from Emiko's house.
+
+Gated on `klan.missionPhase === "done"` and fired once (`saidKlan`), queued
+behind the greeting by `cinema.js` if the player arrives having already done the
+ride. Sixteen lines, and he is deliberately not written as the moral of the
+story — he is somebody who has already had this exact week and is tired of it:
+
+> **NEWTON:** "Six of them, your mother's house, and how many of you?"
+> **KESEME:** "…One."
+> **NEWTON:** "That's not you being brave. That's the whole design working."
+
+The middle of it is what the party actually did first, in the right order —
+*"We didn't start with the guns. We started with law books. Followed the cars.
+Stood where they could see us and read the code out loud. Because what they need
+most is for nobody to be looking."* — which is the in-fiction explanation of the
+copwatch mechanic he already has.
+
+On Mercer, and consistent with the human's call that he is leaned on rather than
+one of them: *"Then he isn't your enemy, he's your evidence. An enemy would have
+got out of the car."*
+
+And the last beat ties him back to his own table, which is the point of the
+whole character: *"A building burns in a night. A thing people need every
+morning is a great deal harder to get rid of. Your mother's house is gone,
+Keseme. Build the other thing."* His breakfast line changes afterwards too.
+
+**Tested:** before the ride, `met true / saidKlan false / klanPhase null` — he
+has nothing to say about it. After it completes, `saidKlan true` and all sixteen
+lines play in order.
+
 **What remains:**
 - No voice for him — his lines fall back to browser speech synthesis.
-- He has no reaction to the Klan arc yet, which is the obvious next line for
-  him to have: the Panthers formed because of exactly the dynamic TASK-066 just
-  built, and he is standing twenty minutes up the road from Emiko's house.
 - No children at the table. It is a breakfast for children with no children at
   it, which is the one thing about the scene that is currently a lie.
+- Nothing in the game acts on what he tells her. "Build the other thing" is
+  advice with no mission behind it yet — that is Act Two's job.
 
 ---
 
