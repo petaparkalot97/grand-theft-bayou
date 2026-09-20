@@ -166,6 +166,75 @@ should merge cleanly; if it touched `cemetery(b)`, take this version.
 
 ---
 
+### TASK-067 — The ghost of Huey P. Newton, Willowbrook schoolyard (human request, 2026-09-20)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/newton.js` (new), `src/main.js`, `tools/qa/newton.mjs` (new)
+
+Human's request: *"I believe the ghost of Heuy Newton should be another addition
+to the game."*
+
+**Why he belongs here specifically, and not as a guest star:** Huey P. Newton
+was born in **Monroe, Louisiana**, on 17 February 1942 — the youngest of seven,
+named after Huey P. Long — and the family left for Oakland in the Great
+Migration while he was still a toddler. `README.md` and `package.json` both say
+this game is set in north Louisiana, **Chatham → Monroe → Ruston**. He is a son
+of one of the three towns on the tin. So he is placed in the **north**, which is
+also the thinnest part of the map, rather than at the OrleaRouge end.
+
+**He is deliberately not a second Marie Laveau.** She keeps the dead, at night,
+inside a wall, and what she gives costs $20. He does the two things the Panthers
+actually did first, and both are different verbs:
+
+1. **The Free Breakfast.** Every other heal in this game costs money — Popeyes,
+   the hospital ($60), a prostitute ($50), the clubs ($10–40), Marie ($20).
+   **His costs nothing**, and the prompt says *no charge* where every other
+   prompt says a price. That contrast is the argument, made as a mechanic
+   instead of a speech. Once per in-game morning. (By luck, the game's own
+   "HEALING UP" tip panel — which lists all of the paid ones — renders directly
+   above it.)
+2. **Copwatch.** The party's first practice was following police with a law book
+   and telling people their rights. Stand in his yard with heat on you and it
+   drains, because somebody is standing there with his eyes open. He never
+   throws a punch, cannot be fought and cannot be killed — and he **does not
+   launder a crime still in progress**: the drain waits on `state.crimeCd`, the
+   same gate the game's own decay uses. He watches. He does not cover for you.
+
+**Dawn only, 05:00–08:30** — when the breakfast actually ran, and the cleanest
+way to keep the two ghosts from reading as one idea. Marie is moonlight and a
+cold blue; he is sunrise and a warm amber.
+
+**Tone:** written as the organiser and the reader he was — he finished a
+doctorate on political repression — not as a poster. Plain, dry, a bit tired.
+No slogans in his mouth, no sanding him into a mascot, and the hand-lettered
+card on the table says the hours and nothing else.
+
+**Testing performed** (headless, `tools/qa/newton.mjs`):
+- **Hours:** at 12:00 `presence` 0 and invisible; at 06:00 `presence` 0.93 →
+  0.99, visible, prompt up, greeting scene plays.
+- **Free, and free means free:** HP 50 → 90 and **cash unchanged at $140**.
+- **Once a morning:** the second approach reads *"You've eaten today. Come back
+  tomorrow morning."*
+- **Copwatch, three cases at heat 5.6:** in the yard it falls
+  5.6 → 3.9 → 3.1 → 2.4 → 1.6 → 0.8 → 0.05 over ~7 s; 70 m away it stays flat
+  at 5.6; in the yard with `crimeCd` held high it stays flat at 5.6.
+- No new console errors beyond the known sixtwelve 404s / tacos-burgerpiz 403s.
+
+**One thing fixed while testing:** copwatch was keyed off `state.wanted`, which
+`main.js` only derives while `copsActive()` — so he did nothing at all until the
+department had formally taken an interest. Keyed off `state.heat` instead, which
+is the real quantity.
+
+**What remains:**
+- No voice for him — his lines fall back to browser speech synthesis.
+- He has no reaction to the Klan arc yet, which is the obvious next line for
+  him to have: the Panthers formed because of exactly the dynamic TASK-066 just
+  built, and he is standing twenty minutes up the road from Emiko's house.
+- No children at the table. It is a breakfast for children with no children at
+  it, which is the one thing about the scene that is currently a lie.
+
+---
+
 ### TASK-066 — Keseme vs. the Klan: who actually came after her mother (human request, 2026-09-20)
 
 **Status:** `REVIEW` (machinery + the Act One mission, played through; Act Two
@@ -3447,6 +3516,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/cemetery.js` (new), `tools/qa/cemetery.mjs` (new) | Claude | TASK-065 (REVIEW) | Available |
 | `src/voiceCast.js` | All agents | Speaker to voice map | Shared |
 | `src/klan.js` (new), `tools/qa/klan.mjs` (new) | Claude | TASK-066 (REVIEW) | Available |
+| `src/newton.js` (new), `tools/qa/newton.mjs` (new) | Claude | TASK-067 (REVIEW) | Available |
 | `src/npc.js` | — | TASK-066 (temperament only) | Available |
 | `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
 | `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |

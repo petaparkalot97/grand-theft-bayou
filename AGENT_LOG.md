@@ -40,6 +40,48 @@ setup existed (TASK-001 … TASK-009).
 
 ## 2026-09-20 — Claude
 
+### TASK-067 — the second ghost, and how not to make it the first one again
+
+`newton.js` is the third module now built on the same pattern as `cemetery.js`
+(ghostify a `characters.js` rig, hover it on `baseY`, carry a `poolLight` with
+it, own a prompt element, join the interact chain). If a fourth comes along that
+pattern is worth extracting. What is worth writing down is the part that is
+**not** shared:
+
+Marie Laveau and Huey Newton could very easily have been the same content twice
+— a famous dead person who glows and hands you HP. What keeps them apart is that
+each has a different *verb*, a different *hour*, and a different *colour*:
+
+| | Marie Laveau | Huey Newton |
+|---|---|---|
+| where | St. Louis No. 1, OrleaRouge (south) | Willowbrook schoolyard (north) |
+| when | night | dawn, 05:00–08:30 |
+| light | cold blue, moonlight | warm amber, sunrise |
+| verb | an offering — **you pay her $20** | a breakfast — **it costs nothing** |
+| second verb | scolds you for firing a gun | drains your heat while he watches |
+
+The $20 / free contrast is deliberate and load-bearing: every heal in the game
+has a price on it, so the one that does not is the whole point of the character.
+Do not "balance" it by adding a cost.
+
+**WARNING — `state.wanted` is a display value, not a quantity.** `main.js` only
+derives it inside `if (copsActive())`, so anything keyed off `state.wanted > 0`
+does nothing until `state.forceCops` or `state.copsCalled` is set. Copwatch was
+written that way first and silently never fired. `state.heat` is the real
+number; `wanted` is `floor(heat / 1.4)` computed for the stars. Key gameplay off
+heat.
+
+**And `copsActive()` being false also stops the game's own heat decay**, which is
+why the QA's control case (70 m away) shows heat pinned at 5.6 rather than
+falling slowly. That made the contrast cleaner by accident, but it is worth
+knowing before someone reads that table as a bug.
+
+**Placement rationale, so nobody "fixes" it later:** he is in the north on
+purpose. Newton was born in Monroe and `README.md` says the game runs
+Chatham → Monroe → Ruston. Moving him to OrleaRouge because that is where the
+prettier geometry is would break the only reason he is in this game rather than
+some other one.
+
 ### TASK-066 (cont.) — NIGHT RIDE, and where to put a fire
 
 **The story questions are answered** (human, 2026-09-20), and they are load-

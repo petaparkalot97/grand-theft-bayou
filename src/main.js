@@ -49,6 +49,7 @@ import { ROUTE_EAST, CRASH } from "./prologue.js";
 import { createSpawnZones } from "./spawnzones.js";
 import { createFactionWar } from "./factions.js";
 import { createKlan } from "./klan.js";
+import { createNewton } from "./newton.js";
 import { createTusouxroeNorth, NORTH_MIN_Z } from "./tusouxroeNorth.js";
 import { createWestParish, onParishHighway, PARISH_MIN_X } from "./westparish.js";
 import { createPlayerCharacter, getPlayerCharacter, PLAYER_CHARACTERS } from "./playerCharacters.js";
@@ -1078,7 +1079,7 @@ const mapEditor = createMapEditor({
   removeLitSpot: (spot) => { const i = litSpots.indexOf(spot); if (i >= 0) litSpots.splice(i, 1); },
 });
 
-input.onPress("interact", () => { if (services.interact() || nightlife.interact() || (orlea && orlea.interact())) return; enterExitVehicle(); tryInteract(); });
+input.onPress("interact", () => { if (services.interact() || nightlife.interact() || (orlea && orlea.interact()) || (newton && newton.interact())) return; enterExitVehicle(); tryInteract(); });
 input.onPress("mute", () => toggleMute());
 input.onPress("nextTrack", () => soundtrackReady.then((s) => s.next()));
 // [ / ] step the graphics tier down / up; once you touch it, the auto
@@ -2028,6 +2029,14 @@ async function buildLevel() {
   });
   tusouxroeNorth.buildSet();
   NPC_POIS.push(...tusouxroeNorth.pois);
+  // The ghost of Huey P. Newton, in the yard at Willowbrook School (newton.js).
+  // He was born in Monroe, which is one of the three towns this game is set
+  // between, so the north is where he belongs — not the OrleaRouge end.
+  // tusouxroeNorth.js puts the school at (WEST_STREET_X - 22, -320) facing east.
+  newton = createNewton({
+    scene, state, playerPos, cine, flashObjective, syncHUD,
+    makeHoodrat, poolLight, addBlocker, worldTime,
+  }, { x: -132 + 9, z: -320 + 11, ry: 0 });
   // ---- State-Wide Expansion: Port Calypso Docks, Cypress Badlands, Lakeshore Marsh ----
   stateWorld = createStateWorld({
     scene, camera, surface, addBlocker, flashObjective,
@@ -3015,6 +3024,7 @@ function tick() {
     if (actOne) actOne.update(dt);
     if (orlea) orlea.update(dt);
     klan.update(dt);
+    if (newton) newton.update(dt);
     services.update(dt);
     nightlife.update(dt);
     tips.update(dt);
@@ -3549,6 +3559,7 @@ function enterExitVehicle() {
 }
 
 // ============================================================ SHERIFF
+let newton = null;          // newton.js — the schoolyard at dawn
 let sheriffProto = null;
 function spawnSheriff() {
   if (!sheriffProto) return;
@@ -3882,6 +3893,7 @@ async function boot() {
     ...services.props, ...nightlife.props,      // garage doors, markers, club cutaways: they move
     ...(orlea ? orlea.props : []),              // Marie Laveau's ghost, drifting the cemetery alleys
     ...klan.props,                              // the cross burns and goes out: it cannot be baked in
+    ...(newton ? newton.props : []),            // he and his table are only there at dawn
     ...(missionClinic ? missionClinic.props : []),
     ...(prologue ? prologue.props : []),
     ...(blueLight ? blueLight.props : []),
@@ -3926,7 +3938,8 @@ async function boot() {
       player.position.set(x, 0, z);
       player.visible = true;
       if (player._last) player._last.copy(player.position);
-    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, klan, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
+    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, klan,
+    get newton() { return newton; }, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
     get playerMoveHeading() { return playerMoveHeading; },
     get soundtrack() { return soundtrackReady; } };
   // the radar's base map, from the level as built
