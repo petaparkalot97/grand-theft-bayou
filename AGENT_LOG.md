@@ -40,6 +40,42 @@ setup existed (TASK-001 … TASK-009).
 
 ## 2026-09-20 — Claude
 
+### TASK-068 — two ghosts, two ways to deal with the police
+
+`cemetery.js` and `newton.js` both now do something about a wanted level, and
+they must not converge. The split:
+
+| | Marie Laveau | Huey Newton |
+|---|---|---|
+| trigger | heat, inside the cemetery walls, at night | heat, inside the schoolyard, at dawn |
+| effect | **instant and total** — pursuit cleared, heat 0 | **gradual** — 0.6 heat/s while you stand there |
+| fiction | consecrated ground; they do not come in here | somebody is watching and writing it down |
+| gate | `state.crimeCd` | `state.crimeCd` |
+
+Both respect `crimeCd`, which is the one thing they should share: neither of
+them covers for a crime still in progress. If a third character ever gets an
+opinion about the police, give it a third shape.
+
+**WARNING — `flashObjective` lines drown each other, and a per-tick condition
+will do it forever.** Marie's klan line was gated on a 12 s cooldown while any
+klansman was still inside the walls. They flee slowly, so she re-scolded every
+12 s indefinitely and every other line she has — Keseme being hurt, a bystander
+killed — was overwritten before it could be read. The fix is to mark the
+*subject* (`e._marieBroke`) rather than to time the *speaker*. Any "she reacts
+to X being present" wants the same treatment.
+
+**INTERFACE — `npc.js` now exports `scatter(e, fromX, fromZ)`.** It calls the
+existing internal `flee`, which was unreachable from outside. Do not set
+`e.state = "flee"` by hand: `setState` is what decrements the `hostiles` counter
+when leaving the hostile state, so bypassing it leaks a slot and slowly starves
+`MAX_HOSTILE` for the rest of the run.
+
+**QA note — read a `flashObjective` line by polling, not by sleeping.** A single
+read 1.6 s after the trigger reported `null` for a line that was in fact firing
+on the very next tick; polling every 300 ms found it immediately. `objTimer`
+gives a line 2.5 s, and any other line raised in between takes the slot, so a
+one-shot read of the HUD proves nothing either way.
+
 ### TASK-067 — the second ghost, and how not to make it the first one again
 
 `newton.js` is the third module now built on the same pattern as `cemetery.js`

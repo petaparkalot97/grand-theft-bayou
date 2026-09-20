@@ -166,6 +166,79 @@ should merge cleanly; if it touched `cemetery(b)`, take this version.
 
 ---
 
+### TASK-068 — Marie Laveau keeps her own ground (human request, 2026-09-20)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/cemetery.js`, `src/npc.js`, `src/main.js`, `tools/qa/marie_ground.mjs` (new)
+
+Human's request: *"Make it so where Marie Laveaux scolds the crooked police and
+others for harming Keseme and for harming innocent individuals who want to help
+the state."*
+
+**The problem this fixes.** As shipped in TASK-065 she was pointed at exactly one
+person: the player. Fire a gun in the cemetery and she scolds *you*. The one
+figure in the parish explicitly described as looking after people was, in
+practice, another thing telling Keseme off. She had no opinion at all about the
+people doing the actual harm.
+
+`keepsHerGround()` is the other half. Three things happen on her ground after
+dark, and none of them is a fight — she has no hands, she has standing:
+
+1. **Sanctuary.** Nobody is taken off this ground in handcuffs. A wanted level
+   inside the walls is broken outright: pursuit cleared, heat to zero, and she
+   says why. Deliberately distinct from `newton.js`'s copwatch — his is gradual
+   (0.6 heat/s), procedural, and about the paperwork; hers is instant, total,
+   and only inside consecrated ground. It also finally makes `bluelight.js`'s
+   *"Lose them among the tombs"* a mechanic instead of a hope about the terrain.
+   Gated on `state.crimeCd` the same way the game's own decay is: she will not
+   stand over a crime still in progress.
+2. **The mob.** A klansman who walks onto her ground is broken and runs. They
+   are `brave` everywhere else in the game (TASK-066 made them so on purpose)
+   and it does not help them in a graveyard.
+3. **The harmed.** She names it when Keseme is hurt on her ground, and when
+   somebody who was not in the fight is killed on it — *"That one was helping.
+   Somebody is going to answer for that one."*
+
+Her lines about the police are written to the brief: they are about a badge with
+somebody else's hand in its pocket, and about Keseme trying to mend what they
+are paid to look past. (Note for the record: the state in-game is **Dixie
+Beaux**, not Bayou Dixie — *Grand Theft Bayou* is the title, Dixie Beaux is the
+state. Her line uses the in-game name.)
+
+**`npc.js` gained one export:** `scatter(e, fromX, fromZ)`, which just calls the
+existing internal `flee`. Nothing outside could reach it before, and setting
+`e.state = "flee"` by hand leaks the `hostiles` counter and would slowly starve
+`MAX_HOSTILE`.
+
+**Testing performed** (headless, `tools/qa/marie_ground.mjs` — every case paired
+with a control, because all of it is supposed to stop at the wall):
+- **Sanctuary:** inside the walls at 23:00, heat 5.6 → **0** and wanted 4 → **0**,
+  with *"She's trying to mend what you're paid to look past. Go home."*
+- **Control, outside the gate:** same 5.6 → 5.19, i.e. the game's ordinary decay
+  and nothing else. She does not reach past her own wall.
+- **Control, mid-crime:** `crimeCd` held high, heat stays pinned at 5.6.
+- **The mob:** 4 klansmen placed unprovoked inside the walls — **all 4 fleeing**,
+  one line for the cohort.
+- **Keseme hurt on her ground:** HP 100 → 62 produces *"Behind me, child. Bleed
+  later."* on the next tick.
+- **Bystander killed on her ground:** *"That one was helping…"*
+- No new console errors.
+
+**One bug fixed in testing:** she re-scolded the mob every 12 s for as long as
+anyone was still running, which talked straight over the hurt and mourn lines.
+Now marked per man (`_marieBroke`) — she says it once to each of them and lets
+them go.
+
+**What remains:**
+- Still no voice for her; all of this is subtitles and the HUD line.
+- Sanctuary has no visual tell at the gate — a cruiser that gives up just stops,
+  with nothing on screen saying why except her line.
+- She has no opinion about the Klan anywhere except inside her own walls, which
+  is correct for her but means the two arcs only touch if a night ride happens
+  to come to the cemetery.
+
+---
+
 ### TASK-067 — The ghost of Huey P. Newton, Willowbrook schoolyard (human request, 2026-09-20)
 
 **Status:** `REVIEW` · **Agent:** Claude
@@ -3517,6 +3590,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/voiceCast.js` | All agents | Speaker to voice map | Shared |
 | `src/klan.js` (new), `tools/qa/klan.mjs` (new) | Claude | TASK-066 (REVIEW) | Available |
 | `src/newton.js` (new), `tools/qa/newton.mjs` (new) | Claude | TASK-067 (REVIEW) | Available |
+| `tools/qa/marie_ground.mjs` (new) | Claude | TASK-068 (REVIEW) | Available |
 | `src/npc.js` | — | TASK-066 (temperament only) | Available |
 | `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
 | `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |

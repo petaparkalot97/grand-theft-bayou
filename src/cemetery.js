@@ -529,6 +529,11 @@ export function createCemetery(ctx, b) {
   let scolded = 0;
   let prompt = false;
   let t = 0;
+  // keeping her ground (see keepsHerGround): one cooldown per kind of thing she
+  // objects to, so she does not talk over herself in a running fight
+  let copCd = 0, klanCd = 0, hurtCd = 0, mournCd = 0;
+  let lastHp = 100;
+  let sanctuaryMet = false;
 
   /** Inside the walls (the cemetery proper), not merely on the block. */
   function inside(x, z) {
@@ -554,6 +559,115 @@ export function createCemetery(ctx, b) {
     ctx.flashObjective(scolded > 1
       ? "MARIE LAVEAU: \"I said not over my dead. Get out.\""
       : "MARIE LAVEAU: \"Not in here. Not over my dead.\"");
+  }
+
+  // ------------------------------------------------ she keeps her own ground
+  // She was only ever pointed at the player: fire a gun and she scolds *you*.
+  // That made the one figure in the parish who is explicitly looking after
+  // people into another thing telling Keseme off. The rest of it is here — what
+  // she does about the people doing the actual harm.
+  //
+  // Three things happen on her ground after dark, and none of them is a fight:
+  // she has no hands. She has standing.
+  //
+  //   sanctuary   Nobody is taken off this ground in handcuffs. A wanted level
+  //               inside the walls is broken outright — pursuit cleared, heat to
+  //               zero. Distinct from newton.js's copwatch on purpose: his is
+  //               gradual, procedural and about the paperwork; hers is instant,
+  //               total, and only inside consecrated ground. It also finally
+  //               makes bluelight.js's "lose them among the tombs" a mechanic
+  //               rather than a hope about the terrain.
+  //   the mob     A klansman who walks in here gets broken and runs. They are
+  //               `brave` everywhere else in the game (npc.js) and it does not
+  //               help them in a graveyard.
+  //   the harmed  She names it when Keseme is hurt on her ground, and when
+  //               somebody who was not in the fight is killed on it.
+  const COP_LINES = [
+    "MARIE LAVEAU: \"Put it away. Nobody leaves this ground in handcuffs.\"",
+    "MARIE LAVEAU: \"A badge, a debt, and somebody else's hand in your pocket. Which one's doing the arresting?\"",
+    "MARIE LAVEAU: \"She's trying to mend what you're paid to look past. Go home.\"",
+    "MARIE LAVEAU: \"I have buried better men than you for less. Off my ground.\"",
+  ];
+  const KLAN_LINES = [
+    "MARIE LAVEAU: \"You came to a graveyard in a bedsheet. Look around — you are outnumbered.\"",
+    "MARIE LAVEAU: \"Every soul in this ground is standing up. RUN.\"",
+    "MARIE LAVEAU: \"Hoods. In my house. Take them off or take them out of here.\"",
+  ];
+  const HURT_LINES = [
+    "MARIE LAVEAU: \"They put hands on you. On MY ground.\"",
+    "MARIE LAVEAU: \"Behind me, child. Bleed later.\"",
+  ];
+  const MOURN_LINES = [
+    "MARIE LAVEAU: \"That one was helping. Somebody is going to answer for that one.\"",
+    "MARIE LAVEAU: \"They were trying to do some good in Dixie Beaux. Now they're mine to keep.\"",
+  ];
+  const pick = (a, i) => a[i % a.length];
+
+  function keepsHerGround(dt) {
+    copCd -= dt; klanCd -= dt; hurtCd -= dt; mournCd -= dt;
+    if (presence < 0.5) { lastHp = state.hp; return; }
+    const hereNow = inside(playerPos.x, playerPos.z) && !state.veh;
+
+    // ---- sanctuary ----
+    // `crimeCd` gates it the same way it gates the game's own heat decay: she
+    // will not stand over a crime still in progress, any more than Newton will.
+    if (hereNow && state.heat > 0 && state.crimeCd <= 0) {
+      const wasWanted = state.wanted > 0;
+      if (ctx.police) ctx.police.clearPursuit();
+      state.heat = 0;
+      state.wanted = 0;
+      ctx.syncHUD();
+      if (wasWanted && copCd <= 0) {
+        copCd = 14;
+        ctx.flashObjective(pick(COP_LINES, scolded + (t | 0)));
+        if (!sanctuaryMet) {
+          sanctuaryMet = true;
+          ctx.cine.scene(async (c) => {
+            await c.say("MARIE LAVEAU", "They don't come in here after anybody. Not since the fever years.");
+            await c.say("MARIE LAVEAU", "Half this parish is in this ground because of what men like that wouldn't do.");
+            await c.say("MARIE LAVEAU", "So they can stand at the gate and think about it.");
+          });
+        }
+      }
+    }
+
+    // ---- the mob ----
+    // `_marieBroke` per man, not a timer: she scatters them all the way out, so
+    // without it she re-scolded every 12 s for as long as anyone was still
+    // running — which talked straight over the lines below. She says it once to
+    // each of them and then lets them go.
+    let broke = 0;
+    for (const e of ctx.enemies || []) {
+      if (e.dead || e.type !== "klansman" || e._marieBroke) continue;
+      const p = e.spr.position;
+      if (!inside(p.x, p.z)) continue;
+      if (ctx.npcs && ctx.npcs.scatter) ctx.npcs.scatter(e, TOMB.x, TOMB.z);
+      e._marieBroke = true;
+      broke++;
+    }
+    if (broke && klanCd <= 0) {
+      klanCd = 12;
+      for (const c of candles) c.flare = 1;
+      ctx.flashObjective(pick(KLAN_LINES, broke + (t | 0)));
+    }
+
+    // ---- the harmed ----
+    if (hereNow && state.hp < lastHp - 0.5 && hurtCd <= 0) {
+      hurtCd = 9;
+      ctx.flashObjective(pick(HURT_LINES, (t | 0)));
+    }
+    lastHp = state.hp;
+
+    // somebody killed on her ground who was not the one swinging
+    for (const e of ctx.enemies || []) {
+      if (!e.dead || e._marieKept || e.type === "klansman") continue;
+      const p = e.spr.position;
+      if (!inside(p.x, p.z)) continue;
+      e._marieKept = true;
+      if (mournCd > 0) continue;
+      mournCd = 11;
+      ctx.flashObjective(pick(MOURN_LINES, (t | 0)));
+    }
   }
 
   /** The offering, at her step: a little money for a little of whatever she has. */
@@ -636,6 +750,7 @@ export function createCemetery(ctx, b) {
     ghost._wrap.opacity = 0.52 * solid;
 
     if (here && !met && near < 17 && !state.cinematic) greet();
+    keepsHerGround(dt);
 
     // the offering prompt, at her step
     const atStep = here && Math.hypot(playerPos.x - OFFERING.x, playerPos.z - OFFERING.z) < 2.6;
@@ -661,6 +776,7 @@ export function createCemetery(ctx, b) {
     get props() { return props; },
     /** QA / debug: where the set pieces actually landed. */
     debug: { tomb: TOMB, offering: OFFERING, gate: { x: b.cx, z: b.z0 }, path: PATH, gaps: GAPS,
-      get ghost() { return ghost; }, get presence() { return presence; } },
+      get ghost() { return ghost; }, get presence() { return presence; },
+      inside: (x, z) => inside(x, z), get sanctuaryMet() { return sanctuaryMet; } },
   };
 }

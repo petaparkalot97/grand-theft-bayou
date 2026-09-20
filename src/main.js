@@ -1880,8 +1880,10 @@ async function buildLevel() {
     getSheriffProto: () => sheriffProto,
     cine, state, playerPos, ROAD_X, ROAD_HALF, addService,
     // cemetery.js, on the block at (-110, 350): the ghost needs a body, the hour,
-    // and the HUD to hand back a blessing with
+    // and the HUD to hand back a blessing with. `enemies`/`npcs`/`police` are
+    // what she keeps her ground with — see keepsHerGround().
     makeHoodrat, flashObjective, syncHUD, isNight: () => worldTime.isNight(),
+    enemies, npcs, police,
     // whole blocks other modules build on, in place of the French District rowhouses
     lots: [
       { at: [-66, 230], build: (b) => payNSprayLot(b, "OrleaRouge Pay 'n' Spray") },

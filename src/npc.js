@@ -443,6 +443,15 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
     /** The player hurt this NPC directly. */
     provoke(e) { e.provoked = true; e.think = 0; },
 
+    /**
+     * Send one NPC running from a point, bookkeeping included — `flee` already
+     * did this internally and nothing outside could reach it. cemetery.js uses
+     * it when Marie Laveau breaks a night ride on her own ground; setting
+     * `e.state = "flee"` by hand instead would leak the `hostiles` counter and
+     * slowly starve MAX_HOSTILE.
+     */
+    scatter(e, fromX, fromZ) { flee(e, fromX, fromZ); },
+
     beginFrame(dt) { now += dt; frame++; },
 
     /**
