@@ -213,6 +213,13 @@ a placement decision: where in Orlea Rogue, and how it interacts with
 existing roads/blockers at that scale (this would be one of the largest
 single structures in the game).
 
+**Follow-up (2026-09-20, screenshots supplied — see TASK-063 below for the
+images and full context):** *"it needs to be expanded and given a lot of
+life and kind of be like a very busy area. Modern."* Sequence with TASK-063
+(the OrleaRouge nightlife/casino district expansion) — same "busy, modern,
+alive" bar applies to both, and the Superdome should read as part of that
+same district, not an isolated landmark sitting apart from it.
+
 **Not started** — no code changes yet, this is the design brief as given.
 
 ---
@@ -383,6 +390,151 @@ only works on already-unbatched/editor-placed buildings would cover very
 little of what "grow the city" actually needs).
 
 **Not started** — no code changes yet, this is the design brief as given.
+
+---
+
+### TASK-063 — OrleaRouge nightlife/casino district expansion: party central (human request + screenshots, 2026-09-20) — logged, not started
+
+**Status:** `BACKLOG` · **Files (expected):** `src/orlearouge.js`,
+`src/npc.js` (new dressed-up NPC types), `src/vehicles.js` (limousine),
+`src/traffic.js`, whatever interior tech TASK-059/`nightlife.js` establish
+**Reference:** two annotated screenshots from the human, saved at the repo
+root as `Missisippoi.png` and `Orlearouge.png` (top-down devmode fly-camera
+views with hand-drawn boundary/arrow annotations) — **read these images
+before starting**, they're the actual spec for where this goes.
+
+Human's own words: *"we need to expand the Orlearouge area — this is
+basically going to be the prime nightlife hub of our map. So we've got to
+populate it with lots of nightclubs, strip clubs, kind of like a red light
+district, but also with lots of casinos... party central. We'll have like
+some idiots in tuxedos thinking they're all fancy, maybe some limousines
+driving around, high-end escorts, pretentious rich superficial kinds of
+people... I want to put lots of casinos, and it would be nice if we could
+enter most of these buildings, particularly nightclubs and strip clubs."*
+
+**What the screenshots show:** a red boundary drawn around OrleaRouge's
+current built-up block (this is `orlearouge.js`'s `CITY` — `x -136..136, z
+196..382`), with arrows to extend it further east ("Casinos") and further
+along the boulevard to the north ("Hell with a snippet of heaven lol — we
+want to extend this area so it spans further"), plus text labels "High end
+Escorts LOL" and "Spin off of New Orleans.. Party central.. Nightlife"
+pointing at parts of the current build. A third arrow points west, off the
+current city block, toward a landmark outside the boundary (unclear from
+the image alone which one — check in devmode).
+
+**Context already in the repo — read before designing from scratch:**
+`orlearouge.js`'s `riverfront()` (~line 417) already builds one riverboat
+casino ("GRAND CRESCENT CASINO") on the south promenade with a real neon
+sign helper (`neonSign(...)`) and a `MeshPhysicalMaterial` water technique —
+reuse both rather than inventing new ones. `nightlife.js` (that session's
+TASK-055, `REVIEW`, further down) already built four walk-in clubs on a
+"French District" block within OrleaRouge with a no-loading-screen interior
+technique (roof/sign lifts off, walls drop to knee height), go-go
+dancers/strippers, a healing-via-tip/lap-dance loop, and `gayman`/`lesbian`
+ambient pedestrians — **that block may already be what "Frenchmen Street"
+is meant to be inside this bigger district**, or the human may mean
+something adjacent; confirm before duplicating effort. Prostitute NPCs
+already exist in the game (grep `npc.js`/`prologue.js`/`greedoCampaign.js`
+for the existing pattern) — "high-end escorts" is very likely a reskin/
+variant of that existing type (different dressing, different dialogue/
+pricing, richer neighborhood placement) rather than a new system.
+
+**Genuinely new, not found anywhere in the repo today:** a limousine
+vehicle (no `limo` anywhere in `src`), tuxedo-dressed NPC pedestrians (no
+`tuxedo` anywhere in `src`), and casino *interiors* specifically (gambling
+tables/slot machines/an actual floor to walk — the one existing casino is
+an exterior riverboat prop, not enterable).
+
+**Real scope, broken down:**
+1. **Extend `CITY`'s bounds** (or add an adjacent authored block, same
+   pattern `nightlife.js`'s `lots`/`orlearouge.js`'s block-builder already
+   use) east and north per the arrows, with more of the existing tower/club/
+   casino kit repeated at higher density — "party central" density, not
+   sparse.
+2. **More casinos**, enterable (slot machines, tables, a floor — new
+   interior content, likely sharing TASK-059's interior-transition tech
+   rather than each casino inventing its own).
+3. **More nightclubs/strip clubs**, enterable, reusing `nightlife.js`'s
+   proven walk-in-interior technique rather than a second implementation.
+4. **Tuxedo-dressed "pretentious rich" NPCs** — a new dressing/palette on
+   the existing pedestrian system (`characters.js` already has this pattern
+   for `gayman`/`lesbian` etc. from TASK-055 — follow it), with matching
+   flavor dialogue in `pedestrianChatter.js`.
+5. **Limousines** — a new `VEHICLE_DEFS` entry (stretched proportions,
+   slow/dignified handling) that traffic spawns preferentially in this
+   district; check the asset manifest for a limo model before building one
+   from primitives (same check pattern TASK-053 item 7 and TASK-058 already
+   used for their missing models).
+6. **High-end escorts** — very likely extending the existing prostitute NPC
+   type/mechanic (see above) with different dressing/dialogue/pricing for
+   this district, not a new mechanic from scratch.
+
+Real scope here is comparable to TASK-055 (Frenchmen Street) or bigger —
+flagging that up front. Suggest confirming with the human which of the
+"Frenchmen Street already exists" overlaps above are the same thing they're
+asking for vs. something distinct, before duplicating work.
+
+**Not started** — no code changes yet, this is the design brief as given.
+
+---
+
+### TASK-064 — A real Mississippi River between OrleaRouge and Chatboro, with swimming, boats and river fauna (human request + screenshot, 2026-09-20) — logged, not started
+
+**Status:** `BACKLOG` · **Files (expected):** `src/main.js` (world bounds,
+swim state), `src/orlearouge.js` (the causeway approach), a Chatboro-side
+module, `src/vehicles.js` (a boat), a new small module for river fauna
+**Reference:** `Missisippoi.png` at the repo root — the human drew two blue
+lines across the approach into OrleaRouge, labeled "MISSISIPPI RIVER TO GO
+BETWEEN HERE."
+
+Human's own words: *"I want to basically split the map — we need to put a
+massive river between OrleaRouge and Chatboro. Eventually we'll need
+swimming mechanics, maybe boats — why not. Maybe alligators, river
+monsters, something funny."*
+
+**Context:** `world.js` documents south as `+Z`: Tusouxroe (north) →
+Chatboro → the causeway → OrleaRouge, in that order. `orlearouge.js`
+already exports `CAUSEWAY = { minZ: 136, maxZ: 192 }` as the approach
+corridor into `CITY` (`minZ: 196`) — the screenshot's blue lines look like
+they fall right around this same corridor, so the river most likely replaces
+or runs alongside the existing causeway crossing rather than being a wholly
+separate cut through the map. `orlearouge.js` already has one proven flat
+river-water technique (`riverfront()`'s `MeshPhysicalMaterial`, `color:
+0x0a1a22, roughness: 0.12, clearcoat: 1` — see TASK-063's context section) —
+reuse it for consistency rather than a new water shader.
+
+**Real scope, and it's large — this touches world traversal, not just
+dressing:**
+1. **The river geometry itself** — width, banks, and how the existing
+   causeway relates to it (does the causeway become a bridge *over* the new
+   river? that seems like the natural reading of "the river goes between
+   here" across the existing crossing, but confirm with the human before
+   assuming).
+2. **Swimming** — genuinely new player-state work: no swim state exists in
+   `main.js` today (player is either on foot or in a vehicle). Needs
+   entering/exiting water, a distinct movement model, and a drown-risk or
+   stamina question the human hasn't specified yet.
+3. **Boats** — a new vehicle category (`vehicles.js`'s arcade model is
+   heading+speed on the ground plane; a boat needs to stay on the water
+   surface, which `stepArcadeVehicle()` doesn't do today) — open question
+   whether this reuses `bikes.js`'s "build from primitives" approach (that
+   session's TASK-056 already did this for motorbikes/scooters when no
+   model existed) or sources a model.
+4. **River fauna** ("alligators... river monsters... something funny") —
+   explicitly under-specified by the human's own words ("I don't even know,
+   probably... I guess") — this is licence to have fun with it, not a
+   precise spec. Could be as simple as a hostile enemy kind reusing the
+   existing `hog`-style aggro machinery (`ENEMY_KINDS` in `main.js`) with a
+   gator model and a "drags you under" attack, once swimming exists to be
+   threatened by it.
+
+Suggest sequencing: geometry + causeway-becomes-a-bridge decision first
+(confirm with the human), swimming second, boats and fauna after — boats
+and fauna are both pointless without a swimmable river to put them in.
+
+**Not started** — no code changes yet, this is the design brief as given.
+
+---
 
 > **Task-ID collision, 2026-09-20:** two sessions again used the same numbers for
 > unrelated work — TASK-053, 054 and 055 each exist twice. Both sets are kept,
