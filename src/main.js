@@ -9,6 +9,7 @@ import {
 import { addLamp, createHeadlights, createWetRoads, updateFx } from "./fx.js";
 import { BlockerGrid } from "./spatial.js";
 import { createSoundtrack } from "./music.js";
+import { createRadio } from "./radio.js";
 import { batchStatic } from "./merge.js";
 import { initAudio, createCarAudio, resumeAudio } from "./audio.js";
 import { initWeapons3D, updateWeapon3D, playFireAnim3D } from "./weapons_3d.js";
@@ -1007,6 +1008,7 @@ const vehIndic = document.getElementById("vehIndic");
 const music = document.getElementById("music");
 // Soundtrack: every audio file in assets/music/ (see the README there), shuffled.
 const soundtrackReady = createSoundtrack(music, { fallback: "./assets/audio/theme.mp3" });
+const radio = createRadio();   // assets/audio/radio/ — plays only while state.veh is set, see tick()
 initAudio(camera);   // THREE.AudioListener on the camera; car audio builds from it lazily (audio.js)
 document.getElementById("mute").onclick = () => toggleMute();
 function toggleMute() {
@@ -1263,7 +1265,17 @@ function confirmCharacter() {
   if (cfg.campaign === "greedo") { prologue.skip(); greedoCampaign.start(); return; }
   if (cfg.campaign === "sync") { prologue.skip(); syncCampaign.start(); return; }
   if (pendingLaunch === "story") prologue.start();
-  else { prologue.skip(); music.volume = 0.55; soundtrackReady.then((s) => s.play()); flashObjective("Click the game to look around with the mouse · Esc releases it"); }
+  else {
+    prologue.skip(); music.volume = 0.55; soundtrackReady.then((s) => s.play());
+    flashObjective("Click the game to look around with the mouse · Esc releases it");
+    // Free Roam: every gun, no reload grind (human request, 2026-09-20).
+    // weapons.js checks this flag itself so it survives weapon switches and
+    // pickups, not just the initial grant.
+    state.freeRoam = true;
+    state.reserve = { pistol: Infinity, tec9: Infinity, sawnoff: Infinity, deerRifle: Infinity };
+    state.ammo = Infinity;
+    arsenal.render();
+  }
 }
 for (const id of characterIds) {
   const cfg = PLAYER_CHARACTERS[id], b = document.createElement("button");
@@ -2870,6 +2882,7 @@ function busted() {
 // ---------------------------------------------------------------- main loop
 const clock = new THREE.Clock();
 let idleAcc = 0;
+let wasInVehicle = false;   // edge-detects state.veh for the radio (tick())
 
 // ---- dev diagnostics: F3 toggles a frame-time readout (hidden by default) ----
 // CPU-side timings only; the GPU works asynchronously, so "render" is the cost of
@@ -2941,6 +2954,13 @@ function tick() {
         simulate(Math.min(left, 1 / 30));
       }
     }
+    // The radio: driven off state.veh directly rather than hooked into every
+    // individual enter/exit call site (there are close to a dozen — normal
+    // exit, hijack, explosion, the wanted system's forced eject, dev
+    // teleport…), so it reacts correctly no matter how the player left the
+    // car.
+    const inVehicle = !!state.veh;
+    if (inVehicle !== wasInVehicle) { wasInVehicle = inVehicle; if (inVehicle) radio.play(); else radio.stop(); }
     if (missionClinic) missionClinic.update(dt);
     if (prologue) prologue.update(dt);
     if (actOne) actOne.update(dt);
@@ -3259,7 +3279,7 @@ function onFootUpdate(dt) {
   playerMoveHeading = moving ? headingFromVector(mv.x, mv.z) : null;
   const sprint = input.isDown("sprint");
   let speed = 6.5;
-  if (sprint && state.sp > 1 && moving) { speed = 11; state.sp -= dt * 26; }
+  if (sprint && state.sp > 1 && moving) { speed = 12.5; state.sp -= dt * 26; }
   else state.sp = Math.min(100, state.sp + dt * 14);
 
   if (moving) {

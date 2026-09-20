@@ -39,6 +39,106 @@ setup existed (TASK-001 … TASK-009).
 # 🧠 DISCOVERIES
 
 ## 2026-09-20 — Claude
+**Type:** HANDOFF · **Task:** TASK-052 R2 upload finished (1873/1873, 0 failed); free roam tweaks; TASK-054 radio; TASK-053/055 logged
+
+### Finding
+The R2 bulk upload from the previous entry finished clean (1873 total, 1873
+ok, 0 failed) — `tools/r2-manifest.json` is now valid (462 model entries
+across the 5 categories) and committed. Re-ran the full editor regression
+plus a manifest-specific end-to-end test against the real, complete
+manifest: all pass, no new console errors beyond the already-documented
+texture-path limitation for oddly-structured packs.
+
+Also handled this session, smaller items: bumped player sprint speed 11→12.5
+(human: "increase the run speed a lil bit"); the Free Roam button now just
+says "Free Roam" (human wanted the earlier "· as Keseme" wording gone); Free
+Roam now grants every gun with true infinite ammo (`state.freeRoam` flag
+checked directly in `weapons.js`'s `cycleWeapon()`/`give()`/`addReserve()`
+so it survives weapon switches and pickups, not just the initial grant —
+the existing "everyone starts with one clip's reserve of everything"
+diagnostic loadout was too finite for what was asked). Built TASK-054 (new
+`src/radio.js`, in-vehicle radio cycling 4 tracks the human's team supplied
+via SoundCloud, downloaded with `yt-dlp` already present in the dev
+environment) — music half done and tested, DJ-host voice-line half is
+logged only, not built (needs a real script + the Fish Audio pipeline,
+see TASK-054 in `TODO.md`).
+
+### Impact
+TASK-052 is now fully shippable (all 3 remaining checklist items were
+already done pre-upload). TASK-053 (batched-building copy+select, real
+parked cars, POI-based ped/traffic density, right-click color editor,
+combat feel overhaul, motorbikes) and TASK-055 (loyal hog companions) are
+both logged in `TODO.md` from a live conversation with the human but **not
+implemented** — next agent picking either up should read the human's exact
+words quoted there before assuming scope.
+
+### Action
+See `TODO.md` TASK-052 (now shippable), TASK-053 (7-item backlog, suggested
+order included), TASK-054 (radio, partially done), TASK-055 (hogs, backlog).
+
+## 2026-09-20 — Claude
+**Type:** HANDOFF · **Task:** TASK-052 — map editor round 2: mode UX/drag-select/copy-paste/edit-anything done; R2 library code done, upload still running
+
+### Finding
+Items 2-6 of the human's 6-point overhaul are implemented and Playwright-
+verified: the ghost preview no longer stays armed in Select mode (it's
+Place-only now — Select marks its picks with wireframe boxes instead),
+right-click cancels/deselects, drag-box multi-select works, Ctrl+C/X/V
+copy/cut/paste shows a holographic multi-preview that follows the cursor
+until a click or Ctrl+V drops it, and Select falls back to raycasting the
+live scene (`raycastWorldObject()`) for district-authored objects when
+nothing editor-placed is nearby — confirmed hitting real named objects
+(`parish:rest-stop`) across 76 screen-point probes in testing, and reporting
+rather than silently failing on `merge.js`'s batched "static-batch" meshes,
+which can't be individually isolated.
+
+Item 1 (the R2 asset library) needed real infrastructure, not just code:
+`Z:\GITHUB\_ASSETS` (2.2 GB of un-extracted `.rar`/`.zip` packs, a completely
+separate repo the game/editor could never see) got extracted to 3.2 GB
+across all categories, scoped to 5 relevant ones (~684 MB, 1873 files,
+Characters-Animations and Weapons-Tech excluded), and
+`tools/upload-assets-to-r2.sh` is bulk-uploading it to the `bayou-assets` R2
+bucket (public r2.dev domain, CORS confirmed working for cross-origin fetch)
+while building `tools/r2-manifest.json` alongside it. `src/mapEditor.js`
+fetches that manifest lazily on first editor toggle-on (same "no network
+call at import" rule the rest of the file follows), dedupes each pack's
+FBX/GLB duplicates (GLB wins — self-contained, no texture-path guessing
+needed), and merges one catalog entry per real model into new
+`R2: <category>` tabs. Verified end-to-end (manifest fetch → tabs appear →
+search finds an entry → placing it loads and renders the actual R2-hosted
+model) by intercepting the fetch with a frozen, valid snapshot of the
+already-uploaded entries, since the live upload (still running at commit
+time, ~35% done — hours, not minutes, at its observed rate) leaves
+`tools/r2-manifest.json` as an incomplete/invalid JSON array until it
+finishes; `loadR2Manifest()`'s fetch failure is caught and logged, not
+fatal, so the editor works normally with just the curated catalog in the
+meantime.
+
+### Impact
+`src/landmarks.js`'s new `placeR2Model()` reuses the existing
+`loadFBX()`/`packTextureRoot()` Textures/-folder redirect for loose FBX
+packs — this works for the common "pack/pack/Models/ + pack/pack/Textures/"
+layout (confirmed against real R2 URLs), but several of the ~30 unrelated
+packs use different conventions (nested `Models/Stops/`-style subfolders,
+per-model `.fbm/` folders) that redirect can't resolve — those will show
+flat/white materials. Not fixed: a fully general resolver would need R2
+bucket-listing, which the public r2.dev domain doesn't expose, and
+per-pack curation defeats the point of a generic loader for ~30 packs no
+one has manually reviewed. Also caught before it shipped: "Ask AI" was
+about to send the *entire* catalog (400+ entries once R2 lands) on every
+request — now it sends the curated set in full plus only R2 entries whose
+label keyword-matches the prompt, to keep the OpenRouter payload bounded.
+The picker itself is now paginated (48/page) instead of one long scroll —
+necessary once real thumbnails mean a real model fetch per visible tile.
+
+### Action
+See TASK-052 in `TODO.md` for the full status and the explicit next step
+(wait for `UPLOAD COMPLETE` in `tools/upload-log.txt`, validate the JSON,
+commit `tools/r2-manifest.json` in a follow-up). This commit ships items
+2-6 plus all of item 1's code, `.gitignore`d the upload script's own log
+(not source content), and does not yet include the manifest itself.
+
+## 2026-09-20 — Claude
 **Type:** DISCOVERY · **Task:** TASK-051 — the shop packs' "weird white colour" was a texture-path bug, not a map bug
 
 ### Finding

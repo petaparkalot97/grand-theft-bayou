@@ -111,6 +111,7 @@ export function createArsenal({ state, flashObjective }) {
     const w = WEAPONS[id];
     if (!w || w.melee) return;
     if (!state.reserve) state.reserve = {};
+    if (state.freeRoam) { state.reserve[id] = Infinity; render(); return; }
     const maxRes = w.maxReserve || 100;
     state.reserve[id] = Math.min(maxRes, (state.reserve[id] || 0) + rounds);
     render();
@@ -146,7 +147,7 @@ export function createArsenal({ state, flashObjective }) {
         cycleWeapon(dir) {
       const keys = Object.keys(WEAPONS);
       const available = keys.filter(k => {
-        if (k === 'bat') return true;
+        if (k === 'bat' || state.freeRoam) return true;
         if (state.weapon === k && state.ammo > 0) return true;
         if (state.reserve && state.reserve[k] > 0) return true;
         return false;
@@ -168,7 +169,7 @@ export function createArsenal({ state, flashObjective }) {
       
       state.weapon = nextId;
       const w = WEAPONS[nextId];
-      if (w.melee) {
+      if (w.melee || state.freeRoam) {
         state.ammo = Infinity;
       } else {
         const res = state.reserve && state.reserve[nextId] ? state.reserve[nextId] : 0;
@@ -191,6 +192,7 @@ export function createArsenal({ state, flashObjective }) {
         return;
       }
       if (!state.reserve) state.reserve = {};
+      if (state.freeRoam) { state.weapon = id; state.ammo = Infinity; state.reserve[id] = Infinity; render(); return; }
       const n = rounds != null ? rounds : w.clip;
       if (state.weapon === id) {
         const maxRes = w.maxReserve || 100;

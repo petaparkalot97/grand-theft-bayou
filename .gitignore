@@ -41,3 +41,8 @@ assets/music/playlist.json
 # by server/index.js's /editor/save, not source content. "Export" in the
 # editor is how a placement becomes real, committed code.
 server/editor-placements.json
+
+# tools/upload-assets-to-r2.sh's own run log — tools/r2-manifest.json (the
+# useful output, consumed by mapEditor.js) is committed; this raw progress
+# log isn't source content and is safe to regenerate.
+tools/upload-log.txt

@@ -57,6 +57,12 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+> **Task-ID collision, 2026-09-20:** two sessions again used the same numbers for
+> unrelated work — TASK-053, 054 and 055 each exist twice. Both sets are kept,
+> unrenumbered, as the earlier collision in this file was: the gameplay/story set
+> (Mama, services, Frenchmen Street, bikes) first, then the map-editor / radio /
+> hog-companion set. A human pass can renumber them.
+
 ### TASK-056 — Motorbikes and scooters (human request: "motorbikes n scooters n stuff")
 
 **Status:** `REVIEW` · **Agent:** Claude
@@ -151,10 +157,203 @@ the repo's script — **needs the human's call**. `nolantis.mjs` has three new c
 
 ---
 
+### TASK-053 — $DEVMODE69xxx round 3: batched-building copy, real parked cars, POI-based ped/traffic density, right-click "Edit design" color editor (human request, 2026-09-20) — logged, not started
+
+**Status:** `BACKLOG` · **Files (expected):** `src/mapEditor.js`, `src/merge.js`,
+`src/landmarks.js`, `src/main.js` (ctx plumbing for the real parked-car
+loaders), `src/npc.js` (new POI insertion), `src/traffic.js` (if a
+POI-equivalent density knob doesn't already exist there — needs checking,
+its lanes are polylines, not point-density, so this may need its own small
+mechanism rather than reusing pois wholesale)
+
+Five asks from this session's follow-up conversation, captured here per the
+human's "just log the plan in todo.md" instruction — **none of this is
+implemented yet.**
+
+1. **Select AND copy district-authored (batched) buildings**, not just the
+   handful of unbatched/named world objects TASK-052 item 6 already covers.
+   Most buildings are folded into `merge.js`'s `batchStatic()` shared
+   "static-batch" meshes for draw-call reduction (measured ~1,260 draw
+   calls/frame across ~1,400 meshes before batching — turning batching off
+   entirely is off the table, it'd bring that cost back for every player,
+   not just dev mode). The scoped, safe version discussed: teach
+   `batchStatic()` to *keep* each source building's pre-merge geometry
+   (already computed and normally discarded after `mergeGeometries()`,
+   tagged with which building + a computed index range so a raycast hit on
+   the shared batch mesh can be traced back to one building) instead of
+   throwing it away. The editor then reads (never mutates) that data: Select
+   can identify which building was hit and **Copy** it into a real,
+   independent standalone clone — Cut/move of the *original* stays
+   unsupported, since it can't be pulled out of the shared batch without
+   rebuilding it. Once copied, the clone behaves like any other placement
+   (movable, deletable, saveable, re-placeable from the library). Known
+   cost: keeps per-building geometry alive in memory permanently instead of
+   discarding it after the one-time batch build — roughly back to the
+   game's pre-batch memory shape, not doubled, since it's the same buffers,
+   just not garbage-collected.
+2. **Real parked cars, not the broken stub.** `landmarks.js`'s
+   `placeParkedCar()`/`placeTruck()` are literal no-ops ("cars are currently
+   broken/non-interactable" / "trucks are broken/untextured old assets") —
+   that's why the editor's catalog omits them (TASK-052's own comment
+   explains this). But `main.js` already has a completely separate, working
+   ambient parked-car system (`placeParked()`, the `parkedCarSpots` array,
+   the `loadVehicle()`/`loadDsCar()` loaders) used for the decorative cars
+   already sitting outside shops in every district. Plan: expose those
+   loaders through `ctx` (same pattern as the existing `ctx.loadGLB`) and
+   add real catalog entries backed by them — decorative only (not
+   drivable/hijackable, matching what's already in the world today), which
+   is an honest working feature rather than resurrecting the abandoned stub.
+3. **NPCs — option (b), confirmed by the human: add a real POI, not just a
+   decorative static figure.** `npc.js`'s `createNpcSystem({ pois, ... })`
+   simulates an ambient wandering population from a fixed list of "POI" home
+   anchors set up once at world-build time — there's no per-instance
+   "spawn one pedestrian" call. Dropping a POI from the editor at a chosen
+   spot should spawn a real wandering crowd around it during play, which is
+   what "make this spot more populated" actually means. Needs: a way to
+   inject a new POI into the live `pois` array from the editor (or persist
+   one to be added at next boot — TBD which is more useful) plus whatever
+   population-density parameters `pois` entries carry (`r` for radius,
+   possibly a type/count weight — check `npc.js`'s POI shape before wiring
+   this up).
+4. **Traffic/cars — same "(b), add a POI" answer from the human, but
+   traffic.js's architecture doesn't have a POI concept to reuse.**
+   `traffic.js` drives cars along predefined lane polylines with a fixed
+   `perLane`/`maxCars` pool, not point-density. Before implementing,
+   whoever picks this up needs to check whether there's already a
+   lane-local density/spawn-rate knob to hook a "busier here" POI into, or
+   whether this needs a new, small mechanism (e.g. a radius-based local
+   `perLane` multiplier keyed by proximity to a dropped point) — flagged as
+   an open question rather than assumed solved.
+5. **Right-click context menu + "Edit design" color editor.** A dropdown
+   menu on right-click when something's selected (today right-click only
+   cancels/deselects — TASK-052 item 3). Menu should include at least an
+   "Edit design" option opening hue/saturation/contrast sliders (and room
+   for more later) that live-adjust the selected object's material color.
+   Technically straightforward (material color/HSL is just a THREE.Color
+   mutation) — the actual work is the menu UI itself and making the edit
+   undo/persist the same way a placement does.
+6. **Combat feel overhaul (human's own words): "attacking [should] feel more
+   real and satisfying... they don't even punch properly and when they hold
+   weapons it looks ufcking shit. The shotgun has to feel like a shotgun, it
+   has to SOUND like a shotgun and spray bullets everywhere like a shotgun
+   etc. Each gun should feel unique."** Confirmed by reading `fire()` in
+   `main.js`: every weapon (pistol/tec9/sawnoff/deerRifle) currently runs
+   through the exact same code path — one aim-assisted hitscan ray at the
+   single best-scored target, one shared `"shoot"` animation, one shared
+   `playFireAnim3D(gun.melee)` call (a boolean melee/not-melee split, nothing
+   per-weapon), only damage/cooldown/range/sound-effect-name differ via the
+   `gun` stats lookup. So the complaint is accurate, not exaggerated: there
+   is currently no shotgun spread, no per-weapon recoil/animation, no punch
+   animation distinct from a generic "attack" swing. Real fix needs: (a) a
+   proper punch/melee animation reviewed against how `player.play("attack")`
+   actually looks today (character rig work, not just code), (b) real
+   multi-pellet spread + falloff for the sawnoff instead of one hitscan ray,
+   (c) per-weapon recoil/camera-kick and hold-pose (weapon-in-hand looking
+   "shit" likely means `weapons_3d.js`'s `updateWeapon3D()` grip/offset needs
+   per-weapon tuning, not one shared pose), (d) distinct sound design per gun
+   (partially there via `WEAPON_SFX`, worth a real pass once the mechanics
+   change). This is the biggest, most subjective item on this list — needs
+   iteration/playtesting, not a one-shot fix.
+7. **Motorbikes.** Checked `vehicles.js`'s `stepArcadeVehicle()` — it's a
+   generic top-down arcade model (heading + speed, no per-wheel physics), so
+   a bike doesn't need new physics code, just its own `VEHICLE_DEFS` entry,
+   tuning (faster accel, twitchier steering, lower grip feels right for a
+   bike vs. a car — needs playtesting to land on numbers) and a single-rider
+   seat/mount offset instead of a multi-seat car interior. Checked the freshly
+   uploaded R2 asset manifest (`tools/r2-manifest.json`, all 462 model
+   entries) for an existing motorbike model to reuse — **none found** (no
+   pack/file matching bike/motor/cycle/harley/scooter). A model needs to be
+   sourced (either from a pack not yet in `Z:\GITHUB\_ASSETS`, or
+   commissioned/found separately) before this can actually ship — flagging
+   now so it isn't assumed to be "just wiring", the asset is the real
+   blocker.
+
+**Suggested order** (not yet confirmed with the human): #5 (contained UI
+work, no architecture risk) → #2 (small, reuses working code) → #1 (bigger,
+but self-contained to `merge.js`+`mapEditor.js`, zero risk to live
+rendering) → #7 (needs a sourced asset first, otherwise just data+tuning) →
+#6 and #3/#4 (biggest — #6 touches core combat feel for every player and
+needs real playtesting, not a rushed pass; #3/#4 touch live simulation
+systems that run for every player, not just dev mode).
+
+---
+
+### TASK-054 — In-vehicle radio (human request, 2026-09-20)
+
+**Status:** `IN PROGRESS` — the music half is done and pushed; the DJ-host
+half is logged, not built · **Files:** `src/radio.js` (new),
+`src/main.js`, `assets/audio/radio/*.mp3`
+
+Human supplied four SoundCloud tracks (their own team's, from the
+`petaparkalot97` account that owns this repo's `origin` remote and the
+Cloudflare Pages deploy) and asked for them in the game, playing inside
+vehicles, with a radio host reading generated lines between tracks.
+
+**Done:** downloaded all four via `yt-dlp` (already present in the dev
+environment) as mp3, renamed to clean filenames, added to
+`assets/audio/radio/`. New `src/radio.js` cycles them (shuffled, reshuffled
+each time it loops) through a plain `HTMLAudioElement` — the same approach
+`music.js`'s `createSoundtrack()` uses for the background soundtrack, no
+WebAudio graph needed. Wired into `main.js`'s `tick()` by edge-detecting
+`state.veh` (rather than hooking every individual enter/exit call site —
+there are close to a dozen scattered across normal exit, hijack, explosion,
+the wanted system's forced eject, dev teleport — edge-detection reacts
+correctly no matter which one fires). Fades in/out over the vehicle
+enter/exit rather than cutting off mid-beat. Smoke-tested via Playwright:
+loads with no console errors.
+
+**Not done — the DJ host:** the human's ask includes "we will generate
+lines for a radio host" between tracks. The existing voice pipeline
+(`tools/voiceover-gen.mjs` + Fish Audio + `src/voiceCast.js`) is built
+specifically around scanning `c.say("WHO", "text")` cutscene dialogue calls
+for existing story characters, not a standalone script — properly using it
+for a radio host means: adding a new voice-cast entry for the host
+character, writing an actual DJ script (intro/outro lines, transitions
+between these four tracks), generating the audio via that pipeline (needs
+`FISH_AUDIO_API_KEY`), and sequencing host-line → track → host-line →
+track in `radio.js` instead of gapless back-to-back tracks. None of that is
+built yet — flagging it as its own follow-up rather than bolting on a rushed
+half-version of it.
+
+---
+
+### TASK-055 — Loyal hog companions (human request, 2026-09-20) — logged, not started
+
+**Status:** `BACKLOG` · **Files (expected):** `src/main.js` (enemy/companion
+state), `src/npc.js` or a new small module for follow/guard AI
+
+Human's own words: *"i want to make a mechanic in the game where the player
+can somehow cultivate hogs that are loyal to the player, they will follow
+the player around on foot and any time player is attacked the hogs will
+attack the hostiles and attempt to protect the player."*
+
+Today `hog` is purely a hostile enemy kind (`ENEMY_KINDS` in `main.js`,
+"Feral Hog," part of the same aggro/attack pool as rednecks/hoodrats — see
+`main.js` around line 1324). There's no existing tame/companion state for
+any actor. This needs, at minimum:
+- **A taming trigger** — how a hostile hog becomes loyal isn't specified by
+  the human yet (feeding? a minigame? proximity + time? killing its
+  aggressors for it?) — a real open question, not an implementation detail,
+  worth confirming before building.
+- **A new AI mode** distinct from the existing wander/aggro-toward-player
+  state machine: follow-the-player-on-foot (loose formation, not glued to
+  a single tile) when nothing's happening, and a defend trigger that flips
+  a loyal hog to hostile-toward-whoever-just-hit-the-player, reusing the
+  existing enemy `state`/`hp`/attack machinery hogs already have rather
+  than building parallel combat code.
+- **Persistence** — do tamed hogs survive a save/reload, district
+  transitions, fast travel? Not yet scoped.
+
+Not started — no code changes yet, this is purely the design brief as given.
+
+---
+
 ### TASK-052 — $DEVMODE69xxx round 2: full asset library via R2, mode UX, drag-select, copy/paste, edit-anything (human request, 2026-09-20) — TOP PRIORITY
 
-**Status:** `IN PROGRESS` · **Agent:** Claude
-**Files (expected):** `src/mapEditor.js`, `src/landmarks.js`, `server/index.js`, possibly a new `server/assets.js` or R2-listing endpoint
+**Status:** `REVIEW` — all 6 items done and Playwright-tested; R2 upload
+finished clean (1873/1873, 0 failed), `tools/r2-manifest.json` is valid and
+committed · **Agent:** Claude
+**Files:** `src/mapEditor.js`, `src/landmarks.js`, `tools/upload-assets-to-r2.sh`, `tools/r2-manifest.json`
 
 **Human's own words:** *"OK WE NEED TO FIX THE MAP EDITOR. ITS TOTALLY SHIT."* — six numbered
 points, verbatim intent below. Also directed: "start uploading to cloudflare
@@ -198,17 +397,55 @@ editor changes too!!"
    individually pickable without further work — flag what's actually
    feasible here rather than silently no-op'ing on the hard cases.
 
-#### Notes for whoever picks this up (including a future me)
-- This was scoped and started while the human was stepping away
-  (`/bg`, terminal closing) — no live check-ins possible mid-task. Where a
-  point above has a real judgment call baked in (especially #6's "how far
-  does edit-anything actually go"), the implementing agent made the call,
-  did the work, and left a clear note here and in `AGENT_LOG.md` rather
-  than blocking.
-- Item #1 (R2) is infrastructure, not just code — check `wrangler.jsonc` /
-  `server/index.js` / whatever this task's implementation added for the
-  bucket name, manifest shape and CORS config before assuming asset paths
+#### Status as of this commit (Claude, 2026-09-20, while the human was away)
+- **Items 2-6: done, Playwright-tested, this commit.** Mode UX rebuilt (ghost
+  only shows in Place mode; Select marks picks with wireframe boxes instead),
+  right-click cancels/deselects, drag-box multi-select, Ctrl+C/X/V
+  copy/cut/paste with a holographic multi-preview, and Select now falls back
+  to raycasting the live scene for district-authored objects when nothing
+  editor-placed is nearby (reports "merged into a shared batch, can't
+  isolate" for `merge.js`'s batched meshes rather than silently no-op'ing —
+  confirmed hitting real named objects like `parish:rest-stop` in testing).
+  Full interaction model documented in `src/mapEditor.js`'s file header.
+- **Item 1 (R2 asset library): code done and tested, upload still running.**
+  `tools/upload-assets-to-r2.sh` extracted and is uploading ~1873 files
+  (~684 MB, 5 categories: Buildings-Shops, Props-Furniture,
+  Roads-Infrastructure, Vehicles, Dungeons-Interiors — Characters-Animations
+  and Weapons-Tech deliberately excluded) from `Z:\GITHUB\_ASSETS\_extracted`
+  to the `bayou-assets` R2 bucket, building `tools/r2-manifest.json`
+  alongside it. At this commit the upload is roughly 35% done (background
+  job, hours not minutes at this rate) — **`r2-manifest.json` isn't
+  committed yet because the running script hasn't closed its JSON array**;
+  it'll land in a follow-up commit once `grep "UPLOAD COMPLETE"
+  tools/upload-log.txt` shows it's finished. `src/mapEditor.js` fetches it
+  lazily (first editor toggle-on) and merges one catalog entry per unique
+  model into new `R2: <category>` tabs — verified end-to-end against a
+  frozen snapshot of the real, already-uploaded entries (manifest fetch →
+  tabs appear → search finds the asset → placing it actually loads the real
+  model from R2). `src/landmarks.js`'s new `placeR2Model()` handles both
+  GLB/GLTF (self-contained) and loose FBX (reuses the existing
+  Textures/-folder redirect) — **known limitation**: that redirect assumes
+  the common "pack/pack/Models/ + pack/pack/Textures/" layout, which several
+  packs don't follow (nested subfolders like `Models/Stops/`, or per-model
+  `.fbm/` folders) — those will show flat/white materials until someone
+  hand-curates them, same class of limitation as item 6's batched-mesh case.
+  Not fixed: with ~30 unrelated, unrelated-authored packs, a fully general
+  texture-path resolver isn't feasible without bucket-listing support R2's
+  public domain doesn't expose.
+  The picker is now paginated (48/page) instead of one long scroll, and
+  "Ask AI" no longer sends the whole (now 400+ entry) catalog on every
+  request — it sends the curated set plus only R2 entries whose label
+  keyword-matches the prompt.
+- Item #1 (R2) is infrastructure, not just code — check `wrangler.jsonc` for
+  the bucket name and CORS config (already confirmed working, incl.
+  cross-origin fetch from the R2 public domain) before assuming asset paths
   work the same way they used to.
+
+**Next step for whoever picks this up:** once the upload finishes, run
+`node -e "JSON.parse(require('fs').readFileSync('tools/r2-manifest.json'))"`
+to confirm it's valid, commit it, and spot-check a few packs per category in
+the live editor (the texture-path limitation above means some will need a
+per-pack fix or a "known broken" label rather than silent white materials).
 
 ---
 
