@@ -78,6 +78,13 @@ export function createMinimap({ MAP, size = 190 }) {
     last.built = true;
   }
 
+  const BADGES = {
+    spray: ["#2f9bff", "#fff", "S"],        // Pay 'n' Spray
+    gun: ["#ffd23a", "#111", "G"],          // gun counter
+    hospital: ["#fff", "#e02828", "✚"],     // hospital
+    food: ["#ff8a2c", "#111", "P"],         // Popeyes counter
+    club: ["#ff4fb3", "#fff", "♥"],         // bars and clubs (nightlife.js)
+  };
   function blip(kind, x, y, t) {
     g.lineWidth = 1.5;
     g.strokeStyle = "#000";
@@ -97,6 +104,14 @@ export function createMinimap({ MAP, size = 190 }) {
     } else if (kind === "hostile") {
       g.fillStyle = "#e23a2e";
       g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fill();
+    } else if (BADGES[kind]) {
+      // services.js / nightlife.js: a coloured badge with a letter, GTA-style
+      const [fill, ink, letter] = BADGES[kind];
+      g.fillStyle = fill;
+      g.beginPath(); g.arc(x, y, 5.5, 0, Math.PI * 2); g.fill(); g.stroke();
+      g.fillStyle = ink;
+      g.font = "bold 8px Arial"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(letter, x, y + 0.5);
     }
   }
 

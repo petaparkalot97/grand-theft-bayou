@@ -57,6 +57,100 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-056 — Motorbikes and scooters (human request: "motorbikes n scooters n stuff")
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/bikes.js` (new), `src/vehicles.js`, `src/characters.js`, `src/main.js`
+
+- `bikes.js` builds a sport motorbike and a Vespa-style scooter from primitives (no model
+  files exist); `vehicles.js` defines `motorbike` / `scooter` (one seat, `bike: true`, a
+  `seat`, and a `handling` block that now overrides `DRIVE` per vehicle — cached merge).
+- Riding: the rider stays on show in a new `ride` pose (characters.js), the frame leans into
+  turns (a scooter barely), the rider leans with it, and you step off 1.3 m to the side.
+- Nine parked at spawn, Chatboro's Pay 'n' Spray, Main Street, Tusouxroe North, outside the
+  Frenchmen Street clubs and the OrleaRouge Popeyes; each spot is checked against the
+  blockers at boot and nudged onto clear ground.
+- Tested: F boards, W reaches 20.6 m/s in 1.5 s, full lean 0.34 on a turn, F steps off.
+- Not done: bikes in the traffic pool.
+
+---
+
+### TASK-055 — Frenchmen Street: gay bars, strip clubs, and OrleaRouge's out crowd (human requests)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/nightlife.js` (new), `src/characters.js`, `src/pedestrianChatter.js`,
+`src/voiceCast.js`, `src/spawnzones.js`, `src/orlearouge.js`, `src/minimap.js`, `src/main.js`
+
+- **Four walk-in clubs** on the French District block by the boulevard (x −39…−14,
+  z 257…283; orlearouge.js now takes `lots` — whole blocks another module builds on):
+  THE PINK PELICAN (gay bar, go-go boys), BAYOU BELLES (lesbian bar, go-go girls), CLUB BOUNCE
+  (strip club, women on the pole), BIG EASY BEEFCAKE (male revue); everybody's welcome in all.
+  No loading screen: inside, the roof and sign lift off and the walls drop to knee height.
+  A synthesized NOLA bounce loop plays (WebAudio, no files) and the soundtrack ducks.
+- **Healing there:** the stage rail, F — make it rain, $10, a dancer twerks for you, +15 HP;
+  the VIP chair, F — a lap dance (twerk, grind, a kiss), $40, +45 HP. New rig clips in
+  characters.js: `twerk`, `grind`, `dance`, `sit`, `kiss` (and `ride`, TASK-056).
+- **New pedestrians:** `gayman` / `lesbian` (characters.js `randomGayMan` / `randomLesbian`,
+  rainbow do-rags/headbands, short-hair option) in OrleaRouge (10% each) and a few in
+  towns; bump and fight lines in pedestrianChatter.js (no slurs); club regulars bark too.
+  Voices: stand-in ids in voiceCast.js — run tools/pedestrian-voiceover-gen.mjs for audio;
+  until then the lines fall back to speech synthesis.
+- Tested (headless): the jobs via the real F key — lap dance HP 40→85 / $100→$60, tip
+  HP 60→75 / $60→$50; bumps "Gay Guy: Careful, sweetie — this outfit is dry-clean only.",
+  "Lesbian: Easy — I just got these Docs broken in."; screenshots of the block, the cutaway,
+  the stage and the lap dance.
+
+---
+
+### TASK-054 — Pay 'n' Spray, the wanted level, buying guns, healing, and the story's how-to (human requests)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/services.js` (new), `src/tips.js` (new), `src/main.js`, `src/landmarks.js`,
+`src/orlearouge.js`, `src/tusouxroeNorth.js`, `src/minimap.js`, `tools/qa/gascans.mjs`
+
+- **Wanted level from the first crime.** The stars used to stay off until 12 Redneck/Hoodrat
+  kills (`HEAT_KILLS`), so most players never met them. Now any star's worth of heat calls
+  the Sheriff (and the system stays on, standing down at zero, as before). Gunfire only counts
+  when someone is within earshot — hogs in the woods don't bring cruisers. Losing stars:
+  out of sight and hidden (police.js, unchanged) or a Pay 'n' Spray.
+- **services.js:** Pay 'n' Spray garages (drive in: the door rolls down, $100, new paint,
+  repairs, stars gone — Chatboro strip, Tusouxroe US-167, an OrleaRouge lot); gun counters
+  (walk on, F, W/S, buy: 9mm $150, Tec-9 $400, sawed-off $600, deer rifle $900, ammo $60 —
+  Chatboro Guns & Pawn, every Bayou Arsenal, OrleaRouge Pawn & Guns); hospitals (F: full
+  health $60, charity ward to 60 HP if broke — Harborlight, OrleaRouge Public); Popeyes
+  counters (F: 3-piece $12, +40 HP). Rings, floating icons and radar badges (S, G, ✚, P, ♥).
+- **tips.js:** a help box. When the prologue hands over to Act One, the story walks through
+  buying guns, healing (Popeyes, hospitals, prostitutes, the clubs), wanted stars and Pay 'n'
+  Spray; each also fires on its own the first time it matters.
+- **City-building collision follows the footprint** (landmarks.js `placeCityBuilding`):
+  one circle of half the *diagonal* reached 6.8 m past Harborlight Hospital's front wall and
+  swallowed its entrance and every gun counter. Now circles the size of the short side along
+  the long one, plus the corners. Every service ring and club door checked against the real
+  blocker grid: all reachable.
+- Tested: Popeyes HP 50→90; gun counter menu, Tec-9 bought and in hand; hospital HP 30→100;
+  Pay 'n' Spray 2★→0, car repaired; low-health tip at 40 HP. Regression, all on the final
+  build: `gameplay.mjs` pass (hp 100 throughout), `gascans.mjs` 5/5 (its stale
+  character-select wait removed — free roam skips it since the other session's change),
+  `nolantis.mjs` 11/11, `actone.mjs` every beat, `prologue.mjs` every stage, `police.mjs` 8/8
+  twice — it is flaky on the 3 s bust threshold: the unchanged baseline failed it 4/8 on a
+  re-run the same way.
+
+---
+
+### TASK-053 — "Saving Keseme's mom" fell through to the gas cans (human report)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/actone.js`, `src/main.js`, `tools/qa/nolantis.mjs`
+
+Nolantis ends on "Someone threatened Mama" and calls `ctx.startNext()` — but main.js never
+gave it one, so the story objective cleared and the HUD fell back to "rob gas cans". Now
+Nolantis hands on to `actOne.protectMama()`: the objective and the radar waypoint point at
+Mama's door in South Tusouxroe, and reaching it completes the beat ("Mama's safe — for now"),
+then the escape plan resumes. No script lines added: what happens *at* the house is not in
+the repo's script — **needs the human's call**. `nolantis.mjs` has three new checks.
+
+---
+
 ### TASK-052 — $DEVMODE69xxx round 2: full asset library via R2, mode UX, drag-select, copy/paste, edit-anything (human request, 2026-09-20) — TOP PRIORITY
 
 **Status:** `IN PROGRESS` · **Agent:** Claude

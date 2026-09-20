@@ -141,6 +141,24 @@ function paisleyMat(color) {
   return m;
 }
 
+// Pride stripes: the rainbow do-rags, headbands and tops on Frenchmen Street
+// (randomGayMan / randomLesbian / makeDancer). One shared material.
+let rainbowCache = null;
+function rainbowMat() {
+  if (rainbowCache) return rainbowCache;
+  const c = document.createElement("canvas");
+  c.width = 16; c.height = 96;
+  const g = c.getContext("2d");
+  ["#e40303", "#ff8c00", "#ffed00", "#008026", "#004dff", "#750787"].forEach((col, i) => { g.fillStyle = col; g.fillRect(0, i * 16, 16, 16); });
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(1, 1.5);
+  rainbowCache = new THREE.MeshStandardMaterial({ name: "cloth", map: t, roughness: 0.85, envMapIntensity: 0.6 });
+  rainbowCache.userData.gtbRealized = true;
+  return rainbowCache;
+}
+
 // Flannel/plaid print for redneck-styled shirts: a crosshatch of two accent
 // lines over a base colour, the same tiling trick as the paisley bandana.
 const plaidCache = new Map();
@@ -288,9 +306,10 @@ class Hoodrat extends THREE.Object3D {
     // opts.plaid: a redneck-styled flannel shirt instead of a flat tank colour
     const white = opts.plaid
       ? plaidMat(opts.plaidBase != null ? opts.plaidBase : 0x8a2e2e, opts.plaidLine != null ? opts.plaidLine : 0x2c2c2c)
+      : opts.top === "rainbow" ? rainbowMat()
       : mat("cloth", opts.top != null ? opts.top : 0xeceae4);
     const denim = mat("denim", opts.denim != null ? opts.denim : denimTone);
-    const band = styled ? paisleyMat(crew.cloth) : mat("cloth", crew.cloth);
+    const band = opts.rainbow ? rainbowMat() : styled ? paisleyMat(crew.cloth) : mat("cloth", crew.cloth);
     const legging = mat("lycra", styled && crew.legging != null ? crew.legging : crew.cloth);
     const chainMat = mat("metal", crew.chain);
     const hairMat = mat("hair", opts.hair != null ? opts.hair : 0x16100d);
@@ -409,7 +428,8 @@ class Hoodrat extends THREE.Object3D {
       const cap = add(head, sph(0.126), hairMat, 0, 0.045, -0.012);
       cap.scale.set(1.02, 1.06, 1.05);
       let y = -0.03;
-      const lengths = styled ? 5 : 4;             // the sheet's hair falls to the lower back
+      // opts.shortHair: a pixie / undercut — the cap alone, nothing down the back
+      const lengths = opts.shortHair ? 0 : styled ? 5 : 4;   // the sheet's hair falls to the lower back
       for (let i = 0; i < lengths; i++) {
         const w = curly ? 0.2 - i * 0.012 : 0.17 - i * 0.018;
         const seg = add(head, box(w, 0.15, curly ? 0.075 : 0.055), hairMat,
@@ -417,12 +437,12 @@ class Hoodrat extends THREE.Object3D {
         seg.rotation.z = curly ? Math.sin(i * 1.9) * 0.1 : 0;
         y -= 0.135;
       }
-      for (const side of [-1, 1]) {
+      for (const side of opts.shortHair ? [] : [-1, 1]) {
         const strand = add(head, box(0.05, 0.34, 0.05), hairMat, side * 0.105, -0.16, 0.005);
         strand.rotation.z = side * 0.05;
         if (curly) strand.scale.x = 1.3;
       }
-      if (styled && curly) {
+      if (styled && curly && !opts.shortHair) {
         // spiral curls: bumps down the back and over the shoulders
         for (let i = 0; i < 16; i++) {
           add(head, sph(0.032, 6, 5), hairMat, ((i % 4) - 1.5) * 0.05, -0.02 - i * 0.042, -0.125 - (i % 3) * 0.012);
@@ -713,6 +733,8 @@ class Hoodrat extends THREE.Object3D {
     this.rotation.z = 0;
     this.rotation.y = this._yaw;
     this.hips.position.y = 0.92;
+    this.hips.rotation.set(0, 0, 0);       // only the dance clips below tip the pelvis
+    this.head.rotation.set(0, 0, 0);
 
     if (this.anim === "attack") {
       // alternating straight punches
@@ -740,6 +762,12 @@ class Hoodrat extends THREE.Object3D {
     }
 
     this.torso.rotation.x = 0;
+
+    if (this.anim === "twerk" || this.anim === "grind" || this.anim === "dance" || this.anim === "sit" || this.anim === "kiss" || this.anim === "ride") {
+      this.position.y = this.baseY || 0;
+      danceClip(this, dt);
+      return;
+    }
 
     if (this.anim === "aim" || this.anim === "shoot") {
       const recoil = this.anim === "shoot" ? Math.max(0, 1 - this.time / 0.15) : 0;
@@ -804,6 +832,90 @@ class Hoodrat extends THREE.Object3D {
     this.torso.rotation.y = b * 0.045;
     this.position.y = this.baseY || 0;
   }
+}
+
+// --------------------------------------------------------------- club clips
+// The nightlife clips (nightlife.js). Leg rig: the thighs hang from the hips, the
+// shins from the knees (0.44 m each). A squat with the thigh `th` radians forward
+// and the knee bent 2·th keeps the foot under the hip, and the hip drops
+// 0.88·(1 − cos th). When the pelvis is tipped (`h`), the thighs take −h so the
+// legs don't swing with it, and the torso takes (lean − h) so the chest holds
+// its angle while only the hips move — that isolation is the whole dance.
+function squat(r, th, h) {
+  r.hips.position.y = 0.92 - 0.88 * (1 - Math.cos(th));
+  r.hips.rotation.x = h;
+  for (const l of r.legs) {
+    l.pivot.rotation.x = -th - h;
+    l.knee.rotation.x = 2 * th;
+    l.foot.rotation.x = -th;
+  }
+}
+function danceClip(r, dt) {
+  const A = r.arms, t = r.time;
+  if (r.anim === "twerk") {
+    // NOLA bounce: a low squat, hands on the knees, the hips popping ~3.6 times a
+    // second (pelvis tilting back and forth) with a little bounce on every pop
+    const p = t * Math.PI * 2 * 3.6;
+    const h = 0.18 + Math.sin(p) * 0.32;
+    squat(r, 0.72 + Math.abs(Math.sin(p)) * 0.05, h);
+    r.torso.rotation.x = 0.78 - h;
+    r.torso.rotation.y = Math.sin(t * 1.3) * 0.12;
+    A.forEach((a) => { a.pivot.rotation.x = -0.95; a.pivot.rotation.z = a.side * 0.12; a.elbow.rotation.x = -0.25; });
+    r.head.rotation.x = -0.35;        // chin up, looking over her shoulder
+    r.head.rotation.y = Math.sin(t * 0.9) * 0.5;
+    return;
+  }
+  if (r.anim === "grind") {
+    // the lap dance: slow hip circles over the chair, one hand behind the head
+    const p = t * Math.PI * 2 * 0.85;
+    squat(r, 0.42 + Math.sin(p) * 0.12, Math.sin(p) * 0.16);
+    r.hips.rotation.z = Math.cos(p) * 0.16;
+    r.torso.rotation.x = 0.12 - Math.sin(p) * 0.16;
+    r.torso.rotation.z = -Math.cos(p) * 0.12;
+    A[0].pivot.rotation.x = -2.7; A[0].pivot.rotation.z = -0.4; A[0].elbow.rotation.x = -1.6;
+    A[1].pivot.rotation.x = -0.5 + Math.sin(p) * 0.2; A[1].pivot.rotation.z = 0.25; A[1].elbow.rotation.x = -0.6;
+    r.head.rotation.z = Math.sin(p) * 0.18;
+    return;
+  }
+  if (r.anim === "dance") {
+    // the floor: knees bouncing on the beat, arms up and waving, a twist
+    const p = t * Math.PI * 2 * 1.9 + r.phase;
+    squat(r, 0.16 + Math.abs(Math.sin(p)) * 0.14, 0);
+    r.torso.rotation.y = Math.sin(p * 0.5) * 0.35;
+    A.forEach((a, i) => {
+      const up = Math.sin(p + i * Math.PI) > 0;
+      a.pivot.rotation.x = up ? -2.6 : -1.2;
+      a.pivot.rotation.z = a.side * (0.3 + Math.sin(p * 0.5) * 0.15);
+      a.elbow.rotation.x = up ? -0.3 : -1.1;
+    });
+    r.head.rotation.x = Math.sin(p) * 0.12;
+    return;
+  }
+  if (r.anim === "ride") {
+    // astride a bike (bikes.js): hips on the seat (main.js sets rideHip / rideLean
+    // from the bike's definition), knees up to the pegs, hands on the bars
+    r.hips.position.y = r.rideHip || 0.9;
+    for (const l of r.legs) { l.pivot.rotation.x = -1.05; l.knee.rotation.x = 1.25; l.foot.rotation.x = -0.2; }
+    r.torso.rotation.x = r.rideLean != null ? r.rideLean : 0.3;
+    A.forEach((a) => { a.pivot.rotation.x = -1.2 - (r.rideLean || 0) * 0.6; a.pivot.rotation.z = a.side * 0.16; a.elbow.rotation.x = -0.35; });
+    return;
+  }
+  if (r.anim === "sit") {
+    // in the chair (the lap-dance seat): thighs level, shins down, hands on the knees
+    r.hips.position.y = 0.52;
+    for (const l of r.legs) { l.pivot.rotation.x = -1.5; l.knee.rotation.x = 1.5; l.foot.rotation.x = 0; }
+    r.torso.rotation.x = -0.12;
+    A.forEach((a) => { a.pivot.rotation.x = -0.75; a.pivot.rotation.z = a.side * 0.18; a.elbow.rotation.x = -0.55; });
+    return;
+  }
+  // kiss: lean in over the seat and tilt the head
+  const k = Math.min(1, r.time / 0.6);
+  const e = k * k * (3 - 2 * k);
+  squat(r, 0.25 * e, 0);
+  r.torso.rotation.x = 0.55 * e;
+  r.head.rotation.x = 0.15 * e;
+  r.head.rotation.z = 0.35 * e;
+  A.forEach((a) => { a.pivot.rotation.x = -1.1 * e; a.pivot.rotation.z = a.side * 0.35; a.elbow.rotation.x = -0.9 * e; });
 }
 
 // --------------------------------------------------------------- factory
@@ -921,5 +1033,86 @@ export function randomHobo(rng = Math.random, height) {
     seed: (rng() * 1e9) | 0,
     yaw: rng() * Math.PI * 2,
     height,
+  });
+}
+
+// --------------------------------------------------------------- Frenchmen Street
+// OrleaRouge's out crowd (nightlife.js, and the city's sidewalks): same rig, their
+// own wardrobe. Gay men run bright — crop tanks, pastel and rainbow, white or
+// light-wash jeans, bleached or dyed hair or a rainbow do-rag, clean-shaven or a
+// neat beard. Lesbians run flannel, denim and boots — short hair, a backwards cap
+// or a rainbow headband. Palette overrides win, as for every other builder.
+const pickOf = (rng, arr) => arr[(rng() * arr.length) | 0];
+const ALL_SKIN = [...SKIN_TONES, ...REDNECK_SKIN];
+const GAY_TOPS = ["rainbow", 0xff4fb3, 0x2ee6d6, 0xf4f1ea, 0x9b5de5, 0xffd23a, 0x151515, 0xff8a65];
+const GAY_JEANS = [0xa9c1dc, 0xf2efe8, 0x161616, 0x6b8cb2, 0xd9b7d8];
+const GAY_HAIR = [0x16100d, 0xeadcae, 0xff8fc8, 0x4a2c1a, 0xb8a9e8, 0xf4f1ea];
+
+export function randomGayMan(rng = Math.random, height, opts = {}) {
+  const top = pickOf(rng, GAY_TOPS);
+  const accent = top === "rainbow" ? 0xff4fb3 : top;
+  return new Hoodrat({
+    sex: "m",
+    seed: (rng() * 1e9) | 0,
+    yaw: rng() * Math.PI * 2,
+    skin: pickOf(rng, ALL_SKIN),
+    top,
+    denim: pickOf(rng, GAY_JEANS),
+    hair: pickOf(rng, GAY_HAIR),
+    headwear: rng() < 0.35 ? "band" : "none",
+    rainbow: true,
+    beard: rng() < 0.4,
+    crew: { cloth: accent, accent, chain: rng() < 0.5 ? 0xd4af37 : 0xd8d8d8, shoe: 0xf2f0ec, belt: 0x141414, maleShoe: "low" },
+    height,
+    ...opts,
+  });
+}
+
+const FLANNEL_PAIRS = [[0x2e4a6a, 0x151515], [0x7a2e3e, 0x151515], [0x2e5a3a, 0xd8d0c0], [0x5a2e7a, 0x151515], [0x8a5a2e, 0x2c2c2c]];
+const LESBIAN_HAIR = [0x16100d, 0x4a2c1a, 0x8a2e2e, 0x2e5a8a, 0xeadcae, 0x6a3a8a];
+
+export function randomLesbian(rng = Math.random, height, opts = {}) {
+  const flannel = rng() < 0.6;
+  const [plaidBase, plaidLine] = pickOf(rng, FLANNEL_PAIRS);
+  const hw = rng();
+  return new Hoodrat({
+    sex: "f",
+    seed: (rng() * 1e9) | 0,
+    yaw: rng() * Math.PI * 2,
+    skin: pickOf(rng, ALL_SKIN),
+    plaid: flannel, plaidBase, plaidLine,
+    top: flannel ? undefined : pickOf(rng, ["rainbow", 0x151515, 0xf4f1ea, 0x3a6ea5]),
+    denim: pickOf(rng, [0x3a4a6a, 0x161616, 0x5d7ea6, 0x4a4436]),
+    hair: pickOf(rng, LESBIAN_HAIR),
+    shortHair: rng() < 0.7,
+    headwear: hw < 0.3 ? "cap" : hw < 0.5 ? "band" : "none",
+    capColor: pickOf(rng, [0x151515, 0x2e4a6a, 0x7a2e3e]),
+    rainbow: true,
+    shoe: "boots",
+    crew: { cloth: 0x2e2e36, chain: 0xc0c0c0, shoe: 0x2a1c14, legging: 0x2e2e36 },
+    height,
+    ...opts,
+  });
+}
+
+/** A club dancer: sequins-bright top and short bottoms, glitter-gold chain. */
+export function makeDancer(opts = {}) {
+  const rng = mulberry(opts.seed != null ? opts.seed : (Math.random() * 1e9) | 0);
+  const female = opts.sex !== "m";
+  const top = opts.top != null ? opts.top : pickOf(rng, [0xff2e93, 0xffd23a, 0x2ee6d6, 0xe8e8e8, 0x9b27b0, "rainbow", 0x111111]);
+  const bottom = pickOf(rng, [0x111111, 0xff2e93, 0x6a1b9a, 0xd4af37, 0x1a1a3a]);
+  return new Hoodrat({
+    sex: female ? "f" : "m",
+    seed: (rng() * 1e9) | 0,
+    skin: pickOf(rng, ALL_SKIN),
+    top,
+    denim: bottom,
+    hair: pickOf(rng, female ? [0x16100d, 0x8a2e2e, 0xeadcae, 0xff8fc8, 0x4a2c1a] : [0x16100d, 0xeadcae, 0x4a2c1a]),
+    headwear: female ? (rng() < 0.4 ? "band" : "none") : "none",
+    rainbow: top === "rainbow",
+    curly: rng() < 0.5,
+    beard: false,
+    crew: { cloth: top === "rainbow" ? 0xff2e93 : top, accent: top === "rainbow" ? 0xff2e93 : top, chain: 0xd4af37, shoe: bottom, legging: bottom, maleShoe: "low" },
+    ...opts,
   });
 }

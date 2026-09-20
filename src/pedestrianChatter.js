@@ -292,6 +292,59 @@ const CHATTER = {
   },
 
   // Hogs don't talk. They emote.
+  // OrleaRouge's out crowd (characters.js randomGayMan / randomLesbian) — on the
+  // sidewalks, and in the bars and clubs on Frenchmen Street (nightlife.js)
+  gayman: {
+    bump: [
+      "Honey. The sidewalk is RIGHT there.",
+      "Careful, sweetie — this outfit is dry-clean only.",
+      "Excuse you! I'm walking here, and I'm walking fabulously.",
+      "Did you just bump me? Bold. My husband's gonna hear about this.",
+      "These shoes cost more than your car, baby. Watch it.",
+      "Oh, you're clumsy AND underdressed? Rough night.",
+      "Girl, I have brunch in ten minutes and you are in my way.",
+      "If you wanted my number you could've just asked.",
+      "Mmm-mm. Not in front of the drag brunch crowd.",
+      "Bless your heart, the Quarter's big enough for both of us.",
+    ],
+    fightBack: [
+      "Oh, it's giving violence? Fine. I do kickboxing at the gym.",
+      "You just ruined my whole look. Now you gotta pay!",
+      "I didn't survive Mardi Gras to get punked by YOU.",
+      "Hold my daiquiri — actually, I'm keeping the daiquiri.",
+      "Honey, I've been in bar fights at the Pink Pelican. Bring it.",
+    ],
+    flee: [
+      "Nope! These heels were NOT made for this!",
+      "I'm calling my husband — and then the police!",
+      "Not the face! Not the face!",
+      "Absolutely not. I'm too cute for a hospital gown!",
+    ],
+  },
+  lesbian: {
+    bump: [
+      "Easy — I just got these Docs broken in.",
+      "Watch it. I've got a U-Haul to catch.",
+      "My girlfriend's watching, so let's keep this civil.",
+      "Bump me again and my whole softball team hears about it.",
+      "Personal space, pal. I rescued three cats, I'll rescue myself.",
+      "You lost? Bayou Belles is two doors down, everybody's welcome.",
+      "Hey. Eyes up. I fix transmissions for a living.",
+      "Cute. Now move.",
+      "That's my flannel you're wrinkling.",
+    ],
+    fightBack: [
+      "I've changed a transmission in the rain. I can handle you.",
+      "Oh, you picked the WRONG woman.",
+      "I bench more than you, buddy. Let's go.",
+      "My ex taught me how to throw a punch. Finally paying off.",
+    ],
+    flee: [
+      "Not worth it! My cats need me!",
+      "I'm out — Tuesday's trivia night, I'm not missing it for you!",
+      "Nope. Calling it. Bye!",
+    ],
+  },
   hog: {
     bump: ["*confused snort*", "*territorial grunting*", "*aggressive oinking*", "*snout twitches menacingly*", "*SQUEAL*", "*stares you down*"],
     fightBack: ["*ENRAGED SQUEALING*", "*tusks bared*", "*full charge posture*", "*war snort*"],

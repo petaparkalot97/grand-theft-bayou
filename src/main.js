@@ -17,7 +17,7 @@ import { bumpLine, fightLine } from "./pedestrianChatter.js";
 import { pedestrianVoiceWho } from "./voiceCast.js";
 import { createCameraController } from "./camera.js";
 import { createTraffic } from "./traffic.js";
-import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo } from "./characters.js";
+import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian } from "./characters.js";
 import { createCinema } from "./cinema.js";
 import { createPrologue, makeCastMember, PROLOGUE_KEEPOUT } from "./prologue.js";
 import { createMissionClinic } from "./missionClinic.js";   // unused: see missionClinic below
@@ -32,6 +32,10 @@ import { createOrientationDebug, createCompass } from "./debug.js";
 import { createMinimap } from "./minimap.js";
 import { createHijacker } from "./hijack.js";
 import { createArsenal } from "./weapons.js";
+import { createServices } from "./services.js";
+import { createNightlife } from "./nightlife.js";
+import { createTips } from "./tips.js";
+import { buildMotorbike, buildScooter } from "./bikes.js";
 import { createPauseMenu } from "./pauseMenu.js";
 import { createLoot } from "./loot.js";
 import { createWorldTime } from "./worldtime.js";
@@ -854,6 +858,18 @@ function carParkTexture() {
 }
 let parkTex;
 
+// An OrleaRouge block given to a Pay 'n' Spray (orlearouge.js `lots`): the garage
+// opens onto the street on the block's north side, a concrete lot fills the rest.
+function payNSprayLot(b, name) {
+  const lot = new THREE.Mesh(new THREE.PlaneGeometry(b.x1 - b.x0, b.z1 - b.z0),
+    new THREE.MeshStandardMaterial({ name: "concrete lot", color: 0x5a5c60, roughness: 0.95 }));
+  lot.rotation.x = -Math.PI / 2;
+  lot.position.set(b.cx, GROUND_Y.lot, b.cz);
+  lot.receiveShadow = true;
+  scene.add(lot);
+  services.buildPayNSpray(b.cx, b.z0 + 6.2, Math.PI, name);
+}
+
 function makePopeyes(x, z, rot = 0) {
   popeyesPlaced.push({ x, z });
   const g = new THREE.Group();
@@ -909,6 +925,9 @@ function makePopeyes(x, z, rot = 0) {
   park.receiveShadow = true;
   g.add(box, band, roof, pole, board, glowBar, roofSign, wsign, park);
   scene.add(g);
+  g.updateMatrixWorld(true);
+  const counter = new THREE.Vector3(0, 0, 8).applyMatrix4(g.matrixWorld);   // clear of the front collision circle (local z 4.5, r 2.6)
+  addService({ kind: "food", name: "Popeyes", x: counter.x, z: counter.z, face: rot });
 
   // a couple of cars parked out front
   parkedCarSpots.push({ x, z, rot });
@@ -999,7 +1018,7 @@ function registerVehicle(obj, r = 1.8, opts = {}) {
   if (!obj) return null;
   const v = {
     audio: createCarAudio(obj),
-    obj, heading: obj.rotation.y, speed: 0, hp: opts.hp || 40,
+    obj, heading: obj.rotation.y, speed: 0, hp: opts.hp || 40, hpMax: opts.hp || 40,
     sheriff: !!opts.sheriff, blocker: { x: obj.position.x, z: obj.position.z, r },
     r, wob: 0, impact: 0,   // impact: set by collisionResponse on the first frame of a hard hit (crash damage)
     def: obj.userData.vehicleDef || null,          // vehicles.js definition (class, model forward)
@@ -1016,6 +1035,15 @@ function registerVehicle(obj, r = 1.8, opts = {}) {
 function crime(amount) {
   state.heat += amount;
   state.crimeCd = 6;
+  checkHeatUp();
+}
+// Gunfire is only a crime when somebody hears it: popping hogs out in the woods
+// doesn't bring the Sheriff, and a shot near people or a cruiser does.
+function shotWitnessed() {
+  for (const e of enemies) {
+    if (!e.dead && e.type !== "hog" && Math.hypot(e.spr.position.x - playerPos.x, e.spr.position.z - playerPos.z) < 35) return true;
+  }
+  return sheriffs.some((s) => !s.dead && Math.hypot(s.obj.position.x - playerPos.x, s.obj.position.z - playerPos.z) < 60);
 }
 // One source of truth for controls (input.js): gameplay asks about actions,
 // never key codes.
@@ -1032,7 +1060,7 @@ const mapEditor = createMapEditor({
   removeLitSpot: (spot) => { const i = litSpots.indexOf(spot); if (i >= 0) litSpots.splice(i, 1); },
 });
 
-input.onPress("interact", () => { enterExitVehicle(); tryInteract(); });
+input.onPress("interact", () => { if (services.interact() || nightlife.interact()) return; enterExitVehicle(); tryInteract(); });
 input.onPress("mute", () => toggleMute());
 input.onPress("nextTrack", () => soundtrackReady.then((s) => s.next()));
 // [ / ] step the graphics tier down / up; once you touch it, the auto
@@ -1124,6 +1152,8 @@ function minimapBlips() {
     if (state.cans >= CAN_GOAL) _blips.push({ kind: "waypoint", x: truckPos.x, z: truckPos.z });
     else for (const c of cans) if (!c.userData.taken) _blips.push({ kind: "can", x: c.position.x, z: c.position.z });
   }
+  for (const b of services.blips()) _blips.push(b);
+  for (const b of nightlife.blips()) _blips.push(b);
   _blips.push({ kind: "truck", x: truckPos.x, z: truckPos.z });
   for (const s of sheriffs) if (!s.dead) _blips.push({ kind: "cop", x: s.obj.position.x, z: s.obj.position.z });
   for (const e of enemies) if (!e.dead && e.state === "hostile") _blips.push({ kind: "hostile", x: e.spr.position.x, z: e.spr.position.z });
@@ -1137,6 +1167,47 @@ renderer.domElement.addEventListener("mousedown", (e) => {
 // ---------------------------------------------------------------- player
 let player, playerObj;
 const playerPos = new THREE.Vector3(ROAD_X, 0, SPAWN_Z);
+// Pay 'n' Spray, gun counters, hospitals, Popeyes counters (services.js). Districts
+// register their own spots through ctx.addService; the garages are built in boot().
+const services = createServices({
+  scene, state, playerPos, arsenal, flashObjective, addBlocker,
+  get cine() { return cine; },
+  syncHUD: () => syncHUD(),
+  clearWanted: () => {
+    state.heat = 0;
+    state.wanted = 0;
+    state.crimeCd = 0;
+    police.clearPursuit();
+    syncHUD();
+  },
+});
+const addService = (o) => services.add(o);
+// Frenchmen Street's bars and clubs (nightlife.js): built on an OrleaRouge block in boot()
+const nightlife = createNightlife({
+  scene, state, playerPos, flashObjective, poolLight, addBlocker, music,
+  get cine() { return cine; },
+  get camera() { return camera; },
+  getPlayer: () => player,
+  setPlayerPos: (x, z) => {
+    playerPos.set(x, 0, z);
+    player.position.set(x, 0, z);
+    if (player._last) player._last.copy(player.position);
+  },
+  syncHUD: () => syncHUD(),
+  bark: (type, label, female) => speakPedestrian({ type, spr: { female } }, bumpLine(type, label)),
+});
+// How the game works, as it becomes useful (tips.js): the story walks through
+// guns, healing, wanted stars and Pay 'n' Spray after the prologue; each also
+// fires by itself the first time it matters.
+const tips = createTips({
+  getContext: () => ({
+    running: state.running && !state.over,
+    cinematic: state.cinematic || !!state.paused,
+    hp: state.hp, cash: state.cash, wanted: state.wanted, inCar: !!state.veh,
+    storyStarted: !!(actOne && actOne.phase !== "idle"),
+    inOrlea: !!(orlea && orlea.inCity(playerPos.x, playerPos.z)),
+  }),
+});
 let playerFacing = new THREE.Vector3(0, 0, -1);   // last movement direction
 let beginGame = null;
 let gameLaunched = false;     // confirmCharacter launches the game once (see there)
@@ -1323,6 +1394,11 @@ const ENEMY_TYPES = {
              h: 1.85, hp: 3, speed: 3.6, aggro: 20, melee: 1.8, dmg: 4, atkGap: 1.4 },
   thug: { label: "Thug", kind: "actor", tint: 0x333333, // dark hoodrat 3D actor
           h: 1.98, hp: 8, speed: 4.5, aggro: 25, melee: 2.0, dmg: 12, atkGap: 0.9 },
+  // OrleaRouge's out crowd (characters.js; lines in pedestrianChatter.js)
+  gayman: { label: "Gay Guy", kind: "gayman", tint: 0xff4fb3,
+            h: 1.86, hp: 4, speed: 3.9, aggro: 20, melee: 1.8, dmg: 6, atkGap: 1.1 },
+  lesbian: { label: "Lesbian", kind: "lesbian", tint: 0x9b5de5,
+             h: 1.78, hp: 4, speed: 3.8, aggro: 22, melee: 1.8, dmg: 7, atkGap: 1.0 },
 };
 
 function buildHog() {
@@ -1411,6 +1487,10 @@ function spawnEnemy(typeName, x, z, spot = null) {
     view = randomProstitute(rng, T.h);
   } else if (T.kind === "hobo") {
     view = randomHobo(rng, T.h);
+  } else if (T.kind === "gayman") {
+    view = randomGayMan(rng, T.h);
+  } else if (T.kind === "lesbian") {
+    view = randomLesbian(rng, T.h);
   } else if (T.kind === "actor") {
     view = randomHoodrat(rng, T.h);
   } else {
@@ -1537,6 +1617,17 @@ async function buildLevel() {
     litSpots.push({ x: bx - side * 9, y: 8.5, z: z + 9, warm: 0xffbf74, power: 170, range: 30, pole: true });
   }
 
+  // services.js on the strip: a gun counter in the shop at the Chatboro end, and
+  // Chatboro's Pay 'n' Spray on the empty west lot between the taco stand and the
+  // next shop (z 7…15), open to the highway. Tusouxroe's is on US-167 at the south
+  // edge of the north district, clear of its lamps and the filler rows.
+  {
+    const [gx] = landmarkPos(-1, 52);
+    addService({ kind: "gun", name: "Chatboro Guns & Pawn", x: gx + 12.5, z: 52, face: Math.PI / 2 });
+    services.buildPayNSpray(-27, 11, Math.PI / 2, "Chatboro Pay 'n' Spray");
+    services.buildPayNSpray(15, -160, -Math.PI / 2, "Tusouxroe Pay 'n' Spray");
+  }
+
   // streetlamps + one warm glow for the whole strip
   for (let z = SPAWN_Z; z > -100; z -= 22) {
     const L = placeKit(lamp, ROAD_X + ROAD_HALF + 1.5, z, 0, 0.6);
@@ -1651,6 +1742,10 @@ async function buildLevel() {
     }
   });
 
+  // two-wheelers (bikes.js): parked where people would leave them. Each spot is a
+  // guess; the bike goes on the nearest clear ground within a few metres of it.
+  for (const [kind, x, z, rot] of BIKE_SPOTS) parkBike(kind, x, z, rot);
+
   // sheriff cruiser for the wanted system: police.js paints the two-tone livery,
   // the push bar and the red/blue lightbar over the pickup shell (TASK-020)
   if (pickup) sheriffProto = buildCruiserModel(pickup);
@@ -1683,7 +1778,7 @@ async function buildLevel() {
       soundtrackReady.then((s) => s.play());
     },
     setPopulation: (on) => { populationOn = on; },
-    onFinished: () => { if (actOne) actOne.start(); },
+    onFinished: () => { if (actOne) actOne.start(); tips.story(); },
     models: { coupe: carB, bravado: carR, pickup },
     getSheriffProto: () => sheriffProto,
     ROAD_X, ROAD_HALF, SPAWN_Z, SIGN_Z,
@@ -1724,9 +1819,15 @@ async function buildLevel() {
     scene, surface, addBlocker, poolLight, makeBillboard, makeNeonSign,
     addLitSpot: (spot) => litSpots.push(spot),
     getSheriffProto: () => sheriffProto,
-    cine, state, playerPos, ROAD_X, ROAD_HALF,
+    cine, state, playerPos, ROAD_X, ROAD_HALF, addService,
+    // whole blocks other modules build on, in place of the French District rowhouses
+    lots: [
+      { at: [-66, 230], build: (b) => payNSprayLot(b, "OrleaRouge Pay 'n' Spray") },
+      { at: [-26, 270], build: (b) => nightlife.buildBlock(b) },        // Frenchmen Street
+    ],
   });
   orlea.buildSet();
+  NPC_POIS.push(...nightlife.pois);          // regulars hang out on the sidewalk outside the clubs
   // Popeyes #2, on the OrleaRouge boulevard (#1 is a LANDMARKS lot on the strip)
   for (const p of POPEYES_LOCATIONS) {
     if (p.lot) continue;
@@ -1859,7 +1960,7 @@ async function buildLevel() {
 
   // ---- North Tusouxroe: Commercial & Civic District (composed 6-stage lifecycle) ----
   tusouxroeNorth = createTusouxroeNorth({
-    scene, camera, surface, addBlocker, flashObjective,
+    scene, camera, surface, addBlocker, flashObjective, addService,
     roadMaterial: () => asphalt.material(1, { envMapIntensity: 0.9 }),
     addLitSpot: (spot) => litSpots.push(spot),
     placeGlbLandmark, loadGLB,
@@ -1891,6 +1992,9 @@ async function buildLevel() {
     scene, camera, cine, state, playerPos, MAP, makeHoodrat, addBlocker, poolLight, surface, flashObjective,
     getPlayer: () => player,
     partC: welcomeBack,                                       // after The Truth, the rest of the script
+    // "I'm going to protect my family": back north to Mama's (actone.js). Nolantis always
+    // called startNext, but nothing was wired, so the HUD fell back to the gas cans.
+    startNext: () => { if (actOne) actOne.protectMama(); },
     makeCastMember: (who) => makeCastMember(makeHoodrat, who),
     setObjective: setStoryObjective,
     setCameraYaw: (yaw) => camCtl.addYaw(yaw - camCtl.yaw),
@@ -1989,7 +2093,7 @@ async function buildLevel() {
   }
 }
 // ...and top it back up forever, out of sight of the player.
-const ENEMY_KINDS = ["hog", "redneck", "hobo", "hoodrat", "prostitute", "dockworker", "mechanic", "suit", "tourist", "thug"];
+const ENEMY_KINDS = ["hog", "redneck", "hobo", "hoodrat", "prostitute", "dockworker", "mechanic", "suit", "tourist", "thug", "gayman", "lesbian"];
 const ENEMY_CAP = 48;         // living NPCs to maintain (off-screen ones are hidden, npc.js)
 let enemyRespawnCd = 0;
 let populationOn = true;      // missions switch spawning off during set pieces
@@ -2523,6 +2627,36 @@ function placeWreck(obj, x, z, rot) {
   scene.add(obj);
   return registerVehicle(obj, 2.0, { hp: 34 });   // every wreck still runs
 }
+// Motorbikes and scooters (bikes.js, vehicles.js "motorbike" / "scooter").
+const BIKE_SPOTS = [
+  ["motorbike", ROAD_X + 8, 120, -Math.PI / 2],    // Chatboro, by the spawn
+  ["scooter", ROAD_X - 8, 96, Math.PI / 2],
+  ["motorbike", -18, 20, Math.PI / 2],              // outside Chatboro's Pay 'n' Spray
+  ["scooter", -20, -72, 0],                         // Tusouxroe, Main Street
+  ["motorbike", ROAD_X + 8, -112, -Math.PI / 2],
+  ["motorbike", ROAD_X + 8, -205, -Math.PI / 2],    // Tusouxroe North
+  ["scooter", -38, 254.5, Math.PI / 2],             // Frenchmen Street, by the clubs
+  ["motorbike", -15, 286, -Math.PI / 2],
+  ["scooter", 8, 238, Math.PI],                     // OrleaRouge Popeyes
+];
+function parkBike(kind, x, z, rot) {
+  const clear = (px, pz) => !blockers.some((b) => Math.hypot(b.x - px, b.z - pz) < b.r + 1.1);
+  let at = null;
+  for (let r = 0; r <= 6 && !at; r += 1.5) {
+    for (let a = 0; a < Math.PI * 2 && !at; a += Math.PI / 4) {
+      const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
+      if (clear(px, pz)) at = [px, pz];
+      if (r === 0) break;
+    }
+  }
+  if (!at) return null;
+  const obj = normalizeVehicleModel(kind === "scooter" ? buildScooter() : buildMotorbike(), VEHICLE_DEFS[kind]);
+  obj.position.set(at[0], obj.position.y, at[1]);
+  obj.rotation.y = rot;
+  scene.add(obj);
+  return registerVehicle(obj, 0.95, { hp: kind === "scooter" ? 20 : 28 });
+}
+
 function placeParked(obj, x, z, rot) {
   if (!obj) return null;
   obj.position.set(x, 0, z);
@@ -2564,7 +2698,7 @@ function fire() {
     return;
   }
   state.fireCd = gun.cooldown;
-  crime(0.12);
+  if (shotWitnessed()) crime(0.12);
   const origin = _tmpV.copy(playerPos).setY(state.veh ? 1.4 : 1.2);
 
   if (!state.veh) { 
@@ -2811,6 +2945,9 @@ function tick() {
     if (prologue) prologue.update(dt);
     if (actOne) actOne.update(dt);
     if (orlea) orlea.update(dt);
+    services.update(dt);
+    nightlife.update(dt);
+    tips.update(dt);
     if (blueLight) blueLight.update(dt);
     if (westParish) westParish.update(dt, playerPos);
     if (eastBank) eastBank.update(dt, playerPos);
@@ -3210,7 +3347,14 @@ function drivingUpdate(dt) {
   // body roll / bob
   v.wob += dt * (6 + Math.abs(v.speed) * 0.4);
   v.obj.rotation.y = v.heading;
-  v.obj.rotation.z = -inX * Math.min(0.12, Math.abs(v.speed) / 60) + Math.sin(v.wob) * 0.01;
+  if (v.def && v.def.bike) {
+    // a bike leans into the turn, more with speed; a scooter barely
+    const want = inX * v.def.seat.lean * Math.min(1, Math.abs(v.speed) / 14);
+    v.lean = (v.lean || 0) + (want - (v.lean || 0)) * Math.min(1, dt * 6);
+    v.obj.rotation.z = v.lean;
+  } else {
+    v.obj.rotation.z = -inX * Math.min(0.12, Math.abs(v.speed) / 60) + Math.sin(v.wob) * 0.01;
+  }
 
   // potholes: a jolt the moment a wheel drops into one, harder at speed
   if (potholes && Math.abs(v.speed) > 2) {
@@ -3251,10 +3395,22 @@ function drivingUpdate(dt) {
     }
   }
 
-  // player rides along
+  // player rides along: out of sight in a car, astride a bike
   playerPos.copy(next);
   player.position.copy(next);
-  player.visible = false;
+  if (v.def && v.def.bike) {
+    player.visible = true;
+    player.position.addScaledVector(_fwd, v.def.seat.z);
+    player.rideHip = v.def.seat.y;
+    player.rideLean = v.def.name === "scooter" ? 0.05 : 0.3;
+    player._yaw = v.heading;
+    player.play("ride");
+    if (player._last) player._last.copy(player.position);
+    player.update(dt, camera);
+    player.rotation.z = v.obj.rotation.z;      // lean with the bike
+  } else {
+    player.visible = false;
+  }
 
   syncHUD();
 }
@@ -3277,7 +3433,7 @@ function enterExitVehicle() {
     state.veh = null;
     v.speed = 0;
     if (v.seats) v.seats[0].occupant = null;
-    const side = exitOffset(v, _fwd);          // out of the driver's door
+    const side = exitOffset(v, _fwd, v.def && v.def.bike ? 1.3 : 2.4);   // out of the driver's door (or off the bike)
     playerPos.copy(v.obj.position).add(side);
     player.position.copy(playerPos);
     player.visible = true;
@@ -3313,17 +3469,19 @@ function spawnSheriff() {
   const v = registerVehicle(car, 2.0, { sheriff: true, hp: 32 });
   sheriffs.push(v);
 }
-// The Sheriff only shows up after you've put down a dozen Rednecks/Hoodrats.
-const HEAT_KILLS = 12;
-function copsActive() { return state.forceCops || (kills.redneck + kills.hoodrat) >= HEAT_KILLS; }
+// The Sheriff answers crime from the first star's worth of it: heat → wanted
+// stars → cruisers. It used to stay away until a dozen Redneck/Hoodrat kills, so
+// most players never met the wanted level at all. Once called, the system stays
+// on — it stands down at zero stars — exactly as it did after the twelfth kill.
+// Stars go the GTA ways: get out of sight and stay hidden until they give up
+// (police.js), or drive into a Pay 'n' Spray (services.js).
+const WANTED_HEAT = 1.4;              // one star (see the stars formula in simulate)
+function copsActive() { return state.forceCops || !!state.copsCalled; }
 function checkHeatUp() {
-  if (!state._copsAnnounced && (kills.redneck + kills.hoodrat) >= HEAT_KILLS) {
-    state._copsAnnounced = true;
-    state.heat = 2.2;                 // start at ~2 stars, not an instant 5
-    state.wanted = 2;
-    flashObjective("⚡ Sheriff Mercer's department would like a word. Cruisers inbound.");
-    syncHUD();
-  }
+  if (state.copsCalled || state.heat < WANTED_HEAT) return;
+  state.copsCalled = true;
+  flashObjective("★ WANTED. Sheriff Mercer's on the way. Lose him: get out of sight and stay hidden, or drive into a Pay 'n' Spray.");
+  syncHUD();
 }
 // ---- can a cruiser see you? (TASK-020) ------------------------------------
 // Sight is range plus line of sight through the same boxes the camera treats as
@@ -3609,6 +3767,7 @@ async function boot() {
   const moving = new Set([
     player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
     ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
+    ...services.props, ...nightlife.props,      // garage doors, markers, club cutaways: they move
     ...(missionClinic ? missionClinic.props : []),
     ...(prologue ? prologue.props : []),
     ...(blueLight ? blueLight.props : []),
@@ -3653,7 +3812,7 @@ async function boot() {
       player.position.set(x, 0, z);
       player.visible = true;
       if (player._last) player._last.copy(player.position);
-    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug, minimap, hijacker, arsenal, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
+    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
     get playerMoveHeading() { return playerMoveHeading; },
     get soundtrack() { return soundtrackReady; } };
   // the radar's base map, from the level as built

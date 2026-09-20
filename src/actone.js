@@ -443,11 +443,35 @@ export function createActOne(ctx) {
     if (ctx.startNext) ctx.startNext();
   }
 
+  // After Nirbayou Nolantis: "Your mother's house is very pretty." Keseme comes up out
+  // of the cavern in OrleaRouge promising to protect her family, and this is that
+  // mission — back north to Mama's door. Without it the story handed off to nothing
+  // and the HUD fell straight back to the gas cans.
+  const MAMA_OBJECTIVE = "Someone threatened Mama. Get to her house in South Tusouxroe — north up US-167.";
+  function reachedMama() {
+    phase = "done";
+    if (marker) marker.visible = false;
+    ctx.setObjective(null);
+    ctx.flashObjective("Mama's safe — for now. For now: gas cans, and the truck.");
+  }
+
   return {
     buildSet,
     get phase() { return phase; },
     /** Where the player should go next ({x, z}), or null: the minimap's waypoint blip. */
-    get waypoint() { return phase === "toCity" ? { x: NB.x - 20, z: STREET_Z } : phase === "door" ? DOOR : null; },
+    get waypoint() {
+      if (phase === "toCity") return { x: NB.x - 20, z: STREET_Z };
+      return phase === "door" || phase === "toMama" ? DOOR : null;
+    },
+
+    /** Called when Nirbayou Nolantis ends: someone threatened Mama, so go to her. */
+    protectMama() {
+      if (phase === "toMama") return;
+      if (phase === "idle") populate();       // reached Nolantis without Act One (QA, skips)
+      phase = "toMama";
+      if (marker) marker.visible = true;
+      ctx.setObjective(MAMA_OBJECTIVE);
+    },
 
     /** Called when the prologue ends. */
     start() {
@@ -461,7 +485,7 @@ export function createActOne(ctx) {
     /** QA hooks for tools/qa/actone.mjs: "arrive" | "door". */
     debug(step) {
       if (step === "arrive" && phase === "toCity") ctx.teleport(NB.x - 30, STREET_Z, -Math.PI / 2);
-      if (step === "door" && phase === "door") { ctx.exitVehicle(); ctx.teleport(DOOR.x, DOOR.z - 1, 0); }
+      if (step === "door" && (phase === "door" || phase === "toMama")) { ctx.exitVehicle(); ctx.teleport(DOOR.x, DOOR.z - 1, 0); }
       return phase;
     },
 
@@ -487,7 +511,7 @@ export function createActOne(ctx) {
         if (p) p.update(dt, ctx.camera);
       }
       if (marker && marker.visible) {
-        const target = phase === "door" ? DOOR : { x: NB.x - 20, z: STREET_Z };
+        const target = phase === "door" || phase === "toMama" ? DOOR : { x: NB.x - 20, z: STREET_Z };
         marker.position.set(target.x, 3.1 + Math.sin(t * 3) * 0.25, target.z);
         marker.rotation.y += dt * 2;
       }
@@ -509,6 +533,12 @@ export function createActOne(ctx) {
           phase = "inside";
           dialogue(home).then(finish);
         }
+      } else if (phase === "toMama") {
+        const d = Math.hypot(playerPos.x - DOOR.x, playerPos.z - DOOR.z);
+        if (state.veh && d < 14) ctx.setObjective("Get out of the car and go to Mama's door (F).");
+        else if (d < 14) ctx.setObjective("Go to Mama's door: the green house.");
+        else ctx.setObjective(MAMA_OBJECTIVE);
+        if (!state.veh && d < 2.6 && !state.cinematic) reachedMama();
       }
     },
   };

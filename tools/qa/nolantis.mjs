@@ -169,4 +169,16 @@ async function tests(page, log) {
   pass("Keseme ends up in OrleaRouge by the storm drain; radar back", up.phase === "left" && !up.inside && !up.radarHidden
     && Math.hypot(up.player[0] - 120, up.player[1] - 372) < 6, up);
   await page.screenshot({ path: `${out}-19-surface.png` });
+
+  // "I'm going to protect my family": the story goes on to Mama's, not back to the gas cans
+  await page.waitForTimeout(3000);             // the ACT ONE BEGINS flash holds the line for 2.5 s
+  const mama = await js(`const A = g.actOne; return { phase: A.phase, waypoint: A.waypoint,
+    objective: document.getElementById("objective").textContent };`);
+  pass("after Nolantis the objective is Mama's house, not the gas cans",
+    mama.phase === "toMama" && /Mama/.test(mama.objective) && !/gas cans/i.test(mama.objective), mama);
+  pass("the radar waypoint points at Mama's door", !!mama.waypoint && Math.hypot(mama.waypoint.x - 100, mama.waypoint.z + 97.3) < 1, mama);
+  await js(`g.actOne.debug("door"); return true;`);
+  await page.waitForTimeout(800);
+  const home = await js(`return { phase: g.actOne.phase, objective: document.getElementById("objective").textContent };`);
+  pass("reaching Mama's door completes it", home.phase === "done" && /Mama's safe/.test(home.objective), home);
 }

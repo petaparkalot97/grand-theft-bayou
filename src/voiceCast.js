@@ -82,6 +82,10 @@ export const VOICE_CAST = {
   // Fish Audio's own tag says this voice is Female, despite being filed under
   // the human's "male" list — flagged and kept here per their call (2026-09-19).
   TOURIST: { referenceId: "8ecf92e817ef45e081c45da1919352fc", label: "Tourist ('Rednex')" },
+  // Frenchmen Street regulars (pedestrianChatter.js gayman / lesbian). Stand-ins from
+  // the street pool until they get voices of their own.
+  GAYMAN: { referenceId: "54e995c017564b558940e09ba3572d76", label: "Gay man pedestrian (street fallback voice)" },
+  LESBIAN: { referenceId: "f1b549768da341069e84d25c5b354d50", label: "Lesbian pedestrian (stand-in voice)" },
   PROSTITUTE: { referenceId: "dd45c68688f34c3bac818c5b30acf927", label: "Prostitute ('sexy slut')" },
   HOODRAT_M: { referenceId: "2096c0a564a84411aaf66ac5c529276b", label: "Hoodrat, male ('The gangster')" },
   HOODRAT_F: { referenceId: "8b72b4a3a27a4d89821ca6e556984ec3", label: "Hoodrat, female ('SluT')" },
