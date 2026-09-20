@@ -92,6 +92,8 @@ export function createTusouxroeNorth(ctx) {
     // ================= STAGE 2: FRONTAGE BUILDINGS =================
       // 1. Harborlight Hospital (West Commercial Frontage)
       placeCityBuilding(ctx, "hospital", -65, BLVD_Z + 22, Math.PI);
+      // the doors face the boulevard (services.js: walk up, F, full health)
+      if (ctx.addService) ctx.addService({ kind: "hospital", name: "Harborlight Hospital", x: -65, z: BLVD_Z + 22 - 11 - 1.8, face: Math.PI });
       addOccluder(-65, BLVD_Z + 22, 28, 22, 16);
       pois.push({ x: -65, z: BLVD_Z + 22, r: 12, label: "Harborlight Hospital" });
 

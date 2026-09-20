@@ -567,9 +567,21 @@ export function placeCityBuilding(ctx, typeKey, x, z, ry = 0) {
   if (ctx && ctx.props) ctx.props.push(g);
 
   if (addBlocker) {
-    // Circular collision must cover the model's corners as well as its centre.
-    // Using half the largest side left diagonal gaps large enough to walk through.
-    addBlocker(x, z, Math.hypot(spec.w, spec.d) / 2);
+    // Collision follows the footprint: circles the size of the short side laid
+    // along the long one, plus one in each corner (half the largest side once left
+    // diagonal gaps to walk through). One circle of half the DIAGONAL covered the
+    // corners but reached metres past every wall — 6.8 m in front of Harborlight
+    // Hospital's doors, which walled its entrance (and the gun counters, services.js)
+    // off behind an invisible wall.
+    const long = Math.max(spec.w, spec.d) / 2, short = Math.min(spec.w, spec.d) / 2;
+    const alongX = spec.w >= spec.d;
+    const put = (a, b, r) => {                  // a: along the long side, b: across it (local)
+      const lx = alongX ? a : b, lz = alongX ? b : a;
+      addBlocker(x + lx * Math.cos(ry) + lz * Math.sin(ry), z - lx * Math.sin(ry) + lz * Math.cos(ry), r);
+    };
+    const n = Math.max(1, Math.ceil((long - short) / short) + 1);
+    for (let i = 0; i < n; i++) put(n === 1 ? 0 : -(long - short) + (2 * (long - short) * i) / (n - 1), 0, short);
+    for (const [sa, sb] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) put(sa * (long - short * 0.5), sb * short * 0.5, short * 0.5);
   }
   if (addLitSpot) {
     addLitSpot({ x, y: 3.5, z: z + spec.d / 2 + 1.2, warm: 0xffd9a0, power: 80, range: 18 });
@@ -837,6 +849,11 @@ export function placeBayouStiltHut(ctx, x, z, ry = 0) {
 
 export function placeGunShop(ctx, x, z, ry = 0) {
   placeCityBuilding(ctx, "garage", x, z, ry);
+  // the counter: a ring in front of the shop (services.js — walk up, F, buy)
+  if (ctx.addService) {
+    const reach = CITY_BUILDING_TYPES.garage.d / 2 + 1.6;
+    ctx.addService({ kind: "gun", name: "Bayou Arsenal", x: x + Math.sin(ry) * reach, z: z + Math.cos(ry) * reach, face: ry });
+  }
   const dx = Math.sin(ry) * -8;
   const dz = Math.cos(ry) * -8;
   placeBillboard(ctx, x + dx, z + dz, ry, "BAYOU ARSENAL - GUNS & AMMO");

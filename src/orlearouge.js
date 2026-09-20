@@ -326,6 +326,7 @@ export function createOrleaRouge(ctx) {
       const [t, ink, bg] = signs[s++ % signs.length];
       neonSign(t, ink, bg, Math.min(w - 1, 8), 1.3, b.cx, 4.7, b.cz - 2.2, Math.PI, 0.2);
       ctx.addBlocker(b.cx, b.cz + 1, Math.min(w, 6) / 2);
+      if (t === "PAWN" && ctx.addService) ctx.addService({ kind: "gun", name: "OrleaRouge Pawn & Guns", x: b.cx, z: b.cz - 3.8, face: Math.PI });
       if (t === "24 HR DAIQUIRI") {
         // "Police cruisers parked outside a twenty-four-hour daiquiri shop."
         const proto = ctx.getSheriffProto && ctx.getSheriffProto();
@@ -355,6 +356,7 @@ export function createOrleaRouge(ctx) {
     mesh(new THREE.BoxGeometry(18, 2.2, 0.3), m, b.cx, 9, b.z0 - 0.2, { cast: false });
     for (const [bx, bz] of [[-8, 0], [0, 0], [8, 0]]) ctx.addBlocker(b.cx + bx, b.cz + bz, (b.z1 - b.z0) / 2 - 2);
     occluders.push({ minX: b.x0 + 1, maxX: b.x1 - 1, minY: 0, maxY: 11, minZ: b.z0 + 2, maxZ: b.z1 - 2 });
+    if (ctx.addService) ctx.addService({ kind: "hospital", name: "OrleaRouge Public Hospital", x: b.cx, z: b.z0 - 1.8, face: Math.PI });
     pois.push({ x: b.cx, z: b.z0 - 4, r: 7 });
   }
 
@@ -454,6 +456,11 @@ export function createOrleaRouge(ctx) {
     if (hosp) { hospital(hosp); special.add(hosp); }
     if (cem) { cemetery(cem); special.add(cem); }
     if (site) { construction(site); special.add(site); }
+    // blocks other modules build on (main.js passes them: the Pay 'n' Spray lot, the clubs)
+    for (const lot of ctx.lots || []) {
+      const b = pick(lot.at[0], lot.at[1]);
+      if (b && !special.has(b)) { special.add(b); lot.build(b); }
+    }
     const rest = bl.filter((b) => !special.has(b));
     frenchDistrict(rest);
     downtown(rest);

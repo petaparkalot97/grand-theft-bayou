@@ -44,6 +44,15 @@ export const VEHICLE_DEFS = Object.freeze({
   "Tristar Racer": dsoup("Tristar Racer", "sports"),
   "Toyoyo Highlight": dsoup("Toyoyo Highlight", "civilian"),
   fallback: { name: "fallback", pack: "procedural", class: "civilian", modelForward: "+Z", length: 4.4 },
+  // Two-wheelers, built by bikes.js (no model files). One seat ("sports" class), the
+  // rider stays on show and the frame leans (main.js drivingUpdate). `seat`: where
+  // the rider's hips sit, +Z forward. `handling` overrides DRIVE for this vehicle.
+  motorbike: { name: "motorbike", pack: "procedural", class: "sports", modelForward: "+Z", length: 2.1, bike: true,
+    seat: { z: -0.16, y: 0.9, lean: 0.34 },
+    handling: { accel: 34, maxForward: 38, maxReverse: 5, grip: 2.5, brakeGrip: 3.4, fullSteerSpeed: 5 } },
+  scooter: { name: "scooter", pack: "procedural", class: "sports", modelForward: "+Z", length: 1.8, bike: true,
+    seat: { z: -0.22, y: 0.8, lean: 0.08 },
+    handling: { accel: 17, maxForward: 20, maxReverse: 4, grip: 2.9, brakeGrip: 3.6, fullSteerSpeed: 3.5 } },
 });
 
 /** Definition for an asset file or name ("Car_1_R.fbx", "docLorean"). */
@@ -118,7 +127,16 @@ export const DRIVE = Object.freeze({
  * Updates v.speed and v.heading only; the vehicle travels along its own heading.
  * S brakes while rolling forward and reverses once stopped.
  */
+// A definition's handling, merged over DRIVE once and kept.
+const _handling = new WeakMap();
+function handlingOf(def) {
+  if (!def || !def.handling) return DRIVE;
+  if (!_handling.has(def)) _handling.set(def, Object.freeze({ ...DRIVE, ...def.handling }));
+  return _handling.get(def);
+}
+
 export function stepArcadeVehicle(v, { throttle, steer, brake }, dt) {
+  const DRIVE = handlingOf(v.def);        // bikes and scooters bring their own numbers
   v.speed += throttle * DRIVE.accel * dt;
   if (brake) v.speed *= 1 - Math.min(1, dt * DRIVE.brakeDamp);
   v.speed *= 1 - dt * DRIVE.drag;

@@ -19,9 +19,9 @@
 // ---------------------------------------------------------------------------
 
 export const ZONE_MIX = Object.freeze({
-  urban: { hoodrat: 0.68, redneck: 0.12, prostitute: 0.20 },
-  town: { hoodrat: 0.60, redneck: 0.25, hobo: 0.15 },
-  commercial: { hoodrat: 0.34, redneck: 0.46, prostitute: 0.20 },
+  urban: { hoodrat: 0.54, redneck: 0.1, prostitute: 0.16, gayman: 0.1, lesbian: 0.1 },
+  town: { hoodrat: 0.56, redneck: 0.23, hobo: 0.13, gayman: 0.04, lesbian: 0.04 },
+  commercial: { hoodrat: 0.32, redneck: 0.44, prostitute: 0.18, gayman: 0.03, lesbian: 0.03 },
   border_strip: { hoodrat: 0.36, redneck: 0.46, prostitute: 0.18, border: true },
   border_market: { hoodrat: 0.42, redneck: 0.43, prostitute: 0.15, border: true },
   residential: { redneck: 0.60, hoodrat: 0.08, hobo: 0.32 },
