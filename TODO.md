@@ -57,6 +57,280 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-056 — Bug fixes: free-roam police never turning out, devmode drag-select and Cut ignoring world buildings (human report, 2026-09-20)
+
+**Status:** `REVIEW` · **Agent:** Claude · **Files:** `src/main.js`, `src/mapEditor.js`
+
+Human's report: *"Why is there no police? I seem to get a higher wanted
+level, but the police never seem to appear."* and, on the map editor: drag-box
+select over already-placed buildings did nothing, and Ctrl+X/Cut on an
+already-placed building didn't turn into the holographic follow-the-cursor
+placement mode every other cut/paste uses — instead a second click just
+teleported it straight there.
+
+**What was wrong, found by reading the code (not yet reproduced live — see
+below):**
+1. `copsActive()` in `main.js` gated the *entire* wanted system — heat decay,
+   star display, and cruiser spawning — behind either `state.forceCops`
+   (campaign-only) or having killed 12 Rednecks/Hoodrats (`HEAT_KILLS`).
+   `crime()` (called on kills, car damage, jacking a cruiser, etc.) always
+   raised `state.heat`, but nothing ever converted that into `state.wanted`
+   or spawned a cruiser until that 12-kill milestone, so free-roam crime
+   silently went nowhere.
+2. `mapEditor.js`'s `finishBoxSelect()` only tested `placements` (the
+   editor's own placed objects) against the drag rectangle — district-built
+   buildings were never candidates for a box-select at all.
+3. `mapEditor.js`'s `copySelection()` only ever looked at `selectedSet`
+   (editor placements); a Cut with only `selectedWorld` items selected
+   silently no-op'ed. `clipboard`/`startPaste`/`commitPaste`/`cancelPaste`
+   only knew how to rebuild an object from a `CATALOG` spec, which doesn't
+   exist for a world-authored building.
+
+**What changed:**
+1. `copsActive()` now also returns true whenever `state.freeRoam && state.heat
+   > 0` — cops respond to live crime heat immediately in Free Roam. Scoped to
+   `state.freeRoam` specifically (not a blanket `state.heat > 0`) so the
+   campaign's existing pacing — cops silent until `forceCops` or the 12-kill
+   escalation — is untouched; that gate still exists and still fires its own
+   "Sheriff Mercer's department would like a word" beat.
+2. `finishBoxSelect()` still does the exact `placements` test, and now also
+   grid-samples `raycastWorldObject()` across the drag rectangle (capped at
+   40×40 samples, run once per completed drag, not per frame) to pick up
+   world buildings under the box. Batched buildings (`static-batch`) are
+   still reported as un-isolatable, same limitation single-click Select
+   already had (see TASK-053 item 1 for the real fix to that).
+3. `clipboard` entries now carry a `kind: "catalog" | "world"` tag.
+   `copySelection(cut)` builds `world`-kind entries from `selectedWorld` (Cut
+   only — world objects still can't be *copied*, there's no spec to rebuild
+   one from, and it says so in the status line if you try). `startPaste()`
+   builds the holographic ghost for a `world` item by cloning the live root
+   and ghostifying the clone's materials (geometry stays shared, so this is
+   cheap); `commitPaste()` repositions the *original* root (never destroyed,
+   only `visible = false` while "in hand," same rule Backspace already
+   follows for world objects) instead of respawning from `CATALOG`;
+   `cancelPaste()` makes a cancelled world Cut reappear where it was.
+
+**Testing performed:** `node --check` on both files (clean, both changes are
+syntactically sound). Ran the existing `tools/qa/police_test.mjs` — it fails,
+but on `src/police.js:56`'s `Box3.setFromObject(...).translate`, which this
+session's changes never touched (`git diff --stat` confirms only `main.js`
+and `mapEditor.js` changed); this is the headless three.js stub missing
+`Box3.translate`, a pre-existing gap, not a regression from this fix.
+`tools/qa/police.mjs` (in-game) and the map editor have **no automated
+harness reachable in this environment** — no `playwright`/`patchright`
+package in `node_modules`, and the Claude-in-Chrome extension wasn't
+connected this session. **None of this has been confirmed in a running
+browser or real GPU.** Whoever picks this up next (or the human) should:
+start a free-roam run, commit a crime without racking up 12 redneck/hoodrat
+kills, and confirm stars climb and a cruiser turns out; and in
+`$DEVMODE69xxx`, drag-box across a standing building and confirm it selects,
+then Ctrl+X it and confirm the holographic ghost follows the free-fly camera
+until a click drops it.
+
+**Out of scope:** TASK-053's other four items (real parked cars, POI
+density, the color editor, the combat-feel overhaul) — untouched.
+
+---
+
+### TASK-057 — Orlea Rogue: party-town atmosphere + violent-crime districts (human request, 2026-09-20) — logged, not started
+
+**Status:** `BACKLOG` · **Files (expected):** whichever region module builds
+Orlea Rogue (check `src/orlearouge.js` — the causeway-south growth from
+TASK-031), `src/npc.js` (ambient crowd behaviour/density by district),
+`src/audio.js`/`music.js` (street music), `src/fx.js` (lighting mood)
+
+Human's own words: *"Orlea Rogue, which is based on New Orleans... we need to
+really amp up the atmosphere in terms of making it a party town and also
+kind of like a lot of... in some parts a lot of like violent crime."*
+
+Two distinct moods requested for the same region, presumably by sub-district
+(a French-Quarter-style entertainment strip vs. rougher blocks), not a single
+uniform tone — that split isn't specified yet and is a real design decision
+someone should confirm before building: which streets/blocks are "party,"
+which are "violent," and what actually signals each (street crowd density
+and type, ambient music/noise, lighting, NPC aggression baseline, litter/
+decay dressing, police presence baseline — TASK-056 above just made wanted
+level responsive again in free roam, which matters for how "violent crime
+area" should feel). Check `docs/WORLD_BUILDING.md` for whatever's already
+planned for this region before inventing district boundaries from scratch.
+
+**Not started** — no code changes yet, this is the design brief as given.
+
+---
+
+### TASK-058 — Superdome landmark (human request, 2026-09-20) — logged, not started
+
+**Status:** `BACKLOG` · **Files (expected):** `src/landmarks.js`, the Orlea
+Rogue region module, an asset (new or sourced)
+
+Human's own words: *"we need to have a Superdome based on the real one
+that's in New Orleans."* **Follow-up (2026-09-20): it needs to be enterable,
+not just an exterior landmark** — the player should be able to walk inside
+it, not just drive/walk past it. That makes this depend on (or at least
+share machinery with) TASK-059's interior system rather than being a pure
+exterior prop; whoever picks this up should sequence accordingly, or at
+minimum design the exterior with a real entrance in mind rather than a
+sealed shell that has to be retrofitted later. Nothing resembling a domed
+stadium exists in the
+asset manifest today (`tools/r2-manifest.json` — worth a fresh grep before
+starting, same check TASK-053 item 7 already did for a motorbike model and
+came up empty). This is very likely a build-from-primitives job (a big dome
+is straightforward procedural geometry — latitude-banded sphere segment or
+similar — with the real Superdome's actual proportions/exterior banding as
+reference, not a sourced GLB) rather than an asset-sourcing blocker, but
+whoever picks this up should confirm that before assuming either way. Needs
+a placement decision: where in Orlea Rogue, and how it interacts with
+existing roads/blockers at that scale (this would be one of the largest
+single structures in the game).
+
+**Not started** — no code changes yet, this is the design brief as given.
+
+---
+
+### TASK-059 — Enterable establishment interiors + robbery mechanic (human request, 2026-09-20) — logged, not started
+
+**Status:** `BACKLOG` · **Files (expected):** a new interior module
+(`src/interiors.js`?), `src/npc.js` (a "clerk" NPC behaviour), `src/main.js`
+(interior transition, aim-at-clerk robbery flow), `src/landmarks.js` (which
+buildings get a real interior)
+
+Human's own words: *"we need to start building out the interiors of local
+establishments, things like Popeyes, the players should be able to go in and
+like there should be people serving food, [someone] at the cash register...
+these places we need to be able to rob them. So obviously like when the
+player has a weapon, points it at the person at the cash register, money
+just starts increasing but the wanted level just goes up too."*
+
+This is already on the world-building roadmap as an unstarted bullet
+("Selective interiors for the new civic/commercial buildings" —
+see the top of this file) but never scoped. Real scope, from the human's own
+description:
+1. **An interior space** the player can walk into from an exterior door
+   trigger and back out of — almost certainly a separate small scene/room
+   swapped in on entry rather than a physically modeled interior sharing the
+   exterior's coordinate space (check how — or whether — any existing
+   system already does an interior/exterior transition before assuming
+   there's nothing to reuse).
+2. **A clerk NPC** standing at a register, part of a new "serving" idle
+   behaviour distinct from the existing wander/flee/hostile states in
+   `npc.js`.
+3. **The robbery trigger**: aiming a weapon at the clerk (not firing) starts
+   cash ticking up over time and the clerk into a scared/complying state;
+   `crime()` should be driving the wanted level the whole time it's
+   happening (this is now actually responsive in free roam — TASK-056).
+   Needs a defined cash rate/cap per establishment and a way to end it
+   (leaving, clerk hits a silent alarm after N seconds, player holsters the
+   weapon).
+4. **Popeyes specifically** — check `landmarks.js`/the asset manifest for
+   what's already placed as a Popeyes prop today (`POPEYES_LOCATIONS` exists
+   in `main.js` already, for the health-bucket pickup feature) before
+   deciding whether that's the same building instance this should hook into.
+
+Real scope here is "a small new interior-scene system," not a one-file patch
+— flagging that up front rather than under-selling it. Suggest sequencing
+after TASK-056/police is confirmed working live, since the robbery mechanic
+is pointless without cops actually responding to it.
+
+**Not started** — no code changes yet, this is the design brief as given.
+
+---
+
+### TASK-060 — Motorbikes, scooters and push bikes as ridden vehicles (human request, 2026-09-20) — logged, not started
+
+**Status:** `BACKLOG` · **Files (expected):** `src/vehicles.js`
+(`VEHICLE_DEFS`, arcade model tuning), `src/traffic.js` or `src/npc.js`
+(NPCs actually choosing to ride one), `src/main.js` (push-bike pedal input),
+`src/input.js` (a tap-to-pedal binding)
+
+Human's own words: *"People are not using the motorbikes, they are only
+using cars. We've got parked motorbikes, leave the parked motorbikes and
+scooters, but we also need NPCs using... motorbikes and scooters as well.
+For good measure, we should add in push bikes... the player should need to
+like press spacebar or just tap it constantly to keep the momentum going,
+just to add realism."*
+
+**Supersedes/extends TASK-053 item 7** (motorbikes only, already found
+blocked on a sourced 3D model — no bike/motor/cycle/harley/scooter entry in
+`tools/r2-manifest.json`'s 462 models as of that check). This broadens the
+same ask to scooters (apparently already present as *parked* decoration —
+confirm which asset) and adds push bikes, which is a new mechanic, not just
+a new rideable:
+1. **NPCs actually riding motorbikes/scooters** — `vehicles.js`'s
+   `stepArcadeVehicle()` is heading+speed, generic enough for a bike per
+   TASK-053 item 7's own read; the real gap is nothing in `traffic.js`/
+   `npc.js` ever *chooses* a bike over a car for a spawned rider. Needs the
+   asset(s) resolved first (motorbike still blocked; scooter — check if the
+   existing parked-scooter model is riggable/drivable or decorative-only
+   like the parked cars TASK-053 item 2 is fixing).
+2. **Push bikes** — likely the least asset-blocked of the three (a bicycle
+   model is far more common in free asset packs than a motorbike; check
+   `Z:\GITHUB\_ASSETS` before assuming a new one is needed). New mechanic:
+   momentum decays without repeated input, spacebar (or a repeated key tap)
+   adds momentum back — this is a new per-vehicle drive model, not the
+   shared arcade one, since nothing else in the game has a decaying-momentum
+   pedal mechanic today.
+
+**Not started** — no code changes yet, this is the design brief as given.
+
+---
+
+### TASK-061 — Dev mode: AI-grounding location marker / "blip" (human request, 2026-09-20) — logged, not started
+
+**Status:** `BACKLOG` · **Files (expected):** `src/mapEditor.js`
+
+Human's own words: *"it would be quite handy if we were able to drop kind of
+like a location marker so that way we can provide the AI information as to
+like where we want to do certain things, so kind of like a blip."* Reads as:
+a devmode tool to drop a labeled point (and maybe a note) at a world
+position, so a human instruction like "put a jazz club near the marker by
+the levee" has a concrete coordinate an agent can look up instead of
+guessing from a description. Needs, at minimum: a new devmode mode (or a
+key bind alongside Place/Delete/Select) to drop a marker with an optional
+text label, a visible in-world gizmo for it (distinct from the existing
+placement ghost/selection wireframes), and *somewhere an agent can actually
+read the list back from* — a devmode panel listing markers with their
+coordinates/labels, and/or folding them into the Export button's output
+(`showExport()` already exists and does something adjacent — extend it
+rather than building a second export path) is probably the right shape, but
+that's a design call for whoever picks this up.
+
+**Not started** — no code changes yet, this is the design brief as given.
+
+---
+
+### TASK-062 — Dev mode: highlight-and-duplicate a chunk, with LLM-assisted variation (human request, 2026-09-20) — logged, not started
+
+**Status:** `BACKLOG` · **Files (expected):** `src/mapEditor.js`, whatever
+"Ask AI" integration already exists (the file's header mentions an "Ask AI"
+box sending a free-text prompt plus grounding — check that before assuming
+a new LLM call path is needed)
+
+Human's own words: *"in order to grow the city it would be nice if we could
+kind of highlight big chunks and duplicate them so we can kind of just
+extend things, and even get the LLM to kind of do a little spin on them so
+it doesn't seem like a duplication — this would be an extremely useful
+feature."*
+
+This is a bigger version of TASK-053 item 1 (which scopes *single*-building
+copy out of a batched district) and TASK-056's box-select fix above (which
+now at least lets a drag-box pick out individual world buildings) — "a
+chunk" here means a whole multi-building area selected at once, duplicated
+as a group, and then varied (different building skins/colors/minor layout
+shuffle per the existing "Ask AI"/LLM path, so the copy doesn't read as an
+obvious stamp) rather than dropped as an exact clone. Real open questions
+before building: how big is "a chunk" (a bounding box drag over N
+buildings, reusing TASK-056's box-select?), what "the LLM does a little
+spin" concretely changes (palette/material swap is cheap and already has
+`ghostifyMaterial`-adjacent machinery to build on; actual layout variation
+is a much bigger ask), and whether this depends on TASK-053 item 1 landing
+first (batched buildings are most of the city, so a chunk-duplicate that
+only works on already-unbatched/editor-placed buildings would cover very
+little of what "grow the city" actually needs).
+
+**Not started** — no code changes yet, this is the design brief as given.
+
+---
+
 ### TASK-053 — $DEVMODE69xxx round 3: batched-building copy, real parked cars, POI-based ped/traffic density, right-click "Edit design" color editor (human request, 2026-09-20) — logged, not started
 
 **Status:** `BACKLOG` · **Files (expected):** `src/mapEditor.js`, `src/merge.js`,

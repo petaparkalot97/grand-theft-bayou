@@ -237,7 +237,7 @@ export function createMapEditor(ctx) {
   let mode = "place";        // "place" | "delete" | "select"
   const selectedSet = new Set();   // placement entries (this tool's own) currently selected — 0, 1 or many
   const selectedWorld = new Set(); // { root, name } world-authored Object3Ds currently selected (see item 6)
-  let clipboard = null;      // [{ catalogKey, dx, dz, dry }] relative to a copy/cut anchor, or null
+  let clipboard = null;      // [{ kind: "catalog", catalogKey, dx, dz, dry } | { kind: "world", root, dx, dz, dry, baseY }], relative to a copy/cut anchor, or null
   let pasting = false;       // true while a clipboard paste-preview is following the cursor
   const placements = [];   // { id, catalogKey, x, z, ry, created, createdBlockers, createdLitSpots }
   let nextId = 1;
@@ -828,6 +828,14 @@ export function createMapEditor(ctx) {
     const rect = renderer.domElement.getBoundingClientRect();
     return { x: rect.left + (v.x * 0.5 + 0.5) * rect.width, y: rect.top + (-v.y * 0.5 + 0.5) * rect.height };
   }
+  // Bug fix (human report 2026-09-20): a drag-box only ever tested `placements`
+  // (this tool's own placed objects) against the rectangle, so dragging over
+  // already-standing, district-authored buildings selected nothing. Those don't
+  // have a flat x/z list to project the way `placements` does, so grid-sample
+  // raycastWorldObject() across the rectangle instead -- bounded, and it only
+  // runs once per completed drag, not per frame.
+  const BOX_SAMPLE_STEP = 22;   // px between sample points
+  const BOX_SAMPLE_MAX = 40;    // cap grid size for a screen-spanning drag
   function finishBoxSelect(x0, y0, x1, y1, additive) {
     const minX = Math.min(x0, x1), maxX = Math.max(x0, x1);
     const minY = Math.min(y0, y1), maxY = Math.max(y0, y1);
@@ -835,6 +843,19 @@ export function createMapEditor(ctx) {
     for (const entry of placements) {
       const p = projectToScreen(entry.x, entry.z);
       if (p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY) selectedSet.add(entry);
+    }
+    const cols = Math.min(BOX_SAMPLE_MAX, Math.max(1, Math.round((maxX - minX) / BOX_SAMPLE_STEP)));
+    const rows = Math.min(BOX_SAMPLE_MAX, Math.max(1, Math.round((maxY - minY) / BOX_SAMPLE_STEP)));
+    const seen = new Set([...selectedWorld].map((w) => w.root));
+    for (let iy = 0; iy <= rows; iy++) {
+      for (let ix = 0; ix <= cols; ix++) {
+        const sx = minX + (cols ? (ix / cols) * (maxX - minX) : 0);
+        const sy = minY + (rows ? (iy / rows) * (maxY - minY) : 0);
+        const hit = raycastWorldObject(sx, sy);
+        if (!hit || hit.batched || !hit.root || seen.has(hit.root)) continue;
+        seen.add(hit.root);
+        selectedWorld.add(hit);
+      }
     }
     onSelectionChanged();
   }
@@ -1100,15 +1121,33 @@ export function createMapEditor(ctx) {
 
   // -------------------------------------------------- clipboard (copy/cut/paste)
   // Stores the current selection's shape (catalogKey + offset from its own
-  // centroid) so a paste can drop it anywhere; world objects aren't
-  // copyable (there's no landmarks.js call that recreates one).
+  // centroid) so a paste can drop it anywhere. World objects can't be
+  // *copied* (there's no landmarks.js call that recreates one from scratch),
+  // but Cut doesn't need to recreate anything -- it's the same live root,
+  // just relocated -- so a world-object Cut carries the root reference itself
+  // (bug fix, human report 2026-09-20: Cut on an already-placed/world building
+  // used to silently no-op, since copySelection() only ever looked at
+  // `selectedSet`, this tool's own placements; the selection stayed put and a
+  // second click teleported it straight to the click point instead of
+  // following the cursor as a holographic preview like every other cut/paste).
   // Per the human's own spec: Ctrl+C/X puts the copy straight into the
   // cursor as a holographic preview, ready to click-place — not a separate
   // "now press Ctrl+V" step.
   function copySelection(cut) {
-    if (!selectedSet.size) return;
+    if (!selectedSet.size && !selectedWorld.size) return;
+    if (!cut && !selectedSet.size) {
+      selectStatus.textContent = "world objects can't be copied, only moved with Cut";
+      selectStatus.style.display = "block";
+      return;
+    }
     const center = selectionCenter();
-    clipboard = [...selectedSet].map((e) => ({ catalogKey: e.catalogKey, dx: e.x - center.x, dz: e.z - center.z, dry: e.ry }));
+    const items = [...selectedSet].map((e) => ({ kind: "catalog", catalogKey: e.catalogKey, dx: e.x - center.x, dz: e.z - center.z, dry: e.ry }));
+    if (cut) for (const w of selectedWorld) items.push({ kind: "world", root: w.root, dx: w.root.position.x - center.x, dz: w.root.position.z - center.z, dry: w.root.rotation.y, baseY: w.root.position.y });
+    if (!items.length) return;
+    clipboard = items;
+    // deleteSelection() already does exactly the right thing for both kinds:
+    // destroys+forgets the catalog entries, soft-hides the world roots (never a
+    // real delete for those -- same rule as Backspace).
     if (cut) deleteSelection();
     startPaste();
   }
@@ -1120,17 +1159,29 @@ export function createMapEditor(ctx) {
     ghost.visible = false;
     while (pastePreviewGroup.children.length) pastePreviewGroup.remove(pastePreviewGroup.children[0]);
     for (const item of clipboard) {
-      const spec = CATALOG.find((s) => s.key === item.catalogKey);
-      if (!spec) continue;
-      const preview = buildGhostPreview(spec).clone(true);
-      preview.position.set(item.dx, 0, item.dz);
+      let preview;
+      if (item.kind === "world") {
+        preview = item.root.clone(true);
+        preview.traverse((o) => {
+          if (o.isMesh && o.material) o.material = Array.isArray(o.material) ? o.material.map(ghostifyMaterial) : ghostifyMaterial(o.material);
+        });
+        preview.position.set(item.dx, item.baseY, item.dz);
+      } else {
+        const spec = CATALOG.find((s) => s.key === item.catalogKey);
+        if (!spec) continue;
+        preview = buildGhostPreview(spec).clone(true);
+        preview.position.set(item.dx, 0, item.dz);
+      }
       preview.rotation.y = item.dry;
       pastePreviewGroup.add(preview);
     }
-    selectStatus.textContent = `pasting ${clipboard.length} — click or Ctrl+V to drop, right-click to cancel`;
+    selectStatus.textContent = `${clipboard.some((i) => i.kind === "world") ? "moving" : "pasting"} ${clipboard.length} — click or Ctrl+V to drop, right-click to cancel`;
     selectStatus.style.display = "block";
   }
   function cancelPaste() {
+    // a cancelled Cut of a world object must reappear where it was -- it was
+    // only ever hidden, not destroyed
+    if (clipboard) for (const item of clipboard) if (item.kind === "world") item.root.visible = true;
     pasting = false;
     while (pastePreviewGroup.children.length) pastePreviewGroup.remove(pastePreviewGroup.children[0]);
     ghost.visible = active && mode === "place";
@@ -1139,18 +1190,28 @@ export function createMapEditor(ctx) {
   function commitPaste(x, z) {
     if (!clipboard) return;
     const placed = new Set();
+    const movedWorld = new Set();
     for (const item of clipboard) {
-      const spec = CATALOG.find((s) => s.key === item.catalogKey);
-      if (!spec) continue;
-      placed.add(placeAt(spec, x + item.dx, z + item.dz, item.dry));
+      if (item.kind === "world") {
+        item.root.position.set(x + item.dx, item.baseY, z + item.dz);
+        item.root.rotation.y = item.dry;
+        item.root.visible = true;
+        movedWorld.add({ root: item.root, name: item.root.name || "unnamed object" });
+      } else {
+        const spec = CATALOG.find((s) => s.key === item.catalogKey);
+        if (!spec) continue;
+        placed.add(placeAt(spec, x + item.dx, z + item.dz, item.dry));
+      }
     }
     pasting = false;
     while (pastePreviewGroup.children.length) pastePreviewGroup.remove(pastePreviewGroup.children[0]);
     selectedSet.clear();
+    selectedWorld.clear();
     for (const e of placed) selectedSet.add(e);
+    for (const w of movedWorld) selectedWorld.add(w);
     onSelectionChanged();
     updateHUD();
-    persist();
+    persist();   // only the catalog placements are actually persisted -- world-root moves are session-only, same limit Backspace already has
   }
 
   function toggle() {

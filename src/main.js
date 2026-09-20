@@ -3333,9 +3333,14 @@ function spawnSheriff() {
   const v = registerVehicle(car, 2.0, { sheriff: true, hp: 32 });
   sheriffs.push(v);
 }
-// The Sheriff only shows up after you've put down a dozen Rednecks/Hoodrats.
+// In Free Roam, cops respond to any live crime heat (bug fix, human report
+// 2026-09-20: wanted stars were climbing from crime() with copsActive() still
+// false -- the whole wanted system, including cruiser spawning, was gated
+// behind killing a dozen Rednecks/Hoodrats and nothing else ever turned it on).
+// Scoped to state.freeRoam so the campaign's existing pacing (cops silent until
+// forceCops or the 12-kill escalation below) is untouched.
 const HEAT_KILLS = 12;
-function copsActive() { return state.forceCops || (kills.redneck + kills.hoodrat) >= HEAT_KILLS; }
+function copsActive() { return state.forceCops || (state.freeRoam && state.heat > 0) || (kills.redneck + kills.hoodrat) >= HEAT_KILLS; }
 function checkHeatUp() {
   if (!state._copsAnnounced && (kills.redneck + kills.hoodrat) >= HEAT_KILLS) {
     state._copsAnnounced = true;
