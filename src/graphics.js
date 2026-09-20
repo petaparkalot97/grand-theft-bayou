@@ -915,6 +915,11 @@ export function createEnvironment(scene, renderer, opts) {
       aim(el, az != null ? az : azimuth);
       bake();
     },
+    /** Haze and blue: thinner and bluer at midday, thicker low down (daycycle.js). */
+    setAtmosphere(turbidity, rayleigh) {
+      u.turbidity.value = turbidity;
+      u.rayleigh.value = rayleigh;
+    },
     setIntensity(env, bg) {
       scene.environmentIntensity = env;
       scene.backgroundIntensity = bg != null ? bg : env;

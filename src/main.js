@@ -37,6 +37,7 @@ import { createServices } from "./services.js";
 import { createNightlife } from "./nightlife.js";
 import { createTips } from "./tips.js";
 import { buildMotorbike, buildScooter } from "./bikes.js";
+import { skyState } from "./daycycle.js";
 import { createPauseMenu } from "./pauseMenu.js";
 import { createLoot } from "./loot.js";
 import { createWorldTime } from "./worldtime.js";
@@ -212,7 +213,10 @@ addEventListener("resize", () => {
 // ---------------------------------------------------------------- lights
 // The IBL probe carries the ambient term now, so these are just the two key
 // lights: hard moonlight, and a very low warm bounce off the ground haze.
-scene.add(new THREE.HemisphereLight(0x4a6a8c, 0x2a2c1c, 0.85));
+const hemi = new THREE.HemisphereLight(0x4a6a8c, 0x2a2c1c, 0.85);
+scene.add(hemi);
+// The key light: the sun by day, the moon at night — daycycle.js says which, what
+// colour, how strong, and where in the sky (the variable keeps its old name).
 const moon = new THREE.DirectionalLight(0xc8d8ff, 2.8);
 moon.position.set(-40, 60, -20);
 moon.castShadow = true;
@@ -397,6 +401,12 @@ function poolLight(color, power, range, x, y, z, group) {
   litSpots.push({ x: p.x, y: p.y, z: p.z, warm: color, power, range, fx: false });
 }
 
+// Street lamps (addLitSpot) fade out in daylight; fires, neon and interior glows
+// (poolLight, fx: false) do not. daycycle.js drives `lampPower`; `lampFx` holds the
+// beams and halos, switched off together when the lamps go out.
+let lampPower = 1;
+let lampsLit = true;
+const lampFx = [];
 let poolTimer = 0;
 function updateLightPool(dt, focus) {
   poolTimer -= dt;
@@ -416,7 +426,7 @@ function updateLightPool(dt, focus) {
     l.color.setHex(sp.warm);
     l.distance = sp.range;
     // fade the outermost lights in rather than popping them on
-    l.intensity = sp.power * THREE.MathUtils.smoothstep(90 * 90 - sp.d, 0, 30 * 30);
+    l.intensity = sp.power * THREE.MathUtils.smoothstep(90 * 90 - sp.d, 0, 30 * 30) * (sp.fx === false ? 1 : lampPower);
   }
 }
 
@@ -3109,7 +3119,8 @@ function flashGfx(msg) {
   gfxFlash = setTimeout(updateGfxLabel, 2200);
 }
 
-let lastElev = -1.8;
+let lastElev = -1.8, lastAz = 200;
+const _sunDir = new THREE.Vector3();
 function simulate(dt) {
   state.fireCd = Math.max(0, state.fireCd - dt);
   state.hurtCd = Math.max(0, state.hurtCd - dt);
@@ -3118,18 +3129,39 @@ function simulate(dt) {
   state.dusk = worldTime.dusk;
   if (objTimer > 0) { objTimer -= dt; if (objTimer <= 0) objEl.textContent = defaultObjective(); }
 
-  // Night deepens: the sun sinks further below the horizon, which drains the
-  // blue out of the sky probe, so the whole scene's ambient goes with it.
-  const f = (1 - state.dusk * 0.4) * weather.lightMultiplier;
-  moon.intensity = 2.8 * f;
-  scene.fog.density = (0.0028 + state.dusk * 0.0015) * weather.fogMultiplier;
-  MIST.y = (0.04 + state.dusk * 0.025) * weather.mistMultiplier;   // the mist thickens as the night goes on
-  const elev = -1.8 - state.dusk * 4.2;
-  // re-baking the PMREM probe is expensive — only when it would actually show
-  if (Math.abs(elev - lastElev) > 0.4) {
-    lastElev = elev;
-    env.setElevation(elev);
-    env.setIntensity(2.4 * f, 1.0 * f);
+  // ---- the day: sun up, sun across, sun down (daycycle.js) ----
+  const sky = skyState(worldTime.hours);
+  const f = weather.lightMultiplier;
+  moon.color.setHex(sky.lightColor);
+  moon.intensity = sky.lightIntensity * f;
+  hemi.color.setHex(sky.hemiSky);
+  hemi.groundColor.setHex(sky.hemiGround);
+  hemi.intensity = sky.hemiIntensity * f;
+  scene.fog.color.setHex(sky.fogColor);
+  scene.fog.density = sky.fogDensity * weather.fogMultiplier;
+  MIST.y = sky.mist * weather.mistMultiplier;
+  lampPower = sky.lampsOn;
+  renderer.toneMappingExposure = sky.exposure;
+  if (composer.grade) {
+    const gu = composer.grade.uniforms;
+    gu.uContrast.value = sky.grade.contrast;
+    gu.uSaturation.value = sky.grade.saturation;
+    gu.uVignette.value = sky.grade.vignette;
+    gu.uGrain.value = sky.grade.grain;
+    gu.uShadowTint.value.setHex(sky.grade.shadowTint);
+    gu.uHighlightTint.value.setHex(sky.grade.highlightTint);
+  }
+  if ((sky.lampsOn > 0.35) !== lampsLit) {         // the lamps come on at dusk, off at dawn
+    lampsLit = sky.lampsOn > 0.35;
+    for (const g of lampFx) for (const m of g.userData.glows) m.visible = lampsLit;
+  }
+  // re-baking the PMREM probe is expensive — only when the sun has moved enough to show
+  if (Math.abs(sky.elevation - lastElev) > 1.2 || Math.abs(sky.azimuth - lastAz) > 4) {
+    lastElev = sky.elevation;
+    lastAz = sky.azimuth;
+    env.setAtmosphere(sky.turbidity, sky.rayleigh);
+    env.setElevation(sky.elevation, sky.azimuth);
+    env.setIntensity(sky.envIntensity * f, sky.bgIntensity);
   }
 
   // ---- camera orbit (Q/E), secondary to mouse look ----
@@ -3152,8 +3184,9 @@ function simulate(dt) {
     lastVehAudio = null;
   }
 
-  // keep the moon's shadow box over the player
-  moon.position.set(playerPos.x - 40, 60, playerPos.z - 20);
+  // keep the shadow box over the player, with the light where the sky says the sun is
+  _sunDir.setFromSphericalCoords(70, THREE.MathUtils.degToRad(90 - Math.max(6, sky.elevation)), THREE.MathUtils.degToRad(sky.azimuth));
+  moon.position.set(playerPos.x + _sunDir.x, Math.max(24, _sunDir.y), playerPos.z + _sunDir.z);
   moon.target.position.set(playerPos.x, 0, playerPos.z);
   moon.target.updateMatrixWorld();
 
@@ -3765,7 +3798,7 @@ async function boot() {
   initLightPool();
   // shafts, pools and halos under every lamp (and poles for the lot lights) —
   // before the sweep below, so the new poles get a proper steel surface
-  for (const sp of litSpots) if (sp.fx !== false) addLamp(scene, sp);
+  for (const sp of litSpots) if (sp.fx !== false) lampFx.push(addLamp(scene, sp));
 
   loadNote.textContent = "resurfacing the parish…";
   await new Promise((r) => setTimeout(r, 0));   // let the loading text paint
