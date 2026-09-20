@@ -22,7 +22,7 @@ import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, ran
 import { createCinema } from "./cinema.js";
 import { createPrologue, makeCastMember, PROLOGUE_KEEPOUT } from "./prologue.js";
 import { createMissionClinic } from "./missionClinic.js";   // unused: see missionClinic below
-import { createActOne, NADIA_DOOR } from "./actone.js";
+import { createActOne, NADIA_HOME, NADIA_DOOR } from "./actone.js";
 import { createOrleaRouge } from "./orlearouge.js";
 import { createPotholes } from "./potholes.js";
 import { createBlueLight } from "./bluelight.js";
@@ -1521,6 +1521,12 @@ const klan = createKlan({
   // the strip of lawn between Emiko's door and the street — where the call
   // from nolantis.js was always pointing
   mamaLawn: { x: NADIA_DOOR.x, z: NADIA_DOOR.z - 4.6 },
+  mamaDoor: NADIA_DOOR,
+  mamaHouse: NADIA_HOME,
+  teleport: (x, z, heading) => teleportPlayer(x, z, heading),
+  makeCastMember: (who) => makeCastMember(makeHoodrat, who),
+  getSheriffProto: () => sheriffProto,
+  setCameraYaw: (yaw) => camCtl.addYaw(yaw - camCtl.yaw),
 });
 
 function spawnEnemy(typeName, x, z, spot = null) {
@@ -1860,6 +1866,9 @@ async function buildLevel() {
       player.position.set(x, 0, z);
       if (player._last) player._last.copy(player.position);
     },
+    // Act One's last beat: reaching Mama's door is where the night ride happens
+    // (klan.js), which is what nolantis.js's phone call was always pointing at.
+    nightRide: (onDone) => klan.nightRideOnMamas(onDone),
   });
   actOne.buildSet();
 
@@ -3758,6 +3767,23 @@ function updateEnemy(e, dt) {
 // slide-along-obstacle collision: mutate `current` toward `next`
 function resolveCollision(current, next, radius) {
   blockerGrid.resolve(next, radius, current, null);
+}
+
+// Put the player (and whatever she is driving) somewhere. The district modules
+// each carry their own inline copy of this in their ctx; this is the one the
+// module-scope systems use, hoisted so it is available before boot() has run.
+function teleportPlayer(x, z, heading = 0) {
+  const v = state.veh;
+  if (v) {
+    v.obj.position.x = x; v.obj.position.z = z;
+    v.heading = heading; v.obj.rotation.y = heading; v.speed = 0;
+    v.blocker.x = x; v.blocker.z = z;
+  }
+  playerPos.set(x, 0, z);
+  if (player) {
+    player.position.set(x, 0, z);
+    if (player._last) player._last.copy(player.position);
+  }
 }
 
 // ---------------------------------------------------------------- boot

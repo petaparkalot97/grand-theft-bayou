@@ -168,14 +168,14 @@ should merge cleanly; if it touched `cemetery(b)`, take this version.
 
 ### TASK-066 — Keseme vs. the Klan: who actually came after her mother (human request, 2026-09-20)
 
-**Status:** `REVIEW` (the machinery and the night ride; the mission arc is still
-`READY` — see *What remains*) · **Agent:** Claude
+**Status:** `REVIEW` (machinery + the Act One mission, played through; Act Two
+itself is still to build — see *What remains*) · **Agent:** Claude
 **Files / subsystem:**
 - `src/klan.js`                (new — the faction and its set pieces)
 - `src/characters.js`          (the robe, built into the rig behind `opts.robe`)
 - `src/factions.js`            (a third side in the turf logic)
 - `src/npc.js`                 (temperament: a klansman never runs)
-- `src/actone.js`              (exports Emiko's house so the ride stages on it)
+- `src/actone.js`              (exports Emiko's house; `reachedMama` runs the ride)
 - `src/main.js`                (spawn table, wiring)
 - `tools/qa/klan.mjs`          (new — headless walkthrough)
 
@@ -285,24 +285,63 @@ the scratchpad — SwiftShader, so fps is meaningless and is not reported):
 on. The burn-out ramp cleared its own flag when it finished, so the flicker
 resumed the next frame over an invisible flame. It now latches `spent`.
 
-**What remains — this is the machinery, not the story:**
-- **No mission yet.** Nothing in the game calls `mamaNightRide()`: it is
-  reachable from `__game.klan` for QA and ready for a mission to fire. The
-  three narrative questions below still need the human's answer before anyone
-  writes one.
-- No voice for them; no vehicles (the ride has no trucks arriving yet); no
-  reaction from the Sheriff's department to a night ride happening.
-- They have no dialogue beyond Keseme's two lines when the cross lights.
+---
 
-**Notes / decisions the human may want to make first:**
-1. **How far up does it go?** Is Sheriff Mercer one of them, or leaned on by
-   them? The ledger board (`ledgerboard.js`) is built to carry either answer.
-2. **Where does it land in the act structure?** Act One is "Welcome Home" in
-   Tusouxroe; OrleaRouge is being built out now. A Klan arc could be the back
-   half of Act One (it is Emiko's story, and she lives in South Tusouxroe) or
-   its own Act Two.
-3. **Does Emiko survive it?** Everything downstream changes on that answer, so
-   it should be decided before anyone writes the mission.
+**NIGHT RIDE — the mission (2026-09-20, same day).** The human answered the
+three questions below: **Mercer is leaned on, not one of them; Emiko survives
+but loses the house; the arc threads through both acts.** So this is Act One's
+last beat and Act Two's opening, and `klan.js` now carries it end to end.
+
+Reaching Mama's door used to flash *"Mama's safe — for now"* and drop the
+player straight back to the gas cans, with `nolantis.js`'s question left
+hanging. `actone.js`'s `reachedMama()` now calls `ctx.nightRide()` instead, and
+falls back to the old line if the Klan module is not wired (bare QA worlds).
+
+The beat: a hard cut to 01:10 · Keseme at the door, Emiko answering through it
+(*"There were cars on the road all evening. Slow ones."*) — she is never staged
+outside, because she lives in a sealed kitchen 40 m under the street · headlights
+and no plates · the cross lights and six turn out · the fight · the cross goes
+over into the siding and the house burns · **Mercer is already parked up the
+street with his lights off**, which says "leaned on" without a word of
+exposition, and points at Pelican Crown on his way out · a held shot of the
+burning house · **ACT TWO — PELICAN CROWN**.
+
+**Testing performed:** played start to finish headlessly. Phases run
+`opening → fight → cleared → aftermath → done`, `actOne.phase` ends `done`, the
+clock is forced to 01:10, six klansmen turn out, killing them advances the
+mission, and all 25 lines and both cards fire in order. A screenshot confirms
+the roof fire, the smoke column and the charred cross on the lawn.
+
+**Three things fixed while playing it:**
+- The house fire was built at eaves height (y 3.4) and `actone.js`'s house has
+  walls to 4.0 and a roof at ~5.0 — so the entire fire was inside the front
+  room and all you saw was a glow on the grass. Raised above the roofline.
+- The caption said a cruiser was parked up the street and there wasn't one.
+  There is now (`getSheriffProto().clone(true)`).
+- The closing image was whatever the gameplay camera happened to be pointing
+  at. It cannot frame this — behind her and pitched down, the roof fire is off
+  the top of the screen at 13 m and the house is a speck at 24 m — so the scene
+  holds a scripted shot on the house before the card.
+
+**What remains:**
+- No voice for them, and none for Emiko's off-screen lines.
+- No trucks arriving — the ride simply appears.
+- Act Two itself: the investigation and the payoff are briefed but not built.
+- No reaction from the Sheriff's department to a night ride in free roam
+  (`mamaNightRide()` called outside the mission).
+
+**Decisions — ANSWERED by the human, 2026-09-20. Treat these as settled:**
+1. **How far up does it go?** Mercer is **leaned on, not one of them.** He is
+   compromised — he looks away, he arrives after — and Keseme can eventually
+   turn him. Keeps him usable as a reluctant ally and makes `ledgerboard.js`
+   the lever.
+2. **Does Emiko survive?** **Yes, but the house is lost.** The night ride burns
+   her out. She lives and relocates; the loss is material, not fatal, so the
+   "protect my family" spine that `nolantis.js` and `actone.js` are built on
+   stays live for later acts.
+3. **Where in the act structure?** **Threaded through both.** The night ride is
+   the inciting incident at the end of Act One; the investigation and the payoff
+   are Act Two, spanning Tusouxroe and OrleaRouge. The thread never goes cold.
 
 ---
 

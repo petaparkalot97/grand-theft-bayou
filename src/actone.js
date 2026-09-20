@@ -454,10 +454,18 @@ export function createActOne(ctx) {
   // mission — back north to Mama's door. Without it the story handed off to nothing
   // and the HUD fell straight back to the gas cans.
   const MAMA_OBJECTIVE = "Someone threatened Mama. Get to her house in South Tusouxroe — north up US-167.";
+  // Reaching the door used to be the whole of it: a flash of "Mama's safe — for
+  // now" and straight back to the gas cans, with the question nolantis.js asked
+  // ("Find out who threatened my mother") left hanging. It is answered here —
+  // klan.js runs the night ride from this point, and it is the last beat of Act
+  // One. If the Klan module is not wired (QA harnesses that build a bare world),
+  // this falls back to the old line rather than stranding the player.
   function reachedMama() {
-    phase = "done";
+    phase = "arrived";
     if (marker) marker.visible = false;
     ctx.setObjective(null);
+    if (ctx.nightRide && ctx.nightRide(() => { phase = "done"; })) return;
+    phase = "done";
     ctx.flashObjective("Mama's safe — for now. For now: gas cans, and the truck.");
   }
 
@@ -487,6 +495,9 @@ export function createActOne(ctx) {
       ctx.setObjective("Go home to South Tusouxroe — Mama's house, north-east of the strip.");
       ctx.flashObjective("ACT ONE — Welcome Home");
     },
+
+    /** QA hook: run the Act One closer (the night ride) from wherever you are. */
+    nightRide() { return reachedMama(); },
 
     /** QA hooks for tools/qa/actone.mjs: "arrive" | "door". */
     debug(step) {

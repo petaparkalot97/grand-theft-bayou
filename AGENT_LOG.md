@@ -40,6 +40,45 @@ setup existed (TASK-001 … TASK-009).
 
 ## 2026-09-20 — Claude
 
+### TASK-066 (cont.) — NIGHT RIDE, and where to put a fire
+
+**The story questions are answered** (human, 2026-09-20), and they are load-
+bearing for anything built on top: **Mercer is leaned on, not one of them;
+Emiko survives but loses the house; the arc threads through both acts.** The
+night ride is now Act One's last beat and Act Two's opening card.
+
+**WARNING — check how tall the building actually is before you set it on
+fire.** `klan.js`'s `houseOnFire()` put its flames at y 3.4, which is eaves
+height for most things and is *inside* `actone.js`'s house: `house()` runs walls
+from 0.6 to 4.0 and lays the pitched roof slabs at about y 5.0. The whole fire
+burned in the front room. The only symptom was a warm glow on the lawn and a
+`fires: 2` count that said everything was fine. Flames now sit at y ~6.0 and
+smoke from 8.4.
+
+**WARNING — the gameplay camera cannot frame a tall thing up close.** It sits
+behind the player and pitches down. Standing her 13 m from the burning house put
+the roof fire above the top of the screen; backing up to 24 m made the house a
+speck and did not raise it into frame, because backing up does not change the
+pitch. If a beat has to *show* something, hold a `cine.shot` on it and release
+the camera afterwards — that is what the shot system is for. Three screenshots
+were spent learning this.
+
+**Where the mission hooks in:** `actone.js`'s `reachedMama()` calls
+`ctx.nightRide(onDone)` (wired in `main.js` to `klan.nightRideOnMamas`) and
+falls back to the old "Mama's safe — for now" line if it is not wired, so bare
+QA worlds still work. `actOne.nightRide()` is the QA hook to run the beat from
+anywhere. `klan.missionPhase` reports `opening | fight | cleared | aftermath |
+done`.
+
+**Emiko is never staged outside.** She lives in a sealed kitchen 40 m under the
+street (`actone.js` `ROOM_Y = -40`), so bringing her onto the lawn would mean
+lifting her out of the room and putting her back. She speaks through the door as
+`EMIKO (O.S.)` instead, which is also simply the better scene.
+
+**`teleportPlayer(x, z, heading)` now exists in `main.js`** as a hoisted
+function. The district modules each carry their own inline copy in their ctx;
+this is the one the module-scope systems (created before `boot()` runs) can use.
+
 ### TASK-066 — the Klan, and four ways a headless test can lie to you
 
 Everything below cost a real amount of time to find, and every one of them made
