@@ -56,6 +56,7 @@ const box = (w, h, d) => geo(`b${w}|${h}|${d}`, () => new THREE.BoxGeometry(w, h
 const cyl = (rt, rb, h, seg = 10) =>
   geo(`c${rt}|${rb}|${h}|${seg}`, () => new THREE.CylinderGeometry(rt, rb, h, seg));
 const sph = (r, w = 12, h = 10) => geo(`s${r}|${w}|${h}`, () => new THREE.SphereGeometry(r, w, h));
+const cone = (r, h, seg = 12) => geo(`n${r}|${h}|${seg}`, () => new THREE.ConeGeometry(r, h, seg));
 /** The top of a sphere, down to polar angle `theta` (a skull cap with a level rim). */
 const capGeo = (r, theta) => geo(`cap${r}|${theta}`, () => new THREE.SphereGeometry(r, 14, 10, 0, Math.PI * 2, 0, theta));
 const torus = (r, t, seg = 10, rings = 16) =>
@@ -628,6 +629,42 @@ class Hoodrat extends THREE.Object3D {
       }
     }
 
+    // ---- the robe ------------------------------------------------------
+    // opts.robe: a hooded robe pulled on over whatever the body is already
+    // wearing (klan.js). Built here rather than bolted on afterwards so it goes
+    // through mergeRigid below with everything else — a robed man is then the
+    // same handful of draw calls as an unrobed one. The clothes underneath are
+    // left in place: the robe is opaque and covers them, and not building them
+    // would mean a second body branch to keep in step with this one forever.
+    if (opts.robe) {
+      const cloth = mat("cloth", opts.robeColor != null ? opts.robeColor : 0xe8e4d8);
+      const slit = mat("cloth", 0x14110e);
+      // body and skirt. The skirt hangs off the hips, not the legs, so it
+      // swings with the walk instead of scissoring with it — and it stops above
+      // the boots, which is what actually sells the stride.
+      const chest = add(torso, cyl(0.245 * bulk, 0.305 * bulk, 0.64, 14), cloth, 0, 0.30, 0);
+      chest.scale.z = 0.9;
+      const skirt = add(hips, cyl(0.30 * bulk, 0.45 * bulk, 0.66, 14), cloth, 0, -0.36, 0);
+      skirt.scale.z = 0.92;
+      // the cape over the shoulders
+      const cape = add(torso, cyl(0.215 * bulk, 0.315 * bulk, 0.2, 14), cloth, 0, 0.56, 0);
+      cape.scale.z = 0.92;
+      // wide sleeves, flaring at the cuff
+      for (const a of this.arms) {
+        add(a.pivot, cyl(0.085 * bulk, 0.1 * bulk, 0.29, 9), cloth, 0, -0.13, 0);
+        add(a.elbow, cyl(0.092 * bulk, 0.125 * bulk, 0.27, 9), cloth, 0, -0.12, 0);
+      }
+      // the hood: a tall point over the whole head, and two slits where a face
+      // would be. No emblem, no lettering — the anonymity is the costume.
+      const hood = add(head, cone(0.163, 0.5, 12), cloth, 0, 0.17, 0);
+      hood.scale.z = 0.94;
+      add(head, cyl(0.15, 0.165, 0.12, 12), cloth, 0, -0.055, 0);        // the skirt of the hood
+      for (const side of [-1, 1]) {
+        const eye = add(head, box(0.036, 0.019, 0.02), slit, side * 0.043, 0.055, 0.129);
+        eye.rotation.x = 0.08;
+      }
+    }
+
     // ---- finish --------------------------------------------------------
     this.blob = contactShadow(0.3);
     this.add(this.blob);
@@ -978,6 +1015,40 @@ export function randomRedneck(rng = Math.random, height, opts = {}) {
     plaidBase, plaidLine,
     headwear: rng() < 0.6 ? "cap" : "none",
     shoe: "boots",
+    height,
+    ...opts,
+  });
+}
+
+// Klan robe whites. Mostly the same laundered off-white, because a crowd of
+// them is meant to read as one thing with no faces in it; the darker creams are
+// robes that have seen more nights out. `officer` picks the crimson one — the
+// one giving the orders, so a mission can point at him without a health bar.
+const ROBE_WHITES = [0xeae6da, 0xe8e4d8, 0xe2ddcf, 0xdcd6c6, 0xefece2];
+const ROBE_OFFICER = 0x7d1f22;
+
+/**
+ * A klansman: the redneck body under a hooded robe (see `opts.robe` in the
+ * constructor). Same rig, same animations, same enemy interface as every other
+ * NPC — main.js spawns and kills one exactly like a Redneck.
+ *
+ * They are built as a separate factory rather than a `randomRedneck` option so
+ * the spawn tables can keep them out of ordinary daytime free roam: see
+ * klan.js, which is the only thing that should be calling this.
+ */
+export function randomKlansman(rng = Math.random, height, opts = {}) {
+  return new Hoodrat({
+    sex: "m",
+    crew: { cloth: 0x5a4a34, chain: 0x8a8a8a, shoe: 0x2b2018 },
+    seed: (rng() * 1e9) | 0,
+    yaw: rng() * Math.PI * 2,
+    skin: REDNECK_SKIN[(rng() * REDNECK_SKIN.length) | 0],
+    denim: REDNECK_DENIM[(rng() * REDNECK_DENIM.length) | 0],
+    headwear: "none",
+    shoe: "boots",
+    beard: false,                 // nothing of him shows; the hood is the face
+    robe: true,
+    robeColor: opts.officer ? ROBE_OFFICER : ROBE_WHITES[(rng() * ROBE_WHITES.length) | 0],
     height,
     ...opts,
   });

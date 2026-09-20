@@ -168,14 +168,16 @@ should merge cleanly; if it touched `cemetery(b)`, take this version.
 
 ### TASK-066 — Keseme vs. the Klan: who actually came after her mother (human request, 2026-09-20)
 
-**Status:** `READY` · **Agent:** `UNASSIGNED`
+**Status:** `REVIEW` (the machinery and the night ride; the mission arc is still
+`READY` — see *What remains*) · **Agent:** Claude
 **Files / subsystem:**
 - `src/klan.js`                (new — the faction and its set pieces)
-- `src/characters.js`          (edit — robed/hooded look on the existing rig)
-- `src/factions.js`            (edit — a third faction in the turf logic)
-- `src/main.js`                (Claude only — spawn table, wiring)
-- `src/spawnzones.js`          (edit — where they turn out, and when)
-- `src/voiceCast.js`, `TODO.md`, `AGENT_LOG.md`
+- `src/characters.js`          (the robe, built into the rig behind `opts.robe`)
+- `src/factions.js`            (a third side in the turf logic)
+- `src/npc.js`                 (temperament: a klansman never runs)
+- `src/actone.js`              (exports Emiko's house so the ride stages on it)
+- `src/main.js`                (spawn table, wiring)
+- `tools/qa/klan.mjs`          (new — headless walkthrough)
 
 **Dependencies:** none blocking. Reads on TASK-035 (faction warfare, COMPLETE)
 and the Act One / Nolantis story files.
@@ -224,6 +226,73 @@ one that is already running.
 **Out of scope:** real-world names, real organisations, recruitment language, or
 anything that reads as their case rather than as Keseme's. They are the
 antagonist: hooded, anonymous, and beaten.
+
+---
+
+**What was built (2026-09-20):**
+
+1. **The look.** `opts.robe` on the `characters.js` rig: a hooded robe over the
+   redneck body — chest, skirt off the hips (so it swings with the walk instead
+   of scissoring with the legs, and stops above the boots so the stride still
+   reads), shoulder cape, wide flaring sleeves, and a tall pointed hood with two
+   slits. No emblem, no lettering. Built inside the constructor so it goes
+   through `mergeRigid` with everything else — a robed man costs the same draw
+   calls as an unrobed one. `randomKlansman(rng, height, { officer })` picks a
+   laundered off-white, or the crimson robe for the one giving the orders, so a
+   mission can point at him without a health bar.
+2. **`src/klan.js`.** `nightRide({x, z, count, why, onClear})` stages the set
+   piece: a cross goes up and lights, the mob comes out of the dark and comes
+   for whoever is standing there, and the beat ends when the last of them is
+   down — the cross burns out and the charred timber stays.
+   `mamaNightRide()` runs it on Emiko's lawn. `callOut(x, z, n, {provoke})`
+   places them without the staging, `provoke: false` for a picket standing
+   there before it kicks off. `burningCross` / `burnOut` are separately
+   available for a mission that wants the threat without the fight.
+3. **They are not street population.** `klansman` is in `ENEMY_TYPES` but in no
+   `spawnzones.js` mix, so nothing spawns one on its own — only klan.js does.
+4. **Three-sided turf.** `factions.js` now carries an `ENEMIES_OF` table instead
+   of the hardcoded redneck/hoodrat pair. Hoodrats fight klansmen on sight;
+   **Rednecks do not**, which is the point. A klansman is exempt from the
+   contested-ground gate (he is wherever a set piece put him, not on the turf
+   map) and can be a turf *target* while already fighting the player, but never
+   an instigator.
+5. **`npc.js`:** klansmen are never `timid`. The ordinary temperament roll made
+   two thirds of any night ride scatter on first contact, which is a different
+   scene from the one being written.
+
+**Testing performed** (headless Chromium, `tools/qa/klan.mjs`, screenshots in
+the scratchpad — SwiftShader, so fps is meaningless and is not reported):
+- **Never ambient:** six stops across the parish at 02:00 with the spawner
+  running, ~60 NPCs alive at each — **0 klansmen** at every one.
+- **The night ride:** 6 turn out on Emiko's lawn at (100, -101.9), **all 6
+  hostile, 0 fleeing**, one crimson officer, objective set, cross light live at
+  ~97 power.
+- **It ends itself:** killing the mob clears the ride (`running false`,
+  `hasRide false`) and prints *"They're down. Nobody came. Nobody was ever going
+  to come."* The cross then burns out — flame invisible, light at **0**, timber
+  still standing.
+- **Turf, both directions:** an unprovoked klansman and a Hoodrat 3.8 m apart
+  square up — 1 Hoodrat targeting a klansman and 1 klansman targeting the
+  Hoodrat. A Redneck standing **1.5 m** from a klansman: **0 and 0**, never
+  engages. The asymmetry works.
+- Re-ran `tools/qa/cemetery.mjs` afterwards: no regression (walker still
+  reaches her tomb at 13,904 cells, car still stuck at 673, offering and
+  gunshot reactions unchanged).
+- No new console errors beyond the pre-existing sixtwelve 404s / tacos-burgerpiz
+  403s.
+
+**One bug fixed in klan.js on the way:** a burnt-out cross put its light back
+on. The burn-out ramp cleared its own flag when it finished, so the flicker
+resumed the next frame over an invisible flame. It now latches `spent`.
+
+**What remains — this is the machinery, not the story:**
+- **No mission yet.** Nothing in the game calls `mamaNightRide()`: it is
+  reachable from `__game.klan` for QA and ready for a mission to fire. The
+  three narrative questions below still need the human's answer before anyone
+  writes one.
+- No voice for them; no vehicles (the ride has no trucks arriving yet); no
+  reaction from the Sheriff's department to a night ride happening.
+- They have no dialogue beyond Keseme's two lines when the cross lights.
 
 **Notes / decisions the human may want to make first:**
 1. **How far up does it go?** Is Sheriff Mercer one of them, or leaned on by
@@ -3338,7 +3407,8 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Antigravity | TASK-038 | Locked — `orlearouge.js` taken briefly for TASK-065 (3 lines + an import; see the task) |
 | `src/cemetery.js` (new), `tools/qa/cemetery.mjs` (new) | Claude | TASK-065 (REVIEW) | Available |
 | `src/voiceCast.js` | All agents | Speaker to voice map | Shared |
-| `src/klan.js` (new) | — | TASK-066 (READY) | Available |
+| `src/klan.js` (new), `tools/qa/klan.mjs` (new) | Claude | TASK-066 (REVIEW) | Available |
+| `src/npc.js` | — | TASK-066 (temperament only) | Available |
 | `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
 | `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |
 | `src/stateWorld.js`, `src/tusouxroeNorth.js` | Antigravity (unclaimed — see AGENT_LOG) | State-wide expansion | Unclaimed, fixes by Freebuff and Claude (TASK-041) applied |

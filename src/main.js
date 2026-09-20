@@ -18,11 +18,11 @@ import { bumpLine, fightLine } from "./pedestrianChatter.js";
 import { pedestrianVoiceWho } from "./voiceCast.js";
 import { createCameraController } from "./camera.js";
 import { createTraffic } from "./traffic.js";
-import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian } from "./characters.js";
+import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian, randomKlansman } from "./characters.js";
 import { createCinema } from "./cinema.js";
 import { createPrologue, makeCastMember, PROLOGUE_KEEPOUT } from "./prologue.js";
 import { createMissionClinic } from "./missionClinic.js";   // unused: see missionClinic below
-import { createActOne } from "./actone.js";
+import { createActOne, NADIA_DOOR } from "./actone.js";
 import { createOrleaRouge } from "./orlearouge.js";
 import { createPotholes } from "./potholes.js";
 import { createBlueLight } from "./bluelight.js";
@@ -48,6 +48,7 @@ import { createWelcomeBack } from "./welcomeback.js";
 import { ROUTE_EAST, CRASH } from "./prologue.js";
 import { createSpawnZones } from "./spawnzones.js";
 import { createFactionWar } from "./factions.js";
+import { createKlan } from "./klan.js";
 import { createTusouxroeNorth, NORTH_MIN_Z } from "./tusouxroeNorth.js";
 import { createWestParish, onParishHighway, PARISH_MIN_X } from "./westparish.js";
 import { createPlayerCharacter, getPlayerCharacter, PLAYER_CHARACTERS } from "./playerCharacters.js";
@@ -1426,6 +1427,11 @@ const ENEMY_TYPES = {
             h: 1.86, hp: 4, speed: 3.9, aggro: 20, melee: 1.8, dmg: 6, atkGap: 1.1 },
   lesbian: { label: "Lesbian", kind: "lesbian", tint: 0x9b5de5,
              h: 1.78, hp: 4, speed: 3.8, aggro: 22, melee: 1.8, dmg: 7, atkGap: 1.0 },
+  // klan.js only. Deliberately absent from every spawnzones.js mix: they are a
+  // set piece that turns out at night, never ambient street population. Tougher
+  // and slower than a Redneck — they come in a group and they do not scatter.
+  klansman: { label: "Klansman", kind: "klansman", tint: 0xe8e4d8,
+              h: 2.0, hp: 9, speed: 3.7, aggro: 30, melee: 2.0, dmg: 13, atkGap: 1.0 },
 };
 
 function buildHog() {
@@ -1504,6 +1510,18 @@ const spawnZones = createSpawnZones({
 // Rednecks and Hoodrats leave each other alone on their own turf; where the turfs
 // meet (spawnzones.js border zones) they fight, near the player (factions.js).
 const factionWar = createFactionWar({ npcs, spawnZones });
+// Who actually threatened Keseme's mother (klan.js). Nothing here spawns on its
+// own: a story beat or `__game.klan.nightRide(...)` has to call them out.
+const klan = createKlan({
+  scene, state, playerPos, cine, enemies, npcs,
+  spawnEnemy, killEnemy, addBlocker, poolLight, flashObjective,
+  setObjective: setStoryObjective,
+  isNight: () => worldTime.isNight(),
+  worldTime,
+  // the strip of lawn between Emiko's door and the street — where the call
+  // from nolantis.js was always pointing
+  mamaLawn: { x: NADIA_DOOR.x, z: NADIA_DOOR.z - 4.6 },
+});
 
 function spawnEnemy(typeName, x, z, spot = null) {
   const T = ENEMY_TYPES[typeName];
@@ -1518,6 +1536,10 @@ function spawnEnemy(typeName, x, z, spot = null) {
     view = randomGayMan(rng, T.h);
   } else if (T.kind === "lesbian") {
     view = randomLesbian(rng, T.h);
+  } else if (T.kind === "klansman") {
+    // `spot.officer`: the one in the crimson robe, so a mission can point at
+    // whoever is giving the orders without putting a health bar over him
+    view = randomKlansman(rng, T.h, spot && spot.officer ? { officer: true } : {});
   } else if (T.kind === "actor") {
     view = randomHoodrat(rng, T.h);
   } else {
@@ -2983,6 +3005,7 @@ function tick() {
     if (prologue) prologue.update(dt);
     if (actOne) actOne.update(dt);
     if (orlea) orlea.update(dt);
+    klan.update(dt);
     services.update(dt);
     nightlife.update(dt);
     tips.update(dt);
@@ -3832,6 +3855,7 @@ async function boot() {
     ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
     ...services.props, ...nightlife.props,      // garage doors, markers, club cutaways: they move
     ...(orlea ? orlea.props : []),              // Marie Laveau's ghost, drifting the cemetery alleys
+    ...klan.props,                              // the cross burns and goes out: it cannot be baked in
     ...(missionClinic ? missionClinic.props : []),
     ...(prologue ? prologue.props : []),
     ...(blueLight ? blueLight.props : []),
@@ -3876,7 +3900,7 @@ async function boot() {
       player.position.set(x, 0, z);
       player.visible = true;
       if (player._last) player._last.copy(player.position);
-    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
+    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, klan, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
     get playerMoveHeading() { return playerMoveHeading; },
     get soundtrack() { return soundtrackReady; } };
   // the radar's base map, from the level as built

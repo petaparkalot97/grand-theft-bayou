@@ -21,6 +21,12 @@ export const NB = { x: 92, z: -100 };            // South Tusouxroe
 const STREET_Z = -106;
 const HOME = { x: 100, z: -93, w: 9, d: 8 };      // the Nadia house (door faces the street)
 const DOOR = { x: HOME.x, z: HOME.z - HOME.d / 2 - 0.3 };
+// Emiko's house and her front door, exported because the threat in
+// nolantis.js — "Your mother's house is very pretty" — is about THIS house, and
+// klan.js has to be able to stage a night on its lawn without a second copy of
+// these numbers drifting out of step with them.
+export const NADIA_HOME = HOME;
+export const NADIA_DOOR = DOOR;
 const ROOM_Y = -40;
 
 function basic(color, extra = {}) {

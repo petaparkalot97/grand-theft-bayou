@@ -40,6 +40,116 @@ setup existed (TASK-001 … TASK-009).
 
 ## 2026-09-20 — Claude
 
+### TASK-066 — the Klan, and four ways a headless test can lie to you
+
+Everything below cost a real amount of time to find, and every one of them made
+a working system look broken. If you are writing a `tools/qa/*.mjs` that drives
+combat, read this first.
+
+**1. A dead player stops the whole game, silently.** `main.js`'s `tick()` runs
+`simulate(dt)` only `if (state.running && !state.over)`. Death goes through
+`endScreen()`, which sets `state.running = false`. Every module update lives
+inside `simulate` — `klan.update`, the NPC think ticks, `factionWar.update`,
+`orlea.update`. So once Keseme dies, a QA script keeps taking readings of a
+frozen world and they all look like logic failures: a mob that "never turns
+hostile", a set piece that "never clears", a faction rule that "never fires".
+A six-strong hostile mob kills her in well under a minute. **Heal on an
+interval** (`tools/qa/klan.mjs`'s `survive()` does 100 HP every 700 ms) and
+assert `state.running` in every snapshot. Healing afterwards does not undo it.
+
+**2. Esc pauses the game.** `simulate` is also gated on `!state.paused`, and Esc
+toggles the pause menu. Scripts that spam Esc to clear cutscenes — the obvious
+thing to do, and what the first version of both new QA scripts did — pause the
+run instead. A live, provoked, six-strong mob then reads as six idle men with
+`hostileCount: 0`. Press Esc **only while `__game.cine.active`**, and set
+`state.paused = false` before measuring.
+
+**3. Killing NPCs in bulk trips the heat escalation cutscene**, and a cutscene
+pauses the sim for the same reason. Any mass-kill in a script needs a
+cutscene-clear after it.
+
+**4. A turf fight is over in seconds, so poll — do not take one late snapshot.**
+`factions.js` also needs both parties within `WATCH_RANGE` (60 m) **of the
+player**; NPCs wander, and a staging that starts at 42 m can drift past 60 and
+silently stop being considered. `tools/qa/klan.mjs` polls 14 times and keeps
+the high-water mark.
+
+A fifth, specific to this parish: **do not stage a Hoodrat test in South
+Tusouxroe.** The residential mix there is 60% Redneck, and two Hoodrats dropped
+in to test something else were simply jumped by the ambient turf war before the
+measurement ran (`rivalsAlive: 0`). Stage turf tests somewhere neutral.
+
+### INTERFACE — `src/klan.js`
+
+`createKlan(ctx)` → `{ update(dt), nightRide(o), mamaNightRide(onClear),
+callOut(x, z, n, o), burningCross(x, z, ry), burnOut(rec, secs), stop(o),
+running, ready, props, debug }`.
+
+`ctx` from `main.js`: `scene, state, playerPos, cine, enemies, npcs,
+spawnEnemy, killEnemy, addBlocker, poolLight, flashObjective, setObjective,
+isNight(), worldTime, mamaLawn`.
+
+- `nightRide({x, z, ry, count, why, onClear})` — the set piece. Idempotent while
+  one is running. Ends itself when the last of the mob is down.
+- `callOut(x, z, n, { radius, officer, provoke })` — bodies on the ground.
+  **`provoke: false` matters:** a klansman already swinging at the player can
+  never be a turf-fight instigator in `factions.js`, and a provoked mob of six
+  saturates `MAX_HOSTILE` (7) so no turf fight can start at all. Anything
+  testing or staging turf behaviour wants them unprovoked.
+- `props` must stay in `main.js`'s `moving` set — the cross burns and goes out.
+
+`actone.js` now exports `NADIA_HOME` and `NADIA_DOOR`, so the ride stages on
+Emiko's real house instead of a second copy of those coordinates.
+
+### DECISION — a third faction, and the asymmetry is the content
+
+`factions.js` had `redneck` vs `hoodrat` hardcoded in two places. It now carries
+a table:
+
+```js
+const ENEMIES_OF = {
+  redneck:  new Set(["hoodrat"]),
+  hoodrat:  new Set(["redneck", "klansman"]),
+  klansman: new Set(["hoodrat"]),
+};
+```
+
+Hoodrats fight klansmen on sight; **Rednecks do not**, and that asymmetry is
+deliberate — in this parish those are the same people with the hoods off. Two
+carve-outs go with it: a klansman skips the contested-ground check (he is
+wherever a set piece put him, not on the turf map), and he can be a turf
+*target* while hostile at the player without being re-pointed off her.
+
+Verified both ways: an unprovoked klansman and a Hoodrat 3.8 m apart square up;
+a Redneck standing 1.5 m from one never does.
+
+### WARNING — a burn-out ramp that clears its own flag turns back on
+
+`klan.js`'s cross faded out over 4 s and then set `out = 0` to mark it done.
+The next frame saw `out === 0`, skipped the ramp, and ran the ordinary flicker
+again — so a burnt-out cross put its pooled light straight back on underneath an
+invisible flame. Latch a separate `spent` flag instead. The same shape will
+catch anyone writing a one-shot ramp over a per-frame effect.
+
+### DISCOVERY — `opts.robe`, and why it is inside the constructor
+
+`characters.js` ends its constructor with `mergeRigid(this, [hips, torso,
+...arms, ...legs])`, which bakes every part riding a joint into one mesh per
+material. **Anything added to the rig after construction misses that merge** and
+costs its own draw calls forever. The robe is therefore built inside the
+constructor behind `opts.robe`, not bolted on by `klan.js` afterwards — a robed
+man is the same handful of draw calls as an unrobed one.
+
+The clothes underneath are left in place rather than branching the body build:
+the robe is opaque and covers them, and a second body branch would need keeping
+in step with the first one forever. The skirt hangs off `hips`, not the legs, so
+it swings with the walk instead of scissoring with it, and it stops above the
+boots — which is what actually sells the stride.
+
+---
+
+## 2026-09-20 — Claude
+
 ### TASK-065 — the cemetery, and two bugs it dragged out with it
 
 **WARNING / FAILED ASSUMPTION — firing has been dead in this build.**
