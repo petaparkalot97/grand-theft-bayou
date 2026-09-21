@@ -77,7 +77,9 @@ export function skyState(hour) {
   const golden = clamp01(1 - Math.abs(elevation - 4) / 12) * (1 - night * 0.5);   // low sun, warm
 
   const lightColor = mixHex(mixHex(MOON_LIGHT, DAWN_LIGHT, ramp(elevation, -7, 3)), DAY_LIGHT, day);
-  const lightIntensity = lerp(1.9, 4.6, day) * lerp(1, 0.55, night);
+  // Keep the day/night key below the PBR probe and local lights; the previous
+  // range made pale walls and roads clip, especially around OrleaRouge lamps.
+  const lightIntensity = lerp(1.35, 3.2, day) * lerp(1, 0.55, night);
   return {
     elevation, azimuth, day, golden, night,
     lightColor,
@@ -85,18 +87,18 @@ export function skyState(hour) {
     hemiSky: mixHex(NIGHT_SKY, DAY_SKY, day),
     hemiGround: mixHex(NIGHT_GROUND, DAY_GROUND, day),
     // less fill by day: the sun is doing the work, and its shadows should show
-    hemiIntensity: lerp(0.85, 0.85, day),
+    hemiIntensity: lerp(0.62, 0.62, day),
     // the probe is dark at night, so it gets turned up to keep an ambient term;
     // in daylight it is already bright and 1.0 is plenty
-    envIntensity: lerp(0.9, 2.4, night),
-    bgIntensity: lerp(1.0, 0.85, night),
+    envIntensity: lerp(0.65, 1.5, night),
+    bgIntensity: lerp(0.72, 0.62, night),
     fogColor: mixHex(mixHex(NIGHT_FOG, DAY_FOG, day), GOLDEN_FOG, golden * 0.75),
     fogDensity: lerp(0.0011, 0.0032, night),
     mist: lerp(0.006, 0.062, night),             // ground mist is a night thing
     lampsOn: night,                              // street lamps, shop glow, headlights
     // The filmic exposure was tuned for a night game; daylight through the same
     // 1.55 blows the sky and every pale wall out to white.
-    exposure: lerp(0.85, 1.55, night),
+    exposure: lerp(0.78, 1.18, night),
     turbidity: lerp(6, 3.4, day),
     rayleigh: lerp(2.4, 1.6, day),
     // the filmic grade (graphics.js): daylight wants contrast and colour, night

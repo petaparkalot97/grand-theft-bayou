@@ -194,7 +194,9 @@ const CAM_OFFSET = new THREE.Vector3(0, 15, 15);
 // carries enough light to read a surface, rather than pitch black.
 const env = createEnvironment(scene, renderer, {
   elevation: -1.8, azimuth: 196, turbidity: 4.5, rayleigh: 3.4,
-  environmentIntensity: 2.4, backgroundIntensity: 1.0,
+  // Keep the global fill restrained; street lamps and neon should provide the
+  // readable pools of light rather than washing every surface equally.
+  environmentIntensity: 1.5, backgroundIntensity: 0.72,
 });
 
 const composer = await createComposer(renderer, scene, camera);
@@ -216,11 +218,11 @@ addEventListener("resize", () => {
 // ---------------------------------------------------------------- lights
 // The IBL probe carries the ambient term now, so these are just the two key
 // lights: hard moonlight, and a very low warm bounce off the ground haze.
-const hemi = new THREE.HemisphereLight(0x4a6a8c, 0x2a2c1c, 0.85);
+const hemi = new THREE.HemisphereLight(0x4a6a8c, 0x2a2c1c, 0.62);
 scene.add(hemi);
 // The key light: the sun by day, the moon at night — daycycle.js says which, what
 // colour, how strong, and where in the sky (the variable keeps its old name).
-const moon = new THREE.DirectionalLight(0xc8d8ff, 2.8);
+const moon = new THREE.DirectionalLight(0xc8d8ff, 1.8);
 moon.position.set(-40, 60, -20);
 moon.castShadow = true;
 moon.shadow.mapSize.set(GFX.preset.shadow, GFX.preset.shadow);
@@ -434,7 +436,9 @@ function updateLightPool(dt, focus) {
     l.color.setHex(sp.warm);
     l.distance = sp.range;
     // fade the outermost lights in rather than popping them on
-    l.intensity = sp.power * THREE.MathUtils.smoothstep(90 * 90 - sp.d, 0, 30 * 30) * (sp.fx === false ? 1 : lampPower);
+    // Street lamps are accent lighting, not a second sun. Keep authored
+    // interior/fire lights at full strength, but soften pooled lamp spill.
+    l.intensity = sp.power * THREE.MathUtils.smoothstep(90 * 90 - sp.d, 0, 30 * 30) * (sp.fx === false ? 1 : lampPower * 0.72);
   }
 }
 
