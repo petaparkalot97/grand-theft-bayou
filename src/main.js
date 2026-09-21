@@ -4059,6 +4059,7 @@ async function boot() {
     player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
     ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
     ...services.props, ...nightlife.props,      // garage doors, markers, club cutaways: they move
+    ...casinos.props,                           // casino roof/sign cutaways, wall scale, the roulette table and the slots all animate in casinos.update()
     ...(orlea ? orlea.props : []),              // Marie Laveau's ghost, drifting the cemetery alleys
     ...klan.props,                              // the cross burns and goes out: it cannot be baked in
     ...(newton ? newton.props : []),            // he and his table are only there at dawn

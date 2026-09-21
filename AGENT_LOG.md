@@ -86,6 +86,25 @@ is harder to get rid of"). The mechanics came first and the dialogue was written
 to them. If someone rewrites the lines, the mechanics stop being explained
 anywhere.
 
+### Merge catch, 2026-09-21 — casinos.js was about to be frozen solid
+
+`src/casinos.js` arrived in a merge exposing `get props()`, and `main.js`'s
+`moving` set did not list it. Every other module with props is in there. Its
+`update()` hides `c.roof` and `c.sign` for the walk-in cutaway, eases
+`c.walls[].scale.y`, spins `c.table` and bobs the slot machines — so
+`batchStatic` would have merged all of it into static batches at boot and the
+casinos would have been sealed boxes with a frozen roulette wheel.
+
+Caught by reading the new module's `update()` against the `moving` set rather
+than by anything failing: **nothing throws when this happens.** The geometry is
+still on screen and still correct — it simply stops responding, which is the
+worst kind of bug to find later.
+
+Verified after adding `...casinos.props`: 6 casino groups holding 114 individual
+meshes, **0** of them merged. If you add a module with a `props` getter, add it
+to `moving` in the same commit, and if its props are a mix of static and moving
+parts, split the getter rather than excluding the whole district from batching.
+
 ### TASK-069 — the renderer was never the problem
 
 Recorded because it will come up again: this project's post chain is
