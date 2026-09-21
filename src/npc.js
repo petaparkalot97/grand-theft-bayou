@@ -32,6 +32,11 @@ export const DEFAULT_AGGRESSION = 0;
 function temperament(type) {
   const r = Math.random();
   if (type === "hog") return r < 0.4 ? "territorial" : "skittish";
+  // klan.js: they arrive as a mob, at night, to frighten somebody. A hood that
+  // turns and runs the moment it is faced is a different scene from the one
+  // being written, so they are never timid — the rest of the temperament roll
+  // would have made two thirds of any night ride scatter on first contact.
+  if (type === "klansman") return "brave";
   if (type === "redneck") return r < 0.5 ? "brave" : "timid";
   return r < 0.35 ? "brave" : "timid";
 }
@@ -437,6 +442,15 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
 
     /** The player hurt this NPC directly. */
     provoke(e) { e.provoked = true; e.think = 0; },
+
+    /**
+     * Send one NPC running from a point, bookkeeping included — `flee` already
+     * did this internally and nothing outside could reach it. cemetery.js uses
+     * it when Marie Laveau breaks a night ride on her own ground; setting
+     * `e.state = "flee"` by hand instead would leak the `hostiles` counter and
+     * slowly starve MAX_HOSTILE.
+     */
+    scatter(e, fromX, fromZ) { flee(e, fromX, fromZ); },
 
     beginFrame(dt) { now += dt; frame++; },
 

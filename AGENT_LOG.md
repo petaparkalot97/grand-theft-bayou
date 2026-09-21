@@ -69,6 +69,379 @@ I have implemented items 2 and 5 of TASK-053:
   See TASK-062 in `TODO.md`. Next step is live testing in-browser to feel the AI's creativity on varying chunks.
 
 ## 2026-09-20 — Claude
+
+### TASK-067 (cont.) — the two arcs touch
+
+`newton.js` now takes `getKlanPhase()` from `main.js` (`klan.missionPhase`) and
+plays one scene when it reads `"done"`. That is the whole hook, and it is worth
+copying rather than inventing a new one: **a character reacting to a mission is
+a phase read plus a `saidX` flag**, not an event bus. `cinema.js` queues scenes,
+so firing it in the same tick as the greeting is safe — both play, in order.
+
+Design note so nobody trims it: his speech is the in-fiction explanation of the
+copwatch mechanic he already has ("we started with law books, followed the cars,
+stood where they could see us"), and its last beat is the explanation of the
+free breakfast ("a building burns in a night; a thing people need every morning
+is harder to get rid of"). The mechanics came first and the dialogue was written
+to them. If someone rewrites the lines, the mechanics stop being explained
+anywhere.
+
+### TASK-068 — two ghosts, two ways to deal with the police
+
+`cemetery.js` and `newton.js` both now do something about a wanted level, and
+they must not converge. The split:
+
+| | Marie Laveau | Huey Newton |
+|---|---|---|
+| trigger | heat, inside the cemetery walls, at night | heat, inside the schoolyard, at dawn |
+| effect | **instant and total** — pursuit cleared, heat 0 | **gradual** — 0.6 heat/s while you stand there |
+| fiction | consecrated ground; they do not come in here | somebody is watching and writing it down |
+| gate | `state.crimeCd` | `state.crimeCd` |
+
+Both respect `crimeCd`, which is the one thing they should share: neither of
+them covers for a crime still in progress. If a third character ever gets an
+opinion about the police, give it a third shape.
+
+**WARNING — `flashObjective` lines drown each other, and a per-tick condition
+will do it forever.** Marie's klan line was gated on a 12 s cooldown while any
+klansman was still inside the walls. They flee slowly, so she re-scolded every
+12 s indefinitely and every other line she has — Keseme being hurt, a bystander
+killed — was overwritten before it could be read. The fix is to mark the
+*subject* (`e._marieBroke`) rather than to time the *speaker*. Any "she reacts
+to X being present" wants the same treatment.
+
+**INTERFACE — `npc.js` now exports `scatter(e, fromX, fromZ)`.** It calls the
+existing internal `flee`, which was unreachable from outside. Do not set
+`e.state = "flee"` by hand: `setState` is what decrements the `hostiles` counter
+when leaving the hostile state, so bypassing it leaks a slot and slowly starves
+`MAX_HOSTILE` for the rest of the run.
+
+**QA note — read a `flashObjective` line by polling, not by sleeping.** A single
+read 1.6 s after the trigger reported `null` for a line that was in fact firing
+on the very next tick; polling every 300 ms found it immediately. `objTimer`
+gives a line 2.5 s, and any other line raised in between takes the slot, so a
+one-shot read of the HUD proves nothing either way.
+
+### TASK-067 — the second ghost, and how not to make it the first one again
+
+`newton.js` is the third module now built on the same pattern as `cemetery.js`
+(ghostify a `characters.js` rig, hover it on `baseY`, carry a `poolLight` with
+it, own a prompt element, join the interact chain). If a fourth comes along that
+pattern is worth extracting. What is worth writing down is the part that is
+**not** shared:
+
+Marie Laveau and Huey Newton could very easily have been the same content twice
+— a famous dead person who glows and hands you HP. What keeps them apart is that
+each has a different *verb*, a different *hour*, and a different *colour*:
+
+| | Marie Laveau | Huey Newton |
+|---|---|---|
+| where | St. Louis No. 1, OrleaRouge (south) | Willowbrook schoolyard (north) |
+| when | night | dawn, 05:00–08:30 |
+| light | cold blue, moonlight | warm amber, sunrise |
+| verb | an offering — **you pay her $20** | a breakfast — **it costs nothing** |
+| second verb | scolds you for firing a gun | drains your heat while he watches |
+
+The $20 / free contrast is deliberate and load-bearing: every heal in the game
+has a price on it, so the one that does not is the whole point of the character.
+Do not "balance" it by adding a cost.
+
+**WARNING — `state.wanted` is a display value, not a quantity.** `main.js` only
+derives it inside `if (copsActive())`, so anything keyed off `state.wanted > 0`
+does nothing until `state.forceCops` or `state.copsCalled` is set. Copwatch was
+written that way first and silently never fired. `state.heat` is the real
+number; `wanted` is `floor(heat / 1.4)` computed for the stars. Key gameplay off
+heat.
+
+**And `copsActive()` being false also stops the game's own heat decay**, which is
+why the QA's control case (70 m away) shows heat pinned at 5.6 rather than
+falling slowly. That made the contrast cleaner by accident, but it is worth
+knowing before someone reads that table as a bug.
+
+**Placement rationale, so nobody "fixes" it later:** he is in the north on
+purpose. Newton was born in Monroe and `README.md` says the game runs
+Chatham → Monroe → Ruston. Moving him to OrleaRouge because that is where the
+prettier geometry is would break the only reason he is in this game rather than
+some other one.
+
+### TASK-066 (cont.) — NIGHT RIDE, and where to put a fire
+
+**The story questions are answered** (human, 2026-09-20), and they are load-
+bearing for anything built on top: **Mercer is leaned on, not one of them;
+Emiko survives but loses the house; the arc threads through both acts.** The
+night ride is now Act One's last beat and Act Two's opening card.
+
+**WARNING — check how tall the building actually is before you set it on
+fire.** `klan.js`'s `houseOnFire()` put its flames at y 3.4, which is eaves
+height for most things and is *inside* `actone.js`'s house: `house()` runs walls
+from 0.6 to 4.0 and lays the pitched roof slabs at about y 5.0. The whole fire
+burned in the front room. The only symptom was a warm glow on the lawn and a
+`fires: 2` count that said everything was fine. Flames now sit at y ~6.0 and
+smoke from 8.4.
+
+**WARNING — the gameplay camera cannot frame a tall thing up close.** It sits
+behind the player and pitches down. Standing her 13 m from the burning house put
+the roof fire above the top of the screen; backing up to 24 m made the house a
+speck and did not raise it into frame, because backing up does not change the
+pitch. If a beat has to *show* something, hold a `cine.shot` on it and release
+the camera afterwards — that is what the shot system is for. Three screenshots
+were spent learning this.
+
+**Where the mission hooks in:** `actone.js`'s `reachedMama()` calls
+`ctx.nightRide(onDone)` (wired in `main.js` to `klan.nightRideOnMamas`) and
+falls back to the old "Mama's safe — for now" line if it is not wired, so bare
+QA worlds still work. `actOne.nightRide()` is the QA hook to run the beat from
+anywhere. `klan.missionPhase` reports `opening | fight | cleared | aftermath |
+done`.
+
+**Emiko is never staged outside.** She lives in a sealed kitchen 40 m under the
+street (`actone.js` `ROOM_Y = -40`), so bringing her onto the lawn would mean
+lifting her out of the room and putting her back. She speaks through the door as
+`EMIKO (O.S.)` instead, which is also simply the better scene.
+
+**`teleportPlayer(x, z, heading)` now exists in `main.js`** as a hoisted
+function. The district modules each carry their own inline copy in their ctx;
+this is the one the module-scope systems (created before `boot()` runs) can use.
+
+### TASK-066 — the Klan, and four ways a headless test can lie to you
+
+Everything below cost a real amount of time to find, and every one of them made
+a working system look broken. If you are writing a `tools/qa/*.mjs` that drives
+combat, read this first.
+
+**1. A dead player stops the whole game, silently.** `main.js`'s `tick()` runs
+`simulate(dt)` only `if (state.running && !state.over)`. Death goes through
+`endScreen()`, which sets `state.running = false`. Every module update lives
+inside `simulate` — `klan.update`, the NPC think ticks, `factionWar.update`,
+`orlea.update`. So once Keseme dies, a QA script keeps taking readings of a
+frozen world and they all look like logic failures: a mob that "never turns
+hostile", a set piece that "never clears", a faction rule that "never fires".
+A six-strong hostile mob kills her in well under a minute. **Heal on an
+interval** (`tools/qa/klan.mjs`'s `survive()` does 100 HP every 700 ms) and
+assert `state.running` in every snapshot. Healing afterwards does not undo it.
+
+**2. Esc pauses the game.** `simulate` is also gated on `!state.paused`, and Esc
+toggles the pause menu. Scripts that spam Esc to clear cutscenes — the obvious
+thing to do, and what the first version of both new QA scripts did — pause the
+run instead. A live, provoked, six-strong mob then reads as six idle men with
+`hostileCount: 0`. Press Esc **only while `__game.cine.active`**, and set
+`state.paused = false` before measuring.
+
+**3. Killing NPCs in bulk trips the heat escalation cutscene**, and a cutscene
+pauses the sim for the same reason. Any mass-kill in a script needs a
+cutscene-clear after it.
+
+**4. A turf fight is over in seconds, so poll — do not take one late snapshot.**
+`factions.js` also needs both parties within `WATCH_RANGE` (60 m) **of the
+player**; NPCs wander, and a staging that starts at 42 m can drift past 60 and
+silently stop being considered. `tools/qa/klan.mjs` polls 14 times and keeps
+the high-water mark.
+
+A fifth, specific to this parish: **do not stage a Hoodrat test in South
+Tusouxroe.** The residential mix there is 60% Redneck, and two Hoodrats dropped
+in to test something else were simply jumped by the ambient turf war before the
+measurement ran (`rivalsAlive: 0`). Stage turf tests somewhere neutral.
+
+### INTERFACE — `src/klan.js`
+
+`createKlan(ctx)` → `{ update(dt), nightRide(o), mamaNightRide(onClear),
+callOut(x, z, n, o), burningCross(x, z, ry), burnOut(rec, secs), stop(o),
+running, ready, props, debug }`.
+
+`ctx` from `main.js`: `scene, state, playerPos, cine, enemies, npcs,
+spawnEnemy, killEnemy, addBlocker, poolLight, flashObjective, setObjective,
+isNight(), worldTime, mamaLawn`.
+
+- `nightRide({x, z, ry, count, why, onClear})` — the set piece. Idempotent while
+  one is running. Ends itself when the last of the mob is down.
+- `callOut(x, z, n, { radius, officer, provoke })` — bodies on the ground.
+  **`provoke: false` matters:** a klansman already swinging at the player can
+  never be a turf-fight instigator in `factions.js`, and a provoked mob of six
+  saturates `MAX_HOSTILE` (7) so no turf fight can start at all. Anything
+  testing or staging turf behaviour wants them unprovoked.
+- `props` must stay in `main.js`'s `moving` set — the cross burns and goes out.
+
+`actone.js` now exports `NADIA_HOME` and `NADIA_DOOR`, so the ride stages on
+Emiko's real house instead of a second copy of those coordinates.
+
+### DECISION — a third faction, and the asymmetry is the content
+
+`factions.js` had `redneck` vs `hoodrat` hardcoded in two places. It now carries
+a table:
+
+```js
+const ENEMIES_OF = {
+  redneck:  new Set(["hoodrat"]),
+  hoodrat:  new Set(["redneck", "klansman"]),
+  klansman: new Set(["hoodrat"]),
+};
+```
+
+Hoodrats fight klansmen on sight; **Rednecks do not**, and that asymmetry is
+deliberate — in this parish those are the same people with the hoods off. Two
+carve-outs go with it: a klansman skips the contested-ground check (he is
+wherever a set piece put him, not on the turf map), and he can be a turf
+*target* while hostile at the player without being re-pointed off her.
+
+Verified both ways: an unprovoked klansman and a Hoodrat 3.8 m apart square up;
+a Redneck standing 1.5 m from one never does.
+
+### WARNING — a burn-out ramp that clears its own flag turns back on
+
+`klan.js`'s cross faded out over 4 s and then set `out = 0` to mark it done.
+The next frame saw `out === 0`, skipped the ramp, and ran the ordinary flicker
+again — so a burnt-out cross put its pooled light straight back on underneath an
+invisible flame. Latch a separate `spent` flag instead. The same shape will
+catch anyone writing a one-shot ramp over a per-frame effect.
+
+### DISCOVERY — `opts.robe`, and why it is inside the constructor
+
+`characters.js` ends its constructor with `mergeRigid(this, [hips, torso,
+...arms, ...legs])`, which bakes every part riding a joint into one mesh per
+material. **Anything added to the rig after construction misses that merge** and
+costs its own draw calls forever. The robe is therefore built inside the
+constructor behind `opts.robe`, not bolted on by `klan.js` afterwards — a robed
+man is the same handful of draw calls as an unrobed one.
+
+The clothes underneath are left in place rather than branching the body build:
+the robe is opaque and covers them, and a second body branch would need keeping
+in step with the first one forever. The skirt hangs off `hips`, not the legs, so
+it swings with the walk instead of scissoring with it, and it stops above the
+boots — which is what actually sells the stride.
+
+---
+
+## 2026-09-20 — Claude
+
+### TASK-065 — the cemetery, and two bugs it dragged out with it
+
+**WARNING / FAILED ASSUMPTION — firing has been dead in this build.**
+`main.js` had `input.onPress("fire", () => { if (state.running) fire(); })`, with
+a comment claiming "Space / LMB fires". There **is no `"fire"` action.**
+`input.js` dispatches `"aim"` on mouse button 2 and `"attack"` on button 0, and
+`DEFAULT_BINDINGS` has `jump: ["Space"]` and no `fire` at all. So the handler was
+registered under a name nothing ever raises, and `fire()` was unreachable: the
+player could not shoot a gun or swing a bat anywhere in the game.
+
+Measured before the fix, headless, with a pistol given and `window.__qaAim` set:
+LMB down/up → `state.fireCd 0`, ammo 50 (unchanged). Space → the same. After
+rebinding to `"attack"`: `state.fireCd 0.42`, ammo 49.
+
+Two lessons for anyone else in here:
+1. **`input.onPress` fails silently on an unknown action.** It just appends to a
+   handler list nobody reads. If you add a binding, add it to `DEFAULT_BINDINGS`
+   or use an action `input.js` actually dispatches (`aim`, `attack`,
+   `nextWeapon`, `prevWeapon`, or a bound key).
+2. **Playwright's `page.mouse.down()` does not reach the game.** The canvas/
+   pointer-lock setup swallows it. To drive firing from a QA script, dispatch it
+   yourself inside the page:
+   `window.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true }))`
+   — and set `window.__qaAim = true` first, because `fire()` requires the aim
+   button to be held on foot. `tools/qa/cemetery.mjs` does both.
+
+### INTERFACE — `poolLight()` now returns its spot
+
+`main.js`'s `poolLight(color, power, range, x, y, z, group)` used to return
+nothing, so a pooled light could never be moved after it was placed. It now
+returns the `litSpots` entry it pushed. Write `x` / `z` / `power` on that object
+and `updateLightPool` picks the change up on its next 4 Hz re-sort. Purely
+additive — every existing caller ignores the return value. `cemetery.js` uses it
+to carry a cold light along with Marie Laveau's ghost.
+
+### INTERFACE — `src/cemetery.js`
+
+`createCemetery(ctx, b)` builds the whole cemetery block and returns
+`{ update(dt), interact(), props, debug }`.
+
+`ctx` (handed down from `main.js` through `orlearouge.js`): `scene`,
+`addBlocker(x, z, r)`, `poolLight(...)`, `state`, `playerPos`, `cine`,
+`flashObjective(text)`, `syncHUD()`, `isNight()`, `makeHoodrat(opts)`.
+`b` is a block rect from `orlearouge.js`'s `blocks()`:
+`{ x0, x1, z0, z1, cx, cz }`.
+
+`orlearouge.js` now exposes `props` (the ghost — `main.js` must keep her out of
+`batchStatic`), `interact()` (chained in `main.js`'s interact handler, before
+`enterExitVehicle`), and `cemetery` (the handle, for QA). `orlea.update(dt)`
+drives it.
+
+`debug` gives QA `{ tomb, offering, gate, path, gaps, ghost, presence }`.
+
+### DISCOVERY — how to make a ghost out of the Hoodrat rig without wrecking every other Hoodrat
+
+`characters.js` shares geometry **and materials** across every Hoodrat in the
+level. Writing `.opacity` or `.emissive` on a mesh's material therefore fades or
+lights the entire crew. The rig already solves this: its `material.opacity`
+setter clones every one of its own meshes' materials on first write (the
+`_faded` guard). So the order matters —
+
+```js
+ghost.material.opacity = 0.44;   // clones this actor's materials off the cache
+ghost.traverse((o) => { /* now safe to recolour / add emissive per mesh */ });
+```
+
+Do it the other way round and you tint every Hoodrat in the parish.
+
+Two more things that caught me:
+- **`baseY`, not `position.y`.** The idle and walk clips both end with
+  `this.position.y = this.baseY || 0`, so a hover written to `position.y` is
+  wiped every frame. Set `ghost.baseY` instead.
+- **`realize(scene)` sweeps the whole scene at the end of `boot()`** and will
+  hand a ghost its skin back. Every material you have deliberately made
+  translucent or emissive needs `userData.gtbRealized = true`.
+
+### DISCOVERY — sizing blockers so a walker fits and a car does not
+
+`main.js` resolves the player at radius **0.6** and a vehicle at **1.8**
+(`registerVehicle`'s default `r`). So for two blockers of radius `R` at centre
+distance `D`, the clear gap is `D − 2R`, and:
+
+- a walker gets through when `D − 2R > 1.2`
+- a car gets through when `D − 2R > 3.6`
+
+The cemetery's alleys are deliberately sized into that window: `R = 1.45` at a
+row pitch of 4.7 gives 1.8 m (walker yes, car no), and a column pitch of 3.2
+gives 0.3 m (nobody). The gate's clear opening is 2.7 m for the same reason.
+This is how `bluelight.js`'s "the cruisers can't follow between the tombs"
+became true instead of aspirational.
+
+**Verify a claim like that with a flood-fill, not by walking.** `tools/qa/
+cemetery.mjs` rasterises the block on a 0.25 m grid against the real
+`blockerGrid`, floods from the sidewalk at each radius, and reports what each
+can reach: walker 13,908 cells including her tomb; car 523 — the street. Two
+earlier attempts to test it by holding `W` proved nothing, because `W` is
+camera-relative and the camera starts facing south.
+
+### WARNING — a "marker" position can be inside a blocker
+
+`cemetery.js`'s offering spot was first placed at `tomb.z − 2.4`, and the tomb's
+own blocker is `r 1.8`; plus the player's 0.6 that is exactly 2.4, so floating
+point decided it and the one spot the game called "her step" was unstandable.
+The last row of tombs then stood 1.25 m off her tomb — a gap a 1.2 m-wide walker
+does not fit through. Both fixed (a forecourt is now cleared in front of her
+tomb), but the general point stands: **if you publish a position for the player
+to stand on, flood-fill to it.**
+
+### DECISION — `src/orlearouge.js` taken briefly, against its TASK-038 lock
+
+The human asked for the graveyard directly and the graveyard is in that file.
+Rather than rewrite inside Antigravity's locked module, the whole cemetery went
+into a new `src/cemetery.js` and `orlearouge.js` kept **three lines and an
+import**. Flagged on TASK-065 and in the lock table. Antigravity: if your
+TASK-038 work touched `cemetery(b)`, take this version.
+
+### DISCOVERY — the story has an open question nobody has answered
+
+`nolantis.js` (~938) has an anonymous distorted **VOICE** threaten Keseme's
+mother — *"Your mother's house is very pretty."* — and Keseme's stated goal for
+everything after it (~1028) is *"Find out who threatened my mother."*
+`actone.js` runs with it (`protectMama()`, `MAMA_OBJECTIVE`, the run to Mama
+Emiko's door) and **nothing in the repo says who the VOICE is.** The human has
+now answered it: the Klan. Written up as TASK-066, with the existing hooks named
+so whoever takes it does not have to re-find them.
+
+---
+
+## 2026-09-20 — Claude
 **Type:** HANDOFF · **Task:** TASK-052 R2 upload finished (1873/1873, 0 failed); free roam tweaks; TASK-054 radio; TASK-053/055 logged
 
 ### Finding

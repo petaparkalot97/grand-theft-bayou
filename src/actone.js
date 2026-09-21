@@ -21,6 +21,12 @@ export const NB = { x: 92, z: -100 };            // South Tusouxroe
 const STREET_Z = -106;
 const HOME = { x: 100, z: -93, w: 9, d: 8 };      // the Nadia house (door faces the street)
 const DOOR = { x: HOME.x, z: HOME.z - HOME.d / 2 - 0.3 };
+// Emiko's house and her front door, exported because the threat in
+// nolantis.js — "Your mother's house is very pretty" — is about THIS house, and
+// klan.js has to be able to stage a night on its lawn without a second copy of
+// these numbers drifting out of step with them.
+export const NADIA_HOME = HOME;
+export const NADIA_DOOR = DOOR;
 const ROOM_Y = -40;
 
 function basic(color, extra = {}) {
@@ -448,10 +454,18 @@ export function createActOne(ctx) {
   // mission — back north to Mama's door. Without it the story handed off to nothing
   // and the HUD fell straight back to the gas cans.
   const MAMA_OBJECTIVE = "Someone threatened Mama. Get to her house in South Tusouxroe — north up US-167.";
+  // Reaching the door used to be the whole of it: a flash of "Mama's safe — for
+  // now" and straight back to the gas cans, with the question nolantis.js asked
+  // ("Find out who threatened my mother") left hanging. It is answered here —
+  // klan.js runs the night ride from this point, and it is the last beat of Act
+  // One. If the Klan module is not wired (QA harnesses that build a bare world),
+  // this falls back to the old line rather than stranding the player.
   function reachedMama() {
-    phase = "done";
+    phase = "arrived";
     if (marker) marker.visible = false;
     ctx.setObjective(null);
+    if (ctx.nightRide && ctx.nightRide(() => { phase = "done"; })) return;
+    phase = "done";
     ctx.flashObjective("Mama's safe — for now. For now: gas cans, and the truck.");
   }
 
@@ -481,6 +495,9 @@ export function createActOne(ctx) {
       ctx.setObjective("Go home to South Tusouxroe — Mama's house, north-east of the strip.");
       ctx.flashObjective("ACT ONE — Welcome Home");
     },
+
+    /** QA hook: run the Act One closer (the night ride) from wherever you are. */
+    nightRide() { return reachedMama(); },
 
     /** QA hooks for tools/qa/actone.mjs: "arrive" | "door". */
     debug(step) {

@@ -18,11 +18,11 @@ import { bumpLine, fightLine } from "./pedestrianChatter.js";
 import { pedestrianVoiceWho } from "./voiceCast.js";
 import { createCameraController } from "./camera.js";
 import { createTraffic } from "./traffic.js";
-import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian, randomTuxedo, randomHighEndEscort } from "./characters.js";
+import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian, randomTuxedo, randomHighEndEscort, randomKlansman } from "./characters.js";
 import { createCinema } from "./cinema.js";
 import { createPrologue, makeCastMember, PROLOGUE_KEEPOUT } from "./prologue.js";
 import { createMissionClinic } from "./missionClinic.js";   // unused: see missionClinic below
-import { createActOne } from "./actone.js";
+import { createActOne, NADIA_HOME, NADIA_DOOR } from "./actone.js";
 import { createOrleaRouge } from "./orlearouge.js";
 import { createPotholes } from "./potholes.js";
 import { createBlueLight } from "./bluelight.js";
@@ -38,6 +38,7 @@ import { createNightlife } from "./nightlife.js";
 import { createCasinos } from "./casinos.js";
 import { createTips } from "./tips.js";
 import { buildMotorbike, buildScooter, buildPushBike, buildLimo } from "./bikes.js";
+import { skyState } from "./daycycle.js";
 import { createPauseMenu } from "./pauseMenu.js";
 import { createLoot } from "./loot.js";
 import { createWorldTime } from "./worldtime.js";
@@ -48,6 +49,8 @@ import { createWelcomeBack } from "./welcomeback.js";
 import { ROUTE_EAST, CRASH } from "./prologue.js";
 import { createSpawnZones } from "./spawnzones.js";
 import { createFactionWar } from "./factions.js";
+import { createKlan } from "./klan.js";
+import { createNewton } from "./newton.js";
 import { createTusouxroeNorth, NORTH_MIN_Z } from "./tusouxroeNorth.js";
 import { createWestParish, onParishHighway, PARISH_MIN_X } from "./westparish.js";
 import { createPlayerCharacter, getPlayerCharacter, PLAYER_CHARACTERS } from "./playerCharacters.js";
@@ -213,7 +216,10 @@ addEventListener("resize", () => {
 // ---------------------------------------------------------------- lights
 // The IBL probe carries the ambient term now, so these are just the two key
 // lights: hard moonlight, and a very low warm bounce off the ground haze.
-scene.add(new THREE.HemisphereLight(0x4a6a8c, 0x2a2c1c, 0.85));
+const hemi = new THREE.HemisphereLight(0x4a6a8c, 0x2a2c1c, 0.85);
+scene.add(hemi);
+// The key light: the sun by day, the moon at night — daycycle.js says which, what
+// colour, how strong, and where in the sky (the variable keeps its old name).
 const moon = new THREE.DirectionalLight(0xc8d8ff, 2.8);
 moon.position.set(-40, 60, -20);
 moon.castShadow = true;
@@ -389,15 +395,26 @@ function initLightPool(n = 8) {
 // the scene is evaluated for every lit pixel on screen, so ~20 always-on lights
 // were the single biggest shading cost; pooled, only the nearest 8 are real.
 // `group`: position is local to a builder's group (converted to world here).
+// Returns the spot, so a caller with a light that travels (cemetery.js's ghost)
+// can move it by writing x/z/power on it — the pool re-sorts at 4 Hz and picks
+// it up on its own.
 function poolLight(color, power, range, x, y, z, group) {
   const p = new THREE.Vector3(x, y, z);
   if (group) {
     group.updateMatrixWorld(true);
     p.applyMatrix4(group.matrixWorld);
   }
-  litSpots.push({ x: p.x, y: p.y, z: p.z, warm: color, power, range, fx: false });
+  const spot = { x: p.x, y: p.y, z: p.z, warm: color, power, range, fx: false };
+  litSpots.push(spot);
+  return spot;
 }
 
+// Street lamps (addLitSpot) fade out in daylight; fires, neon and interior glows
+// (poolLight, fx: false) do not. daycycle.js drives `lampPower`; `lampFx` holds the
+// beams and halos, switched off together when the lamps go out.
+let lampPower = 1;
+let lampsLit = true;
+const lampFx = [];
 let poolTimer = 0;
 function updateLightPool(dt, focus) {
   poolTimer -= dt;
@@ -417,7 +434,7 @@ function updateLightPool(dt, focus) {
     l.color.setHex(sp.warm);
     l.distance = sp.range;
     // fade the outermost lights in rather than popping them on
-    l.intensity = sp.power * THREE.MathUtils.smoothstep(90 * 90 - sp.d, 0, 30 * 30);
+    l.intensity = sp.power * THREE.MathUtils.smoothstep(90 * 90 - sp.d, 0, 30 * 30) * (sp.fx === false ? 1 : lampPower);
   }
 }
 
@@ -1063,7 +1080,7 @@ const mapEditor = createMapEditor({
   removeLitSpot: (spot) => { const i = litSpots.indexOf(spot); if (i >= 0) litSpots.splice(i, 1); },
 });
 
-input.onPress("interact", () => { if (services.interact() || nightlife.interact() || casinos.interact()) return; enterExitVehicle(); tryInteract(); });
+input.onPress("interact", () => { if (services.interact() || nightlife.interact() || casinos.interact() || (orlea && orlea.interact()) || (newton && newton.interact())) return; enterExitVehicle(); tryInteract(); });
 input.onPress("mute", () => toggleMute());
 input.onPress("nextTrack", () => soundtrackReady.then((s) => s.next()));
 // [ / ] step the graphics tier down / up; once you touch it, the auto
@@ -1224,6 +1241,7 @@ let selectionIndex = 0;
 let multiplayerMode = false;
 let multiplayer = null;
 const remotePlayers = new Map();
+const _remoteTarget = new THREE.Vector3();
 let networkInputTimer = 0;
 const characterIds = Object.keys(PLAYER_CHARACTERS);
 
@@ -1321,7 +1339,10 @@ function applyNetworkSnapshot(snapshot) {
       view = createPlayerCharacter(data.character || "peta", { makePeta: () => makeCastMember(makeHoodrat, "keseme", { height: 1.74 }), makeHoodrat });
       view.position.set(data.x, data.y, data.z); scene.add(view); remotePlayers.set(data.id, view);
     }
-    view.userData.netTarget = { x: data.x, y: data.y, z: data.z, yaw: data.yaw || 0, state: data.state };
+    view.userData.netTarget = {
+      x: data.x, y: data.y, z: data.z, yaw: data.yaw || 0,
+      state: data.state, vehicle: Boolean(data.vehicle),
+    };
   }
   const live = new Set((snapshot.players || []).map((p) => p.id));
   for (const [id, view] of remotePlayers) if (!live.has(id)) { scene.remove(view); remotePlayers.delete(id); }
@@ -1367,7 +1388,22 @@ function explodeCar(v) {
 }
 
 function updateRemotePlayers(dt) {
-  for (const view of remotePlayers.values()) { const target = view.userData.netTarget; if (!target) continue; view.position.lerp(new THREE.Vector3(target.x, target.y, target.z), Math.min(1, dt * 12)); view._yaw = target.yaw; if (view.play && view.userData.netLastState !== target.state) { view.play(target.state === "IDLE" ? "idle" : "walk"); view.userData.netLastState = target.state; } }
+  for (const view of remotePlayers.values()) {
+    const target = view.userData.netTarget;
+    if (!target) continue;
+    // Remote cars are not rendered yet, so hide the avatar while its owner is
+    // driving and restore it immediately when the server reports an exit.
+    view.visible = !target.vehicle;
+    view.position.lerp(_remoteTarget.set(target.x, target.y, target.z), Math.min(1, dt * 12));
+    view._yaw = target.yaw;
+    if (view.play && view.userData.netLastState !== target.state) {
+      view.play(target.state === "IDLE" ? "idle" : "walk");
+      view.userData.netLastState = target.state;
+    }
+    // play() only selects a clip; the character's update() advances its gait.
+    // Omitting this left remote players permanently frozen in their idle pose.
+    if (view.update && view.visible) view.update(dt);
+  }
 }
 multiplayerBtn.addEventListener("click", openMultiplayer);
 mpCreate.addEventListener("click", () => multiplayer?.createRoom());
@@ -1421,6 +1457,11 @@ const ENEMY_TYPES = {
             h: 1.86, hp: 4, speed: 3.5, aggro: 18, melee: 1.8, dmg: 5, atkGap: 1.2 },
   highendescort: { label: "High-End Escort", kind: "highendescort", tint: 0x7f173d,
                    h: 1.82, hp: 4, speed: 3.4, aggro: 18, melee: 1.8, dmg: 5, atkGap: 1.2 },
+  // klan.js only. Deliberately absent from every spawnzones.js mix: they are a
+  // set piece that turns out at night, never ambient street population. Tougher
+  // and slower than a Redneck — they come in a group and they do not scatter.
+  klansman: { label: "Klansman", kind: "klansman", tint: 0xe8e4d8,
+              h: 2.0, hp: 9, speed: 3.7, aggro: 30, melee: 2.0, dmg: 13, atkGap: 1.0 },
 };
 
 function buildHog() {
@@ -1500,6 +1541,24 @@ const spawnZones = createSpawnZones({
 // Rednecks and Hoodrats leave each other alone on their own turf; where the turfs
 // meet (spawnzones.js border zones) they fight, near the player (factions.js).
 const factionWar = createFactionWar({ npcs, spawnZones });
+// Who actually threatened Keseme's mother (klan.js). Nothing here spawns on its
+// own: a story beat or `__game.klan.nightRide(...)` has to call them out.
+const klan = createKlan({
+  scene, state, playerPos, cine, enemies, npcs,
+  spawnEnemy, killEnemy, addBlocker, poolLight, flashObjective,
+  setObjective: setStoryObjective,
+  isNight: () => worldTime.isNight(),
+  worldTime,
+  // the strip of lawn between Emiko's door and the street — where the call
+  // from nolantis.js was always pointing
+  mamaLawn: { x: NADIA_DOOR.x, z: NADIA_DOOR.z - 4.6 },
+  mamaDoor: NADIA_DOOR,
+  mamaHouse: NADIA_HOME,
+  teleport: (x, z, heading) => teleportPlayer(x, z, heading),
+  makeCastMember: (who) => makeCastMember(makeHoodrat, who),
+  getSheriffProto: () => sheriffProto,
+  setCameraYaw: (yaw) => camCtl.addYaw(yaw - camCtl.yaw),
+});
 
 function spawnEnemy(typeName, x, z, spot = null) {
   const T = ENEMY_TYPES[typeName];
@@ -1518,6 +1577,10 @@ function spawnEnemy(typeName, x, z, spot = null) {
     view = randomTuxedo(rng, T.h);
   } else if (T.kind === "highendescort") {
     view = randomHighEndEscort(rng, T.h);
+  } else if (T.kind === "klansman") {
+    // `spot.officer`: the one in the crimson robe, so a mission can point at
+    // whoever is giving the orders without putting a health bar over him
+    view = randomKlansman(rng, T.h, spot && spot.officer ? { officer: true } : {});
   } else if (T.kind === "actor") {
     view = randomHoodrat(rng, T.h);
   } else {
@@ -1838,6 +1901,9 @@ async function buildLevel() {
       player.position.set(x, 0, z);
       if (player._last) player._last.copy(player.position);
     },
+    // Act One's last beat: reaching Mama's door is where the night ride happens
+    // (klan.js), which is what nolantis.js's phone call was always pointing at.
+    nightRide: (onDone) => klan.nightRideOnMamas(onDone),
   });
   actOne.buildSet();
 
@@ -1847,6 +1913,11 @@ async function buildLevel() {
     addLitSpot: (spot) => litSpots.push(spot),
     getSheriffProto: () => sheriffProto,
     cine, state, playerPos, ROAD_X, ROAD_HALF, addService,
+    // cemetery.js, on the block at (-110, 350): the ghost needs a body, the hour,
+    // and the HUD to hand back a blessing with. `enemies`/`npcs`/`police` are
+    // what she keeps her ground with — see keepsHerGround().
+    makeHoodrat, flashObjective, syncHUD, isNight: () => worldTime.isNight(),
+    enemies, npcs, police,
     // whole blocks other modules build on, in place of the French District rowhouses
     lots: [
       { at: [-66, 230], build: (b) => payNSprayLot(b, "OrleaRouge Pay 'n' Spray") },
@@ -2014,6 +2085,17 @@ async function buildLevel() {
   });
   tusouxroeNorth.buildSet();
   NPC_POIS.push(...tusouxroeNorth.pois);
+  // The ghost of Huey P. Newton, in the yard at Willowbrook School (newton.js).
+  // He was born in Monroe, which is one of the three towns this game is set
+  // between, so the north is where he belongs — not the OrleaRouge end.
+  // tusouxroeNorth.js puts the school at (WEST_STREET_X - 22, -320) facing east.
+  newton = createNewton({
+    scene, state, playerPos, cine, flashObjective, syncHUD,
+    makeHoodrat, poolLight, addBlocker, worldTime,
+    // he has one thing to say about the night ride, and nothing to say until
+    // it has happened (klan.js)
+    getKlanPhase: () => klan.missionPhase,
+  }, { x: -132 + 9, z: -320 + 11, ry: 0 });
   // ---- State-Wide Expansion: Port Calypso Docks, Cypress Badlands, Lakeshore Marsh ----
   stateWorld = createStateWorld({
     scene, camera, surface, addBlocker, flashObjective,
@@ -3062,6 +3144,8 @@ function tick() {
     if (prologue) prologue.update(dt);
     if (actOne) actOne.update(dt);
     if (orlea) orlea.update(dt);
+    klan.update(dt);
+    if (newton) newton.update(dt);
     services.update(dt);
     nightlife.update(dt);
     casinos.update(dt);
@@ -3083,9 +3167,14 @@ function tick() {
       networkInputTimer += dt;
       if (networkInputTimer >= 1 / 20) {
         networkInputTimer = 0;
+        const netAt = state.veh ? state.veh.obj.position : playerPos;
         multiplayer.sendInput({
           forward: input.isDown("forward"), backward: input.isDown("back"), left: input.isDown("left"), right: input.isDown("right"),
-          sprint: input.isDown("sprint"), crouch: input.isDown("crouch"), jump: input.isDown("jump"), yaw: player?._yaw || 0,
+          sprint: input.isDown("sprint"), crouch: input.isDown("crouch"), jump: input.isDown("jump"),
+          x: netAt.x, y: netAt.y, z: netAt.z,
+          yaw: state.veh ? state.veh.heading : (player?._yaw || 0),
+          state: state.veh ? "VEHICLE" : (player?.anim === "walk" ? "RUN" : "IDLE"),
+          vehicle: !!state.veh,
         });
       }
     }
@@ -3207,7 +3296,8 @@ function flashGfx(msg) {
   gfxFlash = setTimeout(updateGfxLabel, 2200);
 }
 
-let lastElev = -1.8;
+let lastElev = -1.8, lastAz = 200;
+const _sunDir = new THREE.Vector3();
 function simulate(dt) {
   state.fireCd = Math.max(0, state.fireCd - dt);
   state.hurtCd = Math.max(0, state.hurtCd - dt);
@@ -3216,18 +3306,39 @@ function simulate(dt) {
   state.dusk = worldTime.dusk;
   if (objTimer > 0) { objTimer -= dt; if (objTimer <= 0) objEl.textContent = defaultObjective(); }
 
-  // Night deepens: the sun sinks further below the horizon, which drains the
-  // blue out of the sky probe, so the whole scene's ambient goes with it.
-  const f = (1 - state.dusk * 0.4) * weather.lightMultiplier;
-  moon.intensity = 2.8 * f;
-  scene.fog.density = (0.0028 + state.dusk * 0.0015) * weather.fogMultiplier;
-  MIST.y = (0.04 + state.dusk * 0.025) * weather.mistMultiplier;   // the mist thickens as the night goes on
-  const elev = -1.8 - state.dusk * 4.2;
-  // re-baking the PMREM probe is expensive — only when it would actually show
-  if (Math.abs(elev - lastElev) > 0.4) {
-    lastElev = elev;
-    env.setElevation(elev);
-    env.setIntensity(2.4 * f, 1.0 * f);
+  // ---- the day: sun up, sun across, sun down (daycycle.js) ----
+  const sky = skyState(worldTime.hours);
+  const f = weather.lightMultiplier;
+  moon.color.setHex(sky.lightColor);
+  moon.intensity = sky.lightIntensity * f;
+  hemi.color.setHex(sky.hemiSky);
+  hemi.groundColor.setHex(sky.hemiGround);
+  hemi.intensity = sky.hemiIntensity * f;
+  scene.fog.color.setHex(sky.fogColor);
+  scene.fog.density = sky.fogDensity * weather.fogMultiplier;
+  MIST.y = sky.mist * weather.mistMultiplier;
+  lampPower = sky.lampsOn;
+  renderer.toneMappingExposure = sky.exposure;
+  if (composer.grade) {
+    const gu = composer.grade.uniforms;
+    gu.uContrast.value = sky.grade.contrast;
+    gu.uSaturation.value = sky.grade.saturation;
+    gu.uVignette.value = sky.grade.vignette;
+    gu.uGrain.value = sky.grade.grain;
+    gu.uShadowTint.value.setHex(sky.grade.shadowTint);
+    gu.uHighlightTint.value.setHex(sky.grade.highlightTint);
+  }
+  if ((sky.lampsOn > 0.35) !== lampsLit) {         // the lamps come on at dusk, off at dawn
+    lampsLit = sky.lampsOn > 0.35;
+    for (const g of lampFx) for (const m of g.userData.glows) m.visible = lampsLit;
+  }
+  // re-baking the PMREM probe is expensive — only when the sun has moved enough to show
+  if (Math.abs(sky.elevation - lastElev) > 1.2 || Math.abs(sky.azimuth - lastAz) > 4) {
+    lastElev = sky.elevation;
+    lastAz = sky.azimuth;
+    env.setAtmosphere(sky.turbidity, sky.rayleigh);
+    env.setElevation(sky.elevation, sky.azimuth);
+    env.setIntensity(sky.envIntensity * f, sky.bgIntensity);
   }
 
   // ---- camera orbit (Q/E), secondary to mouse look ----
@@ -3250,8 +3361,9 @@ function simulate(dt) {
     lastVehAudio = null;
   }
 
-  // keep the moon's shadow box over the player
-  moon.position.set(playerPos.x - 40, 60, playerPos.z - 20);
+  // keep the shadow box over the player, with the light where the sky says the sun is
+  _sunDir.setFromSphericalCoords(70, THREE.MathUtils.degToRad(90 - Math.max(6, sky.elevation)), THREE.MathUtils.degToRad(sky.azimuth));
+  moon.position.set(playerPos.x + _sunDir.x, Math.max(24, _sunDir.y), playerPos.z + _sunDir.z);
   moon.target.position.set(playerPos.x, 0, playerPos.z);
   moon.target.updateMatrixWorld();
 
@@ -3577,6 +3689,7 @@ function enterExitVehicle() {
 }
 
 // ============================================================ SHERIFF
+let newton = null;          // newton.js — the schoolyard at dawn
 let sheriffProto = null;
 function policeShoot(origin, damage, source = "police") {
   const from = origin && origin.clone ? origin.clone() : new THREE.Vector3(origin.x, origin.y || 1.2, origin.z);
@@ -3830,6 +3943,23 @@ function resolveCollision(current, next, radius) {
   blockerGrid.resolve(next, radius, current, null);
 }
 
+// Put the player (and whatever she is driving) somewhere. The district modules
+// each carry their own inline copy of this in their ctx; this is the one the
+// module-scope systems use, hoisted so it is available before boot() has run.
+function teleportPlayer(x, z, heading = 0) {
+  const v = state.veh;
+  if (v) {
+    v.obj.position.x = x; v.obj.position.z = z;
+    v.heading = heading; v.obj.rotation.y = heading; v.speed = 0;
+    v.blocker.x = x; v.blocker.z = z;
+  }
+  playerPos.set(x, 0, z);
+  if (player) {
+    player.position.set(x, 0, z);
+    if (player._last) player._last.copy(player.position);
+  }
+}
+
 // ---------------------------------------------------------------- boot
 async function boot() {
   loadNote.textContent = "loading sprites…";
@@ -3899,7 +4029,7 @@ async function boot() {
   initLightPool();
   // shafts, pools and halos under every lamp (and poles for the lot lights) —
   // before the sweep below, so the new poles get a proper steel surface
-  for (const sp of litSpots) if (sp.fx !== false) addLamp(scene, sp);
+  for (const sp of litSpots) if (sp.fx !== false) lampFx.push(addLamp(scene, sp));
 
   loadNote.textContent = "resurfacing the parish…";
   await new Promise((r) => setTimeout(r, 0));   // let the loading text paint
@@ -3924,6 +4054,9 @@ async function boot() {
     player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
     ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
     ...services.props, ...nightlife.props,      // garage doors, markers, club cutaways: they move
+    ...(orlea ? orlea.props : []),              // Marie Laveau's ghost, drifting the cemetery alleys
+    ...klan.props,                              // the cross burns and goes out: it cannot be baked in
+    ...(newton ? newton.props : []),            // he and his table are only there at dawn
     ...(missionClinic ? missionClinic.props : []),
     ...(prologue ? prologue.props : []),
     ...(blueLight ? blueLight.props : []),
@@ -3969,7 +4102,8 @@ async function boot() {
       player.position.set(x, 0, z);
       player.visible = true;
       if (player._last) player._last.copy(player.position);
-    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
+    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, klan,
+    get newton() { return newton; }, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
     get playerMoveHeading() { return playerMoveHeading; },
     get soundtrack() { return soundtrackReady; }, get casinos() { return casinos; } };
   // the radar's base map, from the level as built
@@ -4102,8 +4236,13 @@ function honkHorn() {
   }
 }
 
-// Space / LMB fires (edge-triggered through input.js)
-input.onPress("fire", () => { if (state.running) fire(); });
+// LMB fires (edge-triggered through input.js).
+// This was `onPress("fire", …)` — and there is no "fire" action. input.js
+// dispatches "attack" on button 0 and has no "fire" in DEFAULT_BINDINGS, so the
+// handler was registered against a name nothing ever raises and the player
+// could not shoot or swing at all. Found while testing the cemetery's reaction
+// to a gunshot (cemetery.js), which is how it finally showed up.
+input.onPress("attack", () => { if (state.running) fire(); });
 input.onPress("reload", () => { if (state.running) arsenal.reload(); });
 input.onPress("equipBat", () => { if (state.running) arsenal.give("bat"); });
 input.onPress("nextWeapon", () => { if (state.running) arsenal.cycleWeapon(1); });

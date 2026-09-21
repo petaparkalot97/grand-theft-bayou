@@ -46,3 +46,10 @@ server/editor-placements.json
 # useful output, consumed by mapEditor.js) is committed; this raw progress
 # log isn't source content and is safe to regenerate.
 tools/upload-log.txt
+
+# Audio masters. Cloudflare Pages refuses any file over 25 MiB and a CD-quality
+# wav of a four-minute track is ~46 MB, which broke the deploy. Keep the master
+# locally; ship the encoded mp3 in assets/music/ (see that folder's README).
+/*.wav
+/*.aiff
+/*.flac

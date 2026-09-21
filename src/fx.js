@@ -213,6 +213,9 @@ export function addLamp(scene, spot) {
     o.receiveShadow = false;
   }
   g.add(shaft, pool, glow);
+  // Everything that only exists because the lamp is LIT, so main.js can switch it
+  // off in daylight (daycycle.js) and leave the pole standing.
+  g.userData.glows = [shaft, pool, glow];
   // the beam and the halo reflect; the light pool does not — it lies flat on the
   // road, and a reflection of it is a second pool at the same place
   reflect(shaft);
@@ -231,6 +234,7 @@ export function addLamp(scene, spot) {
     const lens = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.46).rotateX(Math.PI / 2), lensMat);
     lens.position.y = y + 0.15;
     g.add(pole, head, lens);
+    g.userData.glows.push(lens);
     reflect(lens);
   }
 

@@ -78,6 +78,450 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 > technique worth reusing rather than inventing a second one — see the note
 > added there too.
 
+### TASK-065 — St. Louis No. 1: the OrleaRouge cemetery rebuilt above ground, + the ghost of Marie Laveau (human request, 2026-09-20)
+
+**Status:** `REVIEW` · **Agent:** Claude · **Files:** `src/cemetery.js` (new),
+`src/orlearouge.js`, `src/main.js`, `src/voiceCast.js`, `tools/qa/cemetery.mjs` (new)
+
+Human's request: *"change the graveyard in Orlearouge to resemble the Official
+St. Louis Cemetery in New Orleans in terms of the coffins and caskets being
+above ground. Should also have the Ghost of Marie Leavux as a cameo in which her
+ghost haunts and looks after the cemetery."*
+
+**What was there:** `orlearouge.js`'s `cemetery(b)` — a 0.5 m brick wall and
+fifteen 2.2 x 2.4 x 3 boxes with pyramid lids on an 8.5 x 8 m lattice. Nothing
+above ground about it beyond the boxes, and wide enough to drive a bus through,
+which quietly undercut `bluelight.js`'s *"Lose them among the tombs — the
+cruisers can't follow between the tombs."*
+
+**What changed:**
+1. New module `src/cemetery.js` builds the whole block. `orlearouge.js`'s
+   `cemetery(b)` is now three lines that call it, so the big new surface lives
+   outside Antigravity's TASK-038 file (see *Lock note* below).
+2. **Oven vaults.** The perimeter wall is the cemetery: stacked rented vaults,
+   three tablets high, plastered and closed with engraved marble, drawn as one
+   tiled canvas texture per wall rather than ~380 tablet meshes.
+3. **Above-ground step tombs.** ~40 plastered family tombs of two or three
+   receding tiers with cornices and a cross or urn, in four staggered rows,
+   deterministic from one seed. Two benevolent-society tombs and a pyramid.
+4. **The alleys are the point.** Blocker radius 1.45 at a 4.7 m row pitch and a
+   3.2 m column pitch: 1.8 m of alley (a walker is 1.2 m across, a car 3.6), and
+   0.3 m along a row — impassable. The gate's clear opening is 2.7 m, so nothing
+   with wheels gets inside at all. **`bluelight.js`'s claim is now literally true.**
+5. **The Glapion tomb**, three tiers, with the XXX tablet and the offerings
+   people leave at its foot — beads, coins, votive candles that gutter, a rum
+   bottle — under a warm pooled light.
+6. **The ghost.** Built on the `characters.js` rig, then washed pale, lit from
+   inside, depth-write off, legs hidden under a shift and skirt, a tignon on her
+   head, hovering. She appears after dark only, walks a fixed round down the
+   alleys and home to her own tomb, carries a cold pooled light, and fades with
+   distance as well as with the hour.
+7. **She looks after the place.** First approach at night plays a short scene.
+   `F` at her step leaves an offering: $20 for +35 HP and a line back, on a 45 s
+   cooldown. Fire a gun inside the walls and she objects and withdraws for 26 s
+   (detected off a rise in `state.fireCd`, so no new hook in `main.js`).
+
+**Two bugs found and fixed on the way:**
+- **Firing was dead in the whole game.** `main.js` registered
+  `input.onPress("fire", ...)`, and there is no `"fire"` action — `input.js`
+  dispatches `"attack"` on LMB and has no `fire` in `DEFAULT_BINDINGS`, so the
+  handler hung off a name nothing raises. Verified headlessly before and after:
+  LMB left `state.fireCd` at 0 and ammo untouched; now `fireCd 0.42`, ammo 50 to 49.
+  Bound to `"attack"`. **This was not specific to the cemetery — the player
+  could not shoot or swing at anything, anywhere.**
+- `main.js`'s `poolLight()` returned nothing, so a light could never be moved.
+  It now returns its spot (purely additive; every existing caller ignores it).
+
+**Testing performed** (headless Chromium via the browser-automation runner,
+`tools/qa/cemetery.mjs`, screenshots in the scratchpad — SwiftShader, so fps is
+meaningless and is not reported):
+- Layout builds: 38 blockers inside the walls, tightest gap 0.30 m, 12 gaps
+  punched through the rows, gate at (-114, 337), her tomb at (-114, 359.6).
+- **Reachability flood-fill** over the real blocker grid, from the sidewalk
+  outside the gate, at both radii: walker reaches 13,908 cells including her
+  step and the far alleys; **a car reaches 523 — the street only.** It cannot
+  get through the gate, let alone to the tomb.
+- Day (13:00): ghost absent, `presence` 0. Night (23:00): `presence` 0 to 0.89 to
+  1.0, visible, moving down the alley; her greeting scene plays.
+- Offering: prompt shows at her step, `F` takes $200 to $180 and 40 to 75 HP.
+- Gunshot inside the walls: objective reads *MARIE LAVEAU: "Not in here. Not
+  over my dead."*, `presence` 1 to 0.35 to 0.01 and she goes invisible.
+- Draw calls at the cemetery **393** vs. French District 381, downtown 379,
+  hospital 532 at the same hour — the ~250 new meshes batch away as intended.
+- No new console errors. The only failures are the pre-existing sixtwelve
+  texture 404s and the tacos/burgerpiz directory 403s.
+
+**Known issues / not done:**
+- Marie Laveau has **no voice of her own** — `voiceCast.js` maps her to the
+  female street-pool stand-in, same as GAYMAN/LESBIAN. Her lines fall back to
+  browser speech synthesis until someone records them.
+- Tomb closure tablets all face +z; in the real place they face their alley.
+- She has no reaction to anything but gunfire (running over a tomb, say).
+
+**Lock note:** `src/orlearouge.js` is marked LOCKED to Antigravity under
+TASK-038. The human asked for this directly and the graveyard lives in that
+file, so it was taken — but deliberately kept to **three lines plus an import**
+by putting everything new in `src/cemetery.js`. Antigravity: your TASK-038 work
+should merge cleanly; if it touched `cemetery(b)`, take this version.
+
+---
+
+### TASK-068 — Marie Laveau keeps her own ground (human request, 2026-09-20)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/cemetery.js`, `src/npc.js`, `src/main.js`, `tools/qa/marie_ground.mjs` (new)
+
+Human's request: *"Make it so where Marie Laveaux scolds the crooked police and
+others for harming Keseme and for harming innocent individuals who want to help
+the state."*
+
+**The problem this fixes.** As shipped in TASK-065 she was pointed at exactly one
+person: the player. Fire a gun in the cemetery and she scolds *you*. The one
+figure in the parish explicitly described as looking after people was, in
+practice, another thing telling Keseme off. She had no opinion at all about the
+people doing the actual harm.
+
+`keepsHerGround()` is the other half. Three things happen on her ground after
+dark, and none of them is a fight — she has no hands, she has standing:
+
+1. **Sanctuary.** Nobody is taken off this ground in handcuffs. A wanted level
+   inside the walls is broken outright: pursuit cleared, heat to zero, and she
+   says why. Deliberately distinct from `newton.js`'s copwatch — his is gradual
+   (0.6 heat/s), procedural, and about the paperwork; hers is instant, total,
+   and only inside consecrated ground. It also finally makes `bluelight.js`'s
+   *"Lose them among the tombs"* a mechanic instead of a hope about the terrain.
+   Gated on `state.crimeCd` the same way the game's own decay is: she will not
+   stand over a crime still in progress.
+2. **The mob.** A klansman who walks onto her ground is broken and runs. They
+   are `brave` everywhere else in the game (TASK-066 made them so on purpose)
+   and it does not help them in a graveyard.
+3. **The harmed.** She names it when Keseme is hurt on her ground, and when
+   somebody who was not in the fight is killed on it — *"That one was helping.
+   Somebody is going to answer for that one."*
+
+Her lines about the police are written to the brief: they are about a badge with
+somebody else's hand in its pocket, and about Keseme trying to mend what they
+are paid to look past. (Note for the record: the state in-game is **Dixie
+Beaux**, not Bayou Dixie — *Grand Theft Bayou* is the title, Dixie Beaux is the
+state. Her line uses the in-game name.)
+
+**`npc.js` gained one export:** `scatter(e, fromX, fromZ)`, which just calls the
+existing internal `flee`. Nothing outside could reach it before, and setting
+`e.state = "flee"` by hand leaks the `hostiles` counter and would slowly starve
+`MAX_HOSTILE`.
+
+**Testing performed** (headless, `tools/qa/marie_ground.mjs` — every case paired
+with a control, because all of it is supposed to stop at the wall):
+- **Sanctuary:** inside the walls at 23:00, heat 5.6 → **0** and wanted 4 → **0**,
+  with *"She's trying to mend what you're paid to look past. Go home."*
+- **Control, outside the gate:** same 5.6 → 5.19, i.e. the game's ordinary decay
+  and nothing else. She does not reach past her own wall.
+- **Control, mid-crime:** `crimeCd` held high, heat stays pinned at 5.6.
+- **The mob:** 4 klansmen placed unprovoked inside the walls — **all 4 fleeing**,
+  one line for the cohort.
+- **Keseme hurt on her ground:** HP 100 → 62 produces *"Behind me, child. Bleed
+  later."* on the next tick.
+- **Bystander killed on her ground:** *"That one was helping…"*
+- No new console errors.
+
+**One bug fixed in testing:** she re-scolded the mob every 12 s for as long as
+anyone was still running, which talked straight over the hurt and mourn lines.
+Now marked per man (`_marieBroke`) — she says it once to each of them and lets
+them go.
+
+**What remains:**
+- Still no voice for her; all of this is subtitles and the HUD line.
+- Sanctuary has no visual tell at the gate — a cruiser that gives up just stops,
+  with nothing on screen saying why except her line.
+- She has no opinion about the Klan anywhere except inside her own walls, which
+  is correct for her but means the two arcs only touch if a night ride happens
+  to come to the cemetery.
+
+---
+
+### TASK-067 — The ghost of Huey P. Newton, Willowbrook schoolyard (human request, 2026-09-20)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/newton.js` (new), `src/main.js`, `tools/qa/newton.mjs` (new)
+
+Human's request: *"I believe the ghost of Heuy Newton should be another addition
+to the game."*
+
+**Why he belongs here specifically, and not as a guest star:** Huey P. Newton
+was born in **Monroe, Louisiana**, on 17 February 1942 — the youngest of seven,
+named after Huey P. Long — and the family left for Oakland in the Great
+Migration while he was still a toddler. `README.md` and `package.json` both say
+this game is set in north Louisiana, **Chatham → Monroe → Ruston**. He is a son
+of one of the three towns on the tin. So he is placed in the **north**, which is
+also the thinnest part of the map, rather than at the OrleaRouge end.
+
+**He is deliberately not a second Marie Laveau.** She keeps the dead, at night,
+inside a wall, and what she gives costs $20. He does the two things the Panthers
+actually did first, and both are different verbs:
+
+1. **The Free Breakfast.** Every other heal in this game costs money — Popeyes,
+   the hospital ($60), a prostitute ($50), the clubs ($10–40), Marie ($20).
+   **His costs nothing**, and the prompt says *no charge* where every other
+   prompt says a price. That contrast is the argument, made as a mechanic
+   instead of a speech. Once per in-game morning. (By luck, the game's own
+   "HEALING UP" tip panel — which lists all of the paid ones — renders directly
+   above it.)
+2. **Copwatch.** The party's first practice was following police with a law book
+   and telling people their rights. Stand in his yard with heat on you and it
+   drains, because somebody is standing there with his eyes open. He never
+   throws a punch, cannot be fought and cannot be killed — and he **does not
+   launder a crime still in progress**: the drain waits on `state.crimeCd`, the
+   same gate the game's own decay uses. He watches. He does not cover for you.
+
+**Dawn only, 05:00–08:30** — when the breakfast actually ran, and the cleanest
+way to keep the two ghosts from reading as one idea. Marie is moonlight and a
+cold blue; he is sunrise and a warm amber.
+
+**Tone:** written as the organiser and the reader he was — he finished a
+doctorate on political repression — not as a poster. Plain, dry, a bit tired.
+No slogans in his mouth, no sanding him into a mascot, and the hand-lettered
+card on the table says the hours and nothing else.
+
+**Testing performed** (headless, `tools/qa/newton.mjs`):
+- **Hours:** at 12:00 `presence` 0 and invisible; at 06:00 `presence` 0.93 →
+  0.99, visible, prompt up, greeting scene plays.
+- **Free, and free means free:** HP 50 → 90 and **cash unchanged at $140**.
+- **Once a morning:** the second approach reads *"You've eaten today. Come back
+  tomorrow morning."*
+- **Copwatch, three cases at heat 5.6:** in the yard it falls
+  5.6 → 3.9 → 3.1 → 2.4 → 1.6 → 0.8 → 0.05 over ~7 s; 70 m away it stays flat
+  at 5.6; in the yard with `crimeCd` held high it stays flat at 5.6.
+- No new console errors beyond the known sixtwelve 404s / tacos-burgerpiz 403s.
+
+**One thing fixed while testing:** copwatch was keyed off `state.wanted`, which
+`main.js` only derives while `copsActive()` — so he did nothing at all until the
+department had formally taken an interest. Keyed off `state.heat` instead, which
+is the real quantity.
+
+---
+
+**He has his say about the night ride (human request, same day).** The two arcs
+now touch, which is the only thing that makes either of them more than
+decoration: the Panthers formed because of precisely the dynamic TASK-066
+builds — a night ride, and a sheriff parked up the street with his lights off —
+and Willowbrook is twenty minutes up the road from Emiko's house.
+
+Gated on `klan.missionPhase === "done"` and fired once (`saidKlan`), queued
+behind the greeting by `cinema.js` if the player arrives having already done the
+ride. Sixteen lines, and he is deliberately not written as the moral of the
+story — he is somebody who has already had this exact week and is tired of it:
+
+> **NEWTON:** "Six of them, your mother's house, and how many of you?"
+> **KESEME:** "…One."
+> **NEWTON:** "That's not you being brave. That's the whole design working."
+
+The middle of it is what the party actually did first, in the right order —
+*"We didn't start with the guns. We started with law books. Followed the cars.
+Stood where they could see us and read the code out loud. Because what they need
+most is for nobody to be looking."* — which is the in-fiction explanation of the
+copwatch mechanic he already has.
+
+On Mercer, and consistent with the human's call that he is leaned on rather than
+one of them: *"Then he isn't your enemy, he's your evidence. An enemy would have
+got out of the car."*
+
+And the last beat ties him back to his own table, which is the point of the
+whole character: *"A building burns in a night. A thing people need every
+morning is a great deal harder to get rid of. Your mother's house is gone,
+Keseme. Build the other thing."* His breakfast line changes afterwards too.
+
+**Tested:** before the ride, `met true / saidKlan false / klanPhase null` — he
+has nothing to say about it. After it completes, `saidKlan true` and all sixteen
+lines play in order.
+
+**What remains:**
+- No voice for him — his lines fall back to browser speech synthesis.
+- No children at the table. It is a breakfast for children with no children at
+  it, which is the one thing about the scene that is currently a lie.
+- Nothing in the game acts on what he tells her. "Build the other thing" is
+  advice with no mission behind it yet — that is Act Two's job.
+
+---
+
+### TASK-066 — Keseme vs. the Klan: who actually came after her mother (human request, 2026-09-20)
+
+**Status:** `REVIEW` (machinery + the Act One mission, played through; Act Two
+itself is still to build — see *What remains*) · **Agent:** Claude
+**Files / subsystem:**
+- `src/klan.js`                (new — the faction and its set pieces)
+- `src/characters.js`          (the robe, built into the rig behind `opts.robe`)
+- `src/factions.js`            (a third side in the turf logic)
+- `src/npc.js`                 (temperament: a klansman never runs)
+- `src/actone.js`              (exports Emiko's house; `reachedMama` runs the ride)
+- `src/main.js`                (spawn table, wiring)
+- `tools/qa/klan.mjs`          (new — headless walkthrough)
+
+**Dependencies:** none blocking. Reads on TASK-035 (faction warfare, COMPLETE)
+and the Act One / Nolantis story files.
+
+**Context — the thread is already open and currently unanswered.**
+In `nolantis.js` (~line 938) a distorted **VOICE** calls Keseme:
+
+> "You should have given Sheriff Mercer the book." / "Go back to Tusouxroe." /
+> **"Your mother's house is very pretty."**
+
+Keseme's answer, in the elevator at the end of the same file (~line 1028), is
+the spine of everything after it: **"Find out who threatened my mother."**
+`actone.js` picks it straight up — `protectMama()`, `MAMA_OBJECTIVE`, the run
+north to Mama Emiko's door in South Tusouxroe — and then the question is simply
+never answered. Nothing in the repo currently says who the VOICE is.
+
+**Goal:** the Klan is the answer. They are who came after Emiko, and Keseme
+fights them. Concretely: the voice on that phone, the pressure behind Sheriff
+Mercer's department, and the muscle for whoever owns Pelican Crown are the same
+people in three different sets of clothes — which is the point the story is
+already making about Dixie Beaux and has not yet named.
+
+**Why this fits what's built:** the game already has a Redneck faction, a
+sheriff's department that leans on Keseme, a corporate villain (Pelican Crown /
+`EXECUTIVE`), and a Black trans protagonist whose mother has been threatened by
+an anonymous caller. The Klan is not a new theme here — it is the name for the
+one that is already running.
+
+**Acceptance criteria:**
+- A new NPC type ("klansman") on the existing `characters.js` rig: white robe
+  and hood over the redneck build, so it costs a palette and two meshes, not a
+  new model. Must not be mistakable for the plain Redneck at a glance.
+- They do **not** spawn in ordinary daytime free roam. They turn out at night,
+  in numbers, and only where the story or a set piece calls them — a rally, a
+  night ride past Mama's house, a roadblock on US-167.
+- `factions.js` treats them as a third faction: Hoodrats fight them on sight;
+  Rednecks do not.
+- At least one playable mission that answers the question: Keseme finds out who
+  made the call and gets Emiko out. It should connect to what is already there —
+  Mercer, the ledger, Pelican Crown — not sit beside it.
+- The cemetery is a good place for a beat: `cemetery.js` (TASK-065) gives an
+  enclosed, pedestrian-only space with a fixed non-combatant in it.
+- A `tools/qa/klan.mjs` headless walkthrough, same shape as `tools/qa/actone.mjs`.
+- No new console errors; anything that moves stays out of `batchStatic`.
+
+**Out of scope:** real-world names, real organisations, recruitment language, or
+anything that reads as their case rather than as Keseme's. They are the
+antagonist: hooded, anonymous, and beaten.
+
+---
+
+**What was built (2026-09-20):**
+
+1. **The look.** `opts.robe` on the `characters.js` rig: a hooded robe over the
+   redneck body — chest, skirt off the hips (so it swings with the walk instead
+   of scissoring with the legs, and stops above the boots so the stride still
+   reads), shoulder cape, wide flaring sleeves, and a tall pointed hood with two
+   slits. No emblem, no lettering. Built inside the constructor so it goes
+   through `mergeRigid` with everything else — a robed man costs the same draw
+   calls as an unrobed one. `randomKlansman(rng, height, { officer })` picks a
+   laundered off-white, or the crimson robe for the one giving the orders, so a
+   mission can point at him without a health bar.
+2. **`src/klan.js`.** `nightRide({x, z, count, why, onClear})` stages the set
+   piece: a cross goes up and lights, the mob comes out of the dark and comes
+   for whoever is standing there, and the beat ends when the last of them is
+   down — the cross burns out and the charred timber stays.
+   `mamaNightRide()` runs it on Emiko's lawn. `callOut(x, z, n, {provoke})`
+   places them without the staging, `provoke: false` for a picket standing
+   there before it kicks off. `burningCross` / `burnOut` are separately
+   available for a mission that wants the threat without the fight.
+3. **They are not street population.** `klansman` is in `ENEMY_TYPES` but in no
+   `spawnzones.js` mix, so nothing spawns one on its own — only klan.js does.
+4. **Three-sided turf.** `factions.js` now carries an `ENEMIES_OF` table instead
+   of the hardcoded redneck/hoodrat pair. Hoodrats fight klansmen on sight;
+   **Rednecks do not**, which is the point. A klansman is exempt from the
+   contested-ground gate (he is wherever a set piece put him, not on the turf
+   map) and can be a turf *target* while already fighting the player, but never
+   an instigator.
+5. **`npc.js`:** klansmen are never `timid`. The ordinary temperament roll made
+   two thirds of any night ride scatter on first contact, which is a different
+   scene from the one being written.
+
+**Testing performed** (headless Chromium, `tools/qa/klan.mjs`, screenshots in
+the scratchpad — SwiftShader, so fps is meaningless and is not reported):
+- **Never ambient:** six stops across the parish at 02:00 with the spawner
+  running, ~60 NPCs alive at each — **0 klansmen** at every one.
+- **The night ride:** 6 turn out on Emiko's lawn at (100, -101.9), **all 6
+  hostile, 0 fleeing**, one crimson officer, objective set, cross light live at
+  ~97 power.
+- **It ends itself:** killing the mob clears the ride (`running false`,
+  `hasRide false`) and prints *"They're down. Nobody came. Nobody was ever going
+  to come."* The cross then burns out — flame invisible, light at **0**, timber
+  still standing.
+- **Turf, both directions:** an unprovoked klansman and a Hoodrat 3.8 m apart
+  square up — 1 Hoodrat targeting a klansman and 1 klansman targeting the
+  Hoodrat. A Redneck standing **1.5 m** from a klansman: **0 and 0**, never
+  engages. The asymmetry works.
+- Re-ran `tools/qa/cemetery.mjs` afterwards: no regression (walker still
+  reaches her tomb at 13,904 cells, car still stuck at 673, offering and
+  gunshot reactions unchanged).
+- No new console errors beyond the pre-existing sixtwelve 404s / tacos-burgerpiz
+  403s.
+
+**One bug fixed in klan.js on the way:** a burnt-out cross put its light back
+on. The burn-out ramp cleared its own flag when it finished, so the flicker
+resumed the next frame over an invisible flame. It now latches `spent`.
+
+---
+
+**NIGHT RIDE — the mission (2026-09-20, same day).** The human answered the
+three questions below: **Mercer is leaned on, not one of them; Emiko survives
+but loses the house; the arc threads through both acts.** So this is Act One's
+last beat and Act Two's opening, and `klan.js` now carries it end to end.
+
+Reaching Mama's door used to flash *"Mama's safe — for now"* and drop the
+player straight back to the gas cans, with `nolantis.js`'s question left
+hanging. `actone.js`'s `reachedMama()` now calls `ctx.nightRide()` instead, and
+falls back to the old line if the Klan module is not wired (bare QA worlds).
+
+The beat: a hard cut to 01:10 · Keseme at the door, Emiko answering through it
+(*"There were cars on the road all evening. Slow ones."*) — she is never staged
+outside, because she lives in a sealed kitchen 40 m under the street · headlights
+and no plates · the cross lights and six turn out · the fight · the cross goes
+over into the siding and the house burns · **Mercer is already parked up the
+street with his lights off**, which says "leaned on" without a word of
+exposition, and points at Pelican Crown on his way out · a held shot of the
+burning house · **ACT TWO — PELICAN CROWN**.
+
+**Testing performed:** played start to finish headlessly. Phases run
+`opening → fight → cleared → aftermath → done`, `actOne.phase` ends `done`, the
+clock is forced to 01:10, six klansmen turn out, killing them advances the
+mission, and all 25 lines and both cards fire in order. A screenshot confirms
+the roof fire, the smoke column and the charred cross on the lawn.
+
+**Three things fixed while playing it:**
+- The house fire was built at eaves height (y 3.4) and `actone.js`'s house has
+  walls to 4.0 and a roof at ~5.0 — so the entire fire was inside the front
+  room and all you saw was a glow on the grass. Raised above the roofline.
+- The caption said a cruiser was parked up the street and there wasn't one.
+  There is now (`getSheriffProto().clone(true)`).
+- The closing image was whatever the gameplay camera happened to be pointing
+  at. It cannot frame this — behind her and pitched down, the roof fire is off
+  the top of the screen at 13 m and the house is a speck at 24 m — so the scene
+  holds a scripted shot on the house before the card.
+
+**What remains:**
+- No voice for them, and none for Emiko's off-screen lines.
+- No trucks arriving — the ride simply appears.
+- Act Two itself: the investigation and the payoff are briefed but not built.
+- No reaction from the Sheriff's department to a night ride in free roam
+  (`mamaNightRide()` called outside the mission).
+
+**Decisions — ANSWERED by the human, 2026-09-20. Treat these as settled:**
+1. **How far up does it go?** Mercer is **leaned on, not one of them.** He is
+   compromised — he looks away, he arrives after — and Keseme can eventually
+   turn him. Keeps him usable as a reluctant ally and makes `ledgerboard.js`
+   the lever.
+2. **Does Emiko survive?** **Yes, but the house is lost.** The night ride burns
+   her out. She lives and relocates; the loss is material, not fatal, so the
+   "protect my family" spine that `nolantis.js` and `actone.js` are built on
+   stays live for later acts.
+3. **Where in the act structure?** **Threaded through both.** The night ride is
+   the inciting incident at the end of Act One; the investigation and the payoff
+   are Act Two, spanning Tusouxroe and OrleaRouge. The thread never goes cold.
+
+---
+
 ### TASK-056 — Bug fixes: free-roam police never turning out, devmode drag-select and Cut ignoring world buildings (human report, 2026-09-20)
 
 **Status:** `IN PROGRESS` · **Agent:** Freebuff · **Files:** `src/main.js`, `src/mapEditor.js`, `src/police.js`, `src/minimap.js`
@@ -3151,7 +3595,13 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `tools/qa/police.mjs` (new), `tools/qa/police_test.mjs` | Claude | TASK-042 | Available |
 | `src/characters.js` | — | TASK-020 (REVIEW) | Available |
 | `src/weapons.js`, `src/loot.js` | — | TASK-036 | Available |
-| `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Antigravity | TASK-038 | Locked |
+| `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Antigravity | TASK-038 | Locked — `orlearouge.js` taken briefly for TASK-065 (3 lines + an import; see the task) |
+| `src/cemetery.js` (new), `tools/qa/cemetery.mjs` (new) | Claude | TASK-065 (REVIEW) | Available |
+| `src/voiceCast.js` | All agents | Speaker to voice map | Shared |
+| `src/klan.js` (new), `tools/qa/klan.mjs` (new) | Claude | TASK-066 (REVIEW) | Available |
+| `src/newton.js` (new), `tools/qa/newton.mjs` (new) | Claude | TASK-067 (REVIEW) | Available |
+| `tools/qa/marie_ground.mjs` (new) | Claude | TASK-068 (REVIEW) | Available |
+| `src/npc.js` | — | TASK-066 (temperament only) | Available |
 | `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
 | `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |
 | `src/stateWorld.js`, `src/tusouxroeNorth.js` | Antigravity (unclaimed — see AGENT_LOG) | State-wide expansion | Unclaimed, fixes by Freebuff and Claude (TASK-041) applied |
