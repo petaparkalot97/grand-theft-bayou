@@ -82,6 +82,28 @@ export const SITE_CLUTTER =
 // already patches an unrelated pair of packs (Designersoup cars, Trailer
 // Park characters) the same way, this loader just never had a
 // LoadingManager at all before now.
+// Two more ways these packs are wrong, both of which 404/403 on every single
+// load and leave the mesh flat white:
+//
+//  1. The FBX names a texture with the wrong EXTENSION. 6twelve asks for
+//     Food_shelf_04.jpg, ice_cream_popsicles.jpg and Parking_lot.jpg; all three
+//     are .png on disk. Aliased here rather than converted, because all three
+//     carry an alpha channel a JPEG would throw away. Add to this map if another
+//     pack turns out to have the same problem — the key is the filename the FBX
+//     asks for, lowercased.
+//  2. A material has an EMPTY texture filename, so FBXLoader resolves it to the
+//     FBX's own directory and requests a folder. That is the
+//     "assets/models/tacos/Tacos/Models/ 403" in the console. There is nothing
+//     to fetch, so hand it a 1x1 transparent pixel inline and make no request
+//     at all.
+const TEXTURE_ALIASES = {
+  "food_shelf_04.jpg": "Food_shelf_04.png",
+  "ice_cream_popsicles.jpg": "ice_cream_popsicles.png",
+  "parking_lot.jpg": "Parking_lot.png",
+};
+const BLANK_PIXEL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
 function packTextureRoot(fbxUrl) {
   const dir = fbxUrl.slice(0, fbxUrl.lastIndexOf("/") + 1);
   // Tacos/BurgerPiz keep the FBX in its own Models/ folder, with Textures/ a
@@ -94,11 +116,19 @@ function loadFBX(url, cullRe) {
     const textureRoot = packTextureRoot(url);
     const manager = new THREE.LoadingManager();
     manager.setURLModifier((u) => {
-      // Only texture files, and only ones not already resolving into the
-      // real Textures/ folder — this manager also carries the .fbx file's
-      // own request, which must pass through untouched.
-      if (u.includes("/Textures/") || !/\.(jpe?g|png|tga|bmp|exr|tif?f|webp)$/i.test(u)) return u;
-      return `${textureRoot}Textures/${u.split(/[\\/]/).pop()}`;
+      // The model file itself passes through untouched; so does anything that
+      // already resolves into the pack's real Textures/ folder.
+      if (/\.(fbx|glb|gltf|dae|bin|fbm)$/i.test(u) || u.includes("/Textures/")) return u;
+      // Everything else is supposed to be a texture, so anything that ISN'T a
+      // real image filename is a broken reference in the pack. three's
+      // FBXLoader.loadTexture() declares `let fileName;` and uses it without
+      // ever assigning it when a texture node has no image child, so a material
+      // with no texture ends up requesting the model's own folder — that is the
+      // "assets/models/tacos/Tacos/Models/ 403" on every load. Nothing is there
+      // to fetch; hand back a 1x1 transparent pixel and make no request at all.
+      if (!/\.(jpe?g|png|tga|bmp|exr|tif?f|webp)$/i.test(u)) return BLANK_PIXEL;
+      const asked = u.split(/[\\/]/).pop();
+      return `${textureRoot}Textures/${TEXTURE_ALIASES[asked.toLowerCase()] || asked}`;
     });
     const loader = new FBXLoader(manager);
     _fbxCache.set(url, new Promise((r) => loader.load(url, r, undefined, (e) => { console.warn("FBX load failed", url, e); r(null); })));

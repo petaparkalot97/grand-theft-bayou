@@ -38,6 +38,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
+import { roundedBox } from "./geo.js";
 
 const DAWN_START = 5.0;
 const DAWN_END = 8.5;
@@ -95,21 +96,21 @@ export function createNewton(ctx, at) {
 
     const top = std("folding table formica", 0xd8d3c4, { roughness: 0.6 });
     const leg = fixed(new THREE.MeshStandardMaterial({ name: "table leg", color: 0x8a8f94, metalness: 0.7, roughness: 0.45 }));
-    mesh(new THREE.BoxGeometry(2.6, 0.07, 0.8), top, 0, 0.76, 0, { parent: g });
+    mesh(roundedBox(2.6, 0.07, 0.8), top, 0, 0.76, 0, { parent: g });
     for (const [lx, lz] of [[-1.15, -0.3], [1.15, -0.3], [-1.15, 0.3], [1.15, 0.3]]) {
-      mesh(new THREE.BoxGeometry(0.05, 0.76, 0.05), leg, lx, 0.38, lz, { parent: g, cast: false });
+      mesh(roundedBox(0.05, 0.76, 0.05), leg, lx, 0.38, lz, { parent: g, cast: false });
     }
     // benches either side
     for (const bz of [-1.15, 1.15]) {
-      mesh(new THREE.BoxGeometry(2.4, 0.06, 0.34), std("bench plank wood", 0x8a6a44), 0, 0.44, bz, { parent: g });
-      for (const lx of [-1.0, 1.0]) mesh(new THREE.BoxGeometry(0.05, 0.44, 0.05), leg, lx, 0.22, bz, { parent: g, cast: false });
+      mesh(roundedBox(2.4, 0.06, 0.34), std("bench plank wood", 0x8a6a44), 0, 0.44, bz, { parent: g });
+      for (const lx of [-1.0, 1.0]) mesh(roundedBox(0.05, 0.44, 0.05), leg, lx, 0.22, bz, { parent: g, cast: false });
     }
     // the urn, a tray stack, and paper cups
     const steel = fixed(new THREE.MeshStandardMaterial({ name: "coffee urn steel", color: 0xc8ccd0, metalness: 0.8, roughness: 0.3 }));
     mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.44, 14), steel, -0.95, 1.02, 0, { parent: g });
     mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 8), steel, -0.95, 1.29, 0, { parent: g, cast: false });
     const tray = std("cafeteria tray", 0xb8894a, { roughness: 0.55 });
-    for (let i = 0; i < 6; i++) mesh(new THREE.BoxGeometry(0.42, 0.025, 0.32), tray, 0.15, 0.81 + i * 0.03, 0, { parent: g, cast: false });
+    for (let i = 0; i < 6; i++) mesh(roundedBox(0.42, 0.025, 0.32), tray, 0.15, 0.81 + i * 0.03, 0, { parent: g, cast: false });
     const cup = std("paper cup", 0xf2efe6, { roughness: 0.85 });
     for (let i = 0; i < 9; i++) {
       mesh(new THREE.CylinderGeometry(0.038, 0.03, 0.09, 8), cup,

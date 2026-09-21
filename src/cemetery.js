@@ -33,6 +33,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
+import { roundedBox } from "./geo.js";
 
 // ---------------------------------------------------------------- layout
 const WALL_T = 0.7;          // the oven-vault wall's thickness
@@ -238,7 +239,7 @@ export function createCemetery(ctx, b) {
     // the gate: two plastered piers, an iron arch, and the name across it
     for (const side of [-1, 1]) {
       const px = b.cx + side * (GATE_W / 2 + 0.45);
-      mesh(new THREE.BoxGeometry(0.9, WALL_H + 0.7, WALL_T + 0.3), plasterGrey, px, (WALL_H + 0.7) / 2, b.z0);
+      mesh(roundedBox(0.9, WALL_H + 0.7, WALL_T + 0.3), plasterGrey, px, (WALL_H + 0.7) / 2, b.z0);
       mesh(new THREE.SphereGeometry(0.3, 12, 10), marble, px, WALL_H + 1.2, b.z0);
       ctx.addBlocker(px, b.z0, 0.7);
       // the leaf, swung back against its pier and left that way for a century
@@ -266,24 +267,24 @@ export function createCemetery(ctx, b) {
     scene.add(g);
 
     const base = 1.55 + rnd() * 0.25;
-    mesh(new THREE.BoxGeometry(TOMB_W, base, TOMB_D), skin, 0, base / 2, 0, { parent: g });
-    mesh(new THREE.BoxGeometry(TOMB_W + 0.16, 0.12, TOMB_D + 0.16), skin, 0, base + 0.06, 0, { parent: g, cast: false });
+    mesh(roundedBox(TOMB_W, base, TOMB_D), skin, 0, base / 2, 0, { parent: g });
+    mesh(roundedBox(TOMB_W + 0.16, 0.12, TOMB_D + 0.16), skin, 0, base + 0.06, 0, { parent: g, cast: false });
     let y = base + 0.12, w = TOMB_W - 0.34, dd = TOMB_D - 0.34;
     for (let t = 1; t < tiers; t++) {
       const h = 0.78 - t * 0.14;
-      mesh(new THREE.BoxGeometry(w, h, dd), skin, 0, y + h / 2, 0, { parent: g });
-      mesh(new THREE.BoxGeometry(w + 0.14, 0.1, dd + 0.14), skin, 0, y + h + 0.05, 0, { parent: g, cast: false });
+      mesh(roundedBox(w, h, dd), skin, 0, y + h / 2, 0, { parent: g });
+      mesh(roundedBox(w + 0.14, 0.1, dd + 0.14), skin, 0, y + h + 0.05, 0, { parent: g, cast: false });
       y += h + 0.1; w -= 0.3; dd -= 0.3;
     }
     // the closure tablet on the face, always toward the alley
     if (tablet) {
-      mesh(new THREE.BoxGeometry(TOMB_W - 0.5, base - 0.55, 0.06), marble, 0, base / 2 + 0.06, TOMB_D / 2 + 0.03, { parent: g, cast: false });
+      mesh(roundedBox(TOMB_W - 0.5, base - 0.55, 0.06), marble, 0, base / 2 + 0.06, TOMB_D / 2 + 0.03, { parent: g, cast: false });
     }
     // a cross, an urn, or nothing at all
     const cap = rnd();
     if (cap < 0.42) {
-      mesh(new THREE.BoxGeometry(0.1, 0.62, 0.1), marble, 0, y + 0.31, 0, { parent: g });
-      mesh(new THREE.BoxGeometry(0.38, 0.1, 0.1), marble, 0, y + 0.42, 0, { parent: g, cast: false });
+      mesh(roundedBox(0.1, 0.62, 0.1), marble, 0, y + 0.31, 0, { parent: g });
+      mesh(roundedBox(0.38, 0.1, 0.1), marble, 0, y + 0.42, 0, { parent: g, cast: false });
     } else if (cap < 0.62) {
       mesh(new THREE.CylinderGeometry(0.15, 0.1, 0.34, 10), marble, 0, y + 0.17, 0, { parent: g });
       mesh(new THREE.SphereGeometry(0.1, 8, 7), marble, 0, y + 0.39, 0, { parent: g, cast: false });
@@ -299,20 +300,20 @@ export function createCemetery(ctx, b) {
     g.rotation.y = ry;
     scene.add(g);
     const W = 4.6, D = 3.0;
-    mesh(new THREE.BoxGeometry(W, 0.3, D + 0.5), granite, 0, 0.15, 0, { parent: g });
-    mesh(new THREE.BoxGeometry(W, 3.0, D), plasterGrey, 0, 1.8, 0, { parent: g });
-    mesh(new THREE.BoxGeometry(W + 0.3, 0.2, D + 0.3), plasterGrey, 0, 3.4, 0, { parent: g, cast: false });
+    mesh(roundedBox(W, 0.3, D + 0.5), granite, 0, 0.15, 0, { parent: g });
+    mesh(roundedBox(W, 3.0, D), plasterGrey, 0, 1.8, 0, { parent: g });
+    mesh(roundedBox(W + 0.3, 0.2, D + 0.3), plasterGrey, 0, 3.4, 0, { parent: g, cast: false });
     // a pediment, and the dome the societies liked
     mesh(new THREE.CylinderGeometry(1.0, 1.3, 0.5, 4), plasterGrey, 0, 3.75, 0, { parent: g, ry: Math.PI / 4 });
     mesh(new THREE.SphereGeometry(0.95, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2), plasterGrey, 0, 3.95, 0, { parent: g });
-    mesh(new THREE.BoxGeometry(0.1, 0.8, 0.1), marble, 0, 5.3, 0, { parent: g });
-    mesh(new THREE.BoxGeometry(0.44, 0.1, 0.1), marble, 0, 5.45, 0, { parent: g, cast: false });
+    mesh(roundedBox(0.1, 0.8, 0.1), marble, 0, 5.3, 0, { parent: g });
+    mesh(roundedBox(0.44, 0.1, 0.1), marble, 0, 5.45, 0, { parent: g, cast: false });
     for (const sx of [-1.7, 1.7]) {                                // columns either side of the face
       mesh(new THREE.CylinderGeometry(0.17, 0.19, 2.8, 12), plasterGrey, sx, 1.7, D / 2 - 0.1, { parent: g });
     }
     for (let r = 0; r < 3; r++) {                                  // its own rank of vault tablets
       for (let c = -1; c <= 1; c++) {
-        mesh(new THREE.BoxGeometry(0.86, 0.72, 0.06), marble, c * 0.98, 1.0 + r * 0.82, D / 2 + 0.02, { parent: g, cast: false });
+        mesh(roundedBox(0.86, 0.72, 0.06), marble, c * 0.98, 1.0 + r * 0.82, D / 2 + 0.02, { parent: g, cast: false });
       }
     }
     for (const dx of [-1.5, 0, 1.5]) ctx.addBlocker(x + Math.cos(ry) * dx, z - Math.sin(ry) * dx, 1.6);
@@ -321,10 +322,10 @@ export function createCemetery(ctx, b) {
 
   /** The pyramid — every old cemetery has the one tomb nobody can explain. */
   function pyramidTomb(x, z) {
-    mesh(new THREE.BoxGeometry(3.0, 0.3, 3.0), granite, x, 0.15, z);
+    mesh(roundedBox(3.0, 0.3, 3.0), granite, x, 0.15, z);
     const p = mesh(new THREE.ConeGeometry(2.0, 3.2, 4), std("limestone pyramid tomb stone", 0xdedac9, { roughness: 0.88 }), x, 1.9, z);
     p.rotation.y = Math.PI / 4;
-    mesh(new THREE.BoxGeometry(0.8, 1.2, 0.08), marble, x, 0.85, z + 1.02, { cast: false });
+    mesh(roundedBox(0.8, 1.2, 0.08), marble, x, 0.85, z + 1.02, { cast: false });
     ctx.addBlocker(x, z, 1.9);
   }
 
@@ -373,15 +374,15 @@ export function createCemetery(ctx, b) {
     g.position.set(TOMB.x, 0, TOMB.z);
     scene.add(g);
     const W = 2.3, D = 2.6;
-    mesh(new THREE.BoxGeometry(W + 0.7, 0.24, D + 0.9), granite, 0, 0.12, -0.2, { parent: g });
+    mesh(roundedBox(W + 0.7, 0.24, D + 0.9), granite, 0, 0.12, -0.2, { parent: g });
     // three tiers, plain — it is famous for who is in it, not for what it is
-    mesh(new THREE.BoxGeometry(W, 1.75, D), plaster, 0, 1.0, 0, { parent: g });
-    mesh(new THREE.BoxGeometry(W + 0.18, 0.13, D + 0.18), plaster, 0, 1.94, 0, { parent: g, cast: false });
-    mesh(new THREE.BoxGeometry(W - 0.4, 0.72, D - 0.4), plaster, 0, 2.36, 0, { parent: g });
-    mesh(new THREE.BoxGeometry(W - 0.24, 0.12, D - 0.24), plaster, 0, 2.78, 0, { parent: g, cast: false });
-    mesh(new THREE.BoxGeometry(W - 0.86, 0.5, D - 0.86), plaster, 0, 3.09, 0, { parent: g });
-    mesh(new THREE.BoxGeometry(0.11, 0.7, 0.11), marble, 0, 3.69, 0, { parent: g });
-    mesh(new THREE.BoxGeometry(0.46, 0.11, 0.11), marble, 0, 3.86, 0, { parent: g, cast: false });
+    mesh(roundedBox(W, 1.75, D), plaster, 0, 1.0, 0, { parent: g });
+    mesh(roundedBox(W + 0.18, 0.13, D + 0.18), plaster, 0, 1.94, 0, { parent: g, cast: false });
+    mesh(roundedBox(W - 0.4, 0.72, D - 0.4), plaster, 0, 2.36, 0, { parent: g });
+    mesh(roundedBox(W - 0.24, 0.12, D - 0.24), plaster, 0, 2.78, 0, { parent: g, cast: false });
+    mesh(roundedBox(W - 0.86, 0.5, D - 0.86), plaster, 0, 3.09, 0, { parent: g });
+    mesh(roundedBox(0.11, 0.7, 0.11), marble, 0, 3.69, 0, { parent: g });
+    mesh(roundedBox(0.46, 0.11, 0.11), marble, 0, 3.86, 0, { parent: g, cast: false });
     mesh(new THREE.PlaneGeometry(1.5, 1.2), glapionMat, 0, 1.15, D / 2 + 0.02, { parent: g, cast: false });
 
     // what people leave at the foot of it
