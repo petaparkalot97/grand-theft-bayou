@@ -165,7 +165,7 @@ export function createCameraController({ camera, dom, canCapture }) {
 
       // collision: pull in when a building stands between the focus and the camera;
       // only matters for low angles — from above the strip, roofs sit under the lens
-      let want = driving ? driveDist : (aiming ? Math.min(footDist, M.aimDistance) : footDist);
+      let want = driving ? (aiming ? Math.min(driveDist, M.aimDistance || 10) : driveDist) : (aiming ? Math.min(footDist, M.aimDistance) : footDist);
       const cosP = Math.cos(pitch), sinP = Math.sin(pitch);
       const ox = Math.sin(yaw), oz = Math.cos(yaw);       // from the focus out to the camera
       if (grid && want * sinP < 8) {
@@ -197,7 +197,7 @@ export function createCameraController({ camera, dom, canCapture }) {
         Math.max(focus.y + 1.2, focus.y + M.cameraHeight + sinP * dist),
         focus.z + oz * cosP * dist,
       );
-      look.set(focus.x, focus.y + (aiming && !driving ? M.aimHeight : M.cameraHeight), focus.z);
+      look.set(focus.x, focus.y + (aiming ? (driving ? (M.aimHeight || 1.4) : M.aimHeight) : M.cameraHeight), focus.z);
       if (driving) {
         // look a little ahead of the car, so the road you're heading into is framed
         look.x += Math.sin(veh.heading) * C.driving.lookAhead;

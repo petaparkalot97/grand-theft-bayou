@@ -22,10 +22,13 @@ import * as THREE from "three";
 import { makeDecorativeFence, placeOfficeClutter, placeCityBuilding, placeParkedCar } from "./landmarks.js";
 
 export const CAUSEWAY = { minZ: 136, maxZ: 192 };
-export const CITY = { minX: -136, maxX: 136, minZ: 196, maxZ: 382 };
+// The nightlife core now continues east into a denser modern district. Keep the
+// western boundary stable (the parish transition and French District depend on
+// it), but give the skyline and casino lots room to grow on the east side.
+export const CITY = { minX: -136, maxX: 176, minZ: 196, maxZ: 382 };
 
 // the grid: US-167 is the boulevard at x = ROAD_X (-6)
-const AVENUES = [-86, -46, 34, 74, 114];          // north–south streets
+const AVENUES = [-86, -46, 34, 74, 114, 154];    // north–south streets
 const STREETS = [210, 250, 290, 330, 370];        // east–west streets
 const STREET_W = 9;
 
@@ -497,6 +500,10 @@ export function createOrleaRouge(ctx) {
       { name: "250 westbound", points: [[CITY.maxX - 4, 252.4], [CITY.minX + 4, 252.4]], cruise: [9, 14] },
       { name: "330 eastbound", points: [[CITY.minX + 4, 327.6], [CITY.maxX - 4, 327.6]], cruise: [9, 14] },
       { name: "330 westbound", points: [[CITY.maxX - 4, 332.4], [CITY.minX + 4, 332.4]], cruise: [9, 14] },
+      { name: "210 eastbound", points: [[CITY.minX + 4, 207.6], [CITY.maxX - 4, 207.6]], cruise: [8, 13] },
+      { name: "210 westbound", points: [[CITY.maxX - 4, 212.4], [CITY.minX + 4, 212.4]], cruise: [8, 13] },
+      { name: "370 eastbound", points: [[CITY.minX + 4, 367.6], [CITY.maxX - 4, 367.6]], cruise: [8, 13] },
+      { name: "370 westbound", points: [[CITY.maxX - 4, 372.4], [CITY.minX + 4, 372.4]], cruise: [8, 13] },
     ],
 
     update(dt) {

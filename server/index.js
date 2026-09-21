@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { Room, createRoomCode } from "./Room.js";
 import { MAX_PLAYERS, TICK_RATE, parseMessage, send } from "./protocol.js";
-import { placeWithAI } from "./ai.js";
+import { placeWithAI, duplicateWithAI } from "./ai.js";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -73,7 +73,7 @@ const server = http.createServer((req, res) => {
 
   if (p === "/health") { sendJson(res, 200, { ok: true, rooms: rooms.size }); return; }
 
-  if ((p === "/editor/save" || p === "/editor/load" || p === "/editor/slots" || p === "/editor/delete-slot" || p === "/editor/ai") && req.method === "OPTIONS") {
+  if ((p === "/editor/save" || p === "/editor/load" || p === "/editor/slots" || p === "/editor/delete-slot" || p === "/editor/ai" || p === "/editor/ai-duplicate") && req.method === "OPTIONS") {
     cors(res); res.writeHead(204); res.end(); return;
   }
 
@@ -129,6 +129,13 @@ const server = http.createServer((req, res) => {
   if (p === "/editor/ai" && req.method === "POST") {
     cors(res);
     readBody(req).then((raw) => placeWithAI(JSON.parse(raw), env))
+      .then((result) => sendJson(res, result.ok ? 200 : 400, result))
+      .catch((err) => sendJson(res, 400, { ok: false, error: String(err.message || err) }));
+    return;
+  }
+  if (p === "/editor/ai-duplicate" && req.method === "POST") {
+    cors(res);
+    readBody(req).then((raw) => duplicateWithAI(JSON.parse(raw), env))
       .then((result) => sendJson(res, result.ok ? 200 : 400, result))
       .catch((err) => sendJson(res, 400, { ok: false, error: String(err.message || err) }));
     return;

@@ -15,7 +15,8 @@ import * as THREE from "three";
 import { makeDeputy } from "./characters.js";
 
 const GIVEUP_WINDOW = 5.0; // seconds out of sight before chase breaks off
-const MAX_FOOT_COPS = 4;
+const MAX_FOOT_COPS = 8;
+const HELI_MIN_STARS = 3;
 
 export function buildCruiserModel(baseCarMesh) {
   const g = baseCarMesh ? baseCarMesh.clone(true) : new THREE.Group();
@@ -53,7 +54,11 @@ export function buildCruiserModel(baseCarMesh) {
   g.position.x = 0; g.position.z = 0;
   g.rotation.set(0, 0, 0);
   g.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(g).translate(new THREE.Vector3(0, -g.position.y, 0));
+  const box = new THREE.Box3().setFromObject(g);
+  // Box3.translate() is not available in the headless three.js stub used by
+  // the QA harness; apply the tiny y correction explicitly.
+  box.min.y -= g.position.y;
+  box.max.y -= g.position.y;
   const size = box.getSize(new THREE.Vector3());
   const mid = box.getCenter(new THREE.Vector3());
   const halfW = size.x / 2, halfD = size.z / 2;
@@ -65,6 +70,25 @@ export function buildCruiserModel(baseCarMesh) {
   const rightDoor = leftDoor.clone();
   rightDoor.position.x = mid.x - halfW + 0.03;
   g.add(leftDoor, rightDoor);
+
+  // High-contrast side markings make the unit read as law enforcement even
+  // in the blue-hour fog: a red/blue stripe and an actual SHERIFF label.
+  const stripeRed = new THREE.Mesh(new THREE.BoxGeometry(0.07, size.y * 0.09, size.z * 0.72), redLightMat);
+  const stripeBlue = new THREE.Mesh(new THREE.BoxGeometry(0.075, size.y * 0.05, size.z * 0.72), blueLightMat);
+  stripeRed.position.set(mid.x + halfW + 0.01, box.min.y + size.y * 0.39, mid.z);
+  stripeBlue.position.set(mid.x - halfW - 0.01, box.min.y + size.y * 0.39, mid.z);
+  const labelCanvas = document.createElement("canvas");
+  labelCanvas.width = 512; labelCanvas.height = 96;
+  const labelCtx = labelCanvas.getContext("2d");
+  labelCtx.fillStyle = "#f4f4f4"; labelCtx.fillRect(0, 0, 512, 96);
+  labelCtx.fillStyle = "#18283a"; labelCtx.font = "900 58px Arial Black,Arial"; labelCtx.textAlign = "center"; labelCtx.textBaseline = "middle";
+  labelCtx.fillText("SHERIFF", 256, 50);
+  const labelTex = new THREE.CanvasTexture(labelCanvas);
+  const labelMat = new THREE.MeshBasicMaterial({ map: labelTex, transparent: true });
+  const labelA = new THREE.Mesh(new THREE.PlaneGeometry(size.z * 0.48, size.y * 0.12), labelMat);
+  labelA.rotation.y = Math.PI / 2; labelA.position.set(mid.x + halfW + 0.04, box.min.y + size.y * 0.55, mid.z);
+  const labelB = labelA.clone(); labelB.rotation.y = -Math.PI / 2; labelB.position.x = mid.x - halfW - 0.04;
+  g.add(stripeRed, stripeBlue, labelA, labelB);
 
   // Push bar across the nose, with two chrome uprights.
   const pushBar = new THREE.Mesh(new THREE.BoxGeometry(size.x * 0.82, size.y * 0.16, 0.1), barMat);
@@ -92,16 +116,54 @@ export function buildCruiserModel(baseCarMesh) {
   return g;
 }
 
-export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted }) {
+/** A compact procedural police helicopter: readable silhouette, search lamp,
+ * spinning rotor and a clear red/blue tail beacon. */
+export function buildPoliceHelicopter() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.05, 3.6), new THREE.MeshStandardMaterial({ color: 0x18283a, roughness: 0.42, metalness: 0.25 }));
+  body.position.y = 0;
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.72, 1.55), new THREE.MeshStandardMaterial({ color: 0x9bc6d8, transparent: true, opacity: 0.72, roughness: 0.12, metalness: 0.25 }));
+  cabin.position.set(0, 0.32, 0.45);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 2.8), new THREE.MeshStandardMaterial({ color: 0x18283a, roughness: 0.42 }));
+  tail.position.set(0, 0.15, -2.55);
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.9, 0.55), new THREE.MeshStandardMaterial({ color: 0x18283a }));
+  fin.position.set(0, 0.62, -3.55);
+  const rotor = new THREE.Group();
+  rotor.add(new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.06, 0.16), new THREE.MeshStandardMaterial({ color: 0x121820, metalness: 0.7 })));
+  rotor.add(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 5.8), new THREE.MeshStandardMaterial({ color: 0x121820, metalness: 0.7 })));
+  rotor.position.y = 0.78;
+  const skidMat = new THREE.MeshStandardMaterial({ color: 0x707b84, metalness: 0.75, roughness: 0.3 });
+  for (const x of [-0.78, 0.78]) {
+    const skid = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 3.5), skidMat);
+    skid.position.set(x, -0.72, 0);
+    g.add(skid);
+    for (const z of [-1.1, 1.1]) {
+      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.7, 0.07), skidMat);
+      strut.position.set(x, -0.38, z); g.add(strut);
+    }
+  }
+  const red = new THREE.MeshBasicMaterial({ color: 0xff1830 }); red.name = "heli red beacon";
+  const blue = new THREE.MeshBasicMaterial({ color: 0x2f68ff }); blue.name = "heli blue beacon";
+  const beacon = new THREE.Group();
+  const r = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.22), red); r.position.x = 0.22;
+  const b = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.22), blue); b.position.x = -0.22;
+  beacon.add(r, b); beacon.position.set(0, 0.55, -1.2);
+  g.add(body, cabin, tail, fin, rotor, beacon);
+  g.userData.rotor = rotor; g.userData.beacon = { red: r, blue: b };
+  return g;
+}
+
+export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted, shootPlayer }) {
   const cruisers = [];
   const footCops = [];
+  const helicopters = [];
   const lastKnownPos = new THREE.Vector3();
   let sightLostTime = 0;
   let hasLastKnownPos = false;
 
   function spawnFootCop(x, z) {
     if (footCops.filter((c) => !c.dead).length >= MAX_FOOT_COPS) return null;
-    const spr = makeDeputy({ seed: (Math.random() * 1e9) | 0, height: 1.82 });
+    const spr = makeDeputy({ police: true, seed: (Math.random() * 1e9) | 0, height: 1.82 });
     spr.position.set(x, 0, z);
     scene.add(spr);
 
@@ -111,6 +173,7 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted }
       spr,
       hp: 24,
       atkCd: 0,
+      shootCd: Math.random() * 0.8,
       dead: false,
       state: "hostile",
       rivalTarget: null,
@@ -167,6 +230,7 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted }
       c.t += dt;
       c.atkCd = Math.max(0, c.atkCd - dt);
 
+      c.shootCd = Math.max(0, c.shootCd - dt);
       if (dist < c.T.melee) {
         c.spr.play("attack", { fps: 10, loop: true });
         c.spr.setFlip(dx);
@@ -180,6 +244,13 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted }
         c.spr.setFlip(dx);
         p.x += dx * c.T.speed * dt;
         p.z += dz * c.T.speed * dt;
+        // Deputies shoot while closing the distance, making the threat readable
+        // before they reach arrest range. They fire slowly and only when the
+        // player is not hidden inside a vehicle.
+        if (!env.driving && dist < 38 && dist > 5 && c.shootCd <= 0 && shootPlayer) {
+          c.shootCd = 1.35 + Math.random() * 0.45;
+          shootPlayer(p, 3.5, "deputy");
+        }
       }
     }
 
@@ -199,7 +270,46 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted }
   function hasGivenUp() { return hasLastKnownPos && sightLostTime > GIVEUP_WINDOW; }
 
   /** Drop the chase outright (the player was busted, or the story took over). */
-  function clearPursuit() { hasLastKnownPos = false; sightLostTime = 0; }
+  function clearPursuit() {
+    hasLastKnownPos = false; sightLostTime = 0;
+    for (const h of helicopters) scene.remove(h.obj);
+    helicopters.length = 0;
+  }
+
+  function updateHelicopters(dt, env) {
+    const active = env.state.wanted >= HELI_MIN_STARS;
+    if (!active) {
+      for (const h of helicopters) scene.remove(h.obj);
+      helicopters.length = 0;
+      return;
+    }
+    if (!helicopters.length) {
+      const obj = buildPoliceHelicopter();
+      obj.position.set(env.player.x + 24, 16, env.player.z + 24);
+      scene.add(obj);
+      helicopters.push({ obj, shootCd: 1.2 });
+    }
+    const target = env.player;
+    for (const h of helicopters) {
+      const o = h.obj;
+      const dx = target.x - o.position.x, dz = target.z - o.position.z;
+      const d = Math.hypot(dx, dz) || 1;
+      const orbit = 5.5;
+      o.position.x += (dx / d * 13 + (-dz / d) * orbit) * dt;
+      o.position.z += (dz / d * 13 + (dx / d) * orbit) * dt;
+      o.position.y += (15 + Math.sin(performance.now() * 0.002) * 1.2 - o.position.y) * Math.min(1, dt * 2);
+      o.rotation.y = Math.atan2(dx, dz);
+      o.userData.rotor.rotation.y += dt * 18;
+      const on = Math.sin(performance.now() * 0.012) > 0;
+      o.userData.beacon.red.visible = on;
+      o.userData.beacon.blue.visible = !on;
+      h.shootCd -= dt;
+      if (h.shootCd <= 0 && shootPlayer && d < 58) {
+        h.shootCd = 1.1 + Math.random() * 0.7;
+        shootPlayer(o.position, 5.5, "helicopter");
+      }
+    }
+  }
 
   return {
     GIVEUP_WINDOW,
@@ -212,6 +322,8 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted }
     hasGivenUp,
     clearPursuit,
     get footCops() { return footCops; },
+    get helicopters() { return helicopters; },
+    updateHelicopters,
     get cruisers() { return cruisers; },
   };
 }

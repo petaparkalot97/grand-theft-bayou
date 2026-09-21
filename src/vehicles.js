@@ -53,6 +53,11 @@ export const VEHICLE_DEFS = Object.freeze({
   scooter: { name: "scooter", pack: "procedural", class: "sports", modelForward: "+Z", length: 1.8, bike: true,
     seat: { z: -0.22, y: 0.8, lean: 0.08 },
     handling: { accel: 17, maxForward: 20, maxReverse: 4, grip: 2.9, brakeGrip: 3.6, fullSteerSpeed: 3.5 } },
+  limo: { name: "limo", pack: "procedural", class: "civilian", modelForward: "+Z", length: 6.2,
+    handling: { accel: 16, maxForward: 24, grip: 1.25, brakeGrip: 2.1, fullSteerSpeed: 8 } },
+  pushbike: { name: "pushbike", pack: "procedural", class: "sports", modelForward: "+Z", length: 1.75, bike: true, pedal: true,
+    seat: { z: -0.2, y: 0.82, lean: 0.16 },
+    handling: { accel: 10, maxForward: 12, maxReverse: 2, drag: 2.1, grip: 2.6, brakeGrip: 3.2, fullSteerSpeed: 3 } },
 });
 
 /** Definition for an asset file or name ("Car_1_R.fbx", "docLorean"). */

@@ -62,6 +62,40 @@ export function buildMotorbike(color = PAINTS[(Math.random() * PAINTS.length) | 
   return g;
 }
 
+/** A stretched procedural limousine for the high-end OrleaRouge traffic pool. */
+export function buildLimo(color = 0x171b28) {
+  const g = new THREE.Group();
+  const paint = std("limo paint", color, { metalness: 0.5, roughness: 0.24 });
+  const glass = std("limo tinted glass", 0x101a2b, { metalness: 0.35, roughness: 0.18 });
+  const chrome = std("limo chrome", 0xd4af37, { metalness: 0.9, roughness: 0.2 });
+  mesh(g, new THREE.BoxGeometry(1.9, 0.75, 6.0), paint, 0, 0.72, 0);
+  mesh(g, new THREE.BoxGeometry(1.65, 0.58, 2.8), glass, 0, 1.32, 0.45);
+  mesh(g, new THREE.BoxGeometry(1.7, 0.08, 5.5), chrome, 0, 0.98, 0);
+  for (const z of [-2.05, -0.65, 0.75, 2.05]) {
+    wheel(g, z, 0.29, 0.08, 0.36, std("limo tire", 0x111111), chrome);
+  }
+  mesh(g, new THREE.BoxGeometry(0.16, 0.12, 0.08), glow(0xfff4d8), 0, 1.0, 3.03);
+  mesh(g, new THREE.BoxGeometry(0.18, 0.1, 0.08), glow(0xff2020), 0, 0.95, -3.03);
+  return g;
+}
+
+/** A simple upright push bike. It deliberately shares the procedural bike
+ * materials, but leaves the rider's legs visible for the pedal mechanic. */
+export function buildPushBike(color = 0x2e9d52) {
+  const g = new THREE.Group();
+  const paint = std("push bike frame", color, { metalness: 0.25, roughness: 0.4 });
+  const rubber = std("push bike tire", 0x141414, { roughness: 0.95 });
+  const chrome = std("push bike chrome", 0xbfc4c8, { metalness: 0.8, roughness: 0.2 });
+  wheel(g, 0.68, 0.34, 0.045, 0.38, rubber, chrome);
+  wheel(g, -0.68, 0.34, 0.045, 0.38, rubber, chrome);
+  mesh(g, new THREE.CylinderGeometry(0.035, 0.035, 1.05, 8), paint, 0, 0.72, 0, 0, 0, Math.PI / 2);
+  mesh(g, new THREE.CylinderGeometry(0.035, 0.035, 0.85, 8), paint, 0, 0.62, 0.2, 0, 0.2, Math.PI / 2);
+  mesh(g, new THREE.BoxGeometry(0.18, 0.06, 0.36), std("bike seat", 0x171717), 0, 0.86, -0.18);
+  mesh(g, new THREE.CylinderGeometry(0.025, 0.025, 0.6, 8), chrome, 0, 1.03, 0.57, 0.15);
+  mesh(g, new THREE.BoxGeometry(0.52, 0.04, 0.04), chrome, 0, 1.22, 0.5);
+  return g;
+}
+
 /** A Vespa-style scooter, ~1.8 m long, seat ~0.78 m up. */
 export function buildScooter(color = SCOOTER_PAINTS[(Math.random() * SCOOTER_PAINTS.length) | 0]) {
   const g = new THREE.Group();

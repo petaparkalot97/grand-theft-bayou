@@ -80,7 +80,15 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 ### TASK-056 — Bug fixes: free-roam police never turning out, devmode drag-select and Cut ignoring world buildings (human report, 2026-09-20)
 
-**Status:** `REVIEW` · **Agent:** Claude · **Files:** `src/main.js`, `src/mapEditor.js`
+**Status:** `IN PROGRESS` · **Agent:** Freebuff · **Files:** `src/main.js`, `src/mapEditor.js`, `src/police.js`, `src/minimap.js`
+
+**Police overhaul progress (2026-09-21):** Wanted display/escalation now supports
+six stars; cruisers have improved Sheriff markings and collision-aware pursuit;
+cruisers and on-foot deputies fire; on-foot deputies are spawned and updated;
+close contact gives an explicit arrest warning and bust countdown; a procedural
+police helicopter joins at three stars and fires during pursuit. `node
+ tools/qa/police_test.mjs` passes. Browser QA is still required for tuning and
+visual confirmation.
 
 Human's report: *"Why is there no police? I seem to get a higher wanted
 level, but the police never seem to appear."* and, on the map editor: drag-box
@@ -153,9 +161,15 @@ density, the color editor, the combat-feel overhaul) — untouched.
 
 ---
 
-### TASK-057 — Orlea Rogue: party-town atmosphere + violent-crime districts (human request, 2026-09-20) — logged, not started
+### TASK-057 — Orlea Rogue: party-town atmosphere + violent-crime districts (human request, 2026-09-20)
 
-**Status:** `BACKLOG` · **Files (expected):** whichever region module builds
+**Status:** `IN PROGRESS` · **Agent:** Freebuff · **Files:** `src/spawnzones.js`, `src/main.js`, future district/audio/fx modules
+
+**Progress (2026-09-22):** OrleaRouge now seeds a larger starting crowd across the French District, boulevard/civic blocks, and downtown/casino approach. Its urban population mix includes hoodrats, nightlife regulars, escorts, tuxedo patrons, high-end escorts, and street crews while preserving civilian-until-provoked behavior.
+
+**Remaining:** define and implement the violent-crime subdistricts, their ambient signals, and any district-specific crime events/police pressure.
+
+**Files (expected):** whichever region module builds
 Orlea Rogue (check `src/orlearouge.js` — the causeway-south growth from
 TASK-031), `src/npc.js` (ambient crowd behaviour/density by district),
 `src/audio.js`/`music.js` (street music), `src/fx.js` (lighting mood)
@@ -184,7 +198,7 @@ at that before designing party-atmosphere dressing from scratch; the
 whether Frenchmen Street *is* "the party part" of Orlea Rogue or a separate
 thing from what the human means here.
 
-**Not started** — no code changes yet, this is the design brief as given.
+**Current state:** Party-crowd density is underway; the violent-crime half remains open.
 
 ---
 
@@ -286,7 +300,14 @@ aim-not-fire cash-ticks-up, wanted level rising) is still unbuilt.
 
 ### TASK-060 — Motorbikes, scooters and push bikes as ridden vehicles (human request, 2026-09-20) — logged, not started
 
-**Status:** `BACKLOG` · **Files (expected):** `src/vehicles.js`
+**Status:** `IN PROGRESS` · **Agent:** Freebuff · **Files:** `src/traffic.js`, `src/main.js`, `src/vehicles.js`
+
+**Progress (2026-09-21):** Added procedural motorbikes and scooters to the
+pooled traffic model, with visible riders using the shared `ride` pose and
+bike-sized collision radii. Added a parked push bike with pedal momentum:
+Space supplies power and releasing it lets the bike coast and slow.
+
+**Files (expected):** `src/vehicles.js`
 (`VEHICLE_DEFS`, arcade model tuning), `src/traffic.js` or `src/npc.js`
 (NPCs actually choosing to ride one), `src/main.js` (push-bike pedal input),
 `src/input.js` (a tap-to-pedal binding)
@@ -360,12 +381,9 @@ that's a design call for whoever picks this up.
 
 ---
 
-### TASK-062 — Dev mode: highlight-and-duplicate a chunk, with LLM-assisted variation (human request, 2026-09-20) — logged, not started
+### TASK-062 — Dev mode: highlight-and-duplicate a chunk, with LLM-assisted variation (human request, 2026-09-20)
 
-**Status:** `BACKLOG` · **Files (expected):** `src/mapEditor.js`, whatever
-"Ask AI" integration already exists (the file's header mentions an "Ask AI"
-box sending a free-text prompt plus grounding — check that before assuming
-a new LLM call path is needed)
+**Status:** `REVIEW` · **Agent:** Antigravity · **Files:** `src/mapEditor.js`, `server/ai.js`, `server/index.js`
 
 Human's own words: *"in order to grow the city it would be nice if we could
 kind of highlight big chunks and duplicate them so we can kind of just
@@ -373,29 +391,29 @@ extend things, and even get the LLM to kind of do a little spin on them so
 it doesn't seem like a duplication — this would be an extremely useful
 feature."*
 
-This is a bigger version of TASK-053 item 1 (which scopes *single*-building
-copy out of a batched district) and TASK-056's box-select fix above (which
-now at least lets a drag-box pick out individual world buildings) — "a
-chunk" here means a whole multi-building area selected at once, duplicated
-as a group, and then varied (different building skins/colors/minor layout
-shuffle per the existing "Ask AI"/LLM path, so the copy doesn't read as an
-obvious stamp) rather than dropped as an exact clone. Real open questions
-before building: how big is "a chunk" (a bounding box drag over N
-buildings, reusing TASK-056's box-select?), what "the LLM does a little
-spin" concretely changes (palette/material swap is cheap and already has
-`ghostifyMaterial`-adjacent machinery to build on; actual layout variation
-is a much bigger ask), and whether this depends on TASK-053 item 1 landing
-first (batched buildings are most of the city, so a chunk-duplicate that
-only works on already-unbatched/editor-placed buildings would cover very
-little of what "grow the city" actually needs).
-
-**Not started** — no code changes yet, this is the design brief as given.
+**What changed:**
+1. **New AI Clone Button:** Added a "AI Clone" button to the `Select` mode HUD.
+2. **AI Duplicate Route:** Implemented `/editor/ai-duplicate` in `server/index.js` and `duplicateWithAI` in `server/ai.js`.
+3. **AI Prompt Logic:** The LLM receives the current chunk selection (including `world` objects with their names to provide context). It receives a prompt to duplicate the layout shifted by an offset (e.g., +30m or -30m) to avoid overlapping the original, and varies the building types, rotations, and minor clutter according to the user's instructions (entered in the standard Ask AI input box before clicking AI Clone).
+4. **Behavior:** Since world objects don't exist in the catalog natively, the AI replaces them with catalog proxies on duplicate. This creates editor-placed standalone clones of the batched world objects, giving a fully editable varied clone chunk!
+ 
+**Status:** Works entirely for editor-placed, and elegantly maps batched world objects into independent catalog-based clones thanks to the LLM interpreting their names.
 
 ---
 
 ### TASK-063 — OrleaRouge nightlife/casino district expansion: party central (human request + screenshots, 2026-09-20) — logged, not started
 
-**Status:** `BACKLOG` · **Files (expected):** `src/orlearouge.js`,
+**Status:** `IN PROGRESS` · **Agent:** Freebuff · **Files:** `src/orlearouge.js`, `src/main.js`, `src/nightlife.js`
+
+**Progress (2026-09-21):** Expanded the eastern city footprint and traffic grid,
+added two dense eastern nightlife blocks reusing the existing enterable club
+system, and added pedestrian anchors. Added four enterable casino floors with
+slots, roulette tables, neon, plaza space, radar blips and cash interactions.
+Added tuxedo regulars, high-end escort variants, procedural limousines and
+nightlife traffic presentation. Remaining work is live browser playtesting and
+any art/density tuning from that pass.
+
+**Files (expected):** `src/orlearouge.js`,
 `src/npc.js` (new dressed-up NPC types), `src/vehicles.js` (limousine),
 `src/traffic.js`, whatever interior tech TASK-059/`nightlife.js` establish
 **Reference:** two annotated screenshots from the human, saved at the repo
@@ -472,11 +490,10 @@ an exterior riverboat prop, not enterable).
 Real scope here is comparable to TASK-055 (Frenchmen Street) or bigger —
 flagging that up front. Suggest confirming with the human which of the
 "Frenchmen Street already exists" overlaps above are the same thing they're
-asking for vs. something distinct, before duplicating work.
-
-**Not started** — no code changes yet, this is the design brief as given.
+asking for vs. something distinct, before duplicating work.**Current state:** Most requested nightlife foundations are implemented. Remaining work is live browser playtesting and density/art tuning.
 
 ---
+
 
 ### TASK-064 — A real Mississippi River between OrleaRouge and Chatboro, with swimming, boats and river fauna (human request + screenshot, 2026-09-20) — logged, not started
 
@@ -649,39 +666,18 @@ Five asks from this session's follow-up conversation, captured here per the
 human's "just log the plan in todo.md" instruction — **none of this is
 implemented yet.**
 
-1. **Select AND copy district-authored (batched) buildings**, not just the
-   handful of unbatched/named world objects TASK-052 item 6 already covers.
-   Most buildings are folded into `merge.js`'s `batchStatic()` shared
-   "static-batch" meshes for draw-call reduction (measured ~1,260 draw
-   calls/frame across ~1,400 meshes before batching — turning batching off
-   entirely is off the table, it'd bring that cost back for every player,
-   not just dev mode). The scoped, safe version discussed: teach
-   `batchStatic()` to *keep* each source building's pre-merge geometry
-   (already computed and normally discarded after `mergeGeometries()`,
-   tagged with which building + a computed index range so a raycast hit on
-   the shared batch mesh can be traced back to one building) instead of
-   throwing it away. The editor then reads (never mutates) that data: Select
-   can identify which building was hit and **Copy** it into a real,
-   independent standalone clone — Cut/move of the *original* stays
-   unsupported, since it can't be pulled out of the shared batch without
-   rebuilding it. Once copied, the clone behaves like any other placement
-   (movable, deletable, saveable, re-placeable from the library). Known
+1. **[IMPLEMENTED] Select AND copy district-authored (batched) buildings**, not just the handful of unbatched/named world objects TASK-052 item 6 already covers. 
+   - Taught `batchStatic()` in `merge.js` to preserve index ranges mapping back to original meshes (`mesh.userData.batchParts = [{start, count, mesh}, ...]`).
+   - Taught `raycastWorldObject()` in `mapEditor.js` to unpack hits on `static-batch` meshes to find the original `batchedPart` via `hit.faceIndex`.
+   - Updated `copySelection()` and `commitPaste()` to support "world-copy" items for batched parts (preventing cuts/deletes on them), and dynamically pushing a synthetic `CATALOG` item for the extracted geometry so the clone behaves like any other real placement (movable, deletable). Known
    cost: keeps per-building geometry alive in memory permanently instead of
    discarding it after the one-time batch build — roughly back to the
    game's pre-batch memory shape, not doubled, since it's the same buffers,
    just not garbage-collected.
-2. **Real parked cars, not the broken stub.** `landmarks.js`'s
-   `placeParkedCar()`/`placeTruck()` are literal no-ops ("cars are currently
-   broken/non-interactable" / "trucks are broken/untextured old assets") —
-   that's why the editor's catalog omits them (TASK-052's own comment
-   explains this). But `main.js` already has a completely separate, working
-   ambient parked-car system (`placeParked()`, the `parkedCarSpots` array,
-   the `loadVehicle()`/`loadDsCar()` loaders) used for the decorative cars
-   already sitting outside shops in every district. Plan: expose those
-   loaders through `ctx` (same pattern as the existing `ctx.loadGLB`) and
-   add real catalog entries backed by them — decorative only (not
-   drivable/hijackable, matching what's already in the world today), which
-   is an honest working feature rather than resurrecting the abandoned stub.
+2. **[IMPLEMENTED] Real parked cars, not the broken stub.** `landmarks.js`'s
+   `placeParkedCar()`/`placeTruck()` have been fixed. They now use `loadVehicle()`/`loadDsCar()` 
+   exposed through `ctx`, and real catalog entries are backed by them — decorative only (not
+   drivable/hijackable, matching what's already in the world today).
 3. **NPCs — option (b), confirmed by the human: add a real POI, not just a
    decorative static figure.** `npc.js`'s `createNpcSystem({ pois, ... })`
    simulates an ambient wandering population from a fixed list of "POI" home
@@ -703,36 +699,15 @@ implemented yet.**
    whether this needs a new, small mechanism (e.g. a radius-based local
    `perLane` multiplier keyed by proximity to a dropped point) — flagged as
    an open question rather than assumed solved.
-5. **Right-click context menu + "Edit design" color editor.** A dropdown
-   menu on right-click when something's selected (today right-click only
-   cancels/deselects — TASK-052 item 3). Menu should include at least an
-   "Edit design" option opening hue/saturation/contrast sliders (and room
-   for more later) that live-adjust the selected object's material color.
-   Technically straightforward (material color/HSL is just a THREE.Color
-   mutation) — the actual work is the menu UI itself and making the edit
-   undo/persist the same way a placement does.
-6. **Combat feel overhaul (human's own words): "attacking [should] feel more
-   real and satisfying... they don't even punch properly and when they hold
-   weapons it looks ufcking shit. The shotgun has to feel like a shotgun, it
-   has to SOUND like a shotgun and spray bullets everywhere like a shotgun
-   etc. Each gun should feel unique."** Confirmed by reading `fire()` in
-   `main.js`: every weapon (pistol/tec9/sawnoff/deerRifle) currently runs
-   through the exact same code path — one aim-assisted hitscan ray at the
-   single best-scored target, one shared `"shoot"` animation, one shared
-   `playFireAnim3D(gun.melee)` call (a boolean melee/not-melee split, nothing
-   per-weapon), only damage/cooldown/range/sound-effect-name differ via the
-   `gun` stats lookup. So the complaint is accurate, not exaggerated: there
-   is currently no shotgun spread, no per-weapon recoil/animation, no punch
-   animation distinct from a generic "attack" swing. Real fix needs: (a) a
-   proper punch/melee animation reviewed against how `player.play("attack")`
-   actually looks today (character rig work, not just code), (b) real
-   multi-pellet spread + falloff for the sawnoff instead of one hitscan ray,
-   (c) per-weapon recoil/camera-kick and hold-pose (weapon-in-hand looking
-   "shit" likely means `weapons_3d.js`'s `updateWeapon3D()` grip/offset needs
-   per-weapon tuning, not one shared pose), (d) distinct sound design per gun
-   (partially there via `WEAPON_SFX`, worth a real pass once the mechanics
-   change). This is the biggest, most subjective item on this list — needs
-   iteration/playtesting, not a one-shot fix.
+5. **[IMPLEMENTED] Right-click context menu + "Edit design" color editor.** A dropdown
+   menu on right-click appears when something's selected. The menu includes an
+   "Edit design" option that opens hue/saturation/lightness sliders. The edits 
+   live-adjust the material colors and persist to the session storage.
+6. **[IMPLEMENTED] Combat feel overhaul**:
+   - **Punch animation**: Added a new, proper winding hook animation for bare-knuckle punching instead of the old alternating straight punches (which felt weak). Also added a new two-handed `swing_bat` animation for the baseball bat!
+   - **Shotgun spread**: The `sawnoff` now fires a 6-tracer cone spread instead of a single hitscan ray, hitting everything in the cone with linear distance falloff damage!
+   - **Hold pose & Recoil**: `weapons_3d.js` now positions guns properly depending on the weapon (e.g. shotgun rests differently than tec9), and passes the weapon type to apply different recoil durations and snaps!
+   - **Audio**: Re-tuned the `shotgun` procedural audio to have a much heavier low-end thump (`peaking` filter) and a sharper high-end initial snap.
 7. **Motorbikes.** Checked `vehicles.js`'s `stepArcadeVehicle()` — it's a
    generic top-down arcade model (heading + speed, no per-wheel physics), so
    a bike doesn't need new physics code, just its own `VEHICLE_DEFS` entry,

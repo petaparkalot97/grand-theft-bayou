@@ -127,4 +127,65 @@ export async function placeWithAI({ prompt, anchor, nearby, catalog }, env) {
   return { ok: false, error: `every model failed — ${errors.join(" | ")}` };
 }
 
+function duplicateSystemPrompt(catalog) {
+  const list = catalog.map((c) => `${c.key} — ${c.label} (${c.w}m x ${c.d}m)`).join("\n");
+  return `You are a city-builder AI assistant. You will be given a JSON array of existing buildings representing a selected "chunk" of the city.
+Your task is to duplicate this chunk and optionally apply a creative variation based on the user's request.
+Return a NEW JSON array of buildings that forms the duplicated chunk.
+- Shift the entire chunk by some offset (e.g. +30m or -30m in x or z) so it doesn't overlap the original, unless the user requests otherwise.
+- Keep the relative layout roughly similar, but you may vary the building types, adjust rotations, or add/remove minor scatter to fit the requested theme.
+- Reply with ONLY a JSON array (no prose, no markdown fences), each entry:
+{"catalogKey": "<one of the keys below>", "dx": <meters east of anchor>, "dz": <meters south of anchor>, "ry": <radians>}
+- Use ONLY these catalog keys, exactly as spelled:
+${list}`;
+}
+
+export async function duplicateWithAI({ selection, anchor, prompt, catalog }, env) {
+  const apiKey = (env.OPENROUTER_API_KEY || "").trim();
+  if (!apiKey) return { ok: false, error: "OPENROUTER_API_KEY is not set on the server" };
+  if (!Array.isArray(selection) || !selection.length) return { ok: false, error: "missing selection" };
+  if (!Array.isArray(catalog) || !catalog.length) return { ok: false, error: "missing catalog" };
+
+  const validKeys = new Set(catalog.map((c) => c.key));
+  const selectionJson = JSON.stringify(selection.map(s => ({
+    catalogKey: s.catalogKey || (s.kind === "world" ? "world_object (read-only)" : s.catalogKey),
+    dx: s.dx, dz: s.dz, ry: s.dry
+  })));
+  
+  const messages = [
+    { role: "system", content: duplicateSystemPrompt(catalog) },
+    { role: "user", content: `Original Selection (relative to anchor):\n${selectionJson}\n\nUser Request: ${prompt || "Duplicate this chunk, shift it to an empty space nearby, and add a little random variation."}` },
+  ];
+
+  const chain = models(env);
+  const errors = [];
+  for (const model of chain) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+      let text;
+      try {
+        text = await callModel(model, apiKey, messages, controller.signal);
+      } finally {
+        clearTimeout(timeout);
+      }
+      const parsed = extractJsonArray(text);
+      const placements = parsed
+        .filter((p) => p && validKeys.has(p.catalogKey) && Number.isFinite(p.dx) && Number.isFinite(p.dz))
+        .slice(0, 50)
+        .map((p) => ({
+          catalogKey: p.catalogKey,
+          x: anchor.x + p.dx,
+          z: anchor.z + p.dz,
+          ry: Number.isFinite(p.ry) ? p.ry : 0,
+        }));
+      if (!placements.length) throw new Error("reply had no valid placements");
+      return { ok: true, placements, model };
+    } catch (err) {
+      errors.push(`${model}: ${err.message || err}`);
+    }
+  }
+  return { ok: false, error: `every model failed — ${errors.join(" | ")}` };
+}
+
 function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }

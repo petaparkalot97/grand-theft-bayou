@@ -84,6 +84,7 @@ export function createMinimap({ MAP, size = 190 }) {
     hospital: ["#fff", "#e02828", "✚"],     // hospital
     food: ["#ff8a2c", "#111", "P"],         // Popeyes counter
     club: ["#ff4fb3", "#fff", "♥"],         // bars and clubs (nightlife.js)
+    casino: ["#ffd23a", "#111", "$"],        // casino floors (casinos.js)
   };
   function blip(kind, x, y, t) {
     g.lineWidth = 1.5;

@@ -1,4 +1,4 @@
-﻿import * as THREE from "three";
+import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { loadAtlas, AnimatedSprite } from "./sprite.js";
@@ -18,7 +18,7 @@ import { bumpLine, fightLine } from "./pedestrianChatter.js";
 import { pedestrianVoiceWho } from "./voiceCast.js";
 import { createCameraController } from "./camera.js";
 import { createTraffic } from "./traffic.js";
-import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian } from "./characters.js";
+import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian, randomTuxedo, randomHighEndEscort } from "./characters.js";
 import { createCinema } from "./cinema.js";
 import { createPrologue, makeCastMember, PROLOGUE_KEEPOUT } from "./prologue.js";
 import { createMissionClinic } from "./missionClinic.js";   // unused: see missionClinic below
@@ -35,8 +35,9 @@ import { createHijacker } from "./hijack.js";
 import { createArsenal } from "./weapons.js";
 import { createServices } from "./services.js";
 import { createNightlife } from "./nightlife.js";
+import { createCasinos } from "./casinos.js";
 import { createTips } from "./tips.js";
-import { buildMotorbike, buildScooter } from "./bikes.js";
+import { buildMotorbike, buildScooter, buildPushBike, buildLimo } from "./bikes.js";
 import { createPauseMenu } from "./pauseMenu.js";
 import { createLoot } from "./loot.js";
 import { createWorldTime } from "./worldtime.js";
@@ -1056,13 +1057,13 @@ const input = createInput();
 // code is typed, and after `input`/`renderer`/`loadGLB` so it can drive its
 // own free-fly camera and build real-looking (not fallback-box) previews.
 const mapEditor = createMapEditor({
-  scene, camera, renderer, input, loadGLB,
+  scene, camera, renderer, input, loadGLB, loadVehicle, loadDsCar,
   addBlocker, removeBlocker,
   addLitSpot: (spot) => litSpots.push(spot),
   removeLitSpot: (spot) => { const i = litSpots.indexOf(spot); if (i >= 0) litSpots.splice(i, 1); },
 });
 
-input.onPress("interact", () => { if (services.interact() || nightlife.interact()) return; enterExitVehicle(); tryInteract(); });
+input.onPress("interact", () => { if (services.interact() || nightlife.interact() || casinos.interact()) return; enterExitVehicle(); tryInteract(); });
 input.onPress("mute", () => toggleMute());
 input.onPress("nextTrack", () => soundtrackReady.then((s) => s.next()));
 // [ / ] step the graphics tier down / up; once you touch it, the auto
@@ -1137,7 +1138,7 @@ const hijacker = createHijacker({
   releaseFromTraffic: (v) => { if (traffic) traffic.releaseVehicle(v); },
   spawnDriver: (x, z) => { spawnEnemy(Math.random() < 0.55 ? "hoodrat" : "redneck", x, z); return enemies[enemies.length - 1]; },
   provoke: (e) => npcs.provoke(e),
-  enterVehicle: (v) => { state.veh = v; playerPos.copy(v.obj.position); player.visible = false; },
+  enterVehicle: (v) => { state.veh = v; if (v) arsenal.enforceVehicle(); playerPos.copy(v.obj.position); player.visible = false; },
   flashObjective,
   crime,
 });
@@ -1156,6 +1157,7 @@ function minimapBlips() {
   }
   for (const b of services.blips()) _blips.push(b);
   for (const b of nightlife.blips()) _blips.push(b);
+  for (const b of casinos.blips()) _blips.push(b);
   _blips.push({ kind: "truck", x: truckPos.x, z: truckPos.z });
   for (const s of sheriffs) if (!s.dead) _blips.push({ kind: "cop", x: s.obj.position.x, z: s.obj.position.z });
   for (const e of enemies) if (!e.dead && e.state === "hostile") _blips.push({ kind: "hostile", x: e.spr.position.x, z: e.spr.position.z });
@@ -1197,6 +1199,10 @@ const nightlife = createNightlife({
   },
   syncHUD: () => syncHUD(),
   bark: (type, label, female) => speakPedestrian({ type, spr: { female } }, bumpLine(type, label)),
+});
+const casinos = createCasinos({
+  scene, state, playerPos, flashObjective, poolLight, addBlocker,
+  makeNeonSign, syncHUD: () => syncHUD(),
 });
 // How the game works, as it becomes useful (tips.js): the story walks through
 // guns, healing, wanted stars and Pay 'n' Spray after the prologue; each also
@@ -1411,6 +1417,10 @@ const ENEMY_TYPES = {
             h: 1.86, hp: 4, speed: 3.9, aggro: 20, melee: 1.8, dmg: 6, atkGap: 1.1 },
   lesbian: { label: "Lesbian", kind: "lesbian", tint: 0x9b5de5,
              h: 1.78, hp: 4, speed: 3.8, aggro: 22, melee: 1.8, dmg: 7, atkGap: 1.0 },
+  tuxedo: { label: "Tuxedo Regular", kind: "tuxedo", tint: 0x151515,
+            h: 1.86, hp: 4, speed: 3.5, aggro: 18, melee: 1.8, dmg: 5, atkGap: 1.2 },
+  highendescort: { label: "High-End Escort", kind: "highendescort", tint: 0x7f173d,
+                   h: 1.82, hp: 4, speed: 3.4, aggro: 18, melee: 1.8, dmg: 5, atkGap: 1.2 },
 };
 
 function buildHog() {
@@ -1457,7 +1467,8 @@ const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, boun
 // The Sheriff's search / give-up logic (police.js). The cruisers themselves are
 // driven below in updateSheriffs; the module owns "where do they think you are".
 const police = createPoliceSystem({
-  scene, MAP, npcs, loot, hitPlayer, busted: () => busted(),});
+  scene, MAP, npcs, loot, hitPlayer, busted: () => busted(), shootPlayer: policeShoot,
+});
 const npcEnv = {
   player: playerPos,
   driving: false,
@@ -1503,6 +1514,10 @@ function spawnEnemy(typeName, x, z, spot = null) {
     view = randomGayMan(rng, T.h);
   } else if (T.kind === "lesbian") {
     view = randomLesbian(rng, T.h);
+  } else if (T.kind === "tuxedo") {
+    view = randomTuxedo(rng, T.h);
+  } else if (T.kind === "highendescort") {
+    view = randomHighEndEscort(rng, T.h);
   } else if (T.kind === "actor") {
     view = randomHoodrat(rng, T.h);
   } else {
@@ -1775,7 +1790,7 @@ async function buildLevel() {
     },
     setObjective: setStoryObjective,
     enterVehicle: (v) => {
-      state.veh = v;
+      state.veh = v; if (v) arsenal.enforceVehicle();
       playerPos.copy(v.obj.position);
       player.visible = false;
     },
@@ -1836,10 +1851,17 @@ async function buildLevel() {
     lots: [
       { at: [-66, 230], build: (b) => payNSprayLot(b, "OrleaRouge Pay 'n' Spray") },
       { at: [-26, 270], build: (b) => nightlife.buildBlock(b) },        // Frenchmen Street
+      // Party Central continues east: the same proven walk-in club system is
+      // reused for the new modern nightlife blocks instead of sealed façades.
+      { at: [134, 230], build: (b) => nightlife.buildBlock(b) },
+      { at: [134, 310], build: (b) => nightlife.buildBlock(b) },
+      { at: [94, 270], build: (b) => casinos.buildBlock(b) },
+      { at: [94, 350], build: (b) => casinos.buildBlock(b) },
     ],
   });
   orlea.buildSet();
   NPC_POIS.push(...nightlife.pois);          // regulars hang out on the sidewalk outside the clubs
+  NPC_POIS.push(...casinos.pois);            // casino foot traffic and valet-side crowds
   // Popeyes #2, on the OrleaRouge boulevard (#1 is a LANDMARKS lot on the strip)
   for (const p of POPEYES_LOCATIONS) {
     if (p.lot) continue;
@@ -1851,6 +1873,19 @@ async function buildLevel() {
   // the avenues (the boulevard POIs come from orlea.pois)
   for (const z of [225, 255, 285, 315, 345]) {
     NPC_POIS.push({ x: -46, z, r: 7 }, { x: 34, z, r: 7 });
+  }
+  // The expanded eastern nightlife blocks need their own pedestrian anchors;
+  // otherwise the new venues would look busy only when the player is inside.
+  for (const z of [230, 270, 310, 350]) {
+    NPC_POIS.push({ x: 114, z, r: 9 }, { x: 154, z, r: 7 });
+  }
+  // A few visibly overdressed regulars sell the new district before the
+  // casino interiors arrive. They remain calm civilian NPCs until provoked.
+  for (const [x, z] of [[126, 222], [148, 222], [126, 302], [148, 302], [164, 342]]) {
+    spawnEnemy("tuxedo", x, z);
+  }
+  for (const [x, z] of [[104, 262], [126, 342], [154, 362]]) {
+    spawnEnemy("highendescort", x, z);
   }
   // the overpass deck, OrleaRouge's buildings, and Tusouxroe's shopfronts
   losBoxes = [...orlea.occluders, ...buildingOccluders];
@@ -2033,7 +2068,14 @@ async function buildLevel() {
   // ---- ambient traffic: both lanes of US-167 ----
   traffic = createTraffic({
     scene, registerVehicle,
-    models: [carR, carB, carY, van, pickup, beetle, landy, tristar, toyoyo],
+    // Bikes are part of the pooled traffic population now, not just parked
+    // decoration. A modest share keeps the city believable without replacing
+    // the car-heavy baseline.
+    models: [carR, carB, carY, van, pickup, beetle, landy, tristar, toyoyo,
+      normalizeVehicleModel(buildMotorbike(), VEHICLE_DEFS.motorbike),
+      normalizeVehicleModel(buildScooter(), VEHICLE_DEFS.scooter),
+      normalizeVehicleModel(buildLimo(), VEHICLE_DEFS.limo)],
+    makeRider: () => randomHoodrat(rng, 1.78),
     lanes: (() => {
       // Circuits, not dead ends: pair every lane with the lane that starts
       // where it ends (the return carriageway — all roads here run both ways).
@@ -2099,13 +2141,21 @@ async function buildLevel() {
   }
   // ...and give OrleaRouge a crowd before the player ever arrives (the boulevard
   // and cross streets; more pour in from the top-up spawner once you're there)
-  for (let placed = 0, tries = 0; placed < 10 && tries < 200; tries++) {
-    const spot = spawnZones.pick({ x: 18, z: rand(215, 350) }, enemies, { minDist: 0, maxDist: 40 });
+  // OrleaRouge should already feel occupied when the player crosses the
+  // causeway: seed several separate hangouts instead of one thin boulevard
+  // crowd. The urban mix supplies clubs, escorts, crews, and tourists-by-night.
+  for (let placed = 0, tries = 0; placed < 22 && tries < 500; tries++) {
+    const focus = placed % 3 === 0
+      ? { x: -66, z: rand(220, 325) }       // French District / club blocks
+      : placed % 3 === 1
+        ? { x: 18, z: rand(215, 350) }      // boulevard and civic blocks
+        : { x: 92, z: rand(250, 370) };     // downtown / casino approach
+    const spot = spawnZones.pick(focus, enemies, { minDist: 0, maxDist: 40 });
     if (spot) { spawnEnemy(spot.kind, spot.x, spot.z, spot); placed++; }
   }
 }
 // ...and top it back up forever, out of sight of the player.
-const ENEMY_KINDS = ["hog", "redneck", "hobo", "hoodrat", "prostitute", "dockworker", "mechanic", "suit", "tourist", "thug", "gayman", "lesbian"];
+const ENEMY_KINDS = ["hog", "redneck", "hobo", "hoodrat", "prostitute", "dockworker", "mechanic", "suit", "tourist", "thug", "gayman", "lesbian", "tuxedo", "highendescort"];
 const ENEMY_CAP = 48;         // living NPCs to maintain (off-screen ones are hidden, npc.js)
 let enemyRespawnCd = 0;
 let populationOn = true;      // missions switch spawning off during set pieces
@@ -2650,6 +2700,7 @@ const BIKE_SPOTS = [
   ["scooter", -38, 254.5, Math.PI / 2],             // Frenchmen Street, by the clubs
   ["motorbike", -15, 286, -Math.PI / 2],
   ["scooter", 8, 238, Math.PI],                     // OrleaRouge Popeyes
+  ["pushbike", 146, 302, Math.PI / 2],              // eastern nightlife district
 ];
 function parkBike(kind, x, z, rot) {
   const clear = (px, pz) => !blockers.some((b) => Math.hypot(b.x - px, b.z - pz) < b.r + 1.1);
@@ -2662,7 +2713,8 @@ function parkBike(kind, x, z, rot) {
     }
   }
   if (!at) return null;
-  const obj = normalizeVehicleModel(kind === "scooter" ? buildScooter() : buildMotorbike(), VEHICLE_DEFS[kind]);
+  const model = kind === "scooter" ? buildScooter() : kind === "pushbike" ? buildPushBike() : buildMotorbike();
+  const obj = normalizeVehicleModel(model, VEHICLE_DEFS[kind]);
   obj.position.set(at[0], obj.position.y, at[1]);
   obj.rotation.y = rot;
   scene.add(obj);
@@ -2695,10 +2747,25 @@ const WEAPON_SFX = { pistol: "pistolShot", tec9: "tec9Shot", sawnoff: "shotgun",
 const _tmpV = new THREE.Vector3();
 function fire() {
   if (state.fireCd > 0 || state.over || state.cinematic) return;
-  if (!state.veh && !input.isDown("aim") && !window.__qaAim) {
-    flashObjective("Hold Right Click to aim!");
-    return;
+  
+  if (state.veh && state.weapon !== "pistol" && state.weapon !== "tec9") {
+    // Try to auto-switch to a drive-by capable weapon if they have ammo
+    if (arsenal.ammo > 0 && (state.weapon === "pistol" || state.weapon === "tec9")) {
+      // already holding one (redundant check but safe)
+    } else if (arsenal.reserve && arsenal.reserve.tec9 > 0) {
+      flashObjective("Swapped to Tec-9 for drive-by.");
+      state.weapon = "tec9";
+      arsenal.reload();
+    } else if (arsenal.reserve && arsenal.reserve.pistol > 0) {
+      flashObjective("Swapped to 9mm for drive-by.");
+      state.weapon = "pistol";
+      arsenal.reload();
+    } else {
+      flashObjective("Need a Pistol or Tec-9 to shoot from a vehicle!");
+      return;
+    }
   }
+
   const gun = arsenal.stats(!!state.veh);
   if (!gun.melee && state.ammo <= 0) {
     if (!arsenal.reload()) {
@@ -2715,15 +2782,15 @@ function fire() {
 
   if (!state.veh) { 
     attackTimer = 0.42; 
-    player.play(gun.melee ? "attack" : "shoot", { fps: 12, loop: false, force: true }); 
+    player.play(gun.melee ? (state.weapon === "bat" ? "swing_bat" : "attack") : "shoot", { fps: 12, loop: false, force: true }); 
     if (!gun.melee) player._yaw = camCtl.heading;
-    playFireAnim3D(gun.melee); 
+    playFireAnim3D(state.weapon, gun.melee); 
   }
 
-  // Aim assist: hostile NPCs and cruisers first; a bystander is only hit if
-  // the camera is pointed right at them. Used to snap to whoever was nearest.
   camCtl.forward(_aim);
-  let best = null, bestScore = Infinity, bestKind = null;
+  let best = null, bestScore = Infinity, bestKind = null, bestDist = 0;
+  let hitTargets = [];
+
   for (const e of enemies) {
     if (e.dead) continue;
     const dx = e.spr.position.x - playerPos.x, dz = e.spr.position.z - playerPos.z;
@@ -2731,15 +2798,26 @@ function fire() {
     if (d > gun.range || d < 1e-3) continue;
     const facing = (dx * _aim.x + dz * _aim.z) / d;       // 1 = dead ahead
     const hostile = e.state === "hostile";
-    if (!hostile && facing < 0.93) continue;
-    if (hostile && facing < -0.2 && d > 6) continue;
-    const score = d * (hostile ? 0.6 : 1) * (1.6 - facing);
-    if (score < bestScore) { bestScore = score; best = e; bestKind = "enemy"; }
+    if (state.weapon === "sawnoff") {
+      if (facing > 0.82) hitTargets.push({ t: e, kind: "enemy", d });
+    } else {
+      if (!hostile && facing < 0.93) continue;
+      if (hostile && facing < -0.2 && d > 6) continue;
+      const score = d * (hostile ? 0.6 : 1) * (1.6 - facing);
+      if (score < bestScore) { bestScore = score; best = e; bestKind = "enemy"; bestDist = d; }
+    }
   }
   for (const s of sheriffs) {
     if (s.dead) continue;
-    const d = s.obj.position.distanceTo(playerPos);
-    if (d < gun.range && d * 0.6 < bestScore) { bestScore = d * 0.6; best = s; bestKind = "sheriff"; }
+    const dx = s.obj.position.x - playerPos.x, dz = s.obj.position.z - playerPos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > gun.range || d < 1e-3) continue;
+    const facing = (dx * _aim.x + dz * _aim.z) / d;
+    if (state.weapon === "sawnoff") {
+      if (facing > 0.82) hitTargets.push({ t: s, kind: "sheriff", d });
+    } else {
+      if (d * 0.6 < bestScore) { bestScore = d * 0.6; best = s; bestKind = "sheriff"; bestDist = d; }
+    }
   }
 
   for (const v of vehicles) {
@@ -2748,38 +2826,57 @@ function fire() {
     const d = Math.hypot(dx, dz);
     if (d > gun.range || d < 1e-3) continue;
     const facing = (dx * _aim.x + dz * _aim.z) / d;
-    if (facing < 0.8) continue;
-    const score = d * 1.5 * (1.6 - facing);
-    if (score < bestScore) { bestScore = score; best = v; bestKind = "vehicle"; }
+    if (state.weapon === "sawnoff") {
+      if (facing > 0.82) hitTargets.push({ t: v, kind: "vehicle", d });
+    } else {
+      if (facing < 0.8) continue;
+      const score = d * 1.5 * (1.6 - facing);
+      if (score < bestScore) { bestScore = score; best = v; bestKind = "vehicle"; bestDist = d; }
+    }
   }
-  npcs.noise(playerPos.x, playerPos.z, 26);     // gunfire carries
+  
+  if (state.weapon !== "sawnoff" && best) {
+    hitTargets.push({ t: best, kind: bestKind, d: bestDist });
+  }
 
-  let target;
-  if (bestKind === "enemy") target = best.spr.position.clone().setY(best.type === "hog" ? 0.8 : 1.1);
-  else if (bestKind === "sheriff") target = best.obj.position.clone().setY(1.1);
-  else target = origin.clone().addScaledVector(_aim, gun.melee ? 2.0 : 24);
+  npcs.noise(playerPos.x, playerPos.z, state.weapon === "sawnoff" ? 40 : 26);     // gunfire carries
 
   if (!gun.melee) {
-    spawnTracer(origin, target);
-    muzzleFlash(origin, target);
+    if (state.weapon === "sawnoff") {
+      for (let i = 0; i < 6; i++) {
+        const spreadAim = _aim.clone().add(new THREE.Vector3((Math.random() - 0.5)*0.3, (Math.random() - 0.5)*0.1, (Math.random() - 0.5)*0.3)).normalize();
+        spawnTracer(origin, origin.clone().addScaledVector(spreadAim, gun.range));
+      }
+    } else {
+      let target;
+      if (bestKind === "enemy") target = best.spr.position.clone().setY(best.type === "hog" ? 0.8 : 1.1);
+      else if (bestKind === "sheriff") target = best.obj.position.clone().setY(1.1);
+      else target = origin.clone().addScaledVector(_aim, 24);
+      spawnTracer(origin, target);
+    }
+    muzzleFlash(origin, origin.clone().addScaledVector(_aim, 2));
     cine.sfx(WEAPON_SFX[state.weapon] || "pistolShot");
   }
   arsenal.consume();
 
-  if (bestKind === "enemy") {
-    best.hp -= gun.damage;
-    // first blow of a fight, not a follow-up hit on someone already swinging/running
-    const freshFight = best.state !== "hostile" && best.state !== "flee";
-    npcs.provoke(best);
-    if (best.type !== "hog") { best.spr.play("hurt", { loop: false, force: true }); best.t = 0; }
-    else best.spr.position.addScaledVector(best.spr.position.clone().sub(playerPos).setY(0).normalize(), 0.4);
-    if (best.hp <= 0) { killEnemy(best); if (best.type !== "hog") crime(1.2); }
-    else if (freshFight) speakPedestrian(best, fightLine(best.type, best.T.label, best.mood));
-  } else if (bestKind === "sheriff") {
-    crime(0.4);
-    damageVehicle(best, gun.damage * 2);
-  } else if (bestKind === "vehicle") {
-    damageVehicle(best, gun.damage * 1.5);   // shooting a car now does something
+  for (const hit of hitTargets) {
+    const { t, kind, d } = hit;
+    // Shotgun damage falls off linearly to 0 at max range
+    const dmg = state.weapon === "sawnoff" ? gun.damage * (1 - d / gun.range) : gun.damage;
+    if (kind === "enemy") {
+      t.hp -= dmg;
+      const freshFight = t.state !== "hostile" && t.state !== "flee";
+      npcs.provoke(t);
+      if (t.type !== "hog") { t.spr.play("hurt", { loop: false, force: true }); t.t = 0; }
+      else t.spr.position.addScaledVector(t.spr.position.clone().sub(playerPos).setY(0).normalize(), 0.4);
+      if (t.hp <= 0) { killEnemy(t); if (t.type !== "hog") crime(1.2); }
+      else if (freshFight) speakPedestrian(t, fightLine(t.type, t.T.label, t.mood));
+    } else if (kind === "sheriff") {
+      crime(0.4);
+      damageVehicle(t, dmg * 2);
+    } else if (kind === "vehicle") {
+      damageVehicle(t, dmg * 1.5);
+    }
   }
 }
 
@@ -2819,7 +2916,7 @@ function syncHUD() {
   cansEl.innerHTML = `${state.cans} <small>/ ${CAN_GOAL}</small>`;
   cashEl.textContent = "$" + state.cash.toLocaleString();
   let s = "";
-  if (copsActive()) for (let i = 0; i < 5; i++) s += `<span class="${i < state.wanted ? "on" : "off"}">★</span>`;
+  if (copsActive()) for (let i = 0; i < 6; i++) s += `<span class="${i < state.wanted ? "on" : "off"}">★</span>`;
   starsEl.innerHTML = s;
   if (state.veh) {
     vehIndic.hidden = false;
@@ -2967,6 +3064,7 @@ function tick() {
     if (orlea) orlea.update(dt);
     services.update(dt);
     nightlife.update(dt);
+    casinos.update(dt);
     tips.update(dt);
     if (blueLight) blueLight.update(dt);
     if (westParish) westParish.update(dt, playerPos);
@@ -2995,7 +3093,7 @@ function tick() {
     if (!cine.hasCamera && mapEditor.active) {
       mapEditor.updateCamera(dt);
     } else if (!cine.hasCamera) {
-      camCtl.setAiming(!state.veh && input.isDown("aim"));
+      camCtl.setAiming(input.isDown("aim") && (!state.veh || state.weapon === "pistol" || state.weapon === "tec9"));
       camCtl.update(dt, playerPos, state.veh, blockerGrid, playerMoveHeading);
       if (state.veh && state.veh.jolt > 0) {
         const j = state.veh.jolt;
@@ -3166,7 +3264,7 @@ function simulate(dt) {
     // the rest of the run, so a chase could only end by wrecking every cruiser.
     police.updateSearchAndEvasion(dt, playerPos, sheriffSees(dt), state);
     if (state.crimeCd <= 0) state.heat = Math.max(0, state.heat - dt * (state.veh ? 0.3 : 0.16));
-    const w = state.heat <= 0.1 ? 0 : Math.min(5, Math.max(1, Math.floor(state.heat / 1.4)));
+    const w = state.heat <= 0.1 ? 0 : Math.min(6, Math.max(1, Math.floor(state.heat / 1.4)));
     if (w !== state.wanted) {
       if (w === 0) { police.clearPursuit(); flashObjective("You lost them."); }
       state.wanted = w;
@@ -3349,7 +3447,10 @@ function drivingUpdate(dt) {
   // The vehicle defines forward, never the camera: W accelerates along its own
   // heading, A/D steer it (vehicles.js arcade model).
   const inX = input.axis("left", "right");
-  stepArcadeVehicle(v, { throttle: input.axis("back", "forward"), steer: inX, brake: input.isDown("brake") }, dt);
+  // Push bikes need a deliberate pedal input: Space adds momentum, while
+  // releasing it lets the bicycle coast and naturally slow down.
+  const throttle = v.def && v.def.pedal ? (input.isDown("jump") ? 1 : 0) : input.axis("back", "forward");
+  stepArcadeVehicle(v, { throttle, steer: inX, brake: input.isDown("brake") }, dt);
   forwardFromHeading(v.heading, _fwd);
   const next = _next.copy(v.obj.position).addScaledVector(_fwd, v.speed * dt);
 
@@ -3422,7 +3523,7 @@ function drivingUpdate(dt) {
     player.visible = true;
     player.position.addScaledVector(_fwd, v.def.seat.z);
     player.rideHip = v.def.seat.y;
-    player.rideLean = v.def.name === "scooter" ? 0.05 : 0.3;
+    player.rideLean = v.def.name === "scooter" ? 0.05 : v.def.name === "pushbike" ? 0.16 : 0.3;
     player._yaw = v.heading;
     player.play("ride");
     if (player._last) player._last.copy(player.position);
@@ -3466,7 +3567,7 @@ function enterExitVehicle() {
     return;
   }
   if (v) {
-    state.veh = v;
+    state.veh = v; if (v) arsenal.enforceVehicle();
     if (v.seats) v.seats[0].occupant = "player";
     if (v.sheriff) { crime(0.8); flashObjective("You jacked a Sheriff cruiser. Bold."); }
     else flashObjective("Jacked it. Floor it.");
@@ -3477,6 +3578,18 @@ function enterExitVehicle() {
 
 // ============================================================ SHERIFF
 let sheriffProto = null;
+function policeShoot(origin, damage, source = "police") {
+  const from = origin && origin.clone ? origin.clone() : new THREE.Vector3(origin.x, origin.y || 1.2, origin.z);
+  from.y = Math.max(1.2, from.y || 1.2);
+  const to = playerPos.clone();
+  to.y = 1.05;
+  spawnTracer(from, to);
+  muzzleFlash(from, to);
+  cine.sfx("pistolShot");
+  if (state.veh) damageVehicle(state.veh, damage * 0.8);
+  else hitPlayer(damage);
+  if (source === "helicopter") flashObjective("POLICE HELICOPTER: incoming fire!");
+}
 function spawnSheriff() {
   if (!sheriffProto) return;
   const car = sheriffProto.clone(true);
@@ -3486,7 +3599,8 @@ function spawnSheriff() {
   car.position.z = THREE.MathUtils.clamp(car.position.z, MAP.minZ + 6, MAP.maxZ - 6);
   car.rotation.y = ang;
   scene.add(car);
-  const v = registerVehicle(car, 2.0, { sheriff: true, hp: 32 });
+  const v = registerVehicle(car, 2.0, { sheriff: true, hp: 48 });
+  v.shootCd = Math.random() * 0.8;
   sheriffs.push(v);
 }
 // The Sheriff answers crime from the first star's worth of it: heat → wanted
@@ -3575,8 +3689,13 @@ function retireSheriff(v) {
   if (si >= 0) sheriffs.splice(si, 1);
 }
 function updateSheriffs(dt) {
-  const want = Math.max(0, state.wanted - 1);
+  const want = state.wanted > 0 ? Math.min(6, state.wanted) : 0;
   if (state.wanted > 0 && sheriffs.filter((s) => !s.dead).length < want && sheriffProto) spawnSheriff();
+  const footWant = Math.min(8, Math.max(0, state.wanted - 1));
+  while (police.footCops.filter((c) => !c.dead).length < footWant) {
+    const a = Math.random() * Math.PI * 2, r = 14 + Math.random() * 16;
+    police.spawnFootCop(playerPos.x + Math.cos(a) * r, playerPos.z + Math.sin(a) * r);
+  }
 
   // Where they drive: you while they can see you, the last place they saw you
   // once they cannot. Homing on your live position is what made this inescapable.
@@ -3587,6 +3706,9 @@ function updateSheriffs(dt) {
   const target = standDown ? null : (lastKnown || at);
 
   let onTop = false;
+  const footOnTop = police.updateFootCops(dt, { player: at, driving: !!state.veh });
+  onTop = footOnTop > 0;
+  police.updateHelicopters(dt, { player: at, state });
   const on = Math.sin(clock.elapsedTime * 12) > 0;
   const flash = on ? 0x3366ff : 0xff2233;
   // the lightbar alternates on the shared cruiser materials: two uniform writes for
@@ -3628,22 +3750,34 @@ function updateSheriffs(dt) {
     _fwd.set(Math.sin(s.heading), 0, Math.cos(s.heading));
     const nx = s.obj.position.x + _fwd.x * s.speed * dt;
     const nz = s.obj.position.z + _fwd.z * s.speed * dt;
-    s.obj.position.set(THREE.MathUtils.clamp(nx, MAP.minX + 4, MAP.maxX - 4), 0,
-                       THREE.MathUtils.clamp(nz, MAP.minZ + 4, MAP.maxZ - 4));
+    const resolved = _next.set(
+      THREE.MathUtils.clamp(nx, MAP.minX + 4, MAP.maxX - 4), 0,
+      THREE.MathUtils.clamp(nz, MAP.minZ + 4, MAP.maxZ - 4)
+    );
+    blockerGrid.resolve(resolved, s.r, resolved, s.blocker);
+    s.obj.position.copy(resolved);
     s.blocker.x = s.obj.position.x; s.blocker.z = s.obj.position.z;
     s.obj.rotation.y = s.heading;
 
+    s.shootCd = Math.max(0, (s.shootCd || 0) - dt);
+    if (!standDown && gone < 45 && gone > 7 && s.shootCd <= 0 && sheriffSees(0)) {
+      s.shootCd = 1.15 + Math.random() * 0.55;
+      policeShoot(s.obj.position, 4.5, "cruiser");
+    }
     if (!standDown && gone < 4) {
       onTop = true;
-      // 5 HP/s on foot, not 14: being cornered is an arrest (bustCd -> busted),
-      // not a 7-second death. Full health lasts ~20 s, and the bust lands first.
-      if (!state.veh) hitPlayer(dt * 5);
+      // Close contact is an arrest attempt, not an opaque damage loop.
+      if (!state.veh) hitPlayer(dt * 3.5);
       else state.veh.speed *= (1 - dt * 1.5);       // ram / pit
     }
   }
   for (; lit < beaconLights.length; lit++) beaconLights[lit].intensity = 0;
+  if (onTop && !state.veh && state.bustCd <= dt) flashObjective("DEPUTY: Stop moving! You are under arrest — break contact or surrender.");
   state.bustCd = onTop ? state.bustCd + dt : Math.max(0, state.bustCd - dt * 0.6);
-  if (state.bustCd > 3 && !state.veh) return busted();
+  if (state.bustCd > 3 && !state.veh) {
+    flashObjective("ARRESTED — Sheriff Mercer has you.");
+    return busted();
+  }
 }
 
 function damageVehicle(v, amount) {
@@ -3827,6 +3961,7 @@ async function boot() {
   window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
+    get policeHelicopters() { return police.helicopters; },
     get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; }, CAN_REACH, CAN_REACH_VEHICLE,
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
@@ -3836,7 +3971,7 @@ async function boot() {
       if (player._last) player._last.copy(player.position);
     }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
     get playerMoveHeading() { return playerMoveHeading; },
-    get soundtrack() { return soundtrackReady; } };
+    get soundtrack() { return soundtrackReady; }, get casinos() { return casinos; } };
   // the radar's base map, from the level as built
   {
     const roads = [
