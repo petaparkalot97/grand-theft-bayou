@@ -77,6 +77,7 @@ function mergeInto(parent, entries, material, template) {
   mesh.castShadow = template.castShadow;
   mesh.receiveShadow = template.receiveShadow;
   mesh.renderOrder = template.renderOrder;
+  let offset = 0; const isIndexed = entries[0].geo.index !== null; mesh.userData.batchParts = entries.map(e => { const count = isIndexed ? e.geo.index.count : e.geo.attributes.position.count; const part = { start: offset, count, mesh: e.mesh }; offset += count; return part; });
   parent.add(mesh);
   for (const e of entries) e.mesh.parent.remove(e.mesh);
   return mesh;

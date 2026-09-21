@@ -19,7 +19,11 @@
 // ---------------------------------------------------------------------------
 
 export const ZONE_MIX = Object.freeze({
-  urban: { hoodrat: 0.54, redneck: 0.1, prostitute: 0.16, gayman: 0.1, lesbian: 0.1 },
+  // OrleaRouge is the state's neon crime capital: nightlife regulars, escorts,
+  // street crews, and ordinary bar traffic share the same blocks. Keep everyone
+  // civilian by default; NPC aggression still only starts after provocation.
+  urban: { hoodrat: 0.28, prostitute: 0.15, gayman: 0.09, lesbian: 0.09,
+           thug: 0.14, tuxedo: 0.12, highendescort: 0.1, redneck: 0.03 },
   town: { hoodrat: 0.56, redneck: 0.23, hobo: 0.13, gayman: 0.04, lesbian: 0.04 },
   commercial: { hoodrat: 0.32, redneck: 0.44, prostitute: 0.18, gayman: 0.03, lesbian: 0.03 },
   border_strip: { hoodrat: 0.36, redneck: 0.46, prostitute: 0.18, border: true },

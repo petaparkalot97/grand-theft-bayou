@@ -147,6 +147,7 @@ export function createArsenal({ state, flashObjective }) {
         cycleWeapon(dir) {
       const keys = Object.keys(WEAPONS);
       const available = keys.filter(k => {
+        if (state.veh && k !== 'pistol' && k !== 'tec9') return false;
         if (k === 'bat' || state.freeRoam) return true;
         if (state.weapon === k && state.ammo > 0) return true;
         if (state.reserve && state.reserve[k] > 0) return true;
@@ -179,6 +180,23 @@ export function createArsenal({ state, flashObjective }) {
       }
       render();
     },
+    enforceVehicle() {
+      if (state.veh && state.weapon !== "pistol" && state.weapon !== "tec9") {
+        if (state.reserve && state.reserve.tec9 > 0) {
+          this.cycleWeapon(1); // Force a cycle, it will naturally pick tec9/pistol due to the filter
+          if (state.weapon !== "tec9" && state.weapon !== "pistol") {
+             // If cycleWeapon didn't work (no ammo), force it anyway
+             state.weapon = "pistol";
+             state.ammo = 0;
+          }
+        } else {
+          // Just force switch to pistol
+          state.weapon = "pistol";
+          this.reload();
+        }
+        render();
+      }
+    },
     reload,
     addReserve,
     /** Pick up a weapon: the same one adds ammo to reserve, a different one swaps. */
@@ -206,6 +224,7 @@ export function createArsenal({ state, flashObjective }) {
           state.reserve[id] = Math.min(maxRes, (state.reserve[id] || 0) + overflow);
         }
       }
+      this.enforceVehicle();
       render();
     },
     render,

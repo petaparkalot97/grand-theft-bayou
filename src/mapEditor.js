@@ -94,7 +94,7 @@ import {
   CITY_BUILDING_TYPES, placeCityBuilding, placeBillboard, placeGunShop, placeGasStation, placeSixTwelve,
   placeBayouStiltHut, placeMaritimeCargo, placeOilDerrick,
   placeStreetClutter, placeOfficeClutter, placeTacos, placeBurgerPiz, placePopeyes, placeStreetLamp,
-  placeR2Model,
+  placeParkedCar, placeTruck, placeR2Model,
 } from "./landmarks.js";
 
 // Either code turns the editor on (or back off) — "#DEVx" is the same switch
@@ -114,10 +114,16 @@ const CATALOG = [
     place: (ctx, x, z, ry) => placeCityBuilding(ctx, key, x, z, ry),
     code: (x, z, ry) => `placeCityBuilding(ctx, "${key}", ${x}, ${z}, ${ry});`,
   })),
-  // placeParkedCar() / placeTruck() are currently disabled elsewhere in
-  // landmarks.js ("cars/trucks are broken/non-interactable" — both are no-op
-  // stubs) — omitted here rather than offer a catalog entry that silently
-  // places nothing when clicked.
+  ...["beatall", "doclorean", "landyroamer", "toyoyo", "tristar"].map((key) => ({
+    key: `car:${key}`, label: `Parked car: ${key}`, category: "Vehicles", w: 5, d: 2.2,
+    place: (ctx, x, z, ry) => placeParkedCar(ctx, key, x, z, ry),
+    code: (x, z, ry) => `placeParkedCar(ctx, "${key}", ${x}, ${z}, ${ry});`,
+  })),
+  ...["pickup", "truck", "van", "car_b", "car_r", "car_y"].map((key) => ({
+    key: `truck:${key}`, label: `Parked truck: ${key}`, category: "Vehicles", w: 6, d: 2.5,
+    place: (ctx, x, z, ry) => placeTruck(ctx, key, x, z, ry),
+    code: (x, z, ry) => `placeTruck(ctx, "${key}", ${x}, ${z}, ${ry});`,
+  })),
   { key: "gasStation", label: "Gas station", category: "Infrastructure", w: 18, d: 14,
     place: (ctx, x, z, ry) => placeGasStation(ctx, x, z, ry),
     code: (x, z, ry) => `placeGasStation(ctx, ${x}, ${z}, ${ry});` },
@@ -493,6 +499,7 @@ export function createMapEditor(ctx) {
   selectRow.style.display = "none";
   makeBtn(selectRow, "Copy", () => copySelection(false));
   makeBtn(selectRow, "Cut", () => copySelection(true));
+  makeBtn(selectRow, "AI Clone", () => aiCloneSelection());
   makeBtn(selectRow, "Delete selected", () => deleteSelection());
   makeBtn(selectRow, "Deselect", () => clearSelection());
 
@@ -657,6 +664,7 @@ export function createMapEditor(ctx) {
     filterPicker();
   }
 
+  // ---------------------------------------------------------------- export box
   const exportBox = document.createElement("textarea");
   exportBox.style.cssText = "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:50;" +
     "width:600px;height:400px;font:12px/1.4 Consolas,monospace;background:#08140f;color:#c9ffdf;" +
@@ -665,6 +673,137 @@ export function createMapEditor(ctx) {
   exportBox.onclick = () => { exportBox.select(); };
   exportBox.addEventListener("keydown", (e) => { if (e.key === "Escape") exportBox.style.display = "none"; });
   document.body.appendChild(exportBox);
+
+  // ------------------------------------------------------------- context menu
+  const ctxMenu = document.createElement("div");
+  ctxMenu.style.cssText = "position:fixed;z-index:90;background:#111;border:1px solid #555;border-radius:4px;padding:4px;display:none;flex-direction:column;gap:4px;min-width:120px;box-shadow:0 4px 12px rgba(0,0,0,0.5);";
+  document.body.appendChild(ctxMenu);
+
+  const editDesignBtn = document.createElement("button");
+  editDesignBtn.textContent = "Edit design";
+  editDesignBtn.style.cssText = "background:transparent;border:none;color:#fff;text-align:left;padding:6px 12px;cursor:pointer;border-radius:2px;";
+  editDesignBtn.onmouseover = () => editDesignBtn.style.background = "#333";
+  editDesignBtn.onmouseout = () => editDesignBtn.style.background = "transparent";
+  editDesignBtn.onclick = () => {
+    ctxMenu.style.display = "none";
+    openColorEditor();
+  };
+  ctxMenu.appendChild(editDesignBtn);
+
+  // ------------------------------------------------------------- color editor
+  const colorEditor = document.createElement("div");
+  colorEditor.style.cssText = "position:fixed;top:50%;left:50%;transform:translate(-50%, -50%);z-index:91;background:#111;border:1px solid #555;padding:16px;border-radius:6px;display:none;flex-direction:column;gap:12px;width:300px;box-shadow:0 8px 24px rgba(0,0,0,0.7);color:#fff;font:14px sans-serif;";
+  document.body.appendChild(colorEditor);
+  
+  colorEditor.innerHTML = `
+    <h3 style="margin:0;font-size:16px;border-bottom:1px solid #444;padding-bottom:8px;">Edit Design</h3>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label>Hue <span id="ce-h-val">0</span>°</label>
+      <input type="range" id="ce-h" min="0" max="360" value="0">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label>Saturation <span id="ce-s-val">100</span>%</label>
+      <input type="range" id="ce-s" min="0" max="200" value="100">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label>Lightness <span id="ce-l-val">100</span>%</label>
+      <input type="range" id="ce-l" min="0" max="200" value="100">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button id="ce-apply" style="flex:1;padding:6px;background:#38ff9e;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">Apply</button>
+      <button id="ce-cancel" style="flex:1;padding:6px;background:#444;color:#fff;border:none;border-radius:4px;cursor:pointer;">Cancel</button>
+    </div>
+  `;
+  
+  let ceTarget = null;
+  let ceOriginalMats = new Map();
+
+  function applyHSL(h, s, l) {
+    if (!ceTarget) return;
+    for (const entry of ceTarget) {
+      for (const obj of entry.created || []) {
+        obj.traverse(o => {
+          if (o.isMesh && o.material) {
+            const mats = Array.isArray(o.material) ? o.material : [o.material];
+            mats.forEach(m => {
+              if (ceOriginalMats.has(m)) {
+                const orig = ceOriginalMats.get(m);
+                const origHSL = {};
+                orig.color.getHSL(origHSL);
+                m.color.setHSL((origHSL.h + h / 360) % 1, Math.min(1, Math.max(0, origHSL.s * (s / 100))), Math.min(1, Math.max(0, origHSL.l * (l / 100))));
+              }
+            });
+          }
+        });
+      }
+    }
+  }
+
+  function openColorEditor() {
+    if (!selectedSet.size) return;
+    ceTarget = [...selectedSet];
+    ceOriginalMats.clear();
+    
+    for (const entry of ceTarget) {
+      for (const obj of entry.created || []) {
+        obj.traverse(o => {
+          if (o.isMesh && o.material) {
+            if (Array.isArray(o.material)) {
+              o.material = o.material.map(m => {
+                if (!ceOriginalMats.has(m)) {
+                  const cloned = m.clone();
+                  ceOriginalMats.set(cloned, m.clone());
+                  return cloned;
+                }
+                return m;
+              });
+            } else {
+              if (!ceOriginalMats.has(o.material)) {
+                const cloned = o.material.clone();
+                ceOriginalMats.set(cloned, o.material.clone());
+                o.material = cloned;
+              }
+            }
+          }
+        });
+      }
+    }
+
+    const hIn = colorEditor.querySelector("#ce-h");
+    const sIn = colorEditor.querySelector("#ce-s");
+    const lIn = colorEditor.querySelector("#ce-l");
+    const hVal = colorEditor.querySelector("#ce-h-val");
+    const sVal = colorEditor.querySelector("#ce-s-val");
+    const lVal = colorEditor.querySelector("#ce-l-val");
+    
+    hIn.value = 0; sIn.value = 100; lIn.value = 100;
+    hVal.textContent = 0; sVal.textContent = 100; lVal.textContent = 100;
+
+    const onInput = () => {
+      hVal.textContent = hIn.value;
+      sVal.textContent = sIn.value;
+      lVal.textContent = lIn.value;
+      applyHSL(parseInt(hIn.value, 10), parseInt(sIn.value, 10), parseInt(lIn.value, 10));
+    };
+    hIn.oninput = onInput; sIn.oninput = onInput; lIn.oninput = onInput;
+
+    colorEditor.querySelector("#ce-apply").onclick = () => {
+      colorEditor.style.display = "none";
+      const dh = parseInt(hIn.value, 10), ds = parseInt(sIn.value, 10), dl = parseInt(lIn.value, 10);
+      for (const entry of ceTarget) {
+        entry.dh = dh; entry.ds = ds; entry.dl = dl;
+      }
+      persist();
+      ceTarget = null;
+    };
+    colorEditor.querySelector("#ce-cancel").onclick = () => {
+      applyHSL(0, 100, 100);
+      colorEditor.style.display = "none";
+      ceTarget = null;
+    };
+    
+    colorEditor.style.display = "flex";
+  }
 
   function updateHUD() {
     if (!active) return;
@@ -754,8 +893,9 @@ export function createMapEditor(ctx) {
 
   window.addEventListener("mousedown", (e) => {
     if (!active) return;
+    if (e.target !== editDesignBtn && !colorEditor.contains(e.target)) ctxMenu.style.display = "none";
     if (e.button === 0) {
-      if (onUI(e.target) || exportBox.style.display !== "none") return;
+      if (onUI(e.target) || exportBox.style.display !== "none" || colorEditor.style.display !== "none") return;
       leftDownClient = { x: e.clientX, y: e.clientY };
       boxSelecting = false;
     } else if (e.button === 2) {
@@ -791,7 +931,13 @@ export function createMapEditor(ctx) {
       // right-drag (see the free-fly camera below) still orbits the camera,
       // since a real drag never satisfies this distance check.
       if (active && rightDownClient && Math.hypot(e.clientX - rightDownClient.x, e.clientY - rightDownClient.y) <= CLICK_SLOP) {
-        cancelAction();
+        if (selectedSet.size) {
+          ctxMenu.style.left = e.clientX + "px";
+          ctxMenu.style.top = e.clientY + "px";
+          ctxMenu.style.display = "flex";
+        } else {
+          cancelAction();
+        }
       }
       rightDownClient = null;
     }
@@ -1077,7 +1223,10 @@ export function createMapEditor(ctx) {
       const i = placements.indexOf(entry);
       if (i !== -1) placements.splice(i, 1);
     }
-    for (const w of selectedWorld) w.root.visible = false;   // soft hide — see the header comment
+    for (const w of selectedWorld) {
+      if (w.isBatchedPart) continue; // cannot be pulled out of batch
+      w.root.visible = false;   // soft hide — see the header comment
+    }
     clearSelection();
     updateHUD();
     persist();
@@ -1103,11 +1252,32 @@ export function createMapEditor(ctx) {
     for (const hit of hits) {
       let o = hit.object;
       if (isDescendantOf(o, ghost) || isDescendantOf(o, selectionMarkers) || isDescendantOf(o, pastePreviewGroup)) continue;
-      if (o.name === "static-batch") return { batched: true };
+      
       let root = o;
-      while (root.parent && root.parent !== scene) {
-        if (root.name === "static-batch") return { batched: true };
-        root = root.parent;
+      let batchedPart = null;
+      
+      let cur = o;
+      while (cur) {
+        if (cur.name === "static-batch") {
+           if (cur.userData.batchParts && hit.faceIndex != null) {
+              const idx = hit.faceIndex * 3;
+              const part = cur.userData.batchParts.find(p => idx >= p.start && idx < p.start + p.count);
+              if (part) {
+                 batchedPart = part.mesh;
+              }
+           }
+           if (batchedPart) break;
+           return { batched: true };
+        }
+        if (!cur.parent || cur.parent === scene) {
+           root = cur;
+           break;
+        }
+        cur = cur.parent;
+      }
+      
+      if (batchedPart) {
+         return { root: batchedPart, name: batchedPart.name || "batched object", isBatchedPart: true };
       }
       if (isEditorPlaced(root)) continue;   // selectNear() already covers this one
       return { root, name: root.name || o.name || "unnamed object" };
@@ -1136,13 +1306,37 @@ export function createMapEditor(ctx) {
   function copySelection(cut) {
     if (!selectedSet.size && !selectedWorld.size) return;
     if (!cut && !selectedSet.size) {
-      selectStatus.textContent = "world objects can't be copied, only moved with Cut";
-      selectStatus.style.display = "block";
-      return;
+      // Check if we have batched parts that CAN be copied
+      const hasOnlyUncopyables = [...selectedWorld].every(w => !w.isBatchedPart);
+      if (hasOnlyUncopyables) {
+        selectStatus.textContent = "unbatched world objects can't be copied, only moved with Cut";
+        selectStatus.style.display = "block";
+        return;
+      }
     }
+    
+    if (cut) {
+       for (const w of selectedWorld) {
+          if (w.isBatchedPart) {
+             selectStatus.textContent = "cannot cut a batched object, you can only copy it";
+             selectStatus.style.display = "block";
+             return;
+          }
+       }
+    }
+
     const center = selectionCenter();
     const items = [...selectedSet].map((e) => ({ kind: "catalog", catalogKey: e.catalogKey, dx: e.x - center.x, dz: e.z - center.z, dry: e.ry }));
-    if (cut) for (const w of selectedWorld) items.push({ kind: "world", root: w.root, dx: w.root.position.x - center.x, dz: w.root.position.z - center.z, dry: w.root.rotation.y, baseY: w.root.position.y });
+    if (cut) {
+      for (const w of selectedWorld) items.push({ kind: "world", root: w.root, dx: w.root.position.x - center.x, dz: w.root.position.z - center.z, dry: w.root.rotation.y, baseY: w.root.position.y });
+    } else {
+      for (const w of selectedWorld) {
+        if (w.isBatchedPart) {
+          items.push({ kind: "world-copy", original: w.root, dx: w.root.position.x - center.x, dz: w.root.position.z - center.z, dry: w.root.rotation.y, baseY: w.root.position.y });
+        }
+      }
+    }
+    
     if (!items.length) return;
     clipboard = items;
     // deleteSelection() already does exactly the right thing for both kinds:
@@ -1160,8 +1354,8 @@ export function createMapEditor(ctx) {
     while (pastePreviewGroup.children.length) pastePreviewGroup.remove(pastePreviewGroup.children[0]);
     for (const item of clipboard) {
       let preview;
-      if (item.kind === "world") {
-        preview = item.root.clone(true);
+      if (item.kind === "world" || item.kind === "world-copy") {
+        preview = (item.root || item.original).clone(true);
         preview.traverse((o) => {
           if (o.isMesh && o.material) o.material = Array.isArray(o.material) ? o.material.map(ghostifyMaterial) : ghostifyMaterial(o.material);
         });
@@ -1197,6 +1391,33 @@ export function createMapEditor(ctx) {
         item.root.rotation.y = item.dry;
         item.root.visible = true;
         movedWorld.add({ root: item.root, name: item.root.name || "unnamed object" });
+      } else if (item.kind === "world-copy") {
+        const mesh = item.original;
+        const key = `batched:${mesh.name || mesh.uuid}`;
+        
+        if (!CATALOG.some(c => c.key === key)) {
+          CATALOG.push({
+            key,
+            label: `Extracted: ${mesh.name || "Geometry"}`,
+            category: "Extracted",
+            w: 6, d: 6,
+            dynamicSize: true,
+            place: (pctx, px, pz, pry) => {
+              const clone = mesh.clone(true);
+              clone.position.set(px, item.baseY, pz);
+              clone.rotation.y = pry;
+              clone.userData = { ...clone.userData, isExtractedClone: true };
+              if (pctx.scene) pctx.scene.add(clone);
+              if (pctx.props) pctx.props.push(clone);
+              return [clone];
+            },
+            code: (px, pz, pry) => `// Cannot trivially export cloned batched geometry (${key}) at ${px}, ${pz}`,
+          });
+          recomputeCategories();
+        }
+        
+        const spec = CATALOG.find((s) => s.key === key);
+        placed.add(placeAt(spec, x + item.dx, z + item.dz, item.dry));
       } else {
         const spec = CATALOG.find((s) => s.key === item.catalogKey);
         if (!spec) continue;
@@ -1326,7 +1547,7 @@ export function createMapEditor(ctx) {
   }
 
   // ------------------------------------------------------------ persistence
-  function serialize() { return placements.map(({ id, catalogKey, x, z, ry }) => ({ id, catalogKey, x, z, ry })); }
+  function serialize() { return placements.map(({ id, catalogKey, x, z, ry, dh, ds, dl }) => ({ id, catalogKey, x, z, ry, dh, ds, dl })); }
   function persist() {
     try { localStorage.setItem(LS_KEY, JSON.stringify(serialize())); } catch {}
     saveRemote();
@@ -1471,10 +1692,86 @@ export function createMapEditor(ctx) {
     }
   }
 
+  async function aiCloneSelection() {
+    if (!selectedSet.size && !selectedWorld.size) return;
+    if (!httpBase) { selectStatus.textContent = "AI clone needs the server"; selectStatus.style.display = "block"; return; }
+    const center = selectionCenter();
+    const selection = [...selectedSet].map((e) => ({ kind: "catalog", catalogKey: e.catalogKey, dx: e.x - center.x, dz: e.z - center.z, dry: e.ry }));
+    for (const w of selectedWorld) {
+      selection.push({ kind: "world", catalogKey: w.name, dx: w.root.position.x - center.x, dz: w.root.position.z - center.z, dry: w.root.rotation.y });
+    }
+    const prompt = aiInput.value.trim();
+    const promptWords = prompt.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 4);
+    const r2Matches = promptWords.length
+      ? CATALOG.filter((c) => c.key.startsWith("r2:") && promptWords.some((w) => c.label.toLowerCase().includes(w)))
+      : [];
+    const catalog = CATALOG.filter((c) => !c.key.startsWith("r2:"))
+      .concat(r2Matches.slice(0, 40))
+      .map((c) => ({ key: c.key, label: c.label, w: c.w, d: c.d }));
+    
+    selectStatus.textContent = "AI cloning... thinking...";
+    selectStatus.style.display = "block";
+    try {
+      const res = await fetch(`${httpBase}/editor/ai-duplicate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selection, anchor: center, prompt, catalog }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "AI request failed");
+      let placed = 0;
+      for (const p of data.placements) {
+        const spec = CATALOG.find((s) => s.key === p.catalogKey);
+        if (!spec) continue;
+        placeAt(spec, p.x, p.z, p.ry || 0);
+        placed++;
+      }
+      updateHUD();
+      persist();
+      selectStatus.textContent = placed
+        ? `cloned ${placed} items via ${data.model} (world objects replaced with nearest catalog matches if requested)`
+        : "AI replied but nothing matched a valid asset";
+      if (placed && prompt) aiInput.value = "";
+    } catch (err) {
+      selectStatus.textContent = String(err.message || err);
+    }
+  }
+
   function replayPlacement(entry) {
     const spec = CATALOG.find((s) => s.key === entry.catalogKey);
     if (!spec) return;
-    placeAt(spec, entry.x, entry.z, entry.ry);
+    const placed = placeAt(spec, entry.x, entry.z, entry.ry);
+    if (entry.dh !== undefined) {
+      placed.dh = entry.dh; placed.ds = entry.ds; placed.dl = entry.dl;
+      // Because models load async, we poll to apply colors once meshes appear
+      const check = setInterval(() => {
+        let found = false;
+        for (const obj of placed.created) {
+          obj.traverse(o => { if (o.isMesh) found = true; });
+        }
+        if (found) {
+          clearInterval(check);
+          for (const obj of placed.created) {
+            obj.traverse(o => {
+              if (o.isMesh && o.material) {
+                if (Array.isArray(o.material)) {
+                  o.material = o.material.map(m => {
+                    const c = m.clone(); const hsl = {}; c.color.getHSL(hsl);
+                    c.color.setHSL((hsl.h + placed.dh / 360) % 1, Math.min(1, Math.max(0, hsl.s * (placed.ds / 100))), Math.min(1, Math.max(0, hsl.l * (placed.dl / 100))));
+                    return c;
+                  });
+                } else {
+                  const c = o.material.clone(); const hsl = {}; c.color.getHSL(hsl);
+                  c.color.setHSL((hsl.h + placed.dh / 360) % 1, Math.min(1, Math.max(0, hsl.s * (placed.ds / 100))), Math.min(1, Math.max(0, hsl.l * (placed.dl / 100))));
+                  o.material = c;
+                }
+              }
+            });
+          }
+          ceTarget = null;
+        }
+      }, 100);
+      setTimeout(() => clearInterval(check), 5000);
+    }
   }
 
   async function loadSaved() {

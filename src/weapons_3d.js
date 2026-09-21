@@ -150,14 +150,29 @@ export function updateWeapon3D(playerPos, aimDir, stateWeapon, dt, isAiming, hid
   weaponPivot.lookAt(targetPt);
 
   // Offset weapon to the right side (handedness)
-  activeWeapon.position.set(0.3, -0.2, 0.2);
+  if (stateWeapon === "sawnoff") {
+    activeWeapon.position.set(0.2, -0.15, 0.3);
+  } else if (stateWeapon === "deerRifle") {
+    activeWeapon.position.set(0.25, -0.15, 0.4);
+  } else if (stateWeapon === "tec9") {
+    activeWeapon.position.set(0.25, -0.2, 0.3);
+  } else if (stateWeapon === "bat") {
+    activeWeapon.position.set(0.3, -0.1, 0.1);
+  } else {
+    activeWeapon.position.set(0.3, -0.2, 0.2); // pistol default
+  }
 
   if (!isAiming) {
     // Holstered / lowered
-    activeWeapon.position.y = -0.5;
-    activeWeapon.rotation.x = -Math.PI / 2;
-    activeWeapon.rotation.y = 0;
-    activeWeapon.rotation.z = 0;
+    if (stateWeapon === "deerRifle" || stateWeapon === "sawnoff" || stateWeapon === "bat") {
+      activeWeapon.position.set(0.2, -0.6, -0.1);
+      activeWeapon.rotation.set(-Math.PI / 4, 0, 0);
+    } else {
+      activeWeapon.position.y = -0.5;
+      activeWeapon.rotation.x = -Math.PI / 2;
+      activeWeapon.rotation.y = 0;
+      activeWeapon.rotation.z = 0;
+    }
   } else {
     // Aiming / Firing animation
     if (animState.time > 0) {
@@ -175,7 +190,8 @@ export function updateWeapon3D(playerPos, aimDir, stateWeapon, dt, isAiming, hid
         activeWeapon.rotation.x = recoil * animState.maxRecoil;
         activeWeapon.rotation.y = 0;
         activeWeapon.rotation.z = 0;
-        activeWeapon.position.z = 0.2 + (recoil * 0.1); // push back
+        const baseZ = stateWeapon === "sawnoff" ? 0.3 : (stateWeapon === "deerRifle" ? 0.4 : (stateWeapon === "tec9" ? 0.3 : (stateWeapon === "bat" ? 0.1 : 0.2)));
+        activeWeapon.position.z = baseZ + (recoil * 0.1); // push back
       }
     } else {
       // Steady aim
@@ -184,10 +200,15 @@ export function updateWeapon3D(playerPos, aimDir, stateWeapon, dt, isAiming, hid
   }
 }
 
-export function playFireAnim3D(isMelee) {
+export function playFireAnim3D(weaponId, isMelee) {
   if (isMelee) {
     animState = { type: 'melee', time: 0.4, duration: 0.4, maxRecoil: 0 };
   } else {
-    animState = { type: 'shoot', time: 0.2, duration: 0.2, maxRecoil: 0.2 };
+    // Different guns have different kick/recoil durations
+    let t = 0.2, r = 0.2;
+    if (weaponId === "sawnoff") { t = 0.4; r = 0.6; }
+    else if (weaponId === "deerRifle") { t = 0.5; r = 0.5; }
+    else if (weaponId === "tec9") { t = 0.12; r = 0.15; }
+    animState = { type: 'shoot', time: t, duration: t, maxRecoil: r };
   }
 }

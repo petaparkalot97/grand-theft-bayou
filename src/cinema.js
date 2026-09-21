@@ -150,14 +150,36 @@ export function createCinema({ camera, muted = () => false }) {
     if (kind === "shotgun" || kind === "gunshot") {
       const far = kind === "gunshot";
       const src = a.createBufferSource();
-      src.buffer = noiseBuffer(a, far ? 0.35 : 0.7, (p) => Math.pow(1 - p, far ? 6 : 3.5));
+      // Increase buffer duration and lengthen the exponential envelope
+      src.buffer = noiseBuffer(a, far ? 0.35 : 0.9, (p) => Math.pow(1 - p, far ? 6 : 2.5));
       const lp = a.createBiquadFilter();
       lp.type = "lowpass";
-      lp.frequency.setValueAtTime(far ? 900 : 4200, t);
-      lp.frequency.exponentialRampToValueAtTime(far ? 200 : 260, t + 0.5);
+      // Lower starting frequency, heavy bass taper
+      lp.frequency.setValueAtTime(far ? 900 : 2800, t);
+      lp.frequency.exponentialRampToValueAtTime(far ? 200 : 120, t + 0.8);
+      
+      const peq = a.createBiquadFilter();
+      peq.type = "peaking";
+      peq.frequency.value = 140; // Bass thump
+      peq.Q.value = 0.8;
+      peq.gain.value = far ? 0 : 8;
+
       if (far) out.gain.value *= 0.35;
-      src.connect(lp).connect(out);
+      else out.gain.value *= 1.2; // louder
+      src.connect(lp).connect(peq).connect(out);
       src.start(t);
+      
+      if (!far) {
+        // High frequency initial "crack"
+        const snap = a.createBufferSource();
+        snap.buffer = noiseBuffer(a, 0.08, (p) => Math.pow(1 - p, 10));
+        const hp = a.createBiquadFilter();
+        hp.type = "highpass"; hp.frequency.value = 1800;
+        const snapGain = a.createGain();
+        snapGain.gain.value = 1.0 * volume;
+        snap.connect(hp).connect(snapGain).connect(a.destination);
+        snap.start(t);
+      }
     } else if (kind === "pistolShot") {
       // A crisp mid-range crack — shorter and brighter than the shotgun's boom.
       const src = a.createBufferSource();

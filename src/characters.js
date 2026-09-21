@@ -774,18 +774,43 @@ class Hoodrat extends THREE.Object3D {
     this.head.rotation.set(0, 0, 0);
 
     if (this.anim === "attack") {
-      // alternating straight punches
-      const p = this.time * 7;
-      const jab = Math.max(0, Math.sin(p));
-      const lead = Math.floor(p / Math.PI) % 2;
+      // Improved bare-knuckle punch: winding up and throwing a hook, hip rotation
+      const p = this.time * 6;
+      const phase = p % Math.PI;
+      const lead = Math.floor(p / Math.PI) % 2; // alternates arms
+      const strike = Math.sin(phase);
+      
+      this.hips.rotation.y = (lead === 0 ? 0.3 : -0.3) * strike;
+      this.head.rotation.y = -this.hips.rotation.y;
+      
       A.forEach((a, i) => {
         const on = i === lead;
-        a.pivot.rotation.x = on ? -1.5 * jab : -0.25;
-        a.elbow.rotation.x = on ? -0.5 + jab * 0.45 : -0.8;
-        a.pivot.rotation.z = a.side * (on ? 0.1 : 0.22);
+        // Winding up the hook, then throwing it
+        a.pivot.rotation.x = on ? -1.0 * strike - 0.2 : -0.2;
+        a.pivot.rotation.z = on ? a.side * (0.3 + strike * 0.4) : a.side * 0.2;
+        a.pivot.rotation.y = on ? a.side * -0.5 * strike : 0;
+        a.elbow.rotation.x = on ? -1.2 + strike * 0.6 : -1.0;
       });
       L.forEach((l) => { l.pivot.rotation.x = 0; l.knee.rotation.x = 0.08; });
-      this.torso.rotation.y = Math.sin(p) * 0.18;
+    } else if (this.anim === "swing_bat") {
+      // Two-handed baseball bat swing
+      const p = Math.min(1, this.time * 2.5); // full swing takes ~0.4s
+      // Windup -> Swing -> Follow through
+      const swing = Math.sin(p * Math.PI);
+      const follow = Math.max(0, p - 0.5) * 2; // 0 to 1 in second half
+      
+      this.hips.rotation.y = 0.8 - (p * 1.6);
+      this.head.rotation.y = -this.hips.rotation.y * 0.5;
+      
+      // Both arms grab the bat on the right side and swing across to the left
+      A.forEach((a) => {
+        a.pivot.rotation.x = -1.2 + swing * 0.5;
+        a.pivot.rotation.z = a.side * 0.3 - (p * 0.8);
+        a.pivot.rotation.y = 1.0 - (p * 2.5);
+        a.elbow.rotation.x = -0.5 - (1 - swing) * 0.5;
+      });
+      L.forEach((l) => { l.pivot.rotation.x = 0; l.knee.rotation.x = 0.1; });
+      this.torso.rotation.y = this.hips.rotation.y * 0.5;
       return;
     }
 
@@ -1091,6 +1116,17 @@ export function randomProstitute(rng = Math.random, height, opts = {}) {
     ...opts,
   });
 }
+/** A higher-end escort variant for OrleaRouge's casino boulevard. */
+export function randomHighEndEscort(rng = Math.random, height = 1.82, opts = {}) {
+  return randomProstitute(rng, height, {
+    top: [0x17151f, 0x7f173d, 0x24314f][(rng() * 3) | 0],
+    denim: 0x17151f,
+    headwear: "none",
+    crew: { cloth: 0x17151f, chain: 0xd4af37, shoe: 0xd4af37, legging: 0x17151f },
+    ...opts,
+  });
+}
+
 export function makeHobo(opts = {}) {
   const crew = { primary: 0x4a4a40, sec: 0x3d4133 }; // dirty, drab colors
   return new Hoodrat({ ...opts, crew, headwear: "hat" });
@@ -1161,6 +1197,26 @@ export function randomLesbian(rng = Math.random, height, opts = {}) {
     rainbow: true,
     shoe: "boots",
     crew: { cloth: 0x2e2e36, chain: 0xc0c0c0, shoe: 0x2a1c14, legging: 0x2e2e36 },
+    height,
+    ...opts,
+  });
+}
+
+/** A pretentious OrleaRouge nightlife regular: black tux, white shirt and a
+ * little too much gold. Kept on the shared pedestrian rig so the crowd still
+ * benefits from the normal LOD and civilian behaviour. */
+export function randomTuxedo(rng = Math.random, height = 1.86, opts = {}) {
+  return new Hoodrat({
+    sex: "m",
+    seed: (rng() * 1e9) | 0,
+    yaw: rng() * Math.PI * 2,
+    skin: pickOf(rng, ALL_SKIN),
+    top: 0x151515,
+    denim: 0x151515,
+    hair: pickOf(rng, [0x16100d, 0x4a2c1a, 0x2b211d]),
+    headwear: "none",
+    beard: rng() < 0.35,
+    crew: { cloth: 0x151515, accent: 0xf4f1e8, chain: 0xd4af37, shoe: 0x0b0b0d, maleShoe: "low" },
     height,
     ...opts,
   });

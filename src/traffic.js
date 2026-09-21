@@ -135,11 +135,25 @@ export function createTraffic(o) {
     }
     obj.visible = false;
     o.scene.add(obj);
-    const v = o.registerVehicle(obj, 1.9, { hp: 30 });
+    const v = o.registerVehicle(obj, vDefRadius(obj), { hp: 30 });
     if (v.seats) v.seats[0].occupant = "npc";  // someone's driving; a future hijack pulls them out
+    // Procedural bikes are real traffic vehicles, not empty moving props. Keep
+    // the rider as a child of the pooled vehicle so it follows lane transforms
+    // and costs no separate NPC simulation slot.
+    if (v.def && v.def.bike && o.makeRider) {
+      const rider = o.makeRider();
+      rider.position.set(0, v.def.seat?.y || 0.8, v.def.seat?.z || 0);
+      rider.rotation.y = Math.PI;
+      rider.play?.("ride", { force: true });
+      obj.add(rider);
+    }
     const car = { obj, v, lane: null, s: 0, speed: 0, target: 0, cruise: 15, think: 0, active: false };
     v.traffic = car;
     return car;
+  }
+
+  function vDefRadius(obj) {
+    return obj.userData.vehicleDef?.bike ? 1.05 : 1.9;
   }
 
   function place(car, lane, s) {

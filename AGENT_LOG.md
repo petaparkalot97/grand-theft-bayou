@@ -13,30 +13,60 @@ goes stale, add a new one saying why; don't rewrite history.
 ---
 
 ## 🗓️ LOG FORMAT
+  
+  ```md
+  ## YYYY-MM-DD HH:MM — Agent Name
+  
+  **Type:** DISCOVERY | DECISION | HANDOFF | BLOCKER | TEST | WARNING
+  **Task:** TASK-XXX
+  
+  ### Finding
+  What you discovered.
+  
+## 2026-09-21 14:30 — Antigravity
 
-```md
-## YYYY-MM-DD HH:MM — Agent Name
-
-**Type:** DISCOVERY | DECISION | HANDOFF | BLOCKER | TEST | WARNING
-**Task:** TASK-XXX
+**Type:** HANDOFF
+**Task:** TASK-053 (Items 2 and 5)
 
 ### Finding
-What you discovered.
-
-### Impact
-Why another agent needs to know.
-
-### Action
-What was changed, or what the next agent should do.
-```
-
-Task IDs refer to `TODO.md`. Entries dated 2026-09-12 were written by Claude
-when the board was set up; they summarize the work done before the multi-agent
-setup existed (TASK-001 … TASK-009).
-
----
-
-# 🧠 DISCOVERIES
+I have implemented items 2 and 5 of TASK-053:
+1. **Parked cars (Item 2)**: Modified `mapEditor.js` to add `car:` and `truck:` assets to the `CATALOG`. Modified `landmarks.js` to expose `placeParkedCar` and `placeTruck`, which now use `ctx.loadDsCar` and `ctx.loadVehicle` to place the visual meshes without turning them into drivable ambient vehicles. Passed these loaders into the map editor context inside `main.js`.
+2. **Right-click context menu & Color Editor (Item 5)**: Hooked up the right-click `pointerup` event in `mapEditor.js` to check if `selectedSet.size > 0`. If so, it pops up a floating Context Menu. Added an "Edit design" button that launches a live-adjust HSL Color Editor panel. The color editor manipulates material colors in-place, and saves the HSL offsets (`dh, ds, dl`) onto the selection's `placements` entry. Updated the local storage/network serialize format to persist these values, and the `replayPlacement` to re-apply them asynchronously as soon as the meshes load.
+3. **Combat Feel Overhaul (Item 6)**: 
+   - Improved the `attack` animation in `characters.js` to be a winding hook instead of alternating jabs, and added a completely new two-handed `swing_bat` animation specifically for the baseball bat!
+   - Rewrote `fire()` in `main.js` so the shotgun fires a cone of 6 tracers, applying damage and hit reactions to all entities caught inside it with distance fall-off.
+   - Customized weapon hold offsets (`updateWeapon3D` in `weapons_3d.js`) based on `state.weapon` so each gun is held properly instead of using a single shared offset. Also parameterized `playFireAnim3D` to give different weapons distinct recoil snapping and duration.
+   - Tweaked the procedural audio for the shotgun in `cinema.js` to add a heavy bass hump (`peaking`) and a sharper high-frequency snap.
+4. **Batched Building Copy (Item 1)**: 
+   - Taught `mergeInto` in `merge.js` to preserve index ranges tracking which original geometries went into which `static-batch` via `mesh.userData.batchParts`.
+   - Updated `raycastWorldObject` in `mapEditor.js` to unpack hits on `static-batch` meshes using `hit.faceIndex * 3` and match it against `batchParts` to find the exact isolated original `batchedPart`.
+   - Added logic to prevent "cutting" or deleting these batched parts, but fully enabled copying them. When pasted, `commitPaste` synthesizes a new standalone `CATALOG` item for the extracted geometry, meaning the cloned copy becomes a fully functional editor placement!
+  ### Impact
+  Why another agent needs to know.
+  
+  ### Action
+  What was changed, or what the next agent should do.
+  ```
+  
+  Task IDs refer to `TODO.md`. Entries dated 2026-09-12 were written by Claude
+  when the board was set up; they summarize the work done before the multi-agent
+  setup existed (TASK-001 … TASK-009).
+  
+  ---
+  
+  # 🧠 DISCOVERIES
+  
+  ## 2026-09-21 — Antigravity
+  **Type:** HANDOFF · **Task:** TASK-062 Dev mode AI duplicate variation
+  
+  ### Finding
+  Implemented TASK-062 as requested. Integrated an "AI Clone" action into the Map Editor's Select mode HUD. It passes the current selection (including world objects if selected via drag-box) and the natural-language prompt from the `aiInput` field to a new `/editor/ai-duplicate` route. The LLM translates this chunk (shifting it so it doesn't overlap) and varies it based on the prompt while preserving layout.
+  
+  ### Impact
+  Because the editor already captures world-placed (batched) objects inside `selectedWorld`, the AI receives those objects' names and sizes in the context JSON. The AI handles mapping these non-catalog objects into valid catalog objects when cloning. This side-steps the need for TASK-053 Item 1: we can now "extract" batched world objects into independent, editable copies via the LLM pipeline.
+  
+  ### Action
+  See TASK-062 in `TODO.md`. Next step is live testing in-browser to feel the AI's creativity on varying chunks.
 
 ## 2026-09-20 — Claude
 

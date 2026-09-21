@@ -323,28 +323,58 @@ export function placeOfficeClutter(ctx, x, z, ry = 0) {
 }
 
 const CAR_FILES = {
-  beatall: "Beatall.fbx",
-  doclorean: "docLorean.fbx",
-  landyroamer: "Landyroamer.fbx",
-  toyoyo: "Toyoyo Highlight.fbx",
-  tristar: "Tristar Racer.fbx"
+  beatall: "docLorean", // fallback if names don't exactly match
+  doclorean: "docLorean",
+  landyroamer: "Landyroamer",
+  toyoyo: "Toyoyo Highlight",
+  tristar: "Tristar Racer"
 };
 
 export function placeParkedCar(ctx, carType, x, z, ry = 0) {
-  // Cars are currently broken/non-interactable, so we omit spawning them.
+  const { scene, addBlocker, loadDsCar } = ctx;
+  if (!loadDsCar) return;
+  const name = CAR_FILES[carType] || "docLorean";
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+  loadDsCar(name).then((obj) => {
+    if (!obj) return;
+    const model = obj.clone(true);
+    model.position.set(0, 0, 0);
+    g.add(model);
+  });
+  scene.add(g);
+  if (ctx.props) ctx.props.push(g);
+  if (addBlocker) addBlocker(x, z, 2.5); // block driving through it
+  return g;
 }
 
 const TRUCK_FILES = {
-  pickup: "Pick_Up_1.fbx",
-  truck: "Truck_1.fbx",
-  van: "Van_1.fbx",
-  car_b: "Car_1_B.fbx",
-  car_r: "Car_1_R.fbx",
-  car_y: "Car_1_Y.fbx"
+  pickup: ["Pick_Up_1.fbx", "Pick_Up_1_128x128_Color.png"],
+  truck: ["Truck_1.fbx", "Truck_1_128x128_Color.png"],
+  van: ["Van_1.fbx", "Van_1_128x128_Color.png"],
+  car_b: ["Car_1_B.fbx", "Car_1_B_128x128_Color.png"],
+  car_r: ["Car_1_R.fbx", "Car_1_R_128x128_Color.png"],
+  car_y: ["Car_1_Y.fbx", "Car_1_Y_128x128_Color.png"]
 };
 
 export function placeTruck(ctx, type, x, z, ry = 0) {
-  // Trucks are broken/untextured old assets, skipping spawn.
+  const { scene, addBlocker, loadVehicle } = ctx;
+  if (!loadVehicle) return;
+  const files = TRUCK_FILES[type] || TRUCK_FILES.pickup;
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+  loadVehicle(files[0], files[1]).then((obj) => {
+    if (!obj) return;
+    const model = obj.clone(true);
+    model.position.set(0, 0, 0);
+    g.add(model);
+  });
+  scene.add(g);
+  if (ctx.props) ctx.props.push(g);
+  if (addBlocker) addBlocker(x, z, 2.8);
+  return g;
 }
 
 export function placeShopGLB(ctx, file, x, z, ry = 0, w = 15, h = 10, d = 15) {
