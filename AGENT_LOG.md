@@ -41,6 +41,9 @@ I have implemented items 2 and 5 of TASK-053:
    - Taught `mergeInto` in `merge.js` to preserve index ranges tracking which original geometries went into which `static-batch` via `mesh.userData.batchParts`.
    - Updated `raycastWorldObject` in `mapEditor.js` to unpack hits on `static-batch` meshes using `hit.faceIndex * 3` and match it against `batchParts` to find the exact isolated original `batchedPart`.
    - Added logic to prevent "cutting" or deleting these batched parts, but fully enabled copying them. When pasted, `commitPaste` synthesizes a new standalone `CATALOG` item for the extracted geometry, meaning the cloned copy becomes a fully functional editor placement!
+5. **OrleaRouge Outskirts**:
+   - Filled out the empty edge blocks of OrleaRouge (specifically the deep south edge, the southwest corner below the clubs, and the northeast slice above downtown).
+   - Added an `outskirts()` generator function to `orlearouge.js` that places run-down warehouses with pallets/barrels, cheap motels with neon vacancy signs, and rows of pitched-roof shotgun houses to make the edges feel populated.
   ### Impact
   Why another agent needs to know.
   

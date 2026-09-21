@@ -255,6 +255,59 @@ export function createOrleaRouge(ctx) {
     ["BRASS & BOURBON", "#ffc23a", "#1a1408"], ["LE CRAWFISH CLUB", "#ff5a3c", "#140a08"],
     ["MUSIC HALL", "#9dff6a", "#0c140a"], ["PO-BOYS · BEIGNETS", "#ffe07a", "#1a1408"],
   ];
+  function outskirts(bl) {
+    let outRng = 0;
+    for (const b of bl) {
+      if (!((b.cz >= 370) || (b.cx < ctx.ROAD_X && b.cz >= 330) || (b.cx > ctx.ROAD_X && b.cz > 206 && b.cz <= 250))) continue;
+      
+      const w = b.x1 - b.x0;
+      const d = b.z1 - b.z0;
+      outRng++;
+      
+      if (outRng % 3 === 0) {
+        // Run-down warehouse
+        mesh(new THREE.BoxGeometry(w - 2, 8, d - 4), std("warehouse metal", 0x4a4e54, { metalness: 0.5, roughness: 0.8 }), b.cx, 4, b.cz);
+        mesh(new THREE.BoxGeometry(w, 1, d - 2), std("warehouse roof", 0x222222), b.cx, 8.5, b.cz);
+        ctx.addBlocker(b.cx, b.cz, Math.min(w, d) / 2 - 1);
+        if (ctx.makePallet) {
+          ctx.makePallet(b.x0 + 4, b.z0 + 2, 0);
+          ctx.makePallet(b.x0 + 4, b.z0 + 4, 0);
+        }
+        if (ctx.makeBarrel) {
+          ctx.makeBarrel(b.x1 - 3, b.z0 + 2);
+          ctx.makeBarrel(b.x1 - 4, b.z0 + 2.5);
+        }
+      } else if (outRng % 3 === 1) {
+        // Cheap Motel
+        mesh(new THREE.BoxGeometry(w - 4, 5, 8), std("motel plaster", 0xc8c3b5), b.cx, 2.5, b.cz - d/4);
+        mesh(new THREE.BoxGeometry(w - 4, 5, 8), std("motel plaster", 0xc8c3b5), b.cx, 2.5, b.cz + d/4);
+        ctx.addBlocker(b.cx, b.cz - d/4, 4);
+        ctx.addBlocker(b.cx, b.cz + d/4, 4);
+        
+        neonSign("VACANCY", "#ff3333", "#220000", 6, 1.2, b.cx, 6, b.cz, 0, 0.2);
+        
+        if (ctx.makeFence) {
+          ctx.makeFence(b.x0, b.z0, b.x0, b.z1);
+          ctx.makeFence(b.x1, b.z0, b.x1, b.z1);
+        }
+      } else {
+        // Row of shotgun houses
+        const num = Math.max(1, Math.floor(w / 8));
+        const houseW = 5;
+        const houseD = 14;
+        const step = w / num;
+        const roofGeo = new THREE.CylinderGeometry(houseW / 1.5, houseW / 1.5, houseD + 1, 3).rotateX(-Math.PI / 2).translate(0, 0.5, 0);
+        for (let i = 0; i < num; i++) {
+          const hx = b.x0 + step * (i + 0.5);
+          const color = [0x556655, 0x775555, 0x444466, 0x666655][(outRng + i) % 4];
+          mesh(new THREE.BoxGeometry(houseW, 4, houseD), std("shotgun wood", color), hx, 2, b.cz);
+          mesh(roofGeo, std("shingle", 0x2a2a2a), hx, 4, b.cz);
+          ctx.addBlocker(hx, b.cz, houseW / 1.5);
+        }
+      }
+    }
+  }
+
   function frenchDistrict(bl) {
     let club = 0;
     for (const b of bl) {
@@ -450,6 +503,7 @@ export function createOrleaRouge(ctx) {
       if (b && !special.has(b)) { special.add(b); lot.build(b); }
     }
     const rest = bl.filter((b) => !special.has(b));
+    outskirts(rest);
     frenchDistrict(rest);
     downtown(rest);
     shops(rest);
