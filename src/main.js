@@ -1518,6 +1518,7 @@ const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, boun
 // driven below in updateSheriffs; the module owns "where do they think you are".
 const police = createPoliceSystem({
   scene, MAP, npcs, loot, hitPlayer, busted: () => busted(), shootPlayer: policeShoot,
+  resolveCollision,          // foot deputies walked through walls without this
 });
 const npcEnv = {
   player: playerPos,
@@ -3712,13 +3713,46 @@ function policeShoot(origin, damage, source = "police") {
   else hitPlayer(damage);
   if (source === "helicopter") flashObjective("POLICE HELICOPTER: incoming fire!");
 }
+// A cruiser used to be dropped at a random bearing 55 m out with no check on
+// what was there, so a chase that started next to a block put one INSIDE a
+// building. The push-out in updateSheriffs then walked it out through a wall,
+// which reads exactly like a police car driving through the wall — because it
+// is. Try bearings around the ring until one is clear, and if the whole ring is
+// blocked, don't spawn this frame rather than spawn inside something.
+function clearOfBlockers(x, z, r) {
+  let ok = true;
+  blockerGrid.near(x, z, r + 6, (b) => {
+    if (!ok) return false;
+    const dx = x - b.x, dz = z - b.z, min = b.r + r;
+    if (dx * dx + dz * dz < min * min) ok = false;
+    return false;
+  });
+  if (!ok) return false;
+  // A blocker test alone is not enough. Plenty of buildings are HOLLOW — their
+  // blockers ring the walls and the middle is empty — so a point inside one
+  // reads as perfectly clear while being visibly inside a tower. Nothing can
+  // walk in there (the walls stop it), which means anything found in there got
+  // spawned in there. Reject the footprints too.
+  for (const o of losBoxes) {
+    if (o.minY < 1 && x > o.minX && x < o.maxX && z > o.minZ && z < o.maxZ) return false;
+  }
+  return true;
+}
 function spawnSheriff() {
   if (!sheriffProto) return;
+  const start = Math.random() * Math.PI * 2;
+  let ang = null, sx = 0, sz = 0;
+  for (let i = 0; i < 12 && ang === null; i++) {
+    const a = start + (i / 12) * Math.PI * 2;
+    for (const dist of [55, 48, 62]) {
+      const x = THREE.MathUtils.clamp(playerPos.x + Math.cos(a) * dist, MAP.minX + 6, MAP.maxX - 6);
+      const z = THREE.MathUtils.clamp(playerPos.z + Math.sin(a) * dist, MAP.minZ + 6, MAP.maxZ - 6);
+      if (clearOfBlockers(x, z, 2.2)) { ang = a; sx = x; sz = z; break; }
+    }
+  }
+  if (ang === null) return;                       // nowhere clear: try again next tick
   const car = sheriffProto.clone(true);
-  const ang = Math.random() * Math.PI * 2;
-  car.position.set(playerPos.x + Math.cos(ang) * 55, 0, playerPos.z + Math.sin(ang) * 55);
-  car.position.x = THREE.MathUtils.clamp(car.position.x, MAP.minX + 6, MAP.maxX - 6);
-  car.position.z = THREE.MathUtils.clamp(car.position.z, MAP.minZ + 6, MAP.maxZ - 6);
+  car.position.set(sx, 0, sz);
   car.rotation.y = ang;
   scene.add(car);
   const v = registerVehicle(car, 2.0, { sheriff: true, hp: 48 });
@@ -3815,8 +3849,21 @@ function updateSheriffs(dt) {
   if (state.wanted > 0 && sheriffs.filter((s) => !s.dead).length < want && sheriffProto) spawnSheriff();
   const footWant = Math.min(8, Math.max(0, state.wanted - 1));
   while (police.footCops.filter((c) => !c.dead).length < footWant) {
-    const a = Math.random() * Math.PI * 2, r = 14 + Math.random() * 16;
-    police.spawnFootCop(playerPos.x + Math.cos(a) * r, playerPos.z + Math.sin(a) * r);
+    // Same unchecked-ring bug the cruisers had: a random bearing with no test
+    // for what is there drops deputies INSIDE buildings, and a foot cop that
+    // starts in a wall spends its life being pushed out of one. Find clear
+    // ground first, and if the ring is solid, skip this one rather than bury it.
+    const start = Math.random() * Math.PI * 2;
+    let placed = false;
+    for (let i = 0; i < 10 && !placed; i++) {
+      const a = start + (i / 10) * Math.PI * 2;
+      const r = 14 + Math.random() * 16;
+      const x = playerPos.x + Math.cos(a) * r, z = playerPos.z + Math.sin(a) * r;
+      if (!clearOfBlockers(x, z, 0.7)) continue;
+      police.spawnFootCop(x, z);
+      placed = true;
+    }
+    if (!placed) break;
   }
 
   // Where they drive: you while they can see you, the last place they saw you

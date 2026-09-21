@@ -153,7 +153,15 @@ export function buildPoliceHelicopter() {
   return g;
 }
 
-export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted, shootPlayer }) {
+export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted, shootPlayer,
+  resolveCollision = null }) {
+  // `resolveCollision(current, next, radius)` from main.js. Without it a foot
+  // deputy integrated its position straight onto the world and walked through
+  // walls, buildings and parked cars — it was the only mover in the game that
+  // never consulted the blocker grid, because this module was never handed a
+  // way to.
+  const _step = new THREE.Vector3();   // reused: one allocation, not one per deputy per frame
+  const FOOT_R = 0.5;                  // a deputy on foot, same order as the player's 0.6
   const cruisers = [];
   const footCops = [];
   const helicopters = [];
@@ -242,8 +250,19 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted, 
       } else {
         c.spr.play("walk", { fps: 9, loop: true });
         c.spr.setFlip(dx);
-        p.x += dx * c.T.speed * dt;
-        p.z += dz * c.T.speed * dt;
+        if (resolveCollision) {
+          // NOTE the argument order: resolveCollision(current, next, radius)
+          // writes the RESOLVED position into `current`, not into `next` —
+          // main.js's own player call does the same (resolveCollision(playerPos,
+          // next, 0.6) and then uses playerPos). Copying back out of `next`
+          // here silently threw the collision result away and the deputies kept
+          // walking through walls even with the grid wired up.
+          _step.set(p.x + dx * c.T.speed * dt, 0, p.z + dz * c.T.speed * dt);
+          resolveCollision(p, _step, FOOT_R);
+        } else {
+          p.x += dx * c.T.speed * dt;
+          p.z += dz * c.T.speed * dt;
+        }
         // Deputies shoot while closing the distance, making the threat readable
         // before they reach arrest range. They fire slowly and only when the
         // player is not hidden inside a vehicle.
