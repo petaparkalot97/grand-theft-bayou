@@ -108,6 +108,31 @@ meshes, **0** of them merged. If you add a module with a `props` getter, add it
 to `moving` in the same commit, and if its props are a mix of static and moving
 parts, split the getter rather than excluding the whole district from batching.
 
+### REGRESSION, caught same day — an allow-list that blanked every embedded texture
+
+`landmarks.js`'s `loadFBX` URL modifier was inverted from a deny-list to an
+allow-list earlier the same day to stop a directory request. The allow-list
+recognised model extensions and image extensions, and blanked everything else.
+
+**`blob:` URLs have no file extension.** FBXLoader hands EMBEDDED textures to
+the manager as `blob:` URLs, so the allow-list replaced every embedded texture
+in every pack with a 1x1 transparent pixel. `data:` URIs and `.dds`/`.uasset`
+went the same way. The shop packs went white.
+
+It did not throw, did not log, and did not fail a request — the only trace was
+texture coverage dropping from 42.1% of material slots to 37.6%, which is not a
+number anyone looks at. It took a human playtest to notice.
+
+The fix, and the rule: **an allow-list over URLs must pass `blob:`, `data:` and
+`http(s):` first, before any extension test.** Those are already-resolved
+sources and were never the loader's problem. Then test the FILENAME, not the
+whole URL, and blank only a reference with no filename or no extension at all —
+that is the genuinely broken case. Anything with an unrecognised extension goes
+through untouched rather than guessed at.
+
+Verified after: coverage back to 42.4%, 24 blank pixels (the real broken refs),
+0 console errors.
+
 ### TASK-069 — the renderer was never the problem
 
 Recorded because it will come up again: this project's post chain is
