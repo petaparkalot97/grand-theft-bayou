@@ -27,6 +27,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
+import { roundedBox } from "./geo.js";
 
 const RIDE_COOLDOWN = 240;         // seconds before a night ride can happen again
 
@@ -57,9 +58,9 @@ export function createKlan(ctx) {
 
     const charred = new THREE.MeshStandardMaterial({ name: "charred timber", color: 0x241c16, roughness: 1 });
     charred.userData.gtbRealized = true;
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.34, 5.2, 0.34), charred);
+    const post = new THREE.Mesh(roundedBox(0.34, 5.2, 0.34), charred);
     post.position.y = 2.6; post.castShadow = true;
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.32, 0.32), charred);
+    const arm = new THREE.Mesh(roundedBox(2.6, 0.32, 0.32), charred);
     arm.position.y = 3.7; arm.castShadow = true;
     g.add(post, arm);
 

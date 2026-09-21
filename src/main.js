@@ -260,6 +260,11 @@ const loadManager = new THREE.LoadingManager();
 // so redirect those requests instead of letting them 404 into the console.
 const BLANK_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAMAASsJTYQAAAAASUVORK5CYII=";
 loadManager.setURLModifier((url) => {
+  // A model whose material names no texture at all resolves to the model's own
+  // folder, so the loader requests a DIRECTORY — "assets/models/tacos/Tacos/
+  // Models/ 403" and the same for BurgerPiz, on every single load. Nothing is
+  // there to fetch; hand it a blank pixel and make no request.
+  if (url.endsWith("/")) return BLANK_PNG;
   if (/(^|\/)C:\/Users\//i.test(url)) return BLANK_PNG;
   if (/\/cars\/387359c5580f06c08c266126b3b46db47e48ba44\.png$/.test(url)) {
     return "./assets/models/cars/docLorean.fbm/387359c5580f06c08c266126b3b46db47e48ba44.png";
@@ -4058,6 +4063,7 @@ async function boot() {
     player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
     ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
     ...services.props, ...nightlife.props,      // garage doors, markers, club cutaways: they move
+    ...casinos.props,                           // casino roof/sign cutaways, wall scale, the roulette table and the slots all animate in casinos.update()
     ...(orlea ? orlea.props : []),              // Marie Laveau's ghost, drifting the cemetery alleys
     ...klan.props,                              // the cross burns and goes out: it cannot be baked in
     ...(newton ? newton.props : []),            // he and his table are only there at dawn

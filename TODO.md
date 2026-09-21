@@ -166,6 +166,88 @@ should merge cleanly; if it touched `cemetery(b)`, take this version.
 
 ---
 
+### TASK-069 — Toward the HD-remaster look: broken pack textures, and the chamfer (human request, 2026-09-21)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/geo.js` (new), `src/landmarks.js`, `src/main.js`,
+`src/cemetery.js`, `src/klan.js`, `src/newton.js`
+
+Human asked what it would take to reach San Andreas **Definitive Edition**
+graphics. The finding worth recording before the work: **the renderer is already
+past it.** The post chain is `RenderPass -> GTAO -> bloom -> tone map -> filmic
+grade -> SMAA`, with a 4K/SSAA-1.5x ultra tier, 4096 shadow maps, 16-sample
+ground-truth AO, planar mirror reflections, an IBL probe, automatic PBR
+derivation for every material, and a day/night cycle. The DE ships SSAO, not
+GTAO. Adding renderer technology is not the lever. Two other things are.
+
+**1. Five broken asset requests on every single load — now zero.**
+- Three 404s: 6twelve's FBX asks for `Food_shelf_04.jpg`,
+  `ice_cream_popsicles.jpg` and `Parking_lot.jpg`; all three are **.png** on
+  disk. Aliased in `loadFBX`'s URL modifier (`TEXTURE_ALIASES`) rather than
+  converted, because all three carry an alpha channel a JPEG would discard.
+- Two 403s: `assets/models/tacos/Tacos/Models/` and the BurgerPiz equivalent —
+  requests for a *directory*. Cause found in three's own
+  `FBXLoader.loadTexture()`, which declares `let fileName;` and then uses it
+  without ever assigning it when a texture node has no image child; the loader
+  resolves that against the model's folder and asks for the folder. Fixed by
+  inverting the URL modifier from a deny-list to an **allow-list**: model files
+  and anything already in `Textures/` pass through, and anything else that is
+  not a real image filename gets a 1x1 transparent pixel inline, so no request
+  is made. The same directory guard is in `main.js`'s shared `loadManager`.
+
+**2. `src/geo.js` — the chamfer.** The single biggest *visual* difference
+between SA and the DE is not polycount or textures, it is that every edge in the
+remaster is bevelled: a hard 90° corner terminates light flatly and reads as
+"box", a 2–3 cm chamfer catches a highlight along the whole edge and reads as an
+object made of a material. This game is built almost entirely out of
+`THREE.BoxGeometry`.
+
+`roundedBox(w, h, d, { radius, segments })` wraps `RoundedBoxGeometry`, caches
+and shares geometry (so `batchStatic` can still merge), scales the radius down
+for small props (never more than a seventh of the thinnest dimension — that is
+what stops a 3 cm bevel turning a 7 cm table leg into a capsule), and degrades
+to a plain cached `BoxGeometry` when the bevel would be sub-pixel. Always safe
+to call.
+
+**Adopted so far in `cemetery.js` (25 sites), `klan.js` (3) and `newton.js` (6)**
+— the files this session wrote, so no locked file was touched. The ~40 cemetery
+tombs are the showcase.
+
+**Measured, at the cemetery:** draw calls **195** (was 216 before the change, at
+a comparable hour) — i.e. **batching held**, which was the risk. Triangles
+90,415 (was 77,653): about +13k for chamfering forty tombs. No console errors.
+A close golden-hour capture shows the bevel on the near tomb's cornice and
+vertical corners, and distant tombs correctly showing none.
+
+**Two things NOT to do with `roundedBox`, both documented in the file:**
+- It does not produce BoxGeometry's UVs. Any mesh whose UVs are hand-computed
+  or scaled to size — `orlearouge.js`'s `tiledBox`, `cemetery.js`'s
+  `vaultWall` — must keep `BoxGeometry` or its tiling changes. Flat colours and
+  realize()'s micro-detail normal are fine; that map is break-up noise, not a
+  pattern that has to line up.
+- The geometry is shared. Never mutate one that comes out of it.
+
+**Found and NOT fixed — worth its own task:** whitewashed plaster **blows out to
+flat white in daylight**. `daycycle.js` runs `exposure: lerp(0.85, 1.55, night)`,
+and 0.85 at full day against a 4.6-intensity sun clips every pale surface. The
+cemetery at noon is a field of white rectangles with no readable form at all.
+This costs more visual quality right now than anything geometry can buy back,
+and it is a one-file fix in the grade/exposure curve.
+
+**What remains for the DE look, in order:**
+1. **Nobody has ever seen this game.** Every screenshot this session was
+   SwiftShader at `HIGH`. The `ultra` tier has never been on screen, and
+   `adaptiveQuality` only steps *down*, never back up — one frame-time spike
+   during load pins the session low. Press `]` on a real GPU first.
+2. The daylight exposure blow-out above.
+3. Adopt `roundedBox` across the district builders (locked files — for their
+   owners, not for this task).
+4. World density: `placeStreetClutter` / `SITE_CLUTTER` / `placeOfficeClutter`
+   already exist and the pavements are mostly bare. Emptiness reads as
+   unfinished far more than low-poly does.
+
+---
+
 ### TASK-068 — Marie Laveau keeps her own ground (human request, 2026-09-20)
 
 **Status:** `REVIEW` · **Agent:** Claude
@@ -3601,6 +3683,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/klan.js` (new), `tools/qa/klan.mjs` (new) | Claude | TASK-066 (REVIEW) | Available |
 | `src/newton.js` (new), `tools/qa/newton.mjs` (new) | Claude | TASK-067 (REVIEW) | Available |
 | `tools/qa/marie_ground.mjs` (new) | Claude | TASK-068 (REVIEW) | Available |
+| `src/geo.js` (new) | Claude | TASK-069 (REVIEW) — shared, adopt freely | Available |
 | `src/npc.js` | — | TASK-066 (temperament only) | Available |
 | `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
 | `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |

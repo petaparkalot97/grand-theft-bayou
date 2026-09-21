@@ -89,6 +89,68 @@ is harder to get rid of"). The mechanics came first and the dialogue was written
 to them. If someone rewrites the lines, the mechanics stop being explained
 anywhere.
 
+### Merge catch, 2026-09-21 — casinos.js was about to be frozen solid
+
+`src/casinos.js` arrived in a merge exposing `get props()`, and `main.js`'s
+`moving` set did not list it. Every other module with props is in there. Its
+`update()` hides `c.roof` and `c.sign` for the walk-in cutaway, eases
+`c.walls[].scale.y`, spins `c.table` and bobs the slot machines — so
+`batchStatic` would have merged all of it into static batches at boot and the
+casinos would have been sealed boxes with a frozen roulette wheel.
+
+Caught by reading the new module's `update()` against the `moving` set rather
+than by anything failing: **nothing throws when this happens.** The geometry is
+still on screen and still correct — it simply stops responding, which is the
+worst kind of bug to find later.
+
+Verified after adding `...casinos.props`: 6 casino groups holding 114 individual
+meshes, **0** of them merged. If you add a module with a `props` getter, add it
+to `moving` in the same commit, and if its props are a mix of static and moving
+parts, split the getter rather than excluding the whole district from batching.
+
+### TASK-069 — the renderer was never the problem
+
+Recorded because it will come up again: this project's post chain is
+`RenderPass -> GTAO -> bloom -> tone map -> filmic grade -> SMAA`, with a
+4K/SSAA-1.5x tier, 4096 shadows, 16-sample ground-truth AO, planar reflections,
+an IBL probe and automatic PBR derivation. That is **more** than San Andreas:
+Definitive Edition, which uses SSAO. When the look disappoints, the answer is
+not another pass.
+
+**INTERFACE — `src/geo.js`.** `roundedBox(w, h, d, { radius, segments })` and
+`box(w, h, d)`, both cached and shared. Use `roundedBox` for anything flat-
+coloured; a 2–3 cm chamfer is the single biggest geometric difference between SA
+and its remaster, and it costs no draw calls. Measured at the cemetery: forty
+tombs chamfered, draw calls 216 -> 195, triangles +13k.
+
+Two hard rules, or it will bite:
+- **UVs are not BoxGeometry's.** `RoundedBoxGeometry` lays out its own, so any
+  mesh with hand-computed or size-scaled UVs (`orlearouge.js` `tiledBox`,
+  `cemetery.js` `vaultWall`) must stay on `BoxGeometry`.
+- **The geometry is shared** — mutating one mutates every mesh using it, and
+  `batchStatic` keys its batches on the geometry's attributes.
+
+**WARNING — three's `FBXLoader.loadTexture()` can request a directory.** It
+declares `let fileName;` and uses it without assigning it when a texture node
+has no image child, so the loader resolves nothing against the model's folder
+and fetches the folder itself — the `assets/models/tacos/Tacos/Models/ 403` that
+has been in the console on every load. A `LoadingManager` URL modifier written
+as a deny-list ("skip anything that isn't an image extension") lets it straight
+through. **Invert it:** pass through model files and `Textures/` paths, and
+return a blank-pixel data URI for everything else. `landmarks.js` does this now.
+
+**WARNING — a texture reference can be right about the name and wrong about the
+extension.** 6twelve asks for three `.jpg` files that are `.png` on disk.
+Aliased in `TEXTURE_ALIASES` rather than converted: all three have alpha, and
+re-encoding to JPEG would silently drop it.
+
+**OPEN — pale surfaces blow out in daylight.** `daycycle.js` sets
+`exposure: lerp(0.85, 1.55, night)`; 0.85 at full day against a 4.6-intensity
+sun clips whitewashed plaster to flat white with no readable form. The cemetery
+at noon is a field of white rectangles. This is currently costing more visual
+quality than any amount of geometry work can return, and it is one curve in one
+file.
+
 ### TASK-068 — two ghosts, two ways to deal with the police
 
 `cemetery.js` and `newton.js` both now do something about a wanted level, and
