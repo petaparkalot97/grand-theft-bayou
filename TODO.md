@@ -144,6 +144,46 @@ actual browser.
 
 ---
 
+### TASK-075 — Daylight is scrapped: the world now freezes at the 19:30 golden look until real dusk (human request, 2026-09-23)
+
+**Status:** `REVIEW` (`node --check`ed; **not verified live** — no GPU/Chromium
+this session) · **Agent:** Claude · **Files:** `src/daycycle.js`
+
+Human, after TASK-074's wet-road fix: *"the game looks like shit during
+daylight hours. it looks better around 19:30 onwards can we scrap the way the
+day night cycle appears from before 18:00 and just have it like that but
+adjust the time accordingly?"* Confirmed via AskUserQuestion: freeze the
+visuals rather than re-tune the daytime curve or touch `worldtime.js`'s
+clock/schedules.
+
+**What changed:** `skyState(hour)` in `src/daycycle.js` now clamps its
+internal hour to a fixed `DAY_FREEZE_LOOK_HOUR = 19.5` for every real hour from
+`SUNRISE` (5.9) up to `DAY_FREEZE_UNTIL_HOUR` — also 19.5. The sun/lighting/fog/
+exposure state is completely static (no arc) across the whole daytime span,
+using the same golden-hour numbers the 19:30 look already had (day≈0.44,
+golden≈0.48, exposure 0.78), then hands off with zero discontinuity into the
+existing 19:30 → night → dawn ramp exactly as it already played. True deep
+night (00:00–05:50) is untouched. **18:00 itself was tried first and rejected**
+— in this SUNSET=20.15 model the sun is still ~33° up at 18:00 (`day` ramp
+pegged at 1, same as noon), so unfreezing there produced a bright flash from
+18:00–~19:00 before the curve caught back down to golden. Freezing through to
+19.5 (both the freeze cutoff and the look value) removes that flash entirely.
+
+This directly resolves the "What remains" note left under TASK-074 pointing at
+daycycle.js's exposure curve clipping pale surfaces at noon — that curve is no
+longer reached during normal daytime play.
+
+**Testing performed:** `node --check`; a standalone script sampling
+`skyState()` across the full 24h to confirm no jump at the freeze boundaries
+and that deep night is unaffected. **Not verified live.**
+
+**What remains:** confirm live in a browser/GPU session that the frozen
+daytime look actually reads well over a full play session (a static sun angle
+for ~13.5 in-game hours means no shifting shadows all "day" — acceptable per
+the human's ask, but worth eyeballing).
+
+---
+
 ### TASK-073 — Vehicle destruction: catch fire, then explode, then a charred wreck that outlasts the player (human request, 2026-09-22)
 
 **Status:** `REVIEW` (`node --check`ed; **not verified live** — no GPU/Chromium

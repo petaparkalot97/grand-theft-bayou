@@ -215,6 +215,7 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted, 
   function updateFootCops(dt, env) {
     const playerPos = env.player;
     let onTopCount = 0;
+    const standDown = env.state && env.state.wanted === 0;
 
     for (let i = footCops.length - 1; i >= 0; i--) {
       const c = footCops[i];
@@ -232,6 +233,18 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted, 
       const p = c.spr.position;
       const targetPos = hasLastKnownPos ? lastKnownPos : playerPos;
       const dist = Math.hypot(targetPos.x - p.x, targetPos.z - p.z);
+      
+      if (standDown && dist > 50) {
+        if (c.spr.parent) c.spr.parent.remove(c.spr);
+        footCops.splice(i, 1);
+        continue;
+      }
+
+      if (standDown) {
+        c.spr.play("idle", { fps: 6, loop: true });
+        continue;
+      }
+
       const inv = dist > 1e-4 ? 1 / dist : 0;
       const dx = (targetPos.x - p.x) * inv, dz = (targetPos.z - p.z) * inv;
 

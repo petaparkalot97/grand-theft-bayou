@@ -21,6 +21,19 @@ export const SUNSET = 20.15;
 const NOON_ELEVATION = 72;        // degrees at the top of the arc
 const NIGHT_DEPTH = 34;           // how far below the horizon at the dead of night
 
+// Human report (2026-09-23): the actual daytime arc (dawn through evening)
+// reads far too bright/blown-out; the world only starts looking right once
+// the sun drops toward golden hour, around 19:30. 18:00 itself is not a safe
+// freeze/unfreeze point: the sun is still ~33 degrees up at 18:00 in this
+// SUNSET=20.15 model (the `day` ramp is already pegged at 1, same brightness
+// as noon), so stopping the freeze there would leave a bright flash between
+// 18:00 and ~19:00 as the curve caught back up. Instead the freeze runs all
+// the way from SUNRISE to the moment the natural curve reaches that same
+// 19:30 golden look (sun static, no arc, no flash), then hands off to the
+// existing 19:30 -> night -> dawn curve exactly as it already plays today.
+const DAY_FREEZE_UNTIL_HOUR = 19.5;
+const DAY_FREEZE_LOOK_HOUR = 19.5;
+
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp01 = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
 /** 0 below `a`, 1 above `b`, smooth between. */
@@ -69,8 +82,9 @@ const NIGHT_FOG = 0x24353f, GOLDEN_FOG = 0xd8a878, DAY_FOG = 0xb0c6d6;
  *   fogDensity:number, mist:number, lampsOn:number, turbidity:number, rayleigh:number}}
  */
 export function skyState(hour) {
-  const elevation = sunElevation(hour);
-  const azimuth = sunAzimuth(hour);
+  const h = (hour >= SUNRISE && hour < DAY_FREEZE_UNTIL_HOUR) ? DAY_FREEZE_LOOK_HOUR : hour;
+  const elevation = sunElevation(h);
+  const azimuth = sunAzimuth(h);
   // three overlapping moods, by how high the sun is
   const day = ramp(elevation, 2, 20);            // full daylight
   const night = 1 - ramp(elevation, -8, 1);      // full dark

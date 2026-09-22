@@ -3978,6 +3978,7 @@ function checkPedestrianBump() {
 const _fwd = new THREE.Vector3();
 const _next = new THREE.Vector3();
 function drivingUpdate(dt) {
+  state.sp = Math.min(100, state.sp + dt * 14);
   const v = state.veh;
   // The vehicle defines forward, never the camera: W accelerates along its own
   // heading, A/D steer it (vehicles.js arcade model).
@@ -4350,7 +4351,7 @@ function updateSheriffs(dt) {
   const target = standDown ? null : (lastKnown || at);
 
   let onTop = false;
-  const footOnTop = police.updateFootCops(dt, { player: at, driving: !!state.veh });
+  const footOnTop = police.updateFootCops(dt, { player: at, driving: !!state.veh, state });
   onTop = footOnTop > 0;
   police.updateHelicopters(dt, { player: at, state });
   const on = Math.sin(clock.elapsedTime * 12) > 0;
