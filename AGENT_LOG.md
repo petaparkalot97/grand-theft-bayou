@@ -895,6 +895,117 @@ grid** instead: that went 4/4 to 0/0 for deputies and stayed 0 for cruisers.
 Clearance of exactly 0 is the correct resting state for a pushed-out mover, not
 a failure.
 
+### US-167 was under the Gulf. It has a causeway now.
+
+The highway runs the length of the map at `ROAD_X` and simply carried on north
+into the water. With the sea at y 0.03 and the asphalt at ~0.02 it closed over
+the road, leaving the lane markings floating on the surface — which is what the
+playtest saw. Found by sampling every ground-level mesh reaching past z 390 and
+noticing two zero-width batches at **x = -6**: lane markings, i.e. ROAD_X.
+
+`gulfCauseway()` in orlearouge.js carries it across: deck, running surface,
+parapets both sides with blockers every 3 m, an iron rail, pilings and cross
+beams under it, and lamps down the span.
+
+**WARNING — it has to be LOW, and that is a hard constraint, not a style
+choice.** Vehicles here move in x and z only: nothing samples terrain height and
+`stepArcadeVehicle` never touches y. A raised deck would have cars driving
+through the air underneath it, exactly like the decorative overpass on the
+bayou causeway. The deck top is at **0.12**, nine centimetres clear of the
+water, and the parapets and pilings do the work of reading as a bridge.
+
+That is also the honest answer rather than a fudge: the Lake Pontchartrain
+Causeway is twenty-four miles of deck a few feet above the lake, and a long flat
+low bridge is the most Louisiana structure there is.
+
+Verified: deck top 0.12 vs water 0.03; the centre of the span is clear for a
+vehicle radius of 1.8 at both z 400 and z 440, and both edges are blocked, so
+you can drive it and cannot drive off it. Traffic uses it unprompted.
+
+### It is a Gulf now, not a river — and how far out it can actually go
+
+Brief changed: the Crescent and the waterfront road should sit on Gulf water,
+not a river. The water itself is done — `0x1a4a4c` green-blue instead of silt
+brown, lower roughness and a stronger environment term (clear sea takes a
+sharper sky reflection than a river carrying half of Missouri), and the swell
+now ROLLS SHOREWARD instead of running along the channel.
+
+**The swell change is one axis, not a rewrite.** Crests already lay along x
+(`stretch > 1` in `waterNormalTex` does that), which is right for both a current
+running along the shore and a swell parallel to the beach. The difference is
+only which way they travel, so the scroll moved from `offset.x` to `offset.y`.
+The plane is rotated -90° about x, so its local +y is world -z: ADDING to
+offset.y walks the crests toward the shore. Measured 0.091/s against a predicted
+3.0/34 = 0.088, with zero sideways drift.
+
+**WARNING — the depth is constrained by land, and it is not negotiable without
+world-building.** Running it 320 m out to put the far bank beyond the fog was
+tried and reverted. There are **~220 blockers between z 386 and 706** across the
+whole frontage, spread over every 40 m band, plus a structure around x 550 with
+r 11. That is `stateWorld.js`'s own tree scatter — **not** main.js's, whose
+`inKeepout()` already refuses everything past z 142. A gulf with two hundred
+pines standing in it looks far worse than a narrower one that reads clean.
+
+So it stays at the authored 80 m, which reads as one of the sounds the Louisiana
+coast is actually made of — Mississippi Sound, Lake Borgne — salt water with
+land on the far side.
+
+**What a true open-water horizon would take**, for whoever picks it up: clear
+`stateWorld`'s scatter and that structure out of roughly
+`x -260..645, z 386..706`, then the plane can go to 320 m and the fog does the
+rest. It is a coastline pass in a module this session does not own, not a water
+tweak.
+
+### Making the river actually flow, and which way
+
+Asked for the water to flow the way the Mississippi does at New Orleans. Two
+things worth recording, one geographic and one technical.
+
+**The direction is not south.** The Mississippi comes down to New Orleans from
+the north-west, swings through the bend the Crescent City is named after, and
+past the French Quarter it is running roughly **east** — it does not turn
+south-east for the Gulf until well downstream. The in-game river runs along x
+with the city on its bank, so it flows toward **+x**. Surface speed there
+averages about 3 mph (1.3 m/s) over a channel getting on for 60 m deep at the
+Quarter, which is why it looks calm and will still carry a barge off.
+
+Implemented as two scrolling normal maps — long swells at 1.3 m/s and finer
+chop at 1.75 — rather than one. A single scrolling layer reads as a sliding
+texture; two at different scales and rates read as water. `offset` shifts where
+the texture is SAMPLED, so it is subtracted to move the surface toward +x.
+
+**WARNING — a procedural tiling texture needs INTEGER wavenumbers.** The first
+version built its height field from `sin((u*kx + v*kz) * 2π)` with
+`kx = (1+i)/stretch`, which is fractional, so the pattern did not wrap and left
+a seam across the whole river every 22 m. Elongation along the flow comes from
+keeping kx small and setting `kz = kx * stretch` — both whole numbers. Proved
+by evaluating the field at u=0 vs u=1 and v=0 vs v=1: max error 1e-15.
+
+A normal map is data, not colour: `colorSpace = NoColorSpace`. Tagging it sRGB
+washes the vectors out and the surface goes flat.
+
+### The Mississippi was drawn underneath the ground
+
+Playtest: there should be river water for the Grand Crescent riverboat to sit
+in. There was — `orlearouge.js` `riverfront()` has always built one — at
+**y = -0.25**, and `main.js`'s `buildGround()` lays a single plane across the
+whole 2400 m state at **y = 0**. The river was buried under the world floor and
+had never been visible once. The casino was moored on grass.
+
+**The convention it broke: every ground-level surface in this game stacks in
+small POSITIVE increments** — `GROUND_Y` in main.js runs dirtPad 0.012, lot
+0.014, gravel 0.016, apron 0.018, street 0.019, highway 0.020, and the causeway
+swamp in this same file is at 0.035. Anything at or below 0 disappears. The
+river is now at 0.03.
+
+**And a warning about widening it.** The first fix also took the river from 80 m
+to 160 m across, which looked much better and was wrong: `CITY.maxX` grew from
+136 to 520 in a recent merge and the expanded world now has blockers scattered
+out to z 470 across the whole x span, so a wider river floods real content.
+Reverted to the authored footprint — height only. **If the riverfront is ever
+reworked, that overlap has to be sorted out first:** there is already city
+paving, a hospital and foliage inside z 384–464, which is water.
+
 ### The Bravado chase dialogue was gated behind a skill check
 
 Playtest: "the dialogue in regard to the Green Bravado chase for Mally is

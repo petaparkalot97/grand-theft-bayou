@@ -9,8 +9,8 @@
 //                 under it, a refinery burning orange to the east
 //   z 196 … 382   OrleaRouge, on a street grid around the boulevard (US-167):
 //                 the French District (west), downtown towers (east), the public
-//                 hospital, a cemetery, a construction site, and the riverfront
-//                 with a casino riverboat
+//                 hospital, a cemetery, a construction site, and the waterfront
+//                 with a casino boat moored on the Gulf
 //
 // Everything is static except the neon flicker, so main.js's batchStatic
 // merges the city per material and chunk. Buildings share materials; their
@@ -47,6 +47,74 @@ function canvasTex(w, h, draw, repeat = true) {
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
+/**
+ * A tiling water-surface normal map: long, low swells with finer chop across
+ * them. Written as a real normal map (RGB = XYZ) rather than a grey bump,
+ * because the water material is physical and its clearcoat needs a believable
+ * surface to reflect the sky and the neon off.
+ *
+ * `stretch` is how many times longer a swell is than it is wide. Above 1 the
+ * crests lie along u — along the shore, for the gulf plane — which is the
+ * orientation both a current and a shoreward swell want; only the axis they
+ * scroll on differs.
+ */
+function waterNormalTex(size = 256, stretch = 5) {
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d");
+  const img = g.createImageData(size, size);
+  // a small sum of sines makes a seamless, tileable height field: every term
+  // uses an integer number of periods across the texture, so the edges match
+  // Wavenumbers MUST be whole numbers of periods across the texture or it does
+  // not tile — a fractional kx leaves a seam every repeat, which at this scale
+  // is a visible line straight across the water every tile.
+  //
+  // Long wavelength along the flow (small kx) and short across it (kz = kx *
+  // stretch) is what gives swells that lie down the current instead of a
+  // uniform ripple.
+  const waves = [];
+  for (let i = 0; i < 5; i++) {
+    const kx = 1 + i;
+    waves.push({
+      kx,                                    // few periods along the flow: long swells
+      kz: Math.max(1, Math.round(kx * stretch)),   // many across it: chop
+      amp: 1 / (1 + i * 1.3),
+      phase: i * 1.7,                        // break up the harmonic regularity
+    });
+  }
+  const height = (u, v) => {
+    let h = 0;
+    for (const w of waves) {
+      h += w.amp * Math.sin((u * w.kx + v * w.kz) * Math.PI * 2 + w.phase);
+    }
+    return h;
+  };
+  const e = 1 / size;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = x / size, v = y / size;
+      // central differences give the slope, and the normal is its cross product
+      const dx = (height(u + e, v) - height(u - e, v)) / (2 * e);
+      const dz = (height(u, v + e) - height(u, v - e)) / (2 * e);
+      const sc = 0.012;                      // keep the surface gentle, not choppy
+      let nx = -dx * sc, ny = 1, nz = -dz * sc;
+      const len = Math.hypot(nx, ny, nz);
+      nx /= len; ny /= len; nz /= len;
+      const i = (y * size + x) * 4;
+      img.data[i] = (nx * 0.5 + 0.5) * 255;
+      img.data[i + 1] = (nz * 0.5 + 0.5) * 255;
+      img.data[i + 2] = (ny * 0.5 + 0.5) * 255;
+      img.data[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  // a normal map is data, not colour — tagging it sRGB would wash the vectors out
+  t.colorSpace = THREE.NoColorSpace;
+  return t;
+}
+
 /** A box whose side UVs repeat once per `unit` metres, so shared textures tile to size. */
 function tiledBox(w, h, d, unitX = 6, unitY = 4) {
   const g = new THREE.BoxGeometry(w, h, d);
@@ -68,6 +136,7 @@ function tiledBox(w, h, d, unitX = 6, unitY = 4) {
 export function createOrleaRouge(ctx) {
   const { scene } = ctx;
   const neon = [];          // { mat, base, speed, phase } — flickered in update()
+  const currents = [];      // { map, speed, tile } — water surfaces scrolled in update()
   const pois = [];
   const occluders = [];     // overhead boxes the camera must not look through
   let graveyard = null;     // cemetery.js — holds the ghost, so it has an update and props
@@ -455,12 +524,144 @@ export function createOrleaRouge(ctx) {
     pois.push({ x: b.cx, z: b.z0 - 3, r: 5 });
   }
 
+  /**
+   * US-167 crosses the Gulf. It always did — the highway runs the length of the
+   * map at ROAD_X and simply carried on north into the water — and with the
+   * water sitting at y 0.03 and the asphalt at ~0.02, the sea closed over the
+   * road and left its lane markings floating on the surface.
+   *
+   * So it gets a bridge. Low, flat and very long, which is not a compromise: it
+   * is exactly what the Lake Pontchartrain Causeway is, twenty-four miles of
+   * deck a few feet above the water, and it is the most Louisiana structure
+   * there is.
+   *
+   * It has to be LOW for a second reason. Vehicles in this game move in x and z
+   * only — nothing samples terrain height, and `stepArcadeVehicle` never
+   * touches y — so a raised deck would have cars driving through the air under
+   * it. The deck top sits at 0.12, just clear of the water, and the parapets
+   * and pilings do the work of reading as a bridge.
+   */
+  function gulfCauseway(shoreZ, gulfD) {
+    const x = ctx.ROAD_X;
+    const half = ctx.ROAD_HALF + 1.8;          // carriageway plus a shoulder each side
+    const z0 = shoreZ - 8;                     // start on land so there is no seam at the bank
+    const z1 = shoreZ + gulfD + 8;             // and land again on the far side
+    const len = z1 - z0, zc = (z0 + z1) / 2;
+    const deck = std("concrete bridge deck", 0x8e8b84, { roughness: 0.92 });
+    const parapet = std("concrete bridge parapet", 0x9d9a92, { roughness: 0.9 });
+    const pile = std("concrete bridge piling", 0x6f6c66, { roughness: 0.95 });
+
+    // the deck: top at 0.12, just proud of the water at 0.03
+    mesh(new THREE.BoxGeometry(half * 2, 0.24, len), deck, x, 0.0, zc, { cast: false });
+    // the running surface, so it reads as road rather than as a slab
+    const asphalt = ctx.surface("asphalt", 1024);
+    const road = asphalt.material(1);
+    for (const t of [road.map, road.normalMap, road.roughnessMap]) {
+      if (t) t.repeat.set(1, len / 9);
+    }
+    plane(ctx.ROAD_HALF * 2, len, road, x, 0.125, zc);
+
+    // parapets, and blockers so the Gulf is not a driving hazard
+    for (const side of [-1, 1]) {
+      const px = x + side * (half - 0.2);
+      mesh(new THREE.BoxGeometry(0.4, 0.95, len), parapet, px, 0.6, zc, { cast: true });
+      for (let z = z0; z <= z1; z += 3) ctx.addBlocker(px, z, 0.45);
+      // a rail along the top, same iron as the promenade
+      const rail = std("wrought iron railing", 0x1c1f22, { metalness: 0.6, roughness: 0.5 });
+      mesh(new THREE.BoxGeometry(0.09, 0.09, len), rail, px, 1.22, zc, { cast: false });
+      for (let z = z0 + 2; z < z1; z += 6) {
+        mesh(new THREE.BoxGeometry(0.07, 0.5, 0.07), rail, px, 0.95, z, { cast: false });
+      }
+    }
+
+    // pilings, in pairs, marching out into the water
+    for (let z = z0 + 5; z < z1; z += 9) {
+      for (const side of [-1, 1]) {
+        mesh(new THREE.BoxGeometry(0.9, 3.2, 0.9), pile, x + side * (half - 1.1), -1.5, z, { cast: false });
+      }
+      // a cross beam under the deck, visible from the water
+      mesh(new THREE.BoxGeometry(half * 2 - 0.6, 0.3, 0.5), pile, x, -0.22, z, { cast: false });
+    }
+
+    // lamps down the middle of the span, on the pattern the boulevard uses
+    for (let z = shoreZ + 12; z < shoreZ + gulfD; z += 34) {
+      ctx.addLitSpot({ x: x + half - 0.2, y: 6, z, warm: 0xffd9a0, power: 95, range: 24, pole: true });
+    }
+    occluders.push({ minX: x - half, maxX: x + half, minY: 0, maxY: 1.4, minZ: z0, maxZ: z1 });
+  }
+
   function riverfront() {
-    const river = new THREE.MeshPhysicalMaterial({
-      color: 0x0a1a22, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.2, name: "river water",
+    // The Gulf, not a river. This was a silt-brown Mississippi; the brief is now
+    // open salt water, so it is green-blue — the Gulf of Mexico's colour comes
+    // from depth and plankton rather than from suspended mud, which is why it
+    // reads emerald-to-teal offshore instead of café-au-lait.
+    //
+    // Lower roughness than the silt version and a slightly stronger environment
+    // term: clear sea takes a sharper sky reflection than a river carrying half
+    // of Missouri in suspension.
+    const gulf = new THREE.MeshPhysicalMaterial({
+      color: 0x1a4a4c, roughness: 0.11, clearcoat: 1, clearcoatRoughness: 0.06,
+      envMapIntensity: 1.3, name: "gulf water",
     });
-    river.userData.gtbRealized = true;
-    plane(CITY.maxX - CITY.minX + 40, 80, river, (CITY.maxX + CITY.minX) / 2, -0.25, CITY.maxZ + 42);
+    gulf.userData.gtbRealized = true;
+    // KEEP THIS ABOVE ZERO. It was drawn at y = -0.25 — BELOW the world ground.
+    // main.js's buildGround() lays one plane across the whole 2400 m state at
+    // y = 0, so the water was buried under it and never visible at all: the
+    // Grand Crescent sat on grass. Everything in this game stacks in small
+    // positive increments for exactly that reason (GROUND_Y in main.js, and the
+    // causeway swamp above at 0.035).
+    //
+    // How far out it goes. +z is SOUTH in this world (the causeway at z 136 is
+    // north of the city at 196–382), so open water on the far side of the
+    // promenade is geographically where the Gulf belongs.
+    //
+    // DEPTH IS CONSTRAINED BY LAND, not by taste. Running this 320 m out to hide
+    // the far bank was tried and reverted: there are ~220 blockers between z 386
+    // and 706 across this whole frontage — stateWorld.js's own tree scatter,
+    // plus a structure around x 550 — and a gulf with two hundred pines standing
+    // in it looks far worse than a narrower one that reads clean. main.js's
+    // buildTrees already keeps out of everything past z 142; this scatter
+    // belongs to another module and clearing it is that module's job.
+    //
+    // So: the authored 80 m footprint, which reads as one of the sounds and
+    // bays the Louisiana coast is actually made of — salt water with land on
+    // the far side, which is Mississippi Sound and Lake Borgne, not a river.
+    // See AGENT_LOG for what a true open-water horizon would take.
+    const SHORE_Z = CITY.maxZ + 1;          // the promenade railing sits at +1.2
+    const GULF_D = 80;
+    const GULF_W = CITY.maxX - CITY.minX + 40;
+    plane(GULF_W, GULF_D, gulf, (CITY.maxX + CITY.minX) / 2, 0.03, SHORE_Z + GULF_D / 2);
+
+    // ---- the swell ----
+    // A river's surface travels ALONG the channel. A sea's does not: the swell
+    // rolls shoreward, and its crests lie parallel to the beach. Same texture
+    // orientation as before — `stretch > 1` puts the crests along x, which here
+    // is along the shore — but it now scrolls on the OTHER axis.
+    //
+    // The plane is rotated -90° about x, so its local +y maps to world -z.
+    // Increasing the v offset therefore walks the swell toward the shore, which
+    // is the one direction ocean waves are ever seen to go.
+    //
+    // Long period, low amplitude: the Gulf off Louisiana is shallow and fetch-
+    // limited, so it runs to a lazy 3-4 second chop rather than Pacific
+    // groundswell. Crest speed ~3 m/s reads as that without looking like a
+    // washing machine.
+    const TILE = 34;                       // metres per repeat: sea swells are longer than river ripples
+    const swell = waterNormalTex(256, 7);
+    swell.repeat.set(GULF_W / TILE, GULF_D / TILE);
+    const chop = waterNormalTex(256, 4);
+    chop.repeat.set(GULF_W / (TILE * 0.4), GULF_D / (TILE * 0.4));
+    gulf.normalMap = swell;
+    gulf.normalScale = new THREE.Vector2(0.7, 0.7);
+    gulf.clearcoatNormalMap = chop;
+    gulf.clearcoatNormalScale = new THREE.Vector2(0.35, 0.35);
+    gulf.needsUpdate = true;
+    currents.push(
+      { map: swell, tile: TILE, speed: 3.0 },              // the swell, rolling in
+      { map: chop, tile: TILE * 0.4, speed: 4.4 },         // wind chop over the top of it
+    );
+
+    gulfCauseway(SHORE_Z, GULF_D);
     // promenade railing, solid
     const rail = std("wrought iron railing", 0x1c1f22, { metalness: 0.6, roughness: 0.5 });
     mesh(new THREE.BoxGeometry(CITY.maxX - CITY.minX, 0.08, 0.08), rail, 0, 1.0, CITY.maxZ + 1.2, { cast: false });
@@ -552,6 +753,12 @@ export function createOrleaRouge(ctx) {
 
     update(dt) {
       if (graveyard) graveyard.update(dt);
+      // The swell rolls in. `offset` shifts where the texture is SAMPLED, so the
+      // pattern travels the opposite way — and the plane's local +y is world
+      // -z, so ADDING to offset.y walks the crests shoreward.
+      for (const c of currents) {
+        c.map.offset.y = (c.map.offset.y + (c.speed / c.tile) * dt) % 1;
+      }
       const t = performance.now() / 1000;
       for (const n of neon) {
         // mostly steady, with the occasional sputter
