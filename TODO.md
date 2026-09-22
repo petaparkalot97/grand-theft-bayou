@@ -91,6 +91,23 @@ label with a static cover-art background while that finishes.
   both flip to `false` at the same moment `#loadScreen` gets its `.done`
   class (computed `opacity: 0`).
 
+**Revision (2026-09-22, same session, human follow-up + screenshot):** first
+pass left the whole menu (logo + Start/Options/Exit) visible on top of the
+slides the entire time, and the slides used `background-size: cover`, which
+crops/zooms — human wanted the full, uncropped image and nothing
+menu-shaped clickable until the game is actually ready. Changed:
+- `.slide` now uses `background-size: contain` (letterboxed against
+  `#loadScreen`'s own dark fill, not `cover`) — confirmed via computed style
+  (`contain`/`no-repeat`/centered/no transform) and a forced-state screenshot
+  showing a full uncropped poster with dark bars, no crop.
+- `#introPanel` (the whole menu — logo, Start Game/Options/Exit Game, footer)
+  now starts `hidden` in `index.html` and only gets unhidden by
+  `finishLoading()` (renamed from `stopLoadScreen()`, same call sites: the
+  `loadNote = "ready."` line and `boot().catch()`), so *nothing* menu-shaped
+  is on screen — not even Options/Exit — until loading is actually done.
+  Confirmed via JS immediately after navigation, before `window.__game`
+  exists: `introPanel.hidden === true` and a slide already cycling.
+
 ---
 
 ### TASK-071 — Police overhaul: on-foot chases, escalation by star, less overpowered (human request, 2026-09-22)

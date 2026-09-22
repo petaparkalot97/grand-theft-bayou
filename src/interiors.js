@@ -160,7 +160,6 @@ export function makeKit() {
 //                                      staff part; leave it off for a punter
 //                                      drawn from the strip's own door mix.
 //                                      `face` is a local yaw (models face +z).
-//   b.bodies(n)                        shorthand: `n` free spots, no positions
 // ---------------------------------------------------------------------------
 
 const chipColors = [0xff4f6d, 0xffd23a, 0xf4f1ea];

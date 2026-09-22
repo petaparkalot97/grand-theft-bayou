@@ -3176,11 +3176,21 @@ function fire() {
   const origin = _tmpV.copy(playerPos).setY(state.veh ? 1.4 : 1.2);
   if (!state.veh && getWeaponMuzzle(_muzzleV)) origin.copy(_muzzleV);
 
+  const _ray = new THREE.Raycaster();
+  const _crosshairNDC = new THREE.Vector2(0, -0.12);
+  const _aim3D = new THREE.Vector3();
+
   const isAiming = input.isDown("aim") || state.veh;
   if (isAiming) {
-    camCtl.forward(_aim);
+    _ray.setFromCamera(_crosshairNDC, camera);
+    const target3D = _ray.ray.at(25, new THREE.Vector3());
+    _aim3D.subVectors(target3D, origin).normalize();
+    _aim.copy(_aim3D);
+    _aim.y = 0;
+    _aim.normalize();
   } else {
     _aim.set(Math.sin(player._yaw), 0, Math.cos(player._yaw));
+    _aim3D.copy(_aim);
   }
 
   if (!state.veh) { 
@@ -3246,7 +3256,7 @@ function fire() {
   if (!gun.melee) {
     if (state.weapon === "sawnoff") {
       for (let i = 0; i < 6; i++) {
-        const spreadAim = _aim.clone().add(new THREE.Vector3((Math.random() - 0.5)*0.3, (Math.random() - 0.5)*0.1, (Math.random() - 0.5)*0.3)).normalize();
+        const spreadAim = _aim3D.clone().add(new THREE.Vector3((Math.random() - 0.5)*0.3, (Math.random() - 0.5)*0.1, (Math.random() - 0.5)*0.3)).normalize();
         spawnTracer(origin, origin.clone().addScaledVector(spreadAim, gun.range));
       }
     } else {
@@ -3254,10 +3264,10 @@ function fire() {
       if (bestKind === "enemy") target = best.spr.position.clone().setY(best.type === "hog" ? 0.8 : 1.1);
       else if (bestKind === "sheriff") target = best.obj.position.clone().setY(1.1);
       else if (bestKind === "player") target = best.rp.position.clone().setY(1.1);
-      else target = origin.clone().addScaledVector(_aim, 24);
+      else target = origin.clone().addScaledVector(_aim3D, 24);
       spawnTracer(origin, target);
     }
-    muzzleFlash(origin, origin.clone().addScaledVector(_aim, 2));
+    muzzleFlash(origin, origin.clone().addScaledVector(_aim3D, 2));
     cine.sfx(WEAPON_SFX[state.weapon] || "pistolShot");
   }
   arsenal.consume();
