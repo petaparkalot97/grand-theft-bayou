@@ -842,7 +842,11 @@ check("every venue has the interaction points its room promised",
     if (!mine.routes.length) { routeMissing = `${v.name} has no pavement routes at all`; break; }
     for (const r of mine.routes) {
       for (const p of sample(v, r.a, r.b)) {
-        if (Math.abs(p.z - CROWN_STRIP.avenue.z) < 6.7) routeRoad = `${v.name}: ${r.what} walks onto North Ave 2 at x=${p.x.toFixed(1)}`;
+        // the *roadway*, not the sidewalk. North Ave 2's half-width includes its
+        // 1.6 m kerbs (CROWN_HALF), and a person standing on a sidewalk is not a
+        // person walking down the middle of the road — which is the thing this
+        // check exists to catch.
+        if (Math.abs(p.z - CROWN_STRIP.avenue.z) < CROWN_STRIP.avenue.half - 1.0) routeRoad = `${v.name}: ${r.what} walks into the carriageway at x=${p.x.toFixed(1)}`;
         for (const b of blockers) {
           if (Math.hypot(b.x - p.x, b.z - p.z) < b.r + 0.4) routeClash = `${v.name}: ${r.what} runs through a ${b.r} m blocker at x=${p.x.toFixed(1)}`;
         }
@@ -1048,7 +1052,10 @@ check("every venue has the interaction points its room promised",
   const recount = (o) => { if (o.isMesh && o.userData.noBatch && !o.userData.crowd) after++; for (const c of o.children) recount(c); };
   for (const c of scene.children) recount(c);
   check("the sweep did not merge away a single moving mesh", after === before, `${before} before, ${after} after`);
-  const actorMeshes = district.crownCrowd.reduce((n, c) => n + c.meshes, 0);
+  // every actor on the strip, the crossing included: the people over US-167 are
+  // as real as the ones in the halls, and are marked the same way
+  const actorMeshes = district.crownCrowd.reduce((n, c) => n + c.meshes, 0)
+    + (district.crownCrossing ? district.crownCrossing.meshes : 0);
   check("not one actor's mesh was merged into a static batch",
     crowdMeshes.length === actorMeshes && crowdMeshes.length > 400,
     `${crowdMeshes.length} actor meshes survive the sweep`);

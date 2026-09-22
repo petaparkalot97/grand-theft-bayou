@@ -1345,6 +1345,7 @@ export function createTusouxroeNorth(ctx) {
         kerbB: crownWalk.kerbB,
         roadHalf: crownWalk.roadHalf,
         wide: crownWalk.wide,
+        meshes: crownWalk.meshes,
         routes: crownWalk.routes,
         inRoad: crownWalk.obstacles().reduce((n, o) => n + (o.x < 1e4 ? 1 : 0), 0),
         people: crownWalk.actors.map((x) => ({
