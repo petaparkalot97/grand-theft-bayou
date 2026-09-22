@@ -895,6 +895,33 @@ grid** instead: that went 4/4 to 0/0 for deputies and stayed 0 for cruisers.
 Clearance of exactly 0 is the correct resting state for a pushed-out mover, not
 a failure.
 
+### US-167 was under the Gulf. It has a causeway now.
+
+The highway runs the length of the map at `ROAD_X` and simply carried on north
+into the water. With the sea at y 0.03 and the asphalt at ~0.02 it closed over
+the road, leaving the lane markings floating on the surface — which is what the
+playtest saw. Found by sampling every ground-level mesh reaching past z 390 and
+noticing two zero-width batches at **x = -6**: lane markings, i.e. ROAD_X.
+
+`gulfCauseway()` in orlearouge.js carries it across: deck, running surface,
+parapets both sides with blockers every 3 m, an iron rail, pilings and cross
+beams under it, and lamps down the span.
+
+**WARNING — it has to be LOW, and that is a hard constraint, not a style
+choice.** Vehicles here move in x and z only: nothing samples terrain height and
+`stepArcadeVehicle` never touches y. A raised deck would have cars driving
+through the air underneath it, exactly like the decorative overpass on the
+bayou causeway. The deck top is at **0.12**, nine centimetres clear of the
+water, and the parapets and pilings do the work of reading as a bridge.
+
+That is also the honest answer rather than a fudge: the Lake Pontchartrain
+Causeway is twenty-four miles of deck a few feet above the lake, and a long flat
+low bridge is the most Louisiana structure there is.
+
+Verified: deck top 0.12 vs water 0.03; the centre of the span is clear for a
+vehicle radius of 1.8 at both z 400 and z 440, and both edges are blocked, so
+you can drive it and cannot drive off it. Traffic uses it unprompted.
+
 ### It is a Gulf now, not a river — and how far out it can actually go
 
 Brief changed: the Crescent and the waterfront road should sit on Gulf water,
