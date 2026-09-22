@@ -150,8 +150,12 @@ reversible numbers, not a full rebalance pass).
 - `src/tusouxroeNorth.js`          (edit — the row itself, plus `CROWN_STRIP`)
 - `src/spawnzones.js`              (edit — the `entertainment` zone mix + wander profile)
 - `src/pauseMenu.js`               (edit — pins and the district label)
+- `src/neonsign.js`                    (new — shared measured-text neon sign helper)
+- `src/nightlife.js`                   (edit — club name boards now fitted via `neonsign.js`)
+- `src/casinos.js`                     (edit — casino fascias now fitted via `neonsign.js`)
 - `tools/qa/crown_strip_test.mjs`       (new — plain-node layout/zone audit)
 - `tools/qa/crown_build_test.mjs`        (new — vm-sandboxed build execution audit)
+- `tools/qa/neonsign_test.mjs`             (new — measured-fit sign audit)
 
 **Dependencies:** none. Reads on TASK-041 (COMPLETE — the composer owns the road
 surfaces here, so the strip adds no road planes).
@@ -212,6 +216,15 @@ from primitives instead. Passing it would make the three existing calls at
   25, then 20 and under. Of the 592, **25 carry a unique sign material and cannot
   merge with anything**; the other 567 share 15 mergeable materials.
 - `node --experimental-detect-module --check` on all five files: clean.
+- `node tools/qa/neonsign_test.mjs` — **18/18**. Unit-tests the fit loop (shrinks
+  a long name, never grows a short one, bounded when a context reports nothing,
+  safe when there is no context), asserts the canvas aspect equals the sign
+  face's to 3 decimals for casino/club/bar/gateway/blade faces, and — with a
+  proportional Arial-Black-like metric and a fake canvas that records every
+  draw — asserts **every glyph run is drawn inside the border rectangle that was
+  stroked** for all 14 Crown names' roof signs, the blade signs, the gateway and
+  the OrleaRouge club/casino names. Short Crown names keep ≥52% cap height; the
+  smallest name (THE BRASS ALLIGATOR, width-bound) is 30%.
 - **Not verified: anything a GPU does.** No browser is installed here, so draw
   calls, frame time, the night look and screenshots still need a real-browser
   pass. The 592-mesh / 25-unbatchable-numbers above are geometry counts, not
@@ -238,6 +251,61 @@ from primitives instead. Passing it would make the three existing calls at
   that, and the district also exposes it as `__game.tusouxroeNorth.crown`.
 - No gambling, no clerks, no drinks, no robbery — all TASK-059.
 - No peds *staffing* the places (valets, doormen); only ambience crowd.
+- ~~Venue names clipped/truncated~~ — **fixed** (TASK-070 cont.): the sign font was
+  sized by a `text.length` rule with no `measureText()`, and the 4:1 texture was
+  smeared across 4.8:1–17:1 faces. `src/neonsign.js` now measures and fits the
+  text, and builds each canvas at its face's own ratio. Crown, club and casino
+  signs all use it; `main.js`'s `makeNeonSign` is left alone.
+- **TASK-070 redesign (2026-09-22, later): four mega-venues, walk-in.** The row is
+  no longer fourteen dressed exteriors. `CROWN_VENUES` is now four data-driven
+  mega-venues — **BAYOU GOLD** (Pelican Crown Casino + Bayou Gold), **BILLY JEANS**
+  (Gator's Fortune + Honeysuckle, with a very large white performance glove on the
+  facade), **DISCO GATORS** (The Brass Alligator + Midnight Special: roof mirror
+  ball, balls along the canopy, neon piers, purple/pink/teal) and **HAPPY HOGS**
+  (Le Bon Temps + The Honeydripper: a pig's head over the door) — each with one
+  entrance, one main sign, one continuous roof, and a 1,200–1,700 m² interior you
+  can walk into (doorways 8–10 m, aisles left clear).
+- **Refactor, not four more functions:** `buildVenue()` is one builder driven by a
+  venue's own `w/d/h/fore/door/cars`, `theme` palette, `sign`, `interior`, `props`
+  and a `layout` list, dispatched through a `FIXTURES` table (partition, slotBank,
+  gamingTable, bar, stage, danceFloor, djBooth, vip, seating, poolTable, backRoom,
+  chandelier, discoBall) and a `PROPS` table (glove, pig, disco). A fifth venue is a
+  new entry in `CROWN_VENUES`, not new code. `v.k` keeps the hall-spec shape the
+  layout audit and `zoneAt()` already read.
+- **Interiors are nightlife.js's cutaway**, at four times the footprint: inside, the
+  roof group (slab, door header, canopy, fascia, name sign) hides and the outer walls
+  scale to 0.22 from a floor pivot. Interior light is baked into `litSpots` at build
+  time — nothing is created or hidden per frame (AGENT_PROTOCOL §6).
+- **Collision:** the perimeter ring skips the doorway; the valet row is split either
+  side of it (the new audit caught cars parked across the entrance); door posts stop
+  a car but not a person. The audit also proves no blocker from the old fourteen
+  venues survives anywhere in the strip.
+- **Batching:** venue groups stay in the scene and only the 56 cutaway-moved meshes
+  carry `userData.noBatch` (merge.js honours it per mesh), so the parish sweep still
+  merges the interiors — measured **738 district meshes → 76 in 50 batches**, with
+  all 56 moving meshes surviving and the cutaway still opening afterwards.
+- **New QA:** `crown_build_test.mjs` now executes the cutaway (roof down/up, walls
+  dropped/raised, `insideVenue`), the walkable doorway, the no-stale-collision check
+  and a real `batchStatic` run — **22/22**. `crown_strip_test.mjs` is **28/28** (four
+  venues, data completeness, fixture/prop names, door width, floor area, the depth
+  budget between North Ave 2 and 3, and no surviving old signage).
+
+**Integration notes (for Claude) — two one-liners in `main.js`; neither is required
+for the buildings, the interiors or the cutaway to work:**
+- the F key: add `|| tusouxroeNorth.interact()` to the `input.onPress("interact", …)`
+  chain (line ~1196), after `casinos.interact()`. `interact()` returns `false`
+  anywhere but a venue door, so it is safe in that chain.
+- the radar: `for (const b of tusouxroeNorth.blips()) _blips.push(b);` beside the
+  `nightlife.blips()` / `casinos.blips()` lines (line ~1292). `blips()` returns
+  `{ kind: "casino"|"club", x, z }` and `minimap.js` already has both badges. Without
+  it the four doors have no badge (POIs and the map footprint already work).
+
+**Known issues (redesign):** the interiors are not *staffed* — the rooms are sized for
+a crowd and the `entertainment` zone still populates the forecourts and avenue, but
+putting bartenders, dancers and dealers inside needs `characters.js` actors the way
+nightlife.js does it, which is a follow-up. Paid interactions (gambling, drinks, a
+dance) remain TASK-059. The camera occluder is still one box per venue, so a
+real-browser pass should check the camera inside a 15 m hall.
 
 ---
 
@@ -3856,6 +3924,10 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/pauseMenu.js` | Freebuff | TASK-070 (REVIEW) — pins + district label | Locked by TASK-070; releases with it |
 | `tools/qa/crown_strip_test.mjs` (new) | Freebuff | TASK-070 | Locked by TASK-070 |
 | `tools/qa/crown_build_test.mjs` (new) | Freebuff | TASK-070 | Locked by TASK-070 |
+| `src/neonsign.js` (new) | Freebuff | TASK-070 (cont.) — shared sign helper, adopt freely | Locked by TASK-070 |
+| `src/nightlife.js` | Freebuff | TASK-070 (cont.) — club name boards only | Locked by TASK-070 |
+| `src/casinos.js` | Freebuff | TASK-070 (cont.) — casino fascia only | Locked by TASK-070 |
+| `tools/qa/neonsign_test.mjs` (new) | Freebuff | TASK-070 (cont.) | Locked by TASK-070 |
 | `src/composer.js` | Claude | TASK-041 (REVIEW) — road options | Available |
 | `tools/qa/roads.mjs` (new), `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs` | Claude | TASK-041 | Available |
 | `tools/qa/traffic_test.mjs` | Freebuff | TASK-039 | Locked |

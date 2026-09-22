@@ -29,10 +29,19 @@ function check(label, ok, detail = "") {
 }
 
 // ------------------------------------------------------------------ stub three
+// A proportional text metric, so neonsign.js's fit loop is actually exercised:
+// it reads the px size out of the font string and advances ~0.64 em per glyph
+// (0.32 for a space), which is close to Arial Black uppercase.
 const context2d = {
   fillStyle: "", font: "", textAlign: "", textBaseline: "", shadowColor: "",
   shadowBlur: 0, lineWidth: 0, strokeStyle: "",
-  fillRect() {}, fillText() {}, strokeRect() {}, measureText: () => ({ width: 10 }),
+  fillRect() {}, fillText() {}, strokeRect() {},
+  measureText(s) {
+    const m = /(\d+(?:\.\d+)?)px/.exec(this.font || "");
+    const size = m ? parseFloat(m[1]) : 10;
+    let em = 0; for (const ch of String(s)) em += ch === " " ? 0.32 : 0.64;
+    return { width: em * size };
+  },
 };
 const stubDocument = {
   createElement: () => ({ width: 0, height: 0, style: {}, getContext: () => context2d }),
@@ -110,6 +119,7 @@ function makeThree() {
     constructor() { this.attributes = { position: { count: 1 } }; this.index = null; this.morphAttributes = {}; this.boundingSphere = null; }
     computeBoundingSphere() { this.boundingSphere = { center: new V(), radius: 1 }; }
     clone() { return new Geo(); } applyMatrix4() { return this; } rotateX() { return this; }
+    translate() { this.bakedY = arguments[1] || 0; return this; }   // G.wall() pivots at the floor
   }
   const geo = (type) => class extends Geo { constructor(...a) { super(); this.type = type; this.parameters = { args: a }; } };
   class Col {
@@ -143,7 +153,15 @@ function makeThree() {
 
 // ------------------------------------------------------------------ the sandbox
 const calls = { blockers: 0, litSpots: 0, services: 0 };
-const scene = { children: [], add(...os) { for (const o of os) if (o) scene.children.push(o); } };
+const blockers = [];        // every collision circle the district registered
+// enough of a Scene for merge.js's batchStatic to walk it
+const scene = {
+  children: [], visible: true,
+  add(...os) { for (const o of os) if (o) { o.parent = scene; scene.children.push(o); } },
+  remove(o) { const i = scene.children.indexOf(o); if (i >= 0) { scene.children.splice(i, 1); o.parent = null; } },
+  updateMatrixWorld() {},
+  traverse(cb) { cb(scene); for (const c of scene.children) c.traverse(cb); },
+};
 
 const sandbox = {
   console, setTimeout, clearTimeout,
@@ -167,7 +185,9 @@ const strip = (file) => `"use strict";\n` + fs.readFileSync(path.join(SRC, file)
   .replace(/export /g, "")
   .replace(/import[\s\S]*?from\s*['"].*?['"];/g, "");
 
-for (const f of ["composer.js", "tusouxroeNorth.js"]) {
+// neonsign.js first: tusouxroeNorth.js's `import` line for it is stripped by
+// `strip()`, and its `export function`s become sandbox globals when it loads.
+for (const f of ["neonsign.js", "merge.js", "composer.js", "tusouxroeNorth.js"]) {
   try { vm.runInContext(strip(f), sandbox, { filename: f }); }
   catch (e) { console.error(`load ${f}: ${e.stack || e}`); process.exit(1); }
 }
@@ -177,7 +197,7 @@ const mockCtx = {
   camera: { position: { x: 0, y: 0, z: 0 } },
   surface: () => ({ material: () => ({ userData: {} }) }),
   roadMaterial: () => ({ userData: {} }),
-  addBlocker: () => { calls.blockers++; },
+  addBlocker: (x, z, r) => { calls.blockers++; blockers.push({ x, z, r }); },
   addLitSpot: () => { calls.litSpots++; },
   addService: () => { calls.services++; },
   addLitSpotRaw: null,
@@ -212,8 +232,10 @@ check("every venue put a sign up", CROWN_STRIP.venues.every((v) => signNames.has
   `${signNames.size} distinct sign faces`);
 check("the gate put its sign up", signNames.has("crown sign: CROWN STRIP"));
 check("the strip built a real amount of geometry", crowned.length > 300, `${crowned.length} meshes`);
-check("no mesh has a NaN or unset transform",
-  crowned.every((m) => [m.position.x, m.position.y, m.position.z, m.rotation.x, m.rotation.y, m.rotation.z].every(Number.isFinite)));
+const finite = (m) => [m.position.x, m.position.y, m.position.z, m.rotation.x, m.rotation.y, m.rotation.z].every(Number.isFinite);
+const bad = crowned.filter((m) => !finite(m));
+check("no mesh has a NaN or unset transform", bad.length === 0,
+  bad.slice(0, 3).map((m) => `${m.material.name} @ (${m.position.x}, ${m.position.y}, ${m.position.z})`).join(" | "));
 check("cast/receive shadows are flagged and not boolean junk",
   crowned.every((m) => typeof m.castShadow === "boolean" && typeof m.receiveShadow === "boolean"));
 
@@ -238,6 +260,103 @@ check("every venue has a crowd POI", district.pois.length >= CROWN_STRIP.venues.
 check("every venue is on the minimap", district.minimap.buildings.length >= CROWN_STRIP.venues.length,
   `${district.minimap.buildings.length} footprints`);
 check("the strip is lit", calls.litSpots > 40, `${calls.litSpots} lit spots this district alone`);
+// The strip is left in the scene so main.js's batch sweep still merges its
+// interiors; only the meshes the cutaway moves carry `userData.noBatch`. Count
+// them, then run the real sweep and prove they survived it.
+const movers = [];
+const collectMovers = (o) => { if (o.isMesh && o.userData.noBatch) movers.push(o); for (const c of o.children) collectMovers(c); };
+for (const c of scene.children) collectMovers(c);
+check("the cutaway's moving meshes are marked noBatch for the batch sweep",
+  movers.length >= CROWN_STRIP.venues.length * 6, `${movers.length} meshes marked`);
+check("the cutaway has one record per venue, named after it",
+  district.crownDebug.length === CROWN_STRIP.venues.length
+  && CROWN_STRIP.venues.every((v) => district.crownDebug.some((d) => d.name === v.name)),
+  district.crownDebug.map((d) => d.name).join(", "))
+;
+check("the radar has a badge per venue door",
+  district.blips().length === CROWN_STRIP.venues.length
+  && district.blips().every((b) => b.kind === "casino" || b.kind === "club"),
+  district.blips().map((b) => b.kind).join(", "));
+check("interact() is a no-op away from a door", district.interact() === false);
+
+// ------------------------------------------------------------------ the cutaway
+// The strip's interiors are the nightlife.js technique: inside, the roof group
+// hides and the outer walls scale down to knee height. Execute that here instead
+// of trusting it.
+{
+  const rect = CROWN_STRIP.rect;
+  const insideRect = (r, x, z) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1;
+  const settle = (x, z) => { for (let i = 0; i < 40; i++) district.update(0.1, { x, y: 0, z }); };
+
+  let cutOk = true, cutWhy = "";
+  for (const v of CROWN_STRIP.venues) {
+    settle(v.x, v.cz);
+    const name = district.insideVenue;
+    const st = district.crownDebug.find((d) => d.name === v.name);
+    if (name !== v.name) { cutOk = false; cutWhy = `${v.name}: insideVenue=${name}`; break; }
+    if (st.roofVisible !== false) { cutOk = false; cutWhy = `${v.name}: roof still up`; break; }
+    if (!(st.wallScale < 0.3)) { cutOk = false; cutWhy = `${v.name}: walls still at ${st.wallScale}`; break; }
+    settle(v.x, v.cz + 400);
+    if (district.insideVenue !== null) { cutOk = false; cutWhy = `${v.name}: still inside after walking away`; break; }
+  }
+  check("the cutaway opens the roof and drops the walls inside, and closes up outside", cutOk, cutWhy);
+
+  // and it closes again on the way out, rather than staying open once touched
+  const v0 = CROWN_STRIP.venues[0];
+  settle(v0.x, v0.cz + 400);
+  const out = district.crownDebug.find((d) => d.name === v0.name);
+  check("walking out shuts the roof and raises the walls back",
+    out.roofVisible === true && out.wallScale > 0.9, `roofVisible=${out.roofVisible} wallScale=${out.wallScale.toFixed(2)}`);
+
+  // the entrance is a doorway, not a wall: no collision circle blocks the way in
+  let doorBlocked = null;
+  for (const v of CROWN_STRIP.venues) {
+    const lz0 = v.d / 2 - 0.5, lz1 = v.d / 2 + 12;   // from the threshold out into the forecourt
+    for (let t = 0; t <= 1.0001; t += 0.05) {
+      const lz = lz0 + (lz1 - lz0) * t;
+      const p = v.rot === 0 ? { x: v.x, z: v.cz + lz } : { x: v.x, z: v.cz - lz };
+      for (const b of blockers) {
+        if (Math.hypot(b.x - p.x, b.z - p.z) < b.r + 0.45) { doorBlocked = `${v.name} at local z=${lz.toFixed(1)}`; break; }
+      }
+      if (doorBlocked) break;
+    }
+    if (doorBlocked) break;
+  }
+  check("the entrance is walkable — no blocker sits in the doorway", !doorBlocked, doorBlocked || "clear from the threshold to the street");
+
+  // nothing from the old fourteen-venue row survives: every blocker inside the
+  // strip belongs to one of the four new halls or their forecourts
+  const gate = CROWN_STRIP.gate;
+  const gateRect = { x0: gate.x - gate.span - 2, x1: gate.x + gate.span + 2, z0: gate.z - 2, z1: gate.z + 2 };
+  const stray = blockers.filter((b) => insideRect(rect, b.x, b.z)).filter((b) =>
+    !CROWN_STRIP.venues.some((v) => insideRect({ x0: v.hall.x0 - 2, x1: v.hall.x1 + 2, z0: v.hall.z0 - 2, z1: v.hall.z1 + 2 }, b.x, b.z)
+      || insideRect(v.fore, b.x, b.z))
+    && !insideRect(gateRect, b.x, b.z));   // the gateway arch is not a stray
+  check("no stale collision from the venues that merged", stray.length === 0,
+    stray.length ? `${stray.length} stray blockers, e.g. (${stray[0].x.toFixed(0)}, ${stray[0].z.toFixed(0)})` : "every strip blocker is inside a hall or forecourt");
+}
+
+// ------------------------------------------------------------------ the sweep
+// merge.js merges static siblings by material and chunk. The moving meshes are
+// skipped per-mesh, which is what makes a walk-in interior compatible with
+// batching at all. Run it for real, then confirm the cutaway still opens.
+{
+  const before = movers.length;
+  const b = sandbox.batchStatic(scene, { exclude: () => false, boundary: () => false });
+  check("the batch sweep merged the strip's static scenery", b.removed > 0,
+    `${b.meshes} meshes → ${b.meshes - b.removed} (${b.batches} batches, ${b.signatures} material signatures)`);
+  let after = 0;
+  const recount = (o) => { if (o.isMesh && o.userData.noBatch) after++; for (const c of o.children) recount(c); };
+  for (const c of scene.children) recount(c);
+  check("the sweep did not merge away a single moving mesh", after === before, `${before} before, ${after} after`);
+
+  const v = CROWN_STRIP.venues[0];
+  for (let i = 0; i < 40; i++) district.update(0.1, { x: v.x, y: 0, z: v.cz });
+  const st = district.crownDebug.find((d) => d.name === v.name);
+  check("the cutaway still opens after the sweep",
+    district.insideVenue === v.name && st.roofVisible === false && st.wallScale < 0.3,
+    `inside=${district.insideVenue} roof=${st.roofVisible} wall=${st.wallScale.toFixed(2)}`);
+}
 
 console.log(`\n${failures ? failures + " FAILED" : "all checks passed"}.\n`);
 process.exit(failures ? 1 : 0);

@@ -21,6 +21,7 @@
 
 import * as THREE from "three";
 import { makeDancer, makeHoodrat, randomGayMan, randomLesbian, randomHoodrat } from "./characters.js";
+import { neonSignTexture, aspectOf } from "./neonsign.js";
 
 export const PRICES = Object.freeze({ tip: 10, lapDance: 40 });
 const HEAL = { tip: 15, lapDance: 45 };
@@ -50,21 +51,15 @@ function std(name, color, extra = {}) {
   m.userData.gtbRealized = true;
   return m;
 }
+// A club's name board. The plane it is mapped onto is (W - 1) x 2.2 m, so the
+// canvas is built at that ratio, and the font is measured and shrunk to fit — a
+// long name like BIG EASY BEEFCAKE is never clipped. See neonsign.js.
 function signTexture(text, ink) {
-  const c = document.createElement("canvas");
-  c.width = 1024; c.height = 256;
-  const x = c.getContext("2d");
-  x.fillStyle = "#0c0710"; x.fillRect(0, 0, 1024, 256);
-  x.font = `900 ${text.length > 14 ? 104 : 124}px Arial Black, Arial, sans-serif`;
-  x.textAlign = "center"; x.textBaseline = "middle";
-  x.shadowColor = ink; x.shadowBlur = 28;
-  x.fillStyle = ink;
-  x.fillText(text, 512, 136);
-  x.shadowBlur = 0;
-  x.lineWidth = 6; x.strokeStyle = ink; x.strokeRect(14, 14, 996, 228);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  return neonSignTexture({
+    text, ink, bg: "#0c0710",
+    aspect: aspectOf(W - 1, 2.2),
+    padding: 0.07, glow: 28, lineWidth: 6,
+  });
 }
 function floorTexture() {
   const c = document.createElement("canvas");

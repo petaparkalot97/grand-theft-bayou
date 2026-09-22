@@ -10,8 +10,8 @@
 //                   Mossline Garage, Cornerleaf Cafe along the main avenues.
 //   3 side streets  Civic & Corporate Hub: Ember Fire Station, Willowbrook School,
 //                   Sageworks Offices, Meadow Apartments.
-//   3b the strip    THE CROWN STRIP: five casinos and nine bars and clubs along
-//                   North Ave 2 either side of US-167 (exteriors — see below).
+//   3b the strip    THE CROWN STRIP: four mega-venues along North Ave 2 either
+//                   side of US-167 (walk-in interiors — see below).
 //   4 open areas    Hospital plaza, Supermarket parking lot, Fire Station yard,
 //                   School athletic field, and parking aprons.
 //   5 vegetation    Pines & cypress trees clustering naturally along boundaries.
@@ -21,61 +21,144 @@
 import * as THREE from "three";
 import { createComposer } from "./composer.js";
 import { CITY_BUILDING_TYPES, placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeBillboard, placeParkedCar, placeGunShop, placeTacos, placeBurgerPiz, placeSixTwelve, placeGasStation } from "./landmarks.js";
+import { neonSignTexture, neonSignMaterial, aspectOf } from "./neonsign.js";
 
 // ---------------------------------------------------------------------------
 // THE CROWN STRIP — North Tusouxroe's casino and nightlife row.
 //
-// Five casinos and nine bars and clubs, fronting North Ave 2 (z = -320) on both
-// sides, either side of US-167. The gateway arch over US-167 at z = -310 faces
-// south, so the strip announces itself to anyone driving up out of Chatboro.
+// Four mega-venues front North Ave 2 (z = -320), two each side, between US-167 on
+// the west and Industrial Drive on the east. Each is the merge of a pair of the
+// row's old smaller venues:
 //
-// Exteriors for now (the human's call, 2026-09-22): every venue is a dressed,
-// lit facade with an open doorway you can see through — carpet, slot bank,
-// chandelier, bar — and a queue barrier across the door. The follow-up that
-// makes these walk-in should install a floor plan inside the shell, not re-cut a
-// sealed one, so `CROWN` carries each hall's world rect, facade line and
-// forecourt. The technique for the interiors already exists in nightlife.js:
-// lift the roof, drop the walls to knee height, hand the floor to a counter loop.
+//   BAYOU GOLD   (Pelican Crown Casino + Bayou Gold)      one large casino
+//   BILLY JEANS  (Gator's Fortune + Honeysuckle)          lounge, stage, glove
+//   DISCO GATORS (The Brass Alligator + Midnight Special) one mega-nightclub
+//   HAPPY HOGS   (Le Bon Temps + The Honeydripper)        the strip club
 //
-// Nothing here moves, so the strip is added straight to the scene rather than
-// into a composer cluster: main.js's `moving` set excludes the district cluster
-// groups from the parish-wide batchStatic sweep, and fourteen venues is far too
-// many meshes to leave drawing one at a time (see the AGENT_LOG note).
+// The gateway arch over US-167 at z = -310 faces south, so the strip announces
+// itself to anyone driving up out of Chatboro.
+//
+// Every venue is **walkable**: the entrance is a real opening in the collision
+// ring, and standing inside lifts the roof (slab, header, canopy, fascia and the
+// name sign) and drops the outer walls to knee height — nightlife.js's cutaway,
+// at four times the footprint. Venues are data (`CROWN_VENUES`) and `buildVenue()`
+// is one builder over a fixture table, so a fifth venue is a new entry, not a new
+// function.
+//
+// Batching: the venue groups stay in the scene, and only the meshes the cutaway
+// moves carry `userData.noBatch` (merge.js honours it per mesh), so the parish
+// sweep still merges the interiors — 738 district meshes collapse to 76 in 50
+// batches — while all 56 moving meshes survive it. Mark any new animated mesh the
+// same way.
+//
+// Two things main.js still has to wire, both one-liners, are recorded on TASK-070:
+// the F key (`interact()`) and the radar (`blips()`).
 // ---------------------------------------------------------------------------
 const CROWN_AVE_Z = -320;      // North Ave 2 — the avenue the strip fronts
 const CROWN_HALF = 6.1;        // its half-width including both sidewalks (9 m road + 1.6 m kerbs)
 
-/** Hall sizes in metres, `fore` = forecourt depth, front on local +z. */
-const CROWN_KINDS = {
-  casino: { w: 26, d: 20, h: 11.0, fore: 14, cars: 4, door: 5.0 },
-  club:   { w: 15, d: 16, h:  9.5, fore:  9, cars: 0, door: 4.0 },
-  bar:    { w: 12, d: 13, h:  7.5, fore:  8, cars: 0, door: 3.5 },
-};
-
 /**
- * The row. `side` is which terrace it sits on — -1 is the far (north) side of the
- * avenue, +1 the near side, so every front looks across the traffic at the other.
- * `x` slots keep clear of US-167 (x = -6), Civic Center Way (x = -110) and
- * Industrial Drive (x = 110) and their kerbs.
+ * THE CROWN STRIP — four mega-venues.
+ *
+ * The row used to be fourteen small halls. It is now four large ones, each the
+ * merge of a pair of the old venues (the human's call, 2026-09-22):
+ *
+ *   BAYOU GOLD   = Pelican Crown Casino + Bayou Gold       → one mega-casino
+ *   BILLY JEANS  = Gator's Fortune + Honeysuckle           → lounge with a stage
+ *   DISCO GATORS = The Brass Alligator + Midnight Special  → one mega-nightclub
+ *   HAPPY HOGS   = Le Bon Temps + The Honeydripper         → the strip club
+ *
+ * A venue is *data*: dimensions, palette, sign, interior theme, exterior props
+ * and a `layout` list of fixtures. `buildVenue()` reads that data and one table of
+ * fixture builders places it, so the next venue is a new entry here rather than
+ * another several-hundred-line function.
+ *
+ * `side` is which terrace it fronts: -1 is the far (north) side of the avenue, +1
+ * the near side, so every front looks across the traffic at the others. `x` slots
+ * keep clear of US-167 (x = -6), Civic Center Way (x = -110), Industrial Drive
+ * (x = 110) and the two landmarks that already straddle North Ave 2. Depth is the
+ * tight axis here: North Ave 2 (z = -320) to North Ave 3 (z = -380) leaves about
+ * 47 m for `fore + d`, so the halls grow along the avenue instead.
  */
 const CROWN_VENUES = [
-  { name: "PELICAN CROWN CASINO", kind: "casino", side: -1, x: -40,  neon: 0xffb31a, ink: "#ffcf4a" },
-  { name: "BAYOU GOLD",           kind: "casino", side: -1, x: -84,  neon: 0xffd23a, ink: "#ffe066" },
-  // x = -176, not -144: Willowbrook School stands across x -144..-120 and its
-  // own footprint already straddles North Ave 2 (a pre-existing layout bug in
-  // this district, logged for its owner). The west terrace splits around it.
-  { name: "MOONLIGHT CASINO",     kind: "casino", side: -1, x: -176, neon: 0x7aa7ff, ink: "#9dbcff" },
-  { name: "NEON BAYOU",           kind: "club",   side: -1, x: 26,   neon: 0xff2e93, ink: "#ff5cb8" },
-  { name: "CLUB SAPPHIRE",        kind: "club",   side: -1, x: 78,   neon: 0x4d7dff, ink: "#7aa7ff" },
-  { name: "LE BON TEMPS",         kind: "club",   side: -1, x: 132,  neon: 0x20d9a8, ink: "#5cf0d0" },
-  { name: "THE HONEYDRIPPER",     kind: "club",   side: -1, x: 158,  neon: 0xb28cff, ink: "#c9aaff" },
-  { name: "GATOR'S FORTUNE",      kind: "casino", side:  1, x: -84,  neon: 0x3affc2, ink: "#7affd8" },
-  { name: "THE VELVET MAGNOLIA",  kind: "casino", side:  1, x: -176, neon: 0xff4fb3, ink: "#ff7ac8" },
-  { name: "HONEYSUCKLE",          kind: "bar",    side:  1, x: -40,  neon: 0xffb31a, ink: "#ffcf4a" },
-  { name: "THE BRASS ALLIGATOR",  kind: "bar",    side:  1, x: 26,   neon: 0x2ee6d6, ink: "#5cf0e2" },
-  { name: "MIDNIGHT SPECIAL",     kind: "club",   side:  1, x: 78,   neon: 0xff8a2e, ink: "#ffab5c" },
-  { name: "THE PELICAN ROOM",     kind: "bar",    side:  1, x: 132,  neon: 0xffd23a, ink: "#ffe066" },
-  { name: "THE STILT",            kind: "bar",    side:  1, x: 158,  neon: 0x9b5de5, ink: "#b98cf0" },
+  {
+    id: "bayou-gold", name: "BAYOU GOLD", kind: "casino", interior: "casino",
+    side: -1, x: -60, w: 56, d: 30, h: 14, fore: 14, door: 9, cars: 10,
+    neon: 0xffd23a, ink: "#ffe066",
+    theme: { wall: 0x14161f, trim: 0xd4af37, interior: 0x2a1430, accent: 0xffd23a, felt: 0x12613f },
+    sign: { h: 3.2, sub: "CASINO" },
+    blurb: "Two floors of it, and the house always wins, cher.",
+    layout: [
+      { fixture: "slotBank", n: 9, x: -16, z: -11, rot: 0 },
+      { fixture: "slotBank", n: 9, x: 12, z: -11, rot: 0 },
+      { fixture: "gamingTable", x: -14, z: -1, n: 3, dx: 5 },
+      { fixture: "gamingTable", x: 12, z: -1, n: 3, dx: 5 },
+      { fixture: "bar", x: 23, z: -4, rot: Math.PI / 2, len: 14 },
+      { fixture: "partition", x: 6, z: -7, rot: Math.PI / 2, len: 12 },
+      { fixture: "backRoom", x: 19, z: -10, w: 12, d: 7 },
+      { fixture: "vip", x: -22, z: 8, w: 10, d: 8 },
+      { fixture: "seating", x: -8, z: 9, n: 3, dx: 6 },
+      { fixture: "chandelier", x: -14, z: 0 },
+      { fixture: "chandelier", x: 12, z: 0 },
+    ],
+  },
+  {
+    id: "billy-jeans", name: "BILLY JEANS", kind: "lounge", interior: "lounge",
+    side: 1, x: -60, w: 56, d: 30, h: 13, fore: 14, door: 8, cars: 6,
+    neon: 0x9ad6ff, ink: "#dff2ff",
+    theme: { wall: 0x141a24, trim: 0xcfd8e6, interior: 0x1a2330, accent: 0x9ad6ff, felt: 0x12613f },
+    sign: { h: 3.0, sub: "LOUNGE & STAGE" },
+    blurb: "Bar, stage, pool table, and a glove that will not quit.",
+    props: ["glove"],
+    layout: [
+      { fixture: "stage", x: -16, z: -10, w: 12, d: 5 },
+      { fixture: "bar", x: 16, z: -12, rot: 0, len: 16 },
+      { fixture: "poolTable", x: 16, z: 2, n: 2, dx: 5 },
+      { fixture: "seating", x: -6, z: 5, n: 3, dx: 6 },
+      { fixture: "seating", x: -20, z: 7, n: 2, dx: 6 },
+      { fixture: "partition", x: -6, z: -3, rot: 0, len: 16 },
+      { fixture: "backRoom", x: 20, z: 9, w: 12, d: 8 },
+      { fixture: "chandelier", x: 0, z: 4 },
+      { fixture: "chandelier", x: -12, z: -3 },
+    ],
+  },
+  {
+    id: "disco-gators", name: "DISCO GATORS", kind: "club", interior: "disco",
+    side: -1, x: 62, w: 52, d: 28, h: 15, fore: 12, door: 10, cars: 6,
+    neon: 0xb14bff, ink: "#e0a8ff",
+    theme: { wall: 0x160f22, trim: 0xff4fb3, interior: 0x120a18, accent: 0x2ee6d6, felt: 0x12613f },
+    sign: { h: 3.4, sub: "NIGHTCLUB" },
+    blurb: "Purple light, a teal floor, and one very large disco ball.",
+    props: ["disco"],
+    layout: [
+      { fixture: "danceFloor", x: 0, z: 1, w: 18, d: 12 },
+      { fixture: "djBooth", x: 0, z: -11, w: 10, d: 3 },
+      { fixture: "bar", x: -18, z: -3, rot: Math.PI / 2, len: 16 },
+      { fixture: "bar", x: 18, z: 6, rot: Math.PI / 2, len: 12 },
+      { fixture: "vip", x: 18, z: -8, w: 12, d: 8 },
+      { fixture: "stage", x: -18, z: 7, w: 12, d: 5 },
+      { fixture: "discoBall", x: 0, z: -6, n: 3 },
+      { fixture: "discoBall", x: 0, z: 6, n: 3 },
+      { fixture: "chandelier", x: 0, z: 1 },
+    ],
+  },
+  {
+    id: "happy-hogs", name: "HAPPY HOGS", kind: "club", interior: "stripclub",
+    side: 1, x: 62, w: 48, d: 26, h: 13, fore: 12, door: 8, cars: 6,
+    neon: 0xff4fb3, ink: "#ff8ad0",
+    theme: { wall: 0x1c0f1a, trim: 0xff4fb3, interior: 0x1a0a14, accent: 0xff4fb3, felt: 0x8a0f3c },
+    sign: { h: 3.0, sub: "SHOW BAR" },
+    blurb: "The finest hams on the Gulf Coast.",
+    props: ["pig"],
+    layout: [
+      { fixture: "stage", x: -6, z: -9, w: 14, d: 6, poles: 3 },
+      { fixture: "bar", x: 17, z: -5, rot: Math.PI / 2, len: 14 },
+      { fixture: "seating", x: 4, z: 6, n: 3, dx: 7 },
+      { fixture: "vip", x: -18, z: 7, w: 10, d: 7 },
+      { fixture: "backRoom", x: 17, z: 7, w: 12, d: 7 },
+      { fixture: "chandelier", x: -6, z: 2 },
+    ],
+  },
 ];
 
 /**
@@ -84,7 +167,8 @@ const CROWN_VENUES = [
  * `rot` is 0 on the north terrace and π on the near one (models face local +z).
  */
 const CROWN = CROWN_VENUES.map((v) => {
-  const k = CROWN_KINDS[v.kind];
+  // `k` keeps the hall spec shape the QA audit and zoneAt() already read
+  const k = { w: v.w, d: v.d, h: v.h, fore: v.fore, door: v.door, cars: v.cars };
   const cz = CROWN_AVE_Z + v.side * (CROWN_HALF + k.fore + k.d / 2);
   const facadeZ = cz - v.side * (k.d / 2);          // the wall the door is cut into
   const hall = { x0: v.x - k.w / 2, x1: v.x + k.w / 2, z0: cz - k.d / 2, z1: cz + k.d / 2 };
@@ -139,7 +223,36 @@ function crownGeo() {
     if (!cache.has(key)) cache.set(key, new THREE.SphereGeometry(r, 12, 8));
     return cache.get(key);
   };
-  return (_crownGeo = { box, cyl, sph });
+  /**
+   * A wall box whose pivot is at its own base, not its centre: translating the
+   * geometry up by h/2 means `mesh.scale.y` shrinks the wall down from the floor,
+   * which is how the interior cutaway opens a mega-venue up (nightlife.js's trick).
+   */
+  const wall = (w, h, d) => {
+    const key = `w|${w}|${h}|${d}`;
+    if (!cache.has(key)) {
+      const g = new THREE.BoxGeometry(w, h, d);
+      g.translate(0, h / 2, 0);
+      cache.set(key, g);
+    }
+    return cache.get(key);
+  };
+  const plane = (w, d) => {
+    const key = `p|${w}|${d}`;
+    if (!cache.has(key)) cache.set(key, new THREE.PlaneGeometry(w, d));
+    return cache.get(key);
+  };
+  const torus = (r, t) => {
+    const key = `t|${r}|${t}`;
+    if (!cache.has(key)) cache.set(key, new THREE.TorusGeometry(r, t, 8, 24));
+    return cache.get(key);
+  };
+  const cone = (r, h) => {
+    const key = `k|${r}|${h}`;
+    if (!cache.has(key)) cache.set(key, new THREE.ConeGeometry(r, h, 12));
+    return cache.get(key);
+  };
+  return (_crownGeo = { box, cyl, sph, wall, plane, torus, cone });
 }
 function crownMat() {
   if (_crownMat) return _crownMat;
@@ -153,67 +266,63 @@ function crownMat() {
     m.userData.gtbRealized = true;
     return m;
   };
+  // Memoised factories: four mega-venues each want their own palette, and a
+  // fixture repeated a dozen times inside one venue must not make a dozen
+  // materials (draw calls, and merge.js's signature count).
+  const memo = new Map();
+  const of = (name, color, extra = {}) => {
+    const key = `${name}|${color}|${JSON.stringify(extra)}`;
+    let m = memo.get(key);
+    if (!m) memo.set(key, (m = std(name, color, extra)));
+    return m;
+  };
+  const emis = (name, color, intensity = 1.1) =>
+    of(name, color, { emissive: color, emissiveIntensity: intensity, roughness: 0.45 });
+  const glow = (name, color) => {
+    const key = `flat|${name}|${color}`;
+    let m = memo.get(key);
+    if (!m) memo.set(key, (m = flat(name, color)));
+    return m;
+  };
   return (_crownMat = {
-    std, flat,
+    std, flat, of, emis, glow,
+    chrome: std("crown chrome", 0xe8e8ee, { metalness: 1, roughness: 0.12 }),
+    // shared, venue-agnostic pieces; anything palette-specific goes through of/emis/glow
     stone:  std("crown hall", 0x14161f),
-    deep:   std("crown hall deep", 0x0d0f16),
     trim:   std("crown trim", 0x2a2f3d, { metalness: 0.35, roughness: 0.4 }),
     gold:   std("crown gold", 0xd4af37, { metalness: 0.85, roughness: 0.28 }),
     glass:  std("crown glass", 0x0a1826, { metalness: 0.6, roughness: 0.15 }),
-    carpet: std("crown carpet", 0x2a1430, { roughness: 0.95 }),
     lot:    std("crown lot", 0x3b3d44, { roughness: 0.9 }),
     stripe: flat("crown lot stripe", 0xd9cf9a),
-    felt:   std("crown felt", 0x12613f, { roughness: 0.55 }),
     tyre:   std("crown tyre", 0x141414, { roughness: 0.98 }),
-    rope:   std("crown rope", 0x9c1f3c, { roughness: 0.85 }),
     carMats: [0x8a1f2b, 0x1f2f4a, 0x2f2f33, 0xd8d2c4, 0x3f5a3a]
       .map((c) => std("crown car", c, { metalness: 0.45, roughness: 0.35 })),
   });
 }
 
 /**
- * A neon sign face. Returns null without a DOM, which is what the headless build
- * test (test_buildset.mjs, plain node) gets — the caller falls back to a flat
+ * A neon sign face, fitted to the surface it will fill. `w` / `h` are the face's
+ * physical metres; the canvas is built at that ratio (no stretching) and the
+ * font is measured and shrunk to fit (no clipping). Returns null without a DOM,
+ * which is what the headless build tests get — the caller falls back to a flat
  * colour so buildSet() still runs there.
  */
-function crownSignTexture(text, ink, { vertical = false, bg = "#080a12" } = {}) {
-  if (typeof document === "undefined") return null;
-  const w = vertical ? 256 : 1024, h = vertical ? 1024 : 256;
-  const c = document.createElement("canvas");
-  c.width = w; c.height = h;
-  const x = c.getContext("2d");
-  x.fillStyle = bg; x.fillRect(0, 0, w, h);
-  x.textAlign = "center"; x.textBaseline = "middle";
-  x.fillStyle = ink;
-  x.shadowColor = ink; x.shadowBlur = 30;
-  if (vertical) {
-    x.font = `900 ${text.length > 9 ? 60 : 76}px Arial Black, Arial, sans-serif`;
-    const chars = [...text];
-    const step = Math.min(96, (h - 80) / chars.length);
-    chars.forEach((ch, i) => x.fillText(ch, w / 2, 44 + step * (i + 0.5)));
-  } else {
-    x.font = `900 ${text.length > 15 ? 100 : 124}px Arial Black, Arial, sans-serif`;
-    x.fillText(text, w / 2, h / 2 + 6);
-  }
-  x.shadowBlur = 0;
-  x.lineWidth = 8; x.strokeStyle = ink; x.strokeRect(14, 14, w - 28, h - 28);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
+function crownSignTexture(text, ink, { vertical = false, bg = "#080a12", w = 24, h = 2.9 } = {}) {
+  return neonSignTexture({ text, ink, bg, vertical, aspect: aspectOf(w, h) });
 }
 function crownSignMat(text, ink, opt) {
-  const tex = crownSignTexture(text, ink, opt);
-  const m = tex ? new THREE.MeshBasicMaterial({ map: tex }) : new THREE.MeshBasicMaterial({ color: ink });
-  m.name = `crown sign: ${text}`;   // named so a QA pass can find and count them
-  m.userData.gtbRealized = true;
-  return m;
+  return neonSignMaterial({ ...opt, text, ink, kind: "basic", name: `crown sign: ${text}` });
 }
 
 /** Local (hall) space to world. `rot` is only ever 0 or π, so this is a sign flip. */
 const crownToWorld = (v, lx, lz) => v.rot === 0
   ? { x: v.x + lx, z: v.cz + lz }
   : { x: v.x - lx, z: v.cz - lz };
+
+/** World to local (hall) space — the inverse, for "is the player inside?". */
+const crownToLocal = (v, x, z) => v.rot === 0
+  ? { x: x - v.x, z: z - v.cz }
+  : { x: v.x - x, z: v.cz - z };
 
 export const NORTH_MIN_Z = -440;
 const BOUNDS = { x0: -240, x1: 240, z0: -440, z1: -134 };
@@ -252,6 +361,12 @@ export function createTusouxroeNorth(ctx) {
   const props = [];
   ctx.props = props;
 
+  // The Crown Strip's enterable venues, and the frame state for their cutaway.
+  const crownRecs = [];                 // { v, g, roof, walls, sign, fixed, inside }
+  let crownPrompt = null;               // the venue whose entrance the player is standing at
+  let crownPromptEl = null;             // its DOM chip, made once in buildCrownStrip()
+  const WALL_DROP = 0.22;               // walls cut to this fraction while the player is inside
+
   function addOccluder(x, z, w, d, h = 18) {
     occluders.push({
       minX: x - w / 2, maxX: x + w / 2,
@@ -262,13 +377,32 @@ export function createTusouxroeNorth(ctx) {
 
   // ==================== THE CROWN STRIP: BUILD ====================
   /**
-   * Five casinos and nine bars and clubs down North Ave 2, with a lit forecourt
-   * each, a queue barrier across every door, and a gateway arch on US-167.
-   * Added straight to the scene (never to `props`), so the sweep in main.js can
-   * merge it — see the note at the top of this file.
+   * Four mega-venues down North Ave 2, each with a lit forecourt, one main sign,
+   * a gateway arch on US-167 — and an interior you can walk into.
+   *
+   * These are the strip's first enterable buildings, so every venue group goes
+   * into `props`: main.js already excludes `tusouxroeNorth.props` from
+   * `batchStatic`, and a cutaway that lifts a roof and scales walls cannot be
+   * baked into a static batch. The technique is nightlife.js's, at four times the
+   * footprint (see the cutaway in `update()`).
    */
   function buildCrownStrip() {
     const G = crownGeo(), M = crownMat();
+
+    // the prompt chip, as nightlife.js and casinos.js each make their own
+    if (typeof document !== "undefined" && !crownPromptEl) {
+      const css = document.createElement("style");
+      css.textContent = `#crownPrompt { position: fixed; left: 50%; bottom: 200px; transform: translateX(-50%); z-index: 22;
+        background: rgba(8,10,18,.9); color: #f4f1ea; font: 600 15px/1.35 system-ui, sans-serif; padding: 8px 16px;
+        border-radius: 8px; border: 1px solid #ffd23a; pointer-events: none; }
+        #crownPrompt b { color: #ffd23a; }
+        body.letterbox #crownPrompt { display: none; }`;
+      document.head.appendChild(css);
+      crownPromptEl = document.createElement("div");
+      crownPromptEl.id = "crownPrompt";
+      crownPromptEl.hidden = true;
+      document.body.appendChild(crownPromptEl);
+    }
 
     const addMesh = (parent, geo, mat, x, y, z, { cast = false, receive = true, rx = 0, ry = 0, rz = 0 } = {}) => {
       const m = new THREE.Mesh(geo, mat);
@@ -291,102 +425,343 @@ export function createTusouxroeNorth(ctx) {
       g.add(c);
     }
 
+    // ---- fixtures: a venue's interior is a data list of these ----------------
+    // Every builder funnels through `b.add` (a mesh in the venue group) and
+    // `b.block` (a collision circle in world space), so collision cannot drift
+    // away from the geometry the way a hand-maintained second list would.
+    const FIXTURES = {
+      partition(b, s) {
+        const rot = s.rot ? 1 : 0, len = s.len ?? 8, h = 3.2, t = 0.32;
+        b.add(G.box(rot ? t : len, h, rot ? len : t), b.M.of("crown partition", b.v.theme.trim), s.x, h / 2, s.z);
+        const n = Math.max(2, Math.round(len / 2.2));
+        for (let i = 0; i <= n; i++) {
+          const o = (i / n - 0.5) * len;
+          b.block(rot ? s.x : s.x + o, rot ? s.z + o : s.z, 0.5);
+        }
+      },
+      slotBank(b, s) {
+        const n = s.n ?? 6;
+        const body = b.M.of("crown slot body", b.v.theme.interior);
+        const lit = b.M.emis("crown slot screen", b.v.theme.accent, 0.9);
+        for (let i = 0; i < n; i++) {
+          const x = s.x + (i - (n - 1) / 2) * 2.1;
+          b.add(G.box(1.0, 1.75, 0.8), body, x, 0.94, s.z);
+          b.add(G.box(0.62, 0.4, 0.1), lit, x, 1.34, s.z + 0.45);
+          b.block(x, s.z, 0.7);
+        }
+      },
+      gamingTable(b, s) {
+        const n = s.n ?? 2, dx = s.dx ?? 5;
+        for (let i = 0; i < n; i++) {
+          const x = s.x + (i - (n - 1) / 2) * dx;
+          b.add(G.cyl(2.1, 0.45), b.M.of("crown table felt", b.v.theme.felt, { roughness: 0.55 }), x, 0.28, s.z);
+          b.add(G.torus(2.1, 0.1), b.M.of("crown table rim", b.v.theme.trim, { metalness: 0.8, roughness: 0.25 }), x, 0.52, s.z, { rx: Math.PI / 2 });
+          b.add(G.sph(0.3), b.M.emis("crown table lamp", b.v.theme.accent, 1.2), x, 1.5, s.z);
+          b.block(x, s.z, 2.1);
+          b.lit(x, 2.6, s.z, 26, 12);
+        }
+      },
+      bar(b, s) {
+        const rot = s.rot ? 1 : 0, len = s.len ?? 12;
+        b.add(G.box(rot ? 1.1 : len, 1.1, rot ? len : 1.1), b.M.of("crown bar wood", 0x3a2418), s.x, 0.55, s.z);
+        b.add(G.box(rot ? 1.3 : len + 0.2, 0.08, rot ? len + 0.2 : 1.3), b.M.of("crown bar top", b.v.theme.trim, { metalness: 0.6, roughness: 0.3 }), s.x, 1.14, s.z);
+        const bottle = b.M.glow(`crown bottle ${b.v.id}`, b.v.theme.accent);
+        const n = Math.max(3, Math.round(len / 1.4));
+        for (let i = 0; i < n; i++) {
+          const o = (i / (n - 1) - 0.5) * (len - 1.5);
+          b.add(G.cyl(0.08, 0.36), bottle, rot ? s.x - 0.95 : s.x + o, 1.45, rot ? s.z + o : s.z - 0.95);
+        }
+        const bl = Math.max(2, Math.round(len / 2.2));
+        for (let i = 0; i <= bl; i++) {
+          const o = (i / bl - 0.5) * len;
+          b.block(rot ? s.x : s.x + o, rot ? s.z + o : s.z, 0.85);
+        }
+      },
+      stage(b, s) {
+        const w = s.w ?? 10, d = s.d ?? 5;
+        b.add(G.box(w, 0.6, d), b.M.of("crown stage", b.v.theme.interior, { roughness: 0.25 }), s.x, 0.3, s.z);
+        b.add(G.box(w + 0.1, 0.1, 0.1), b.M.emis("crown stage edge", b.v.theme.accent, 1.2), s.x, 0.62, s.z + d / 2 - 0.05);
+        b.add(G.box(w * 0.55, 5.4, 0.2), b.M.glow("crown stage back", b.v.theme.accent), s.x, 2.8, s.z - d / 2 - 0.12);
+        if (s.poles) {
+          for (let i = 0; i < s.poles; i++) {
+            const x = s.x + (i - (s.poles - 1) / 2) * (w / (s.poles + 1));
+            b.add(G.cyl(0.05, b.H - 0.8), b.M.chrome, x, 0.6 + (b.H - 0.8) / 2, s.z);
+          }
+        }
+        for (let i = 0; i <= 2; i++) b.block(s.x + (i - 1) * (w / 2), s.z, 0.9);
+        b.lit(s.x, 4.2, s.z, 70, 16);
+      },
+      danceFloor(b, s) {
+        const w = s.w ?? 16, d = s.d ?? 12;
+        b.add(G.plane(w, d), b.M.emis("crown dance floor", b.v.theme.accent, 0.5), s.x, 0.05, s.z, { rx: -Math.PI / 2 });
+        for (let i = 1; i < 4; i++) {
+          b.add(G.box(w, 0.04, 0.16), b.M.glow("crown floor line", b.v.theme.trim), s.x, 0.08, s.z - d / 2 + (i * d) / 4);
+          b.add(G.box(0.16, 0.04, d), b.M.glow("crown floor line", b.v.theme.trim), s.x - w / 2 + (i * w) / 4, 0.08, s.z);
+        }
+        b.lit(s.x, 2.2, s.z, 55, 20);
+      },
+      djBooth(b, s) {
+        const w = s.w ?? 10, d = s.d ?? 3;
+        b.add(G.box(w, 1.2, d), b.M.of("crown dj booth", b.v.theme.interior), s.x, 0.6, s.z);
+        b.add(G.box(w * 0.6, 2.6, 0.3), b.M.glow("crown dj screen", b.v.theme.accent), s.x, 2.6, s.z - d / 2 - 0.12);
+        for (const sx of [-1, 1]) b.add(G.box(1.2, 2.4, 1.2), b.M.of("crown speaker", 0x111111), s.x + sx * (w / 2 + 1), 1.2, s.z);
+        for (let i = 0; i <= 2; i++) b.block(s.x + (i - 1) * (w / 2), s.z, 0.8);
+        b.lit(s.x, 3.4, s.z, 40, 12);
+      },
+      vip(b, s) {
+        const w = s.w ?? 10, d = s.d ?? 8;
+        const velvet = b.M.of("crown velvet", b.v.theme.felt, { roughness: 0.9 });
+        b.add(G.box(w, 0.4, d), b.M.of("crown vip deck", b.v.theme.interior, { roughness: 0.6 }), s.x, 0.2, s.z);
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+          b.add(G.box(1.6, 0.5, 1.0), velvet, s.x + sx * (w / 2 - 1.8), 0.65, s.z + sz * (d / 2 - 1.2));
+          b.add(G.box(0.3, 1.0, 1.0), velvet, s.x + sx * (w / 2 - 1.8), 1.1, s.z + sz * (d / 2 - 1.2));
+        }
+        b.add(G.cyl(0.06, 0.9), b.M.of("crown gold post", b.v.theme.trim, { metalness: 0.8 }), s.x - w / 2, 0.45, s.z);
+        b.block(s.x, s.z, Math.min(w, d) / 2 - 0.4);
+        b.lit(s.x, 3.2, s.z, 45, 12);
+      },
+      seating(b, s) {
+        const n = s.n ?? 3, dx = s.dx ?? 6;
+        for (let i = 0; i < n; i++) {
+          const x = s.x + (i - (n - 1) / 2) * dx;
+          b.add(G.cyl(0.9, 0.9), b.M.of("crown table", b.v.theme.interior), x, 0.45, s.z);
+          for (const sx of [-1, 0, 1]) b.add(G.cyl(0.28, 0.9), b.M.of("crown stool", b.v.theme.trim), x + sx * 1.4, 0.45, s.z + 1.3);
+          b.block(x, s.z, 1.2);
+        }
+      },
+      poolTable(b, s) {
+        const n = s.n ?? 2, dx = s.dx ?? 5;
+        for (let i = 0; i < n; i++) {
+          const x = s.x + (i - (n - 1) / 2) * dx;
+          b.add(G.box(1.4, 0.25, 2.6), b.M.of("crown pool body", 0x3a2418), x, 0.85, s.z);
+          b.add(G.box(1.2, 0.08, 2.4), b.M.of("crown pool felt", b.v.theme.felt, { roughness: 0.5 }), x, 1.0, s.z);
+          for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(G.cyl(0.1, 0.85), b.M.of("crown pool leg", 0x3a2418), x + sx * 0.55, 0.42, s.z + sz * 1.1);
+          b.add(G.sph(0.22), b.M.emis("crown pool light", b.v.theme.accent, 1.2), x, 2.0, s.z);
+          b.block(x, s.z, 1.6);
+        }
+      },
+      backRoom(b, s) {
+        const w = s.w ?? 12, d = s.d ?? 7;
+        const mat = b.M.of("crown partition", b.v.theme.trim);
+        b.add(G.box(w, 3.2, 0.32), mat, s.x, 1.6, s.z - d / 2);
+        b.add(G.box(0.32, 3.2, d), mat, s.x - w / 2, 1.6, s.z);
+        b.add(G.box(w * 0.5, 3.2, 0.32), mat, s.x + w / 4, 1.6, s.z + d / 2);
+        b.add(G.box(w, 0.1, d), b.M.of("crown backroom floor", b.v.theme.interior, { roughness: 0.9 }), s.x, 0.06, s.z);
+        for (let i = 0; i <= 4; i++) b.block(s.x - w / 2 + (i * w) / 4, s.z - d / 2, 0.5);
+        for (let i = 0; i <= 3; i++) b.block(s.x - w / 2 + (i * w) / 3, s.z + d / 2, 0.5);
+        b.lit(s.x, 2.6, s.z, 30, 10);
+      },
+      chandelier(b, s) {
+        b.add(G.sph(0.55), b.M.emis("crown chandelier", b.v.theme.accent, 1.4), s.x, b.H - 1.4, s.z);
+        b.add(G.cyl(0.04, 1.2), b.M.of("crown chain", 0x222222), s.x, b.H - 0.7, s.z);
+        b.lit(s.x, b.H - 1.4, s.z, 50, 14);
+      },
+      discoBall(b, s) {
+        const n = s.n ?? 3;
+        for (let i = 0; i < n; i++) {
+          const x = s.x + (i - (n - 1) / 2) * 4;
+          const r = 0.45 + (i % 2) * 0.2;
+          b.add(G.sph(r), b.M.chrome, x, b.H - 1.6 - (i % 2) * 0.6, s.z);
+          b.add(G.cyl(0.03, 0.9), b.M.of("crown chain", 0x222222), x, b.H - 0.8, s.z);
+        }
+        b.lit(s.x, b.H - 2, s.z, 40, 16);
+      },
+    };
+
+    // ---- exterior landmarks: one per venue that earns one --------------------
+    const PROPS = {
+      /** BILLY JEANS: a very large white performance glove, on the facade. */
+      glove(b) {
+        const white = b.M.of("crown glove white", 0xf4f7ff,
+          { roughness: 0.22, metalness: 0.12, emissive: 0xffffff, emissiveIntensity: 0.35 });
+        const seam = b.M.emis("crown glove seam", 0xffffff, 0.9);
+        const gg = new THREE.Group();
+        gg.position.set(-b.W / 2 + 11, b.H + 6.4, b.FZ - 1.0);
+        gg.rotation.set(0, -0.35, 0.16);
+        b.g.add(gg);
+        const put = (geo, mat, x, y, z, rx = 0) => addMesh(gg, geo, mat, x, y, z, { rx, cast: true });
+        put(G.box(5.2, 5.6, 2.3), white, 0, 0, 0);                       // palm
+        [-1.75, -0.6, 0.55, 1.7].forEach((x, i) =>                        // four fingers
+          put(G.box(1.15, 3.5 - i * 0.35, 2.0), white, x, 4.3 - i * 0.18, 0.1, -0.12 - i * 0.02));
+        put(G.box(1.3, 3.1, 1.9), white, -3.2, 1.5, 0.1, 0.55);           // thumb
+        put(G.box(5.6, 1.5, 2.7), b.M.of("crown glove cuff", 0x1a1a1a), 0, -3.5, 0);
+        put(G.box(5.9, 0.4, 3.0), b.M.of("crown glove gold", b.v.theme.trim, { metalness: 0.9, roughness: 0.2 }), 0, -2.7, 0);
+        for (let ix = -2; ix <= 2; ix++) for (let iy = -2; iy <= 1; iy++)  // sequins
+          put(G.sph(0.16), seam, ix, iy * 0.9 + 0.2, 1.25);
+        for (const sx of [-1, 1]) put(G.box(0.35, 3.4, 0.35), b.M.of("crown glove mount", 0x2a2f3d, { metalness: 0.6 }), sx * 2.2, -6.1, 0);
+        const p = crownToWorld(b.v, -b.W / 2 + 11, b.FZ - 0.6);
+        addLitSpot({ x: p.x, y: b.H + 6.4, z: p.z, warm: 0xffffff, power: 95, range: 26, fx: false });
+      },
+      /** HAPPY HOGS: a pig's head over the door, in a bow tie and a neon halo. */
+      pig(b) {
+        const pink = b.M.of("crown pig pink", 0xff8fb0, { roughness: 0.5, emissive: 0xff4f7a, emissiveIntensity: 0.3 });
+        const dark = b.M.of("crown pig dark", 0x5a2030);
+        const pg = new THREE.Group();
+        pg.position.set(0, b.H + 5.6, b.FZ - 0.8);
+        b.g.add(pg);
+        const put = (geo, mat, x, y, z, rx = 0, ry = 0) => addMesh(pg, geo, mat, x, y, z, { rx, ry, cast: true });
+        put(G.sph(3.4), pink, 0, 0, 0);
+        put(G.cyl(1.7, 1.4), pink, 0, -0.7, 3.1, Math.PI / 2);
+        put(G.cyl(0.3, 0.2), dark, -0.6, -0.7, 3.85, Math.PI / 2);
+        put(G.cyl(0.3, 0.2), dark, 0.6, -0.7, 3.85, Math.PI / 2);
+        put(G.cone(1.3, 2.2), pink, -2.4, 2.6, 0, 0, 0.4);
+        put(G.cone(1.3, 2.2), pink, 2.4, 2.6, 0, 0, -0.4);
+        put(G.sph(0.42), dark, -1.2, 0.9, 2.9);
+        put(G.sph(0.42), dark, 1.2, 0.9, 2.9);
+        put(G.box(2.4, 0.9, 0.5), b.M.emis("crown pig bowtie", b.v.theme.accent, 1.2), 0, -2.6, 2.7);
+        put(G.torus(3.9, 0.2), b.M.emis("crown pig ring", b.v.theme.accent, 1.1), 0, 0, -0.6);
+        const p = crownToWorld(b.v, 0, b.FZ - 0.6);
+        addLitSpot({ x: p.x, y: b.H + 5.6, z: p.z, warm: 0xff4fb3, power: 85, range: 24, fx: false });
+      },
+      /** DISCO GATORS: a roof ball, balls along the canopy, neon up the piers. */
+      disco(b) {
+        addMesh(b.g, G.sph(2.6), b.M.chrome, 0, b.H + 3.6, b.FZ - 4, { cast: true });
+        addMesh(b.g, G.cyl(0.1, 3.0), b.M.of("crown chain", 0x222222), 0, b.H + 1.3, b.FZ - 4);
+        for (let i = -3; i <= 3; i++) addMesh(b.g, G.sph(0.55), b.M.chrome, i * 3.2, 5.4, b.FZ + 4.6, { cast: true });
+        for (const s of [-1, 1]) {
+          addMesh(b.g, G.box(0.35, b.H * 0.7, 0.35), b.M.emis("crown neon tube", b.v.theme.accent, 1.3), s * (b.W / 2 - 1.2), b.H * 0.4, b.FZ + 0.12);
+          addMesh(b.g, G.box(0.35, b.H * 0.7, 0.35), b.M.emis("crown neon tube 2", b.v.theme.trim, 1.2), s * (b.W / 2 - 2.6), b.H * 0.35, b.FZ + 0.12);
+        }
+        const p = crownToWorld(b.v, 0, b.FZ + 1.0);
+        addLitSpot({ x: p.x, y: 6.0, z: p.z, warm: b.v.theme.accent, power: 80, range: 26, fx: false });
+      },
+    };
+
     function buildVenue(v) {
-      const k = v.k, W = k.w, D = k.d, H = k.h, FZ = D / 2;
+      // NB: `v.fore` is the derived forecourt *rect*; the depth in metres is on
+      // `v.k` (see the note in the CROWN mapping above). Same for door/cars.
+      const W = v.k.w, D = v.k.d, H = v.k.h, fore = v.k.fore, cars = v.k.cars;
+      const FZ = D / 2, gap = v.k.door, T = 0.5;
       const g = new THREE.Group();
       g.position.set(v.x, 0, v.cz);
       g.rotation.y = v.rot;
       scene.add(g);
+      // NOTE: the venue group stays a normal scene root so the parish batch sweep
+      // still merges its interiors and forecourts. Only the meshes the cutaway
+      // moves — the roof group and the outer walls — carry `userData.noBatch`,
+      // which merge.js honours per mesh. Mark any future animated mesh the same
+      // way; a mesh without it is a meshes-into-the-batch, roof-will-not-lift bug.
 
-      // ---- shell: back and sides ----
-      addMesh(g, G.box(W, H, 0.4), M.stone, 0, H / 2, -FZ + 0.2, { cast: true });
-      addMesh(g, G.box(0.4, H, D), M.stone, -W / 2 + 0.2, H / 2, 0, { cast: true });
-      addMesh(g, G.box(0.4, H, D), M.stone, W / 2 - 0.2, H / 2, 0, { cast: true });
+      const rec = { v, g, roof: null, walls: [], sign: [], fixed: [], inside: false };
+      const wallMat = M.of("crown wall " + v.id, v.theme.wall);
+      const trimMat = M.of("crown trim " + v.id, v.theme.trim, { metalness: 0.5, roughness: 0.35 });
+      const walls = [];
+      const add = (geo, mat, x, y, z, opt = {}) => {
+        const m = addMesh(g, geo, mat, x, y, z, opt);
+        if (opt.wall) { walls.push(m); m.userData.noBatch = true; }
+        return m;
+      };
 
-      // ---- front: stone either side of a doorway you can see through ----
-      const gap = k.door, head = Math.min(4.4, H - 2), sideW = (W - gap) / 2;
+      // ---- shell: back and sides, floor-pivoted so the cutaway drops them ----
+      add(G.wall(W, H, T), wallMat, 0, 0, -FZ + T / 2, { cast: true, wall: true });
+      add(G.wall(T, H, D), wallMat, -(W / 2 - T / 2), 0, 0, { cast: true, wall: true });
+      add(G.wall(T, H, D), wallMat, (W / 2 - T / 2), 0, 0, { cast: true, wall: true });
+
+      // ---- front: stone either side of one entrance, with glazed shopfronts ----
+      const sideW = (W - gap) / 2;
       for (const s of [-1, 1]) {
-        addMesh(g, G.box(sideW, H, 0.4), M.stone, s * (gap + sideW) / 2, H / 2, FZ - 0.2, { cast: true });
-        addMesh(g, G.box(sideW - 2.2, head - 0.6, 0.14), M.glass, s * (gap + sideW) / 2, (head - 0.6) / 2 + 0.3, FZ + 0.05);
-      }
-      addMesh(g, G.box(gap, H - head, 0.4), M.stone, 0, head + (H - head) / 2, FZ - 0.2, { cast: true });
-
-      // ---- roof, canopy, the neon fascia over the door ----
-      addMesh(g, G.box(W + 0.7, 0.5, D + 0.7), M.trim, 0, H + 0.25, 0, { cast: true });
-      addMesh(g, G.box(W + 2.6, 0.45, 3.4), M.trim, 0, head + 1.5, FZ + 1.5, { cast: true });
-      addMesh(g, G.box(W + 2.6, 0.9, 0.3), M.std("crown fascia", v.neon, { emissive: v.neon, emissiveIntensity: 1.1, roughness: 0.45 }),
-        0, head + 1.05, FZ + 3.15);
-      addMesh(g, G.box(W + 0.4, 0.35, 0.35), M.gold, 0, head + 0.15, FZ + 3.15);
-
-      // ---- the name, on the roof; a blade too where the front is narrow ----
-      addMesh(g, G.box(W - 2, v.kind === "casino" ? 2.9 : 2.1, 0.28), crownSignMat(v.name, v.ink), 0, H + 1.85, FZ - 0.6);
-      if (k.door < 4.5) {
-        addMesh(g, G.box(0.3, 4.6, 1.15), crownSignMat(v.name, v.ink, { vertical: true }),
-          -W / 2 - 0.75, Math.max(3.1, H - 3.2), FZ - 1.0, { cast: true });
+        add(G.wall(sideW, H, T), wallMat, s * (gap + sideW) / 2, 0, FZ - T / 2, { cast: true, wall: true });
+        add(G.wall(sideW - 2.4, 4.2, 0.16), M.glass, s * (gap + sideW) / 2, 0.9, FZ + 0.06, { wall: true });
       }
 
-      // ---- inside, seen through the door: carpet, the machine bank, the bar ----
-      addMesh(g, G.box(W - 0.9, 0.12, D - 0.9), M.carpet, 0, 0.06, 0);
-      const bank = v.kind === "casino" ? 6 : 3;
-      const bankMat = M.std("crown slot bank", v.neon, { emissive: v.neon, emissiveIntensity: 0.9 });
-      for (let i = 0; i < bank; i++) {
-        const bx = (i - (bank - 1) / 2) * 2.1;
-        addMesh(g, G.box(1.0, 1.75, 0.8), M.deep, bx, 0.94, -FZ + 1.6, { cast: true });
-        addMesh(g, G.box(0.62, 0.4, 0.1), bankMat, bx, 1.34, -FZ + 2.05);
+      // ---- the roof group: slab, door header, canopy, fascia and the one sign.
+      //      It lifts with the roof, so everything over the entrance is hidden
+      //      while you are inside and between the camera and the floor.
+      const roof = new THREE.Group();
+      g.add(roof);
+      rec.roof = roof;
+      const head = 5.0;
+      const rh = (geo, mat, x, y, z, opt) => {
+        const m = addMesh(roof, geo, mat, x, y, z, opt);
+        m.userData.noBatch = true;     // it lifts: keep it out of the static batch
+        return m;
+      };
+      rh(G.box(W + 0.9, 0.6, D + 0.9), trimMat, 0, H + 0.3, 0, { cast: true });
+      rh(G.box(gap, H - head, T), wallMat, 0, head, FZ - T / 2, { cast: true });
+      rh(G.box(gap + 6, 0.5, 4.2), trimMat, 0, head + 0.9, FZ + 2.1, { cast: true });
+      rh(G.box(gap + 6, 1.0, 0.3), M.emis("crown fascia " + v.id, v.theme.accent, 1.15), 0, head + 0.5, FZ + 4.1);
+      rh(G.box(gap + 6.4, 0.4, 0.4), trimMat, 0, head - 0.15, FZ + 4.1);
+      rec.sign.push(rh(G.box(W * 0.72, v.sign.h, 0.3),
+        crownSignMat(v.name, v.ink, { w: W * 0.72, h: v.sign.h }), 0, H + 2.1, FZ - 0.2));
+      if (v.sign.sub) {
+        const sw = W * 0.34;
+        rec.sign.push(rh(G.box(sw, 1.1, 0.22), crownSignMat(v.sign.sub, v.ink, { w: sw, h: 1.1 }), 0, H - 0.6, FZ + 0.05));
       }
-      if (v.kind !== "casino") addMesh(g, G.box(W - 5, 0.35, 1.1), M.felt, 0, 1.1, FZ - 3.2, { cast: true });
-      addMesh(g, G.sph(0.5),
-        M.std("crown chandelier", v.neon, { emissive: v.neon, emissiveIntensity: 1.4 }), 0, H - 1.1, 0);
 
-      // ---- forecourt: apron, valet kerb, painted bays, parked cars ----
-      const fz = FZ + k.fore / 2;
-      addMesh(g, G.box(W + 10, 0.06, k.fore), M.lot, 0, 0.035, fz);
-      if (k.cars > 0) {          // painted bays only where there are cars to park in them
-        for (let i = 0; i <= 4; i++) addMesh(g, G.box(0.16, 0.02, 4.6), M.stripe, (i - 2) * 2.4, 0.09, FZ + 2.9);
-      }
-      for (let i = -1; i <= 1; i++) addMesh(g, G.cyl(0.16, 1.0), M.gold, i * (W / 2 + 2.4), 0.5, FZ + 1.1, { cast: true });
-      for (let i = 0; i < k.cars; i++) parkedCar(g, (i - (k.cars - 1) / 2) * 2.4, FZ + 2.9, i % 2 ? 0.02 : -0.02, i);
-
-      // ---- the door: a queue barrier. The row is dressed, not open for trade yet ----
-      for (const s of [-1, 1]) addMesh(g, G.cyl(0.09, 0.95), M.gold, s * (gap / 2 + 0.35), 0.48, FZ + 1.0, { cast: true });
-      addMesh(g, G.box(gap + 0.9, 0.09, 0.09), M.rope, 0, 0.92, FZ + 1.0);
-
-      // ---- collision, camera occluder, crowd, minimap ----
-      const step = 2.6;
-      for (let lx = -W / 2; lx <= W / 2 + 0.01; lx += step) {
-        for (const lz of [FZ - 0.2, -FZ + 0.2]) {
+      // ---- interior: the floor, then the venue's own fixture list ----
+      add(G.box(W - 0.8, 0.12, D - 0.8),
+        M.of("crown carpet " + v.id, v.theme.interior, { roughness: 0.95 }), 0, 0.06, 0);
+      const b = {
+        v, g, G, M, W, D, H, FZ, add,
+        block: (lx, lz, r) => { const p = crownToWorld(v, lx, lz); addBlocker(p.x, p.z, r); },
+        lit: (lx, y, lz, power, range) => {
           const p = crownToWorld(v, lx, lz);
-          addBlocker(p.x, p.z, 1.3);
+          addLitSpot({ x: p.x, y, z: p.z, warm: v.theme.accent, power, range, fx: false });
+        },
+      };
+      for (const s of v.layout) { const f = FIXTURES[s.fixture]; if (f) f(b, s); }
+      for (const p of v.props || []) { const f = PROPS[p]; if (f) f(b); }
+
+      // ---- forecourt: apron, painted bays, parked cars, valet kerbs ----
+      const fz = FZ + fore / 2;
+      add(G.box(W + 12, 0.06, fore), M.lot, 0, 0.035, fz);
+      // The valet row is split either side of the entrance, never across it: an
+      // enterable building needs an unbroken path from the kerb to the door.
+      const aisle = gap / 2 + 2.4, pitch = 3.0, perSide = Math.max(1, Math.floor(cars / 2));
+      const carX = [];
+      for (let i = 0; i < perSide; i++) for (const s of [-1, 1]) carX.push(s * (aisle + 1.6 + i * pitch));
+      for (const x of carX) add(G.box(0.16, 0.02, 5.0), M.stripe, x, 0.09, FZ + 3.4);
+      carX.forEach((x, i) => parkedCar(g, x, FZ + 3.4, i % 2 ? 0.02 : -0.02, i));
+      for (const s of [-1, 1]) add(G.cyl(0.18, 1.1), M.gold, s * (W / 2 + 3.2), 0.55, FZ + 1.4, { cast: true });
+
+      // ---- collision: the shell, with the entrance left OPEN so you can walk in.
+      //      Circles are spaced so they touch; the front row skips the doorway, and
+      //      the door posts stop a car without stopping a person. ----
+      const step = 2.4;
+      for (let lx = -W / 2; lx <= W / 2 + 0.01; lx += step) {
+        let p = crownToWorld(v, lx, -FZ + T / 2);
+        addBlocker(p.x, p.z, 1.2);
+        if (Math.abs(lx) > gap / 2 + 0.2) {
+          p = crownToWorld(v, lx, FZ - T / 2);
+          addBlocker(p.x, p.z, 1.2);
         }
       }
       for (let lz = -FZ; lz <= FZ + 0.01; lz += step) {
-        for (const lx of [-W / 2 + 0.2, W / 2 - 0.2]) {
-          const p = crownToWorld(v, lx, lz);
-          addBlocker(p.x, p.z, 1.3);
+        for (const s of [-1, 1]) {
+          const p = crownToWorld(v, s * (W / 2 - T / 2), lz);
+          addBlocker(p.x, p.z, 1.2);
         }
       }
-      addOccluder(v.x, v.cz, W, D, H);
-      for (let i = 0; i < k.cars; i++) {
-        const p = crownToWorld(v, (i - (k.cars - 1) / 2) * 2.4, FZ + 2.9);
-        addBlocker(p.x, p.z, 2.4);
+      for (const s of [-1, 1]) {
+        const p = crownToWorld(v, s * (gap / 2 + 0.25), FZ - 0.2);
+        addBlocker(p.x, p.z, 0.5);
       }
+      for (const x of carX) {
+        const p = crownToWorld(v, x, FZ + 3.4);
+        addBlocker(p.x, p.z, 2.6);
+      }
+      addOccluder(v.x, v.cz, W, D, H);
 
-      pois.push({ x: v.x, z: v.entranceZ, r: 6, label: v.name });
-      if (k.cars > 0) pois.push({ x: v.x, z: (v.facadeZ + v.entranceZ) / 2, r: 8 });
+      pois.push({ x: v.x, z: v.entranceZ, r: 10, label: v.name });
+      pois.push({ x: v.x, z: (v.facadeZ + v.entranceZ) / 2, r: 12 });
       C.minimap.buildings.push(v.hall);
 
-      // ---- light: neon spill on the pavement (fx:false = a real pool light with
-      //      no beam, so it reads as a lit sign rather than a street lamp), plus
-      //      one true lamp per pair of venues ----
-      addLitSpot({ x: v.x, y: 5.2, z: v.entranceZ, warm: v.neon, power: 62, range: 22, fx: false });
-      addLitSpot({ x: v.x, y: 4.6, z: v.facadeZ - v.side * 0.8, warm: v.neon, power: 40, range: 16, fx: false });
-    }
+      // ---- light: neon spill on the pavement and under the canopy (fx:false = a
+      //      pool light with no beam, so it reads as a lit sign and not a street
+      //      lamp), an avenue lamp off the forecourt, and interior spill so the
+      //      floor stays lit once the roof lifts. One pole per venue, not a grid:
+      //      a grid drops poles inside whatever else the block holds. ----
+      const ep = crownToWorld(v, 0, FZ + 1.5);
+      addLitSpot({ x: ep.x, y: 6.6, z: ep.z, warm: v.neon, power: 110, range: 32, fx: false });
+      addLitSpot({ x: v.x, y: 4.6, z: v.facadeZ - v.side * 0.8, warm: v.theme.accent, power: 55, range: 20, fx: false });
+      addLitSpot({ x: v.x, y: 7.5, z: CROWN_AVE_Z + v.side * 7.6, warm: 0xffd6a0, power: 115, range: 28, pole: true });
+      for (let i = -1; i <= 1; i++) {
+        const p = crownToWorld(v, i * W * 0.28, -D * 0.15);
+        addLitSpot({ x: p.x, y: H - 2.2, z: p.z, warm: v.theme.accent, power: 60, range: 22, fx: false });
+      }
 
-    // the avenue, lit venue by venue rather than on a grid: one pole on the kerb
-    // outside each forecourt. A grid would drop lamps inside whatever else the
-    // block holds — Willowbrook School is on the avenue's west end.
-    for (const v of CROWN) {
-      addLitSpot({ x: v.x, y: 7, z: CROWN_AVE_Z + v.side * 7.6, warm: 0xffd6a0, power: 105, range: 26, pole: true });
+      rec.walls = walls;
+      crownRecs.push(rec);
     }
 
     // ---- the gate: over US-167, facing south, so the strip announces itself to
@@ -403,7 +778,8 @@ export function createTusouxroeNorth(ctx) {
         addLitSpot({ x: gx + s * px, y: 5.5, z: gz + 1.6, warm: 0xffb31a, power: 70, range: 20, pole: true });
       }
       addMesh(g, G.box(px * 2 + 1.7, 1.9, 0.5), M.trim, 0, 10.6, 0, { cast: true });
-      for (const s of [-1, 1]) addMesh(g, G.box(px * 2 - 2, 1.4, 0.18), crownSignMat("CROWN STRIP", "#ffcf4a"), 0, 10.6, s * 0.36);
+      for (const s of [-1, 1]) addMesh(g, G.box(px * 2 - 2, 1.4, 0.18),
+        crownSignMat("CROWN STRIP", "#ffcf4a", { w: px * 2 - 2, h: 1.4 }), 0, 10.6, s * 0.36);
       addLitSpot({ x: gx, y: 10.4, z: gz, warm: 0xffb31a, power: 55, range: 26, fx: false });
     }
 
@@ -655,13 +1031,73 @@ export function createTusouxroeNorth(ctx) {
     props,
     crown: CROWN_STRIP,          // the casino/nightlife row, as data (see CROWN_STRIP)
 
+    /** The venue the player is standing in, or null (QA, and future interiors). */
+    get insideVenue() { return crownRecs.find((r) => r.inside)?.v.name ?? null; },
+
+    /**
+     * QA: the cutaway's state, per venue. `roofVisible:false` and a `wallScale`
+     * near 0.22 is the open, walk-in state; `true` / `1` is a sealed building.
+     */
+    get crownDebug() {
+      return crownRecs.map((r) => ({
+        name: r.v.name,
+        inside: r.inside,
+        roofVisible: r.roof ? r.roof.visible : null,
+        wallScale: r.walls.length ? r.walls.reduce((m, w) => Math.max(m, w.scale.y), 0) : null,
+      }));
+    },
+
+    /**
+     * Radar badges, one per venue door. `minimap.js` already has `casino` and
+     * `club` badge kinds; main.js's blip loop has to call this for it to appear
+     * (see the integration note on TASK-070).
+     */
+    blips() {
+      return CROWN.map((v) => {
+        const p = crownToWorld(v, 0, v.d / 2 + 2);
+        return { kind: v.kind === "casino" ? "casino" : "club", x: p.x, z: p.z };
+      });
+    },
+
+    /** F pressed: a line about the venue you are standing at the door of, or false. */
+    interact() {
+      if (!crownPrompt) return false;
+      if (ctx.flashObjective) ctx.flashObjective(`${crownPrompt.v.name} — ${crownPrompt.v.blurb}`);
+      return true;
+    },
+
     /**
      * Distance culling, as East Bank and West Parish already had it. Without this
      * the composer's clusters were never hidden: 7,313 meshes drew from anywhere on
-     * the map, at every camera, forever.
+     * the map, at every camera, forever. Then the Crown Strip's cutaway.
+     *
+     * Standing inside a mega-venue lifts its roof group — the slab, the door
+     * header, the canopy, the fascia and its one name sign — and drops the outer
+     * walls to knee height, which is nightlife.js's technique for a club, at four
+     * times the footprint. Nothing else toggles per frame: interior light is baked
+     * into `litSpots` at build time, so no light is ever created or hidden here
+     * (AGENT_PROTOCOL §6 forbids exactly that).
      */
     update(dt, playerPos) {
       C.update(dt, ctx.camera ? ctx.camera.position : playerPos);
+      if (!playerPos) return;
+
+      crownPrompt = null;
+      for (const r of crownRecs) {
+        const v = r.v;
+        const l = crownToLocal(v, playerPos.x, playerPos.z);
+        const isIn = Math.abs(l.x) < v.w / 2 - 0.4 && Math.abs(l.z) < v.d / 2 - 0.4;
+        r.inside = isIn;
+        r.roof.visible = !isIn;
+        for (const m of r.walls) m.scale.y += ((isIn ? WALL_DROP : 1) - m.scale.y) * Math.min(1, dt * 7);
+        for (const m of r.fixed) m.visible = !isIn;
+        // at the door, on the street side: offer the venue's line (F)
+        if (!isIn && Math.abs(l.x) < v.door / 2 + 1.6 && Math.abs(l.z - v.d / 2) < 5) crownPrompt = r;
+      }
+      if (crownPromptEl) {
+        crownPromptEl.hidden = !crownPrompt;
+        if (crownPrompt) crownPromptEl.innerHTML = `<b>F</b> · ${crownPrompt.v.name} — ${crownPrompt.v.blurb}`;
+      }
     },
 
     lanes: [

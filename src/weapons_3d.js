@@ -59,7 +59,16 @@
 //   muzzleOffset    the muzzle, in model space
 //   foregrip        the support hand's target, in grip-node space
 //   recoil          { pitch, yaw, kick, time } — a rotation about the grip
-//   layer           renderOrder (presentation depth ordering)
+//   layer           renderOrder, for anything that has to draw over the body
+//
+// On layering: this is a 3-D, fully depth-tested scene, so what puts the hand in
+// front of the grip, or behind it, per pixel, is the depth buffer — the correct
+// answer for free, and the reason parenting alone settles what used to be a
+// sprite layering problem. `layer` is the hook for parts that must ignore depth:
+// today every weapon material is opaque and a firearm sits at 1 and a bat at 2
+// (in front of the character's merged meshes at 0), so it is a tiebreaker rather
+// than a fix-up. Nothing here reaches for a screen-space offset, because there is
+// no screen-space position to get wrong.
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
@@ -551,6 +560,7 @@ export function playFireAnim3D(weaponId, isMelee) {
   // player clip end together instead of the pose popping off mid-swing.
   const t = isMelee ? 0.42 : def.recoil.time;
   rig.anim = { type: isMelee ? "swing" : "fire", time: t, duration: t };
+  return rig.anim.type;
 }
 
 /** Called when a reload starts, so the weapon dips and comes back up. */
@@ -563,11 +573,36 @@ export function notifyReload3D(weaponId, seconds) {
   rig.anim = { type: "reload", time: t, duration: t };
 }
 
-/** QA: the live rig, for a headless pass to interrogate. */
+/**
+ * QA: the live rig, for a headless pass to interrogate.
+ *
+ * `state` is the presentation state named in one word, derived from the same
+ * fields the game sets — so a test (or a debug HUD) can assert that what the
+ * character LOOKS like is what the weapon IS doing:
+ *
+ *   idle | aiming | firing | reloading | melee_attacking
+ *
+ * It is derived, never assigned: `aiming` comes from the pose blend, `firing`
+ * and `melee_attacking` and `reloading` from the animation the gameplay layer
+ * started. There is no second copy of the state to fall out of sync.
+ */
 export function weaponRigState() {
+  const aiming = rig.actor && rig.actor.weaponHold ? !!rig.actor.weaponHold.aim : false;
+  const state = rig.anim.type === "reload" ? "reloading"
+    : rig.anim.type === "swing" ? "melee_attacking"
+      : rig.anim.type === "fire" ? "firing"
+        : aiming ? "aiming" : "idle";
   return {
     id: rig.id, attached: !!(rig.actor && rig.grip), hidden: !!(rig.grip && !rig.grip.visible),
-    anim: rig.anim.type, muzzleOffset: rig.def ? rig.def.muzzleOffset.slice() : null,
+    anim: rig.anim.type, state,
+    muzzleOffset: rig.def ? rig.def.muzzleOffset.slice() : null,
     handOffset: rig.def ? rig.def.handOffset.slice() : null,
+    foregrip: rig.def && rig.def.foregrip ? rig.def.foregrip.slice() : null,
+    twoHanded: !!(rig.def && rig.def.twoHanded),
   };
+}
+
+/** The muzzle in the weapon's own frame — the point effects should start from. */
+export function weaponMuzzleOffset() {
+  return rig.def ? rig.def.muzzleOffset.slice() : null;
 }

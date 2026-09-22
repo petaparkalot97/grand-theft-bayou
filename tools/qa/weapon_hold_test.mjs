@@ -79,6 +79,36 @@ function tick(weaponId, { aim, firing = false, frames = 1, dt = 1 / 60, yaw = 0,
   return cam;
 }
 
+// ---------------------------------------------------------------- 0. the foundation
+// Everything below rests on solveArm, the analytic two-bone IK that places the
+// support hand: if it is not EXACT on its target, "the hand is on the foregrip"
+// can only ever be approximate, and every threshold after this is guesswork.
+// Solved over a wide spread of reachable targets, it must land the fist on the
+// target itself — not near it.
+{
+  const arm = actor.leftArm;
+  const S = arm.pivot.position.clone();
+  const reach = arm.upper + arm.fore;
+  let worst = 0, n = 0;
+  for (let i = 0; i < 200; i++) {
+    const r = 0.08 + (i % 9) * 0.045;                     // within the chain's 0.51 m
+    if (r > reach - 0.02) continue;
+    const az = (i / 200) * Math.PI * 2;
+    const el = -0.7 + 1.2 * Math.sin(i * 1.7);
+    const target = S.clone().add(new THREE.Vector3(
+      Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el),
+    ).multiplyScalar(r));
+    actor.weaponHold = { kind: "long", aim: true, support: target.clone().applyMatrix4(actor.torso.matrixWorld) };
+    actor.applyWeaponHold(0);
+    actor.updateMatrixWorld(true);
+    worst = Math.max(worst, actor.torso.worldToLocal(handWorld(arm).clone()).distanceTo(target));
+    n++;
+  }
+  check("the arm solver lands the fist exactly on its target", worst < 1e-6,
+    `worst of ${n} targets: ${worst.toFixed(8)}m (chain ${reach.toFixed(3)}m)`);
+  actor.weaponHold = null;
+}
+
 // ---------------------------------------------------------------- 1. grip in the fist
 // The grip node's world position must coincide with the hand socket. This is the
 // single assertion that "the hand touches the grip" reduces to: if the grip is
@@ -319,7 +349,33 @@ for (const id of Object.keys(WEAPON_RIGS)) {
   check("exactly one grip node exists after switching", grips.length === 1, `found ${grips.length}`);
 }
 
-// ---------------------------------------------------------------- 10. hidden rig
+// ---------------------------------------------------------------- 10. the named presentation state
+// The task asked for weapon states (idle / aiming / firing / reloading /
+// melee_attacking) that always reflect gameplay. They are DERIVED here from the
+// same flags the game sets, so this asserts the mapping rather than a second
+// copy of the state that could drift.
+{
+  tick("pistol", { aim: false, frames: 10 });
+  check("state: idle on foot, not aiming", weaponRigState().state === "idle", weaponRigState().state);
+  tick("pistol", { aim: true, frames: 20 });
+  check("state: aiming while the aim button is down", weaponRigState().state === "aiming", weaponRigState().state);
+  playFireAnim3D("pistol", false);
+  tick("pistol", { aim: true, frames: 1 });
+  check("state: firing on the frame after a shot", weaponRigState().state === "firing", weaponRigState().state);
+  tick("pistol", { aim: true, frames: 40 });
+  check("state: back to aiming once the recoil settles", weaponRigState().state === "aiming", weaponRigState().state);
+  notifyReload3D("pistol", 1.1);
+  tick("pistol", { aim: true, frames: 1 });
+  check("state: reloading while the weapon dips", weaponRigState().state === "reloading", weaponRigState().state);
+  tick("pistol", { aim: true, frames: 90 });
+  playFireAnim3D("bat", true);
+  tick("bat", { aim: false, frames: 1 });
+  check("state: melee_attacking while the bat swings", weaponRigState().state === "melee_attacking", weaponRigState().state);
+  tick("bat", { aim: false, frames: 40 });
+  check("state: idle after the swing", weaponRigState().state === "idle", weaponRigState().state);
+}
+
+// ---------------------------------------------------------------- 11. hidden rig
 {
   updateWeapon3D(actor, playerPos, new THREE.Vector3(0, 0, 1), "pistol", 1 / 60, false, true);
   const st = weaponRigState();
@@ -329,7 +385,7 @@ for (const id of Object.keys(WEAPON_RIGS)) {
   check("weapon comes back after the cutscene", weaponRigState().hidden === false);
 }
 
-// ---------------------------------------------------------------- 11. fire modes & the trigger loop
+// ---------------------------------------------------------------- 12. fire modes & the trigger loop
 // This drives the same rule main.js's tick uses, against the real weapon table.
 {
   for (const [id, w] of Object.entries(WEAPONS)) {
@@ -364,7 +420,7 @@ for (const id of Object.keys(WEAPON_RIGS)) {
   check("all firearms have a muzzle offset", ["pistol", "tec9", "sawnoff", "deerRifle"].every((k) => WEAPON_RIGS[k].muzzleOffset.length === 3));
 }
 
-// ---------------------------------------------------------------- 12. render layering
+// ---------------------------------------------------------------- 13. render layering
 {
   for (const [id, def] of Object.entries(WEAPON_RIGS)) {
     tick(id, { aim: false, frames: 5 });
@@ -375,8 +431,23 @@ for (const id of Object.keys(WEAPON_RIGS)) {
     check(`[${id}] render layer applied to every part`, worst === 0, `max delta ${worst}`);
     check(`[${id}] melee renders in front of firearms`, def.type === "melee" ? def.layer >= 1 : def.layer >= 0);
   }
-  for (const def of Object.values(WEAPON_RIGS)) {
-    check(`[${def.type || "?"}] weapon parts are excluded from the static batcher`, true);
+  // Weapons are welded to a moving actor, so the two scene-wide systems that
+  // assume things DON'T move must both be told to leave them alone: the static
+  // batcher (which would merge them into a world mesh) and frustum culling (which
+  // would drop them when the camera is close to the body).
+  for (const [id, def] of Object.entries(WEAPON_RIGS)) {
+    tick(id, { aim: false, frames: 5 });
+    const grip = actor.rightArm.hand.getObjectByName("weaponGrip");
+    let parts = 0, unbatchable = 0, unculled = 0;
+    grip.traverse((o) => {
+      if (!o.isMesh) return;
+      parts++;
+      if (o.userData.noBatch) unbatchable++;
+      if (o.frustumCulled === false) unculled++;
+    });
+    check(`[${id}] every part is excluded from the static batcher (${parts} meshes)`,
+      parts > 0 && unbatchable === parts, `${unbatchable}/${parts}`);
+    check(`[${id}] no part is frustum-culled (it rides a moving actor)`, unculled === parts, `${unculled}/${parts}`);
   }
 }
 

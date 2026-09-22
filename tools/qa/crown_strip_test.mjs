@@ -78,6 +78,15 @@ const district = createTusouxroeNorth({
 
 const V = CROWN_STRIP.venues;
 
+// The fixture and prop builders that `buildVenue()` is allowed to dispatch to.
+// Restated on purpose: a layout entry naming a fixture that does not exist would
+// otherwise be a silent hole in a floor plan.
+const FIXTURES = new Set(["partition", "slotBank", "gamingTable", "bar", "stage", "danceFloor",
+  "djBooth", "vip", "seating", "poolTable", "backRoom", "chandelier", "discoBall"]);
+const PROPS = new Set(["glove", "pig", "disco"]);
+// North Ave 2 (z = -320) to North Ave 3 (z = -380), minus both 6.1 m corridors.
+const DEPTH_BUDGET = 60 - 6.1 * 2;
+
 console.log(`\nCrown Strip layout — ${V.length} venues on ${CROWN_STRIP.avenue.name} (z = ${CROWN_STRIP.avenue.z})\n`);
 
 // ---- the row itself -------------------------------------------------------
@@ -86,11 +95,35 @@ check("names are unique", new Set(V.map((v) => v.name)).size === V.length);
 check("every kind is a known hall", V.every((v) => v.k.d && v.k.w > 0 && v.k.d > 0 && v.k.h > 0));
 check("both terraces are used", new Set(V.map((v) => v.side)).size === 2);
 check(
-  "the row is a row of casinos and bars/clubs",
-  kinds.casino >= 5 && (kinds.bar || 0) + (kinds.club || 0) >= 9,
+  "the row is four merged mega-venues",
+  V.length === 4 && kinds.casino === 1 && kinds.club === 2 && kinds.lounge === 1,
   JSON.stringify(kinds),
 );
 check("no two venues in the same slot", new Set(V.map((v) => `${v.side}:${v.x}`)).size === V.length);
+
+// ---- each venue is data, and the data is complete -------------------------
+check("every venue declares an interior theme", V.every((v) => typeof v.interior === "string" && v.interior));
+check("every venue has a palette, a sign and a layout",
+  V.every((v) => v.theme && v.theme.accent && v.sign && v.sign.h > 0 && Array.isArray(v.layout) && v.layout.length >= 5));
+check("every layout entry names a real fixture",
+  V.every((v) => v.layout.every((s) => FIXTURES.has(s.fixture))),
+  V.flatMap((v) => v.layout.filter((s) => !FIXTURES.has(s.fixture)).map((s) => s.fixture)).join(", "));
+check("every special prop names a real prop builder",
+  V.every((v) => (v.props || []).every((p) => PROPS.has(p))));
+check("the merged venues kept a landmark prop",
+  V.some((v) => (v.props || []).includes("glove")) && V.some((v) => (v.props || []).includes("pig")));
+check("every entrance is wide enough to walk through",
+  V.every((v) => v.k.door >= 8), V.map((v) => `${v.name}:${v.k.door}`).join(" "));
+check("the interiors are places, not cupboards",
+  V.every((v) => v.k.w * v.k.d >= 1000),
+  V.map((v) => `${v.name}:${v.k.w}x${v.k.d}`).join(" "));
+check("no hall is deeper than the block it sits in",
+  V.every((v) => v.k.fore + v.k.d <= DEPTH_BUDGET), V.map((v) => `${v.name}:${v.k.fore + v.k.d}`).join(" "));
+check("one entrance each: a door is narrower than the facade it is cut into",
+  V.every((v) => v.k.door < v.k.w));
+check("no leftover signage from the venues that merged",
+  V.every((v) => !/pelican crown|gator's fortune|honeysuckle|brass alligator|midnight special|le bon temps|honeydripper/i.test([v.name, v.sign.sub].join(" "))),
+  "BAYOU GOLD / BILLY JEANS / DISCO GATORS / HAPPY HOGS only");
 
 // ---- nothing stands on anything else --------------------------------------
 let pairHits = [];

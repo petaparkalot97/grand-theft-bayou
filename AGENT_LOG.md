@@ -114,6 +114,155 @@ calling it fully closed.
 
 ## 2026-09-22 — Freebuff
 
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — the Crown Strip becomes four mega-venues
+
+### Finding — a row of fourteen becomes four, and the builder becomes data
+
+The human asked for the strip to be four merged venues with walk-in interiors, not
+four more hand-written functions. `CROWN_VENUES` in `src/tusouxroeNorth.js` is now
+four entries — BAYOU GOLD (Pelican Crown Casino + Bayou Gold), BILLY JEANS (Gator's
+Fortune + Honeysuckle), DISCO GATORS (The Brass Alligator + Midnight Special) and
+HAPPY HOGS (Le Bon Temps + The Honeydripper) — each carrying its own dimensions,
+palette, sign, interior theme, exterior props and a `layout` list. One `buildVenue()`
+walks that data through a `FIXTURES` table (partition, slotBank, gamingTable, bar,
+stage, danceFloor, djBooth, vip, seating, poolTable, backRoom, chandelier,
+discoBall) and a `PROPS` table (glove, pig, disco). A fifth venue is a new entry,
+not new code.
+
+`CROWN_KINDS` is gone; `v.k` survives as the hall spec (`w/d/h/fore/door/cars`) so
+the layout audit and `zoneAt()` read the shape they always read.
+
+### WARNING — `fore` meant two things, and the derived one won
+
+The venue definitions carry `fore: 14` (a depth in metres). The `CROWN` mapping
+spreads `...v` and then sets `fore:` to the forecourt **rect**, so later key wins:
+`v.fore` became an object. `FZ + v.fore / 2` was `NaN`, and 40 meshes landed at
+`z = NaN`. It only showed because `crown_build_test.mjs` asserts every transform is
+finite. `buildVenue()` now reads `v.k.fore` / `v.k.cars` and says why in a comment.
+Do not "tidy" that back.
+
+### Finding — the batch sweep and a cutaway can coexist, per mesh
+
+The strip used to be added straight to the scene so `batchStatic` could merge it.
+Interiors that lift a roof and scale walls seem to rule that out — but merge.js has
+had the escape hatch since TASK-011: `o.userData.noBatch` skips one mesh. So the
+venue groups stay normal scene roots, and only the meshes the cutaway moves (the
+roof group's 7 and the outer walls' 7, 56 per district) are marked. Executed in the
+QA sandbox against the real `merge.js`: **738 meshes → 76 in 50 batches, 74 material
+signatures, and all 56 moving meshes still present**, with the cutaway still opening
+afterwards.
+
+This is the pattern to copy for any future animated world geometry: mark the mover,
+not the district. `tusouxroeNorth.props` is empty and main.js's `moving`/
+`cullGroups` entries for it are no-ops — do not "fix" that by pushing venue groups
+in, which would un-batch every interior in the strip.
+
+### Finding — the audit caught a car park across the front door
+
+With the door now a real opening, the valet row was still parked on the centre line
+of the forecourt: the audit walks a collider down the doorway's centre line and
+found a 2.6 m car blocker at 2.98 m, closer than `r + body`. The row is now split
+either side of an `gap/2 + 2.4` aisle. The same check proves **no blocker from the
+old fourteen venues survives** — every blocker inside `CROWN_STRIP.rect` belongs to
+one of the four halls or their forecourts (or the gateway arch).
+
+### Finding — depth is the tight axis, not width
+
+North Ave 2 (z = -320) to North Ave 3 (z = -380) leaves ~47.8 m after both 6.1 m
+corridors. The old casino was already 34 m of it. So the mega-venues grow **along
+the avenue** (48–56 m wide) and stay 38–44 m deep; the audit asserts the budget, not
+just "no overlap".
+
+### INTERFACE — `tusouxroeNorth` and the Crown Strip
+
+Unchanged and still wired by existing plumbing: `pois` → `NPC_POIS`, `occluders` →
+`losBoxes`, `minimap` → the map, `zoneAt` → `spawnzones.js`'s `extraZone`.
+New, and needing two `main.js` one-liners (recorded on TASK-070):
+- `interact()` — returns `false` anywhere but a venue door, so it is safe in the
+  `input.onPress("interact", …)` chain.
+- `blips()` — `{ kind: "casino"|"club", x, z }` per door, for the radar loop.
+QA-only surface: `insideVenue` (name or null) and `crownDebug` (per-venue
+`{ inside, roofVisible, wallScale }`), which is what lets the headless test assert
+the cutaway without a browser.
+
+The roof-lift + wall-drop itself is nightlife.js's, at four times the footprint;
+interior light is baked into `litSpots` at build time, so no light is created,
+hidden or toggled per frame (AGENT_PROTOCOL §6).
+
+---
+
+## 2026-09-22 — Freebuff
+
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — the Crown Strip's sign rendering
+
+### Finding — the clipping bug was two bugs, and neither was the font size
+
+The human reported venue names clipped/truncated on the Crown Strip. Measuring it
+out, `crownSignTexture()` in `tusouxroeNorth.js` (and `signTexture()` in
+`nightlife.js`, and `makeNeonSign()` in `main.js`) had two independent faults:
+
+1. **No measurement.** The font size came from a rule of thumb
+   (`text.length > 15 ? 100 : 124`). At 100 px in a 1024 px canvas, Arial Black's
+   ~0.62 em advance puts "PELICAN CROWN CASINO" (20 glyphs) at ~1240 px of ink —
+   past the 996 px border, so the ends were cut off. Nothing called
+   `measureText()`.
+2. **Aspect mismatch.** The texture was always 1024x256 (4:1), but the sign faces
+   are not: a casino fascia is 24 x 2.9 m (**8.3:1**) and a club roof sign is
+   13 x 2.1 m (6.2:1). So the face smeared the texture horizontally — the name
+   read as distorted as well as clipped. Only the blade signs happened to match
+   (1.15 x 4.6 m = 1:4, and their canvas was 256x1024).
+
+### Action — one shared helper, `src/neonsign.js`
+
+New module, used by `tusouxroeNorth.js` (Crown Strip roof/blade/gateway signs),
+`nightlife.js` (club name boards) and `casinos.js` (casino fascias).
+`makeNeonSign()` in `main.js` is untouched — it is orchestrator-owned, and its
+other users (orlearouge.js, TONY'S PIZZA) are not the Crown Strip.
+
+- `neonSignTexture({ text, ink, aspect, vertical, ... })` builds the canvas at the
+  **face's own ratio** (fixed resolution on the minor axis, capped at 4096, ratio
+  preserved when it caps), so the texture is never stretched.
+- `fitFontSize(measure, text, { maxWidth, maxSize })` starts at the largest size
+  the height allows and **shrinks only** — never grows — until `measureText()`
+  reports the string inside the safe area. The loop is bounded and floors at
+  `minFontSize`, so a stub context that reports nothing cannot spin.
+- The safe area is `max(padding, border inset + line width)`, so ink can never
+  touch the stroked border. `aspectOf(a, b)` gives a box face's ratio either way.
+- Blade signs stay `vertical` and fit both the widest glyph and the stacked
+  block height; the dark-bg / neon-ink / glow / border style is unchanged.
+
+### Surprise — the height ceiling, not the width, sets short-name size
+
+`maxSize = innerH / 0.82` (not `/0.75`): the em box is taller than the cap height,
+so dividing by 0.75 let uppercase ink graze the border on the wide 17:1 gateway.
+The QA audit caught it. Verified numbers from
+`tools/qa/neonsign_test.mjs`, using a proportional Arial-Black-like metric and
+asserting every glyph run is drawn inside the border that was stroked:
+
+- **THE BRASS ALLIGATOR** (a 10 x 2.1 m bar fascia, 20 glyphs): 102 px → cap
+  height 30% of the sign. It is width-bound; no layout makes 20 glyphs large on a
+  4.8:1 board, and it is no longer cut off. Wrapping was checked and does not
+  help (the height budget then binds at ~99 px).
+- Short names stay large: 4 balls (≤10 glyphs) at **61%** cap height or better;
+  "BAYOU GOLD" keeps the full 256 px ceiling at 72%.
+- Texture aspect now matches the face to 3 decimals: casino 2119x256 (8.277),
+  club 1585x256 (6.191), bar 1219x256 (4.762), gateway 4096x239 (17.138),
+  blade 256x1024 (0.250).
+
+### WARNING — `test_buildset.mjs` was already red, and why
+
+It fails on `THREE.LoadingManager is not a constructor` in `landmarks.js`
+(`loadFBX`), from `makeDecorativeFence`/`placeOfficeClutter`. `landmarks.js`,
+`composer.js` and `test_buildset.mjs` are unmodified by this task: the stub
+`node_modules/three` has no `LoadingManager` and no `addons/`, so
+`test_buildset.mjs` and `dressing_test.mjs` cannot load the real kit in plain
+node. Pre-existing, not this change. `crown_build_test.mjs` uses its own stub
+precisely to avoid it.
+
+---
+
+## 2026-09-22 — Freebuff
+
 **Type:** DISCOVERY · **Task:** TASK-070 (the Crown Strip — casinos and bars/nightclubs north of Chatboro)
 
 ### Finding — what was built, and the contract for it
