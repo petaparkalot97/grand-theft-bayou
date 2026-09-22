@@ -150,6 +150,7 @@ reversible numbers, not a full rebalance pass).
 - `src/tusouxroeNorth.js`          (edit — the row itself, plus `CROWN_STRIP`)
 - `src/spawnzones.js`              (edit — the `entertainment` zone mix + wander profile)
 - `src/pauseMenu.js`               (edit — pins and the district label)
+- `src/interiors.js`                   (new — shared interior kit: fixtures, props, caches)
 - `src/neonsign.js`                    (new — shared measured-text neon sign helper)
 - `src/nightlife.js`                   (edit — club name boards now fitted via `neonsign.js`)
 - `src/casinos.js`                     (edit — casino fascias now fitted via `neonsign.js`)
@@ -267,11 +268,32 @@ from primitives instead. Passing it would make the three existing calls at
   can walk into (doorways 8–10 m, aisles left clear).
 - **Refactor, not four more functions:** `buildVenue()` is one builder driven by a
   venue's own `w/d/h/fore/door/cars`, `theme` palette, `sign`, `interior`, `props`
-  and a `layout` list, dispatched through a `FIXTURES` table (partition, slotBank,
-  gamingTable, bar, stage, danceFloor, djBooth, vip, seating, poolTable, backRoom,
-  chandelier, discoBall) and a `PROPS` table (glove, pig, disco). A fifth venue is a
-  new entry in `CROWN_VENUES`, not new code. `v.k` keeps the hall-spec shape the
-  layout audit and `zoneAt()` already read.
+  and a `layout` list, dispatched through the shared kit's `FIXTURES` table
+  (24 builders — runner, slotBank, roulette, cardTable, cashier, vault, barBig,
+  booths, lounge, poolTable, stage, speakers, danceFloor, djBooth, columns, vipDeck,
+  privateRoom, dressingRoom, chandelier, discoBall, neonBrand, decorWall, rail, desk)
+  and `PROPS` (glove, pig, disco). A fifth venue is a new entry in `CROWN_VENUES`,
+  not new code; a fifth *furniture type* is one function in `src/interiors.js`.
+  `v.k` keeps the hall-spec shape the layout audit and `zoneAt()` already read.
+- **The furniture is a module, not a copy (2026-09-22, later still):** each venue has
+  a real, playable floor plan — BAYOU GOLD runs a carpet spine from the door to a
+  vault door with four slot banks either side of it, a two-wheel roulette pit, a
+  blackjack row, a cashier's cage, a VIP deck and a long bar; BILLY JEANS is a long
+  bar, booths, two pool tables and a stage with PA stacks, a dressing room and an
+  office behind; DISCO GATORS is a lit dance deck with a rail, a DJ booth and
+  screens, two bars, a VIP deck and a live stage; HAPPY HOGS is a poled stage, a
+  rail, audience booths, two bars and a private room. Nothing in a venue is
+  hard-coded: `CROWN_VENUES[].layout` is the plan. Per-venue palettes, all fixtures
+  and both exterior props live in `src/interiors.js`, which imports only three and
+  takes its geometry/material caches from the district — so slot machines, chairs,
+  bottles and mirror balls are memoised geometry plus one `InstancedMesh` per group,
+  not hundreds of meshes (4 slot banks in BAYOU GOLD are **8 draw primitives**).
+- **Interaction points, not a new framework:** fixtures call `b.station()`, which
+  records a world point on the venue record. Standing inside, the nearest point
+  within 3.4 m takes over the existing prompt chip and F flashes its line —
+  "Slots — $10 a spin", the cage, the bar, the vault, the DJ, VIP. 24 points across
+  the four venues, exposed as `crownStations` for QA. Gambling itself is still
+  TASK-059; this is where it hooks in.
 - **Interiors are nightlife.js's cutaway**, at four times the footprint: inside, the
   roof group (slab, door header, canopy, fascia, name sign) hides and the outer walls
   scale to 0.22 from a floor pivot. Interior light is baked into `litSpots` at build
@@ -282,13 +304,19 @@ from primitives instead. Passing it would make the three existing calls at
   venues survives anywhere in the strip.
 - **Batching:** venue groups stay in the scene and only the 56 cutaway-moved meshes
   carry `userData.noBatch` (merge.js honours it per mesh), so the parish sweep still
-  merges the interiors — measured **738 district meshes → 76 in 50 batches**, with
-  all 56 moving meshes surviving and the cutaway still opening afterwards.
-- **New QA:** `crown_build_test.mjs` now executes the cutaway (roof down/up, walls
-  dropped/raised, `insideVenue`), the walkable doorway, the no-stale-collision check
-  and a real `batchStatic` run — **22/22**. `crown_strip_test.mjs` is **28/28** (four
-  venues, data completeness, fixture/prop names, door width, floor area, the depth
-  budget between North Ave 2 and 3, and no surviving old signage).
+  merges the furnished interiors — measured **704 district meshes → 92 in 59
+  batches**, 84 material signatures, with all 56 moving meshes surviving and the
+  cutaway still opening afterwards. Interiors cost **100 lit spots** in total, all
+  `fx:false` pooled spots (baked at build time; nothing created or hidden per frame).
+- **New QA:** `crown_build_test.mjs` executes the build in a vm sandbox with the
+  real kit and drive-in sign fitter loaded: the cutaway (roof down/up, walls
+  dropped/raised, `insideVenue`), the walkable doorway, the no-stale-collision check,
+  the promised interaction points, a real `batchStatic` run — and a **flood fill at
+  0.5 m per venue** that proves every game, bar, cage and stage can be walked up to
+  from the door (this is what caught the BILLY JEANS pool table sealed behind its
+  lounge). **24/24**. `crown_strip_test.mjs` is **29/29** (four venues, data
+  completeness, fixture/prop names against the real kit, door width, floor area, the
+  depth budget between North Ave 2 and 3, and no surviving old signage).
 
 **Integration notes (for Claude) — two one-liners in `main.js`; neither is required
 for the buildings, the interiors or the cutaway to work:**
@@ -1063,6 +1091,25 @@ aim-not-fire cash-ticks-up, wanted level rising) is still unbuilt.
 pooled traffic model, with visible riders using the shared `ride` pose and
 bike-sized collision radii. Added a parked push bike with pedal momentum:
 Space supplies power and releasing it lets the bike coast and slow.
+
+**Bug fix (2026-09-22, human report + screenshots):** pooled traffic bike/
+scooter riders were standing bolt upright on the seat instead of using the
+`ride` pose — `traffic.js`'s `buildCar()` called `rider.play("ride")` but
+never called `rider.update()` afterward, and `update()` is what actually
+computes the seated pose (hips dropped, knees bent, torso leaned); nothing
+else in the pooled-rider path calls it, so the rider was stuck in the rig's
+raw standing constructor pose the whole time it was pooled. Also, jacking a
+pooled bike (`hijack.js`) left the original rider mesh permanently glued to
+the vehicle as a child object — `traffic.js`'s `release()` dropped the car
+from the pool but never detached `car.rider`, so after a jack you'd see the
+player correctly seated *and* a standing "ghost" of the original rider stuck
+behind them for the rest of the vehicle's life (this is what the screenshots
+show). Fixed both in `src/traffic.js`: bake the ride pose once at creation
+(`rider.update(0)`, plus `rideHip`/`rideLean` matching `main.js`'s player
+values) and remove `car.rider` from the vehicle in `release()` (hijack.js
+already spawns/ejects a separate real NPC to represent whoever got jacked, so
+the old rider mesh has nothing left to do). `node tools/qa/traffic_test.mjs`
+still passes.
 
 **Files (expected):** `src/vehicles.js`
 (`VEHICLE_DEFS`, arcade model tuning), `src/traffic.js` or `src/npc.js`
@@ -3928,6 +3975,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/nightlife.js` | Freebuff | TASK-070 (cont.) — club name boards only | Locked by TASK-070 |
 | `src/casinos.js` | Freebuff | TASK-070 (cont.) — casino fascia only | Locked by TASK-070 |
 | `tools/qa/neonsign_test.mjs` (new) | Freebuff | TASK-070 (cont.) | Locked by TASK-070 |
+| `src/interiors.js` (new) | Freebuff | TASK-070 (cont.) — the interior kit; adopt freely | Locked by TASK-070 |
 | `src/composer.js` | Claude | TASK-041 (REVIEW) — road options | Available |
 | `tools/qa/roads.mjs` (new), `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs` | Claude | TASK-041 | Available |
 | `tools/qa/traffic_test.mjs` | Freebuff | TASK-039 | Locked |

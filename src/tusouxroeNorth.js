@@ -117,7 +117,7 @@ const CROWN_VENUES = [
       { fixture: "barBig", x: 17, z: -11, len: 12 },
       { fixture: "desk", x: -7, z: -12.5, n: 2, dx: 5 },
       { fixture: "vault", x: 0, z: -14 },
-      // structure, and the neon name over the cage
+      // structure, and the neon name over the vault end
       { fixture: "columns", x: 0, z: 0, n: 2, dx: 16, dz: 22 },
       { fixture: "chandelier", x: 0, z: 7 },
       { fixture: "chandelier", x: 0, z: -4 },

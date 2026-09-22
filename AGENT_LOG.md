@@ -65,7 +65,56 @@ I have implemented items 2 and 5 of TASK-053:
   
 ## 2026-09-22 — Claude
 
-**Type:** DISCOVERY · **Task:** new — "the brightness and the textures going white" (human report, screenshots)
+**Type:** DISCOVERY · **Task:** TASK-060 — "NPC bikes and scooters... stand on the seat upright" (human report, screenshots)
+
+### Finding
+Two bugs in `src/traffic.js`'s pooled bike/scooter riders (TASK-060), both
+visible in the human's screenshots of a moving traffic scooter:
+
+1. **Riders never get posed.** `buildCar()` creates the rider and calls
+   `rider.play("ride")`, but `play()` only sets `this.anim` — the actual
+   seated pose (`characters.js`'s `danceClip()`: hips dropped to `rideHip`,
+   knees bent, torso leaned to `rideLean`) is computed inside `update(dt)`,
+   which nothing ever calls for a pooled rider (unlike the player's own bike,
+   where `main.js`'s `drivingUpdate()` calls `player.update(dt, camera)` every
+   frame). The rider is stuck in the rig's raw constructor pose — standing,
+   `hips.position.y = 0.92`, straight legs — for its whole time pooled. Also
+   `rideHip`/`rideLean` were never set on the rider at all, only on the
+   player.
+2. **Jacking a pooled bike doesn't remove the old rider mesh.** The rider is
+   added as a child of the vehicle's `obj` (so it rides along for free without
+   its own NPC slot — intentional, per the existing comment). But
+   `release()` (called by `hijack.js` via `releaseFromTraffic`) only dropped
+   the car from the pool array; it never called `obj.remove(rider)`. Since
+   `hijack.js` already spawns a separate, real NPC to eject and drag clear of
+   the vehicle (`ctx.spawnDriver`, generic for every vehicle type), a jacked
+   bike ended up with three bodies: the newly spawned ejected NPC, the
+   player now correctly seated, and the *original* rider mesh — bug (1)'s
+   standing pose — permanently glued to the seat behind the player, since
+   nothing ever detached it. That's exactly the "I toss a sprite off the
+   scooter and sit down, but their sprite remains fixed to the scooter still
+   standing" the human described.
+
+### Impact
+Any bike/scooter in the pooled traffic population reads as broken — a rider
+floating/standing above the seat instead of astride it — and jacking one
+leaves a permanent visual ghost on that vehicle for the rest of its life
+(until it despawns and the pool rebuilds a new one via `buildCar()`).
+
+### Action
+Fixed both in `src/traffic.js`:
+- `buildCar()` now sets `rider.rideHip` / `rider.rideLean` (mirroring
+  `main.js`'s player values — `scooter` 0.05, `pushbike` 0.16, else 0.3) and
+  calls `rider.update(0)` once right after `play("ride")` to bake the seated
+  pose immediately. (The ride pose has no time-dependent motion, so one bake
+  holds for the vehicle's whole pooled lifetime — no per-frame update call
+  needed.)
+- `release(car)` now does `car.obj.remove(car.rider); car.rider = null;`
+  before dropping the car from the pool, so a jacked/wrecked bike loses its
+  rider mesh cleanly.
+- `node tools/qa/traffic_test.mjs` still passes (11/11); `tools/qa/hijack.mjs`
+  needs the browser-automation harness to run and wasn't exercised this
+  session — worth a live playtest pass to confirm the jacked-bike visual.
 
 ### Finding
 Human reported two things that looked separate but traced to the same class
@@ -113,6 +162,75 @@ game. Reasoned from live-measured intensities; wants a real-GPU look before
 calling it fully closed.
 
 ## 2026-09-22 — Freebuff
+
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — the Crown Strip's interiors become a module
+
+### Finding — the venue is data, so the furniture had to stop being the district's
+
+The four mega-venues were driven by a `layout` list, but the 13 builders that list
+named lived *inside* `buildCrownStrip()`, in `tusouxroeNorth.js`. That is the wrong
+seam: a slot bank, a bar back, a dressing table or a mirror ball is the same builder
+wherever it stands, and the district was 300 lines read only by a dedicated
+subsystem. They now live in **`src/interiors.js`** — `FIXTURES` (24), `PROPS` (3),
+plus `makeGeoCache()` / `makeKit()` / `instanced()`. It imports only `three`, and
+takes everything else through the `b` context, so it cannot see a scene, a venue or a
+palette it was not handed.
+
+`crownGeo()` and `crownMat()` in the district are now three lines each — they *are*
+the kit's caches plus the street-only pieces (stone, lot, stripe, tyre, car paint).
+One implementation, not two.
+
+### WARNING — the QA sandbox flattens modules into one scope
+
+`tools/qa/crown_build_test.mjs` loads sources with `vm.runInContext` after stripping
+`import`/`export`, so every module's top-level names share one lexical scope. This
+module and `merge.js` both declared a module-scope `_m` (a scratch `Matrix4`):
+`SyntaxError: Identifier '_m' has already been declared`, thrown when *merge.js*
+loaded, pointing at a file that was not the problem. Interiors.js's scratch set is
+now `_mOne/_qOne/_vOne/_sOne/_eOne` with a comment saying why. Any new module in this
+repo's sandbox should assume it shares that scope — and `FIXTURES`/`PROPS` must be
+imported under their real names (no `as` aliases) or the sandbox needs a shim.
+
+### Finding — a material's `name` is free; do not use it for anything but identity
+
+Kit builders ask for materials venue-agnostically (`b.m("slot body", …)`). The
+district prefixes them (`crown slot body`), so every strip material is still
+recognisable in the batch dump and `merge.js`'s material signature — which does
+**not** include `name` — still merges two halls' identical slot bodies into one
+batch. Prefixing with the venue id instead would have been the tempting mistake:
+it would silently quadruple the material count (84 signatures today).
+
+### Finding — the flood fill caught a table nobody could reach
+
+`crown_build_test.mjs` now grids each hall at 0.5 m, marks every cell a walker of
+radius 0.45 m cannot stand in, flood-fills from the doorway, and requires every
+interaction point to have a reached cell within 1.5 m. It failed on the second
+BILLY JEANS pool table: its blocker (r = 1.8) and the lounge sofa's (r = 1.6) left a
+**negative** gap, sealing the pocket the player would stand in. The lounge moved to
+the far side of the entrance. A layout is not correct because it looks correct.
+
+### Finding — the existing prompt chip is the interaction system
+
+The district only had a door line. Rather than invent a second one, fixtures call
+`b.station(lx, lz, kind, label)`; the venue record keeps world points, and `update()`
+lets the nearest one within 3.4 m take over `crownPrompt` (which became `{v, text}`).
+`interact()` flashes that line through the same objective channel. 24 points: slots,
+roulette, blackjack, cage, vault, bars, pool, stage, DJ, VIP. No new input handling,
+no new UI, and TASK-059 can hang gambling off `crownStations`.
+
+### INTERFACE — the kit's `b` context (for `interiors.js` authors)
+
+`b.v`, `b.g`, `b.W/b.D/b.H/b.FZ` (the hall, in metres), `b.G`/`b.M` (shared caches),
+`b.add(geo, mat, x, y, z, opt)`, `b.inst(geo, mat, list, opt)`,
+`b.m`/`b.e`/`b.gl(name, color[, extra])`, `b.sign(text, ink, {x,y,z,w,h[,ry]})`,
+`b.block(lx, lz, r)` (collision, local space → the district's `addBlocker`),
+`b.lit(lx, y, lz, power, range)` (a pooled spot, `fx:false`), and
+`b.station(lx, lz, kind, label)`. All positions are **local to the hall**; only `b`
+knows world space. Anything a fixture wants that is not in that list is a kit change,
+not a fixture reaching around it.
+
+QA-only surface added: `crownStations` — every interaction point in world space.
+
 
 **Type:** DISCOVERY · **Task:** TASK-070 (cont.) — the Crown Strip becomes four mega-venues
 

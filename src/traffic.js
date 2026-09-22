@@ -140,14 +140,23 @@ export function createTraffic(o) {
     // Procedural bikes are real traffic vehicles, not empty moving props. Keep
     // the rider as a child of the pooled vehicle so it follows lane transforms
     // and costs no separate NPC simulation slot.
+    let rider = null;
     if (v.def && v.def.bike && o.makeRider) {
-      const rider = o.makeRider();
+      rider = o.makeRider();
       rider.position.set(0, v.def.seat?.y || 0.8, v.def.seat?.z || 0);
       rider.rotation.y = Math.PI;
+      // matches main.js's drivingUpdate() rideHip/rideLean for the player
+      rider.rideHip = v.def.seat?.y ?? 0.9;
+      rider.rideLean = v.def.name === "scooter" ? 0.05 : v.def.name === "pushbike" ? 0.16 : 0.3;
       rider.play?.("ride", { force: true });
+      // play() alone only sets `anim` — the seated pose (hips dropped, knees
+      // bent, torso leaned) is computed by update(), which nothing else calls
+      // for pooled traffic riders. Without this they stand bolt upright on the
+      // seat (the rig's raw constructor pose) for as long as they're pooled.
+      rider.update?.(0);
       obj.add(rider);
     }
-    const car = { obj, v, lane: null, s: 0, speed: 0, target: 0, cruise: 15, think: 0, active: false };
+    const car = { obj, v, rider, lane: null, s: 0, speed: 0, target: 0, cruise: 15, think: 0, active: false };
     v.traffic = car;
     return car;
   }
@@ -224,6 +233,15 @@ export function createTraffic(o) {
     const i = cars.indexOf(car);
     if (i >= 0) cars.splice(i, 1);
     car.v.traffic = null;
+    if (car.rider) {
+      // A bike's rider is a child mesh riding along with the vehicle, not a
+      // real NPC (see buildCar). hijack.js already spawns and ejects a proper
+      // NPC to represent whoever we jacked it from, so leaving this one
+      // attached would double them up: a standing "ghost" glued to the seat
+      // behind the player for the rest of the vehicle's life.
+      car.obj.remove(car.rider);
+      car.rider = null;
+    }
   }
 
   /** How far ahead the lane is clear, looking at traffic and `obstacles`. */
