@@ -3516,7 +3516,9 @@ function tick() {
     if (!cine.hasCamera && mapEditor.active) {
       mapEditor.updateCamera(dt);
     } else if (!cine.hasCamera) {
-      camCtl.setAiming(input.isDown("aim") && (!state.veh || state.weapon === "pistol" || state.weapon === "tec9"));
+      const isAimingCamera = input.isDown("aim") && (!state.veh || state.weapon === "pistol" || state.weapon === "tec9");
+      camCtl.setAiming(isAimingCamera);
+      crosshair.style.display = isAimingCamera && !arsenal.current.melee ? "block" : "none";
       camCtl.update(dt, playerPos, state.veh, blockerGrid, playerMoveHeading);
       if (state.veh && state.veh.jolt > 0) {
         const j = state.veh.jolt;
@@ -4601,7 +4603,7 @@ async function boot() {
   for (const b of gfxChoices.querySelectorAll("[data-tier]")) b.disabled = false;
   const begin = () => {
     overlay.classList.add("hidden");
-    crosshair.style.display = "block";
+    crosshair.style.display = "none";
     state.running = true;
     clock.start();
   };

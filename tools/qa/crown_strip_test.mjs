@@ -159,6 +159,135 @@ for (const v of V) {
 }
 check("no venue stands on a named landmark", namedHits.length === 0, namedHits.slice(0, 3).join(", "));
 
+// ---- the back-of-house pockets ------------------------------------------
+// Each venue asks for a service pocket beside its hall (local coords, so this is
+// the district's own `crownToWorld` arithmetic restated). It has to be on the
+// strip's own land: inside the district, clear of every street, and off the named
+// landmarks — a dumpster on the highway is the kind of thing nobody notices until
+// it is in a screenshot.
+const pockets = V.map((v) => ({
+  name: v.name,
+  ...(v.rot === 0 ? { x: v.x + v.service.x, z: v.cz + v.service.z }
+    : { x: v.x - v.service.x, z: v.cz - v.service.z }),
+}));
+const pocketRoads = [];
+for (const p of pockets) {
+  const r = { x0: p.x - 4, x1: p.x + 4, z0: p.z - 4, z1: p.z + 4 };   // the pad plus its clutter
+  for (const road of ROADS) if (overlaps(r, road)) pocketRoads.push(`${p.name} × ${road.name}`);
+}
+check("every service pocket is clear of every street", pocketRoads.length === 0, pocketRoads.join(", "));
+const pocketLandmarks = [];
+for (const p of pockets) {
+  const r = { x0: p.x - 4, x1: p.x + 4, z0: p.z - 4, z1: p.z + 4 };
+  for (const n of NAMED) if (overlaps(r, n)) pocketLandmarks.push(`${p.name} × ${n.name}`);
+}
+check("no service pocket is on a named landmark", pocketLandmarks.length === 0, pocketLandmarks.join(", "));
+const pocketOut = pockets.filter((p) => p.x < BOUNDS.x0 + 6 || p.x > BOUNDS.x1 - 6 || p.z < BOUNDS.z0 + 6 || p.z > BOUNDS.z1 - 6);
+check("every service pocket is inside the district", pocketOut.length === 0,
+  pocketOut.length ? pocketOut.map((p) => p.name).join(", ") : pockets.map((p) => `${p.name}@(${p.x},${p.z})`).join(" "));
+const pocketInHall = pockets.filter((p) => V.some((v) => p.x > v.hall.x0 && p.x < v.hall.x1 && p.z > v.hall.z0 && p.z < v.hall.z1));
+check("no service pocket is inside a hall", pocketInHall.length === 0, pocketInHall.map((p) => p.name).join(", "));
+// Back of house belongs BEHIND the venue. A sign flip in the local→world mapping
+// puts it between the hall and US-167 instead, which is a silent, plausible-looking
+// mistake: it still clears the roads, so nothing else here would catch it.
+const pocketWrongSide = [];
+for (const v of V) {
+  const p = pockets.find((q) => q.name === v.name);
+  const venueSide = Math.sign(v.x - ROAD_X), pocketSide = Math.sign(p.x - ROAD_X);
+  if (venueSide !== pocketSide || Math.abs(p.x - ROAD_X) < 20) {
+    pocketWrongSide.push(`${v.name}@${p.x} (venue x=${v.x})`);
+  }
+}
+check("every service pocket is behind its venue, away from the highway", pocketWrongSide.length === 0,
+  pocketWrongSide.join(", ") || pockets.map((p) => `${p.name}:${p.x}`).join(" "));
+
+// ---- the street frontage is data, and it is complete ---------------------
+check("every venue dresses its frontage",
+  V.every((v) => Array.isArray(v.apron) && v.apron.length >= 8 && v.apron.every((s) => FIXTURES.has(s.fixture))),
+  V.map((v) => `${v.name}:${(v.apron || []).length}`).join(" "));
+check("every venue has a back-of-house pocket",
+  V.every((v) => v.service && Number.isFinite(v.service.x) && Number.isFinite(v.service.z)));
+// The frontage list has to be ON the frontage. Local z inside the hall means the
+// piece is buried in a wall — which is exactly what happened to the first pass's
+// security lamps, mounted 0.6 m behind a facade whose face is at z = d/2.
+const buried = [];
+for (const v of V) {
+  for (const s of v.apron || []) {
+    const n = s.n ?? 1, dx = s.dx ?? 0;
+    const half = s.fixture === "spill" ? (s.d ?? 0) / 2 : 0;      // the spill is a ground decal, it may reach the door
+    for (let i = 0; i < n; i++) {
+      const lz = s.rot ? s.z + (i - (n - 1) / 2) * dx : s.z;
+      if (Math.abs(lz) - half < v.k.d / 2) buried.push(`${v.name}/${s.fixture}@local z=${lz}`);
+    }
+  }
+}
+check("every frontage piece is outside the hall, not inside its wall", buried.length === 0, buried.slice(0, 4).join(", "));
+
+// ---- nothing on the apron stands in anything else ------------------------
+// Ground-level footprints only: the awning slab, the neon arrows and the security
+// lamp heads are 4-6 m up, over the cars, which is the point of them. Everything
+// else is a post or a box on the pavement and has to clear both its neighbours and
+// the valet bays — hand-computing this is how a planter ends up inside a car.
+const GROUND_R = { bollardRow: 0.4, planter: 1.7, bin: 0.7, queue: 0.15, streetSign: 0.2, securityLight: 0.25 };
+const clutter = [];
+const carClash = [];
+for (const v of V) {
+  const half = v.k.d / 2;
+  for (const s of v.apron || []) {
+    const r = GROUND_R[s.fixture];
+    if (r === undefined) continue;
+    const n = s.n ?? 1, dx = s.dx ?? 0;
+    for (let i = 0; i < n; i++) {
+      const o = (i - (n - 1) / 2) * dx;
+      clutter.push({ v, fixture: s.fixture, r,
+        x: s.rot ? s.x : s.x + o, z: s.rot ? s.z + o : s.z });
+    }
+  }
+  // the valet row, as buildVenue lays it out: aisle = door/2 + 2.4, then 3 m bays
+  const aisle = v.k.door / 2 + 2.4, perSide = Math.max(1, Math.floor(v.k.cars / 2));
+  for (let i = 0; i < perSide; i++) for (const side of [-1, 1]) {
+    const cx = side * (aisle + 1.6 + i * 3), cz = half + 3.4;
+    const clashed = clutter.filter((c) => c.v === v && c.z > cz - 2.2 && c.z < cz + 2.2 && Math.abs(c.x - cx) < 0.95 + c.r);
+    for (const c of clashed) carClash.push(`${v.name}: ${c.fixture}@(${c.x.toFixed(1)},${c.z.toFixed(1)}) in the bay at (${cx.toFixed(1)},${cz.toFixed(1)})`);
+  }
+}
+let overlap = null;
+for (let i = 0; i < clutter.length && !overlap; i++) {
+  for (let j = i + 1; j < clutter.length; j++) {
+    const a = clutter[i], b = clutter[j];
+    if (a.v !== b.v) continue;
+    if (Math.hypot(a.x - b.x, a.z - b.z) < a.r + b.r) {
+      overlap = `${a.v.name}: ${a.fixture}@(${a.x.toFixed(1)},${a.z.toFixed(1)}) overlaps ${b.fixture}@(${b.x.toFixed(1)},${b.z.toFixed(1)})`;
+      break;
+    }
+  }
+}
+check("no street furniture overlaps the valet bays", carClash.length === 0, carClash.slice(0, 3).join("; "));
+check("no two street fixtures stand in the same place", overlap === null, overlap || `${clutter.length} ground pieces, all clear of each other`);
+// The doorway is a walkable lane, and it is the LANE that has to stay clear, not the
+// door's full width: the valet row already works this way. Each solid street fixture
+// carries a collision radius (from src/interiors.js); a walker of 0.45 m must fit
+// past every one of them, measured from the hall's centre line.
+const SOLID_R = { bollardRow: 0.4, planter: 0.9, bin: 0.55 };
+const apronBlockers = [];
+for (const v of V) {
+  for (const s of v.apron || []) {
+    const r = SOLID_R[s.fixture];
+    if (r === undefined) continue;                            // the rest carry no collision
+    const n = s.n ?? 1, dx = s.dx ?? 0;
+    for (let i = 0; i < n; i++) {
+      const o = (i - (n - 1) / 2) * dx;
+      const lx = s.rot ? s.x : s.x + o;
+      const lz = s.rot ? s.z + o : s.z;
+      if (Math.abs(lz) <= v.k.d / 2 + v.k.fore && Math.abs(lx) < r + 0.45) {
+        apronBlockers.push(`${v.name}/${s.fixture}@local(${lx.toFixed(1)},${lz.toFixed(1)})`);
+      }
+    }
+  }
+}
+check("no street furniture stands in the doorway lane", apronBlockers.length === 0,
+  apronBlockers.slice(0, 4).join(", ") || "the centre line is clear from every door to the kerb");
+
 check(
   "every hall is inside the district bounds",
   V.every((v) => v.hall.x0 > BOUNDS.x0 && v.hall.x1 < BOUNDS.x1 && v.hall.z0 > BOUNDS.z0 && v.hall.z1 < BOUNDS.z1),

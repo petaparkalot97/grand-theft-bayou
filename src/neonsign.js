@@ -179,8 +179,31 @@ export function neonSignTexture(o = {}) {
  * @param {number} [o.emissiveIntensity]
  * @returns {THREE.Material}         a flat colour material when there is no DOM
  */
+/**
+ * Two signs that ask for the same thing are the same sign.
+ *
+ * A texture here is a pure function of its options, and each one is a full canvas
+ * — so a venue that puts the same name on the roof AND beside its door (a casino
+ * marquee does) was paying twice, and nothing in merge.js's material signature or
+ * the wet-road mirror pass treats two identical materials as one. Memoised, the
+ * pair shares a texture, a material and a batch.
+ *
+ * The key includes `name`, because the QA read a sign's identity out of it
+ * (`crown sign: BAYOU GOLD`): same pixels, different label, different entry.
+ */
+const _signMats = new Map();
+const signKey = (o, kind, name) => JSON.stringify([
+  name, o.text || "", o.ink || "#ffffff", o.bg || "#080a12", kind,
+  !!o.vertical, o.aspect > 0 ? Math.round(o.aspect * 1000) : null,
+  o.width > 0 ? Math.round(o.width) : null, o.height > 0 ? Math.round(o.height) : null,
+  o.minSide || null, o.minFontSize || null, o.padding || null,
+]);
+
 export function neonSignMaterial(o = {}) {
   const { ink = "#ffffff", kind = "standard", name = null, emissive = 0xffffff, emissiveIntensity = 1.1 } = o;
+  const key = signKey(o, kind, name);
+  const hit = _signMats.get(key);
+  if (hit) return hit;
   const tex = neonSignTexture(o);
   let m;
   if (!tex) {
@@ -192,6 +215,7 @@ export function neonSignMaterial(o = {}) {
   }
   if (name) m.name = name;
   m.userData.gtbRealized = true;
+  _signMats.set(key, m);
   return m;
 }
 

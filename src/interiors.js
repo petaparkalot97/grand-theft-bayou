@@ -563,6 +563,129 @@ export const FIXTURES = {
     b.inst(b.G.cyl(0.05, dx), b.M.velvet, rope);
   },
 
+  // ---- street frontage -----------------------------------------------------
+  // Everything below this line stands in a forecourt, not on a floor: local z is
+  // past `b.FZ`, out on the apron. Two rules, both of which the QA enforces:
+  //
+  //   * Nothing here adds a pooled light. main.js runs EIGHT real PointLights for
+  //     the whole map, and the interior spots need them — an outdoor spot would
+  //     push a slot machine out of the pool. Readability outdoors comes from
+  //     emissive geometry plus the lamps the avenue already has.
+  //   * Nothing lands in the doorway lane (|x| < door/2 + 2.5 within 12 m of the
+  //     facade). Bollards, planters and bins are collision, and the entrance has
+  //     to stay walkable.
+
+  /** An entrance awning: a slab on two posts, striped, lit underneath. */
+  awning(b, s) {
+    const w = s.w ?? 12, d = s.d ?? 5, y = s.y ?? 4.6;
+    const trim = b.m("awning trim", b.v.theme.trim, { metalness: 0.4, roughness: 0.4 });
+    const cloth = b.m("awning cloth", s.color ?? b.v.theme.accent, { roughness: 0.85 });
+    b.add(b.G.box(w, 0.22, d), cloth, s.x, y, s.z, { cast: true });
+    b.add(b.G.box(w + 0.3, 0.16, 0.3), trim, s.x, y + 0.02, s.z + d / 2 - 0.15);
+    // stripes across the leading edge, so it reads as fabric not a slab
+    const stripes = [];
+    const n = Math.max(4, Math.round(w / 1.6));
+    for (let i = 0; i < n; i += 2) stripes.push({ x: s.x + (i - (n - 1) / 2) * 1.6, y: y - 0.12, z: s.z + d / 2 - 0.1 });
+    b.inst(b.G.box(0.8, 0.06, 0.16), b.e("awning stripe", 0xfff2d0, 0.5), stripes);
+    for (const sx of [-1, 1]) b.add(b.G.cyl(0.12, y), trim, s.x + sx * (w / 2 - 0.4), y / 2, s.z + d / 2 - 0.4, { cast: true });
+    b.add(b.G.box(w * 0.9, 0.1, 0.2), b.e("awning underglow", b.v.theme.accent, 0.9), s.x, y - 0.14, s.z - d / 2 + 0.3);
+  },
+
+  /** An emissive arrow on the pier, pointing at the door. */
+  neonArrow(b, s) {
+    const dir = s.x < 0 ? 1 : -1;                 // always points inward, at the door
+    const y = s.y ?? 4.2;
+    const arrow = b.e("arrow", b.v.theme.accent, 1.15);
+    b.add(b.G.box(2.3, 0.62, 0.14), b.M.dark, s.x, y, s.z - 0.1);   // the backing plate, matte
+    b.neon(b.add(b.G.box(1.9, 0.42, 0.22), arrow, s.x, y, s.z));    // the lit shape reflects
+    b.neon(b.add(b.G.cone(0.46, 0.9), arrow, s.x + dir * 1.3, y, s.z, { rz: -dir * Math.PI / 2 }));
+  },
+
+  /** A short pole with an emissive head: a security lamp, no pooled light. */
+  securityLight(b, s) {
+    const y = s.y ?? 4.4;
+    b.add(b.G.cyl(0.1, y), b.M.steel, s.x, y / 2, s.z, { cast: true });
+    b.add(b.G.box(0.5, 0.3, 0.9), b.M.steel, s.x, y + 0.1, s.z);
+    b.neon(b.add(b.G.box(0.42, 0.12, 0.8), b.e("security lamp", s.color ?? 0xfff0d0, 1.2), s.x, y - 0.06, s.z));
+    // and the pool of light it throws, painted on the apron
+    b.add(b.G.plane(3.4, 3.4), b.e("lamp spill", s.color ?? 0xfff0d0, 0.14), s.x, 0.055, s.z + 1.2, { rx: -Math.PI / 2 });
+  },
+
+  /** A lit plate on a pole: a street sign, or a section marker. */
+  streetSign(b, s) {
+    const y = s.y ?? 3.2, text = s.text || b.v.name;
+    b.add(b.G.cyl(0.07, y), b.M.steel, s.x, y / 2, s.z, { cast: true });
+    b.sign(text, b.v.ink, { x: s.x, y: y + 0.5, z: s.z, w: s.w ?? 3.2, h: s.h ?? 0.9, ry: s.ry || 0 });
+  },
+
+  /** A row of bollards, lit at the base: the valet line, or a kerb edge. */
+  bollardRow(b, s) {
+    const n = s.n ?? 6, dx = s.dx ?? 3.2, rot = s.rot ? 1 : 0;
+    const posts = [], bands = [];
+    for (let i = 0; i < n; i++) {
+      const o = (i - (n - 1) / 2) * dx;
+      const x = rot ? s.x : s.x + o, z = rot ? s.z + o : s.z;
+      posts.push({ x, y: 0.5, z });
+      bands.push({ x, y: 0.86, z });
+      b.block(x, z, 0.4);
+    }
+    b.inst(b.G.cyl(0.16, 1.0), b.m("bollard", b.v.theme.trim, { metalness: 0.7, roughness: 0.35 }), posts, { cast: true });
+    b.inst(b.G.cyl(0.18, 0.14), b.e("bollard band", b.v.theme.accent, 0.9), bands);
+  },
+
+  /** A planter box with a low-poly shrub in it. */
+  planter(b, s) {
+    const n = s.n ?? 3, dx = s.dx ?? 7, rot = s.rot ? 1 : 0;
+    const boxes = [], shrubs = [], soil = [];
+    for (let i = 0; i < n; i++) {
+      const o = (i - (n - 1) / 2) * dx;
+      const x = rot ? s.x : s.x + o, z = rot ? s.z + o : s.z;
+      boxes.push({ x, y: 0.34, z });
+      soil.push({ x, y: 0.7, z });
+      shrubs.push({ x, y: 1.05, z });
+      b.block(x, z, 0.9);
+    }
+    b.inst(b.G.box(1.7, 0.68, 1.7), b.m("planter", b.v.theme.trim, { metalness: 0.25, roughness: 0.6 }), boxes, { cast: true });
+    b.inst(b.G.box(1.4, 0.06, 1.4), b.m("soil", 0x2a2018, { roughness: 1 }), soil);
+    b.inst(b.G.sph(0.62), b.m("shrub", 0x2f4a2a, { roughness: 0.95 }), shrubs, { cast: true });
+  },
+
+  /** A bin and its post: the small stuff a pavement has. */
+  bin(b, s) {
+    const n = s.n ?? 2, dx = s.dx ?? 9;
+    const cans = [], lids = [], rims = [];
+    for (let i = 0; i < n; i++) {
+      const x = s.x + (i - (n - 1) / 2) * dx;
+      cans.push({ x, y: 0.44, z: s.z });
+      lids.push({ x, y: 0.92, z: s.z });
+      rims.push({ x, y: 0.78, z: s.z });
+      b.block(x, s.z, 0.55);
+    }
+    b.inst(b.G.cyl(0.34, 0.88), b.m("bin", 0x2f3a33, { metalness: 0.5, roughness: 0.55 }), cans, { cast: true });
+    b.inst(b.G.cyl(0.38, 0.08), b.M.steel, lids);
+    b.inst(b.G.cyl(0.37, 0.1), b.e("bin band", b.v.theme.accent, 0.5), rims);
+  },
+
+  /** A queue barrier out on the pavement, in front of a door. */
+  queue(b, s) {
+    const n = s.n ?? 5, dx = s.dx ?? 2.4;
+    const posts = [], ropes = [];
+    for (let i = 0; i < n; i++) {
+      const x = s.x + (i - (n - 1) / 2) * dx;
+      posts.push({ x, y: 0.55, z: s.z });
+      if (i < n - 1) ropes.push({ x: x + dx / 2, y: 0.95, z: s.z, rz: Math.PI / 2 });
+    }
+    b.inst(b.G.cyl(0.07, 1.1), b.m("queue post", b.v.theme.trim, { metalness: 0.8, roughness: 0.25 }), posts);
+    b.inst(b.G.cyl(0.05, dx), b.e("queue rope", s.color ?? b.v.theme.accent, 0.45), ropes);
+  },
+
+  /** A painted pool of light on the apron: "the entrance is here", no light cost. */
+  spill(b, s) {
+    const w = s.w ?? 14, d = s.d ?? 10;
+    b.add(b.G.plane(w, d), b.e("entrance spill", b.v.theme.accent, 0.11), s.x, 0.045, s.z, { rx: -Math.PI / 2 });
+    b.add(b.G.box(w * 0.28, 0.08, 0.1), b.e("kerb stripe", b.v.theme.accent, 0.7), s.x, 0.1, s.z - d / 2);
+  },
+
   /** Back-office: desks, chairs, a filing cabinet. */
   desk(b, s) {
     const n = s.n ?? 2, dx = s.dx ?? 5;

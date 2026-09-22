@@ -155,6 +155,8 @@ function makeThree() {
 const calls = { blockers: 0, litSpots: 0, services: 0 };
 const blockers = [];        // every collision circle the district registered
 const litSpots = [];        // every pooled light spot the district registered
+const reflected = [];       // every mesh the strip put on the wet road's mirror layer
+const serviceCall = [];     // where the district asked for a back-of-house pocket
 // enough of a Scene for merge.js's batchStatic to walk it
 const scene = {
   children: [], visible: true,
@@ -177,7 +179,14 @@ const sandbox = {
     tower: { w: 20, h: 36, d: 20 },
   },
   placeCityBuilding() {}, makeDecorativeFence() {}, placeOfficeClutter() {},
-  placeStreetClutter() {}, placeBillboard() {}, placeParkedCar() {},
+  // fx.js's mirror layer needs a renderer, so the sandbox's `reflect` records what
+  // the strip asks to reflect instead. That the strip asks at all — and asks for
+  // the right things — is the property under test (see the neon checks below).
+  reflect: (o) => { reflected.push(o); return o; },
+  // The real one adds a 2.2 m blocker and pushes meshes into the scene; the
+  // sandbox records the call so the audit can place the same blocker itself.
+  placeStreetClutter: (c, x, z) => { calls.services++; serviceCall.push({ x, z }); },
+  placeBillboard() {}, placeParkedCar() {},
   placeGunShop() {}, placeTacos() {}, placeBurgerPiz() {}, placeSixTwelve() {}, placeGasStation() {},
 };
 vm.createContext(sandbox);
@@ -218,6 +227,11 @@ try {
 }
 
 const CROWN_STRIP = vm.runInContext("CROWN_STRIP", sandbox);
+
+// landmarks.js's real placeStreetClutter ends with a 2.2 m blocker at its origin and
+// the sandbox stub cannot register it, so mirror it here: the stray-collision check
+// below is only meaningful with the back-of-house blockers actually present.
+for (const s of district.crownService) { blockers.push({ x: s.x, z: s.z, r: 2.2 }); calls.blockers++; }
 
 // ------------------------------------------------------------------ what it built
 const meshes = [];
@@ -380,6 +394,90 @@ check("every venue has the interaction points its room promised",
     ok && weak.length === 0, (weak.length ? `weakest: ${weak.join(" ")} — ` : "") + report.join(" "));
 }
 
+// ------------------------------------------------------------------ the street pass
+// The polish pass added awnings, bollards, planters, bins, queue rails, arrows,
+// security lamps, signs and back-of-house pockets. Three rules it has to keep:
+// none of it lights the scene with a real PointLight, only the lit shapes go on the
+// wet road's mirror layer, and the pockets land where the layout audit says.
+{
+  const insideRect = (r, x, z) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1;
+
+  // (a) the light budget. main.js pools exactly 8 PointLights for the whole map;
+  //     the strip owns 113 spots and 100 of them are interior fixture light. A
+  //     street lamp per awning would be the classic mistake here.
+  check("the street pass added no pooled light", calls.litSpots <= 120,
+    `${calls.litSpots} lit spots — 113 before this pass, all interior or avenue`);
+
+  // (b) every reflected mesh is a lit shape, never trim or a backing plate
+  const matte = reflected.filter((m) => {
+    const nm = m.material?.name || "";
+    if (nm.startsWith("crown sign:")) return false;                    // a sign face is its own light
+    return (m.material?.emissive?.getHexString?.() || "000000") === "000000";
+  });
+  check("only lit shapes were put on the wet road's mirror layer",
+    reflected.length >= CROWN_STRIP.venues.length * 4 && matte.length === 0,
+    matte.length ? `${matte.length} matte meshes reflected, e.g. ${matte[0].material?.name}`
+      : `${reflected.length} meshes reflected (neon + name faces)`);
+
+  // (c) the service pockets are where the layout audit computes they should be
+  let drift = null;
+  for (const v of CROWN_STRIP.venues) {
+    const lx = v.service.x, lz = v.service.z;
+    const want = v.rot === 0 ? { x: v.x + lx, z: v.cz + lz } : { x: v.x - lx, z: v.cz - lz };
+    const got = district.crownService.find((s) => s.venue === v.name);
+    if (!got || Math.hypot(got.x - want.x, got.z - want.z) > 1) {
+      drift = `${v.name}: want (${want.x.toFixed(1)}, ${want.z.toFixed(1)}), got ${got ? `(${got.x.toFixed(1)}, ${got.z.toFixed(1)})` : "nothing"}`;
+      break;
+    }
+  }
+  check("each back-of-house pocket is where the venue data puts it", drift === null,
+    drift || district.crownService.map((s) => s.venue).join(", "));
+
+  // (d) the pockets are outside every hall — back of house is not in the room
+  const inHall = district.crownService.filter((s) =>
+    CROWN_STRIP.venues.some((v) => insideRect(v.hall, s.x, s.z)));
+  check("no service pocket is inside a venue", inHall.length === 0,
+    inHall.length ? inHall.map((s) => s.venue).join(", ") : `${district.crownService.length} pockets, all outside their halls`);
+}
+
+// ------------------------------------------------------------------ the camera
+// The strip's venues are enterable, and camera.js pulls the lens in when the line
+// from the player's head crosses an occluder box — except when the head is already
+// INSIDE one (rayBox returns null for an origin inside). So the venue's single box
+// has to actually contain the room the player walks in: if it ever stops doing
+// that, the camera collapses to 3 m the moment you step through a casino door.
+// This is the brief's "do not let the camera be constantly obstructed", executed.
+{
+  function rayBox(px, py, pz, dx, dy, dz, b) {
+    let tmin = 0, tmax = Infinity;
+    const axis = (p, d, lo, hi) => {
+      if (Math.abs(d) < 1e-6) return p >= lo && p <= hi;
+      let t1 = (lo - p) / d, t2 = (hi - p) / d;
+      if (t1 > t2) { const s = t1; t1 = t2; t2 = s; }
+      tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+      return tmin <= tmax;
+    };
+    if (!axis(px, dx, b.minX, b.maxX) || !axis(py, dy, b.minY, b.maxY) || !axis(pz, dz, b.minZ, b.maxZ)) return null;
+    return tmin > 0 ? tmin : null;
+  }
+  let ok = true, why = "";
+  const heads = 1.6, CAM_H = 1.6;      // camera.js's onFoot figures
+  for (const v of CROWN_STRIP.venues) {
+    for (const [ox, oz] of [[0, 0], [-v.k.w / 4, 0], [v.k.w / 4, 0], [0, -v.k.d / 4], [0, v.k.d / 4]]) {
+      const hx = v.x + ox, hz = v.cz + oz;
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2, pitch = 0.25;
+        const t = rayBox(hx, heads + CAM_H, hz, Math.cos(a) * Math.cos(pitch), Math.sin(pitch), Math.sin(a) * Math.cos(pitch), { minX: v.hall.x0, maxX: v.hall.x1, minZ: v.hall.z0, maxZ: v.hall.z1, minY: 0, maxY: v.k.h });
+        if (t !== null && t < 4) { ok = false; why = `${v.name}: pull-in to ${t.toFixed(1)} m from (${ox}, ${oz})`; break; }
+      }
+      if (!ok) break;
+    }
+    if (!ok) break;
+  }
+  check("the camera never pulls in on a player standing inside a venue", ok,
+    ok ? "the box contains the room, so rayBox returns null inside" : why);
+}
+
 // ------------------------------------------------------------------ the sign and the glove
 // The sign has to go with the roof, or a lifted roof leaves a name sign hanging
 // over an open room. And BILLY JEANS' glove is mounted above the roofline, so it
@@ -466,7 +564,10 @@ check("every venue has the interaction points its room promised",
   const stray = blockers.filter((b) => insideRect(rect, b.x, b.z)).filter((b) =>
     !CROWN_STRIP.venues.some((v) => insideRect({ x0: v.hall.x0 - 2, x1: v.hall.x1 + 2, z0: v.hall.z0 - 2, z1: v.hall.z1 + 2 }, b.x, b.z)
       || insideRect(v.fore, b.x, b.z))
-    && !insideRect(gateRect, b.x, b.z));   // the gateway arch is not a stray
+    && !insideRect(gateRect, b.x, b.z)     // the gateway arch is not a stray
+    // nor is a venue's back-of-house pocket: street clutter is a real obstacle on
+    // the strip's own land, which is the point of putting it there
+    && !district.crownService.some((s) => Math.hypot(s.x - b.x, s.z - b.z) < 3));
   check("no stale collision from the venues that merged", stray.length === 0,
     stray.length ? `${stray.length} stray blockers, e.g. (${stray[0].x.toFixed(0)}, ${stray[0].z.toFixed(0)})` : "every strip blocker is inside a hall or forecourt");
 }

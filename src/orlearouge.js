@@ -26,10 +26,10 @@ export const CAUSEWAY = { minZ: 136, maxZ: 192 };
 // The nightlife core now continues east into a denser modern district. Keep the
 // western boundary stable (the parish transition and French District depend on
 // it), but give the skyline and casino lots room to grow on the east side.
-export const CITY = { minX: -136, maxX: 176, minZ: 196, maxZ: 382 };
+export const CITY = { minX: -136, maxX: 376, minZ: 196, maxZ: 382 };
 
 // the grid: US-167 is the boulevard at x = ROAD_X (-6)
-const AVENUES = [-86, -46, 34, 74, 114, 154];    // north–south streets
+const AVENUES = [-86, -46, 34, 74, 114, 154, 194, 234, 274, 314, 354];    // north–south streets
 const STREETS = [210, 250, 290, 330, 370];        // east–west streets
 const STREET_W = 9;
 
@@ -122,7 +122,7 @@ export function createOrleaRouge(ctx) {
     const len = CAUSEWAY.maxZ - CAUSEWAY.minZ + 8;
     const zc = (CAUSEWAY.minZ + CAUSEWAY.maxZ) / 2;
     plane(x0 - 2 + 140, len, water, (x0 - 2 - 140) / 2, 0.035, zc);
-    plane(140 - x1 - 2, len, water, (x1 + 2 + 140) / 2, 0.035, zc);
+    plane(400 - x1 - 2, len, water, (x1 + 2 + 400) / 2, 0.035, zc);
 
     // guardrails the whole way across, solid for walkers and cars
     const rail = std("steel guardrail", 0x9aa0a6, { metalness: 0.8, roughness: 0.4 });
@@ -187,9 +187,9 @@ export function createOrleaRouge(ctx) {
       ctx.addLitSpot({ x: ctx.ROAD_X + ctx.ROAD_HALF + 2, y: 6, z, warm: 0xffd9a0, power: 110, range: 26, pole: true });
     }
     for (const z of [250, 290]) {
-      for (let x = -120; x < -10; x += 40) ctx.addLitSpot({ x, y: 5, z: z - STREET_W / 2 - 1.5, warm: 0xffc890, power: 90, range: 22, pole: true });
+      for (let x = -120; x <= 376; x += 40) { if (x > -10 && x < 176) continue; ctx.addLitSpot({ x, y: 5, z: z - STREET_W / 2 - 1.5, warm: 0xffc890, power: 90, range: 22, pole: true }); }
     }
-    for (let x = -80; x <= 80; x += 40) ctx.addLitSpot({ x, y: 5, z: 378, warm: 0xffe0b0, power: 90, range: 22, pole: true });
+    for (let x = -80; x <= 376; x += 40) ctx.addLitSpot({ x, y: 5, z: 378, warm: 0xffe0b0, power: 90, range: 22, pole: true });
 
     // the welcome, with a reply from Keseme's own narration
     ctx.makeBillboard(ctx.ROAD_X + ctx.ROAD_HALF + 7, 199, Math.PI, "ORLEAROUGE", "Life Is Beautiful", "BEAUTY DON'T MAKE YOU SAFE");
@@ -258,7 +258,7 @@ export function createOrleaRouge(ctx) {
   function outskirts(bl) {
     let outRng = 0;
     for (const b of bl) {
-      if (!((b.cz >= 370) || (b.cx < ctx.ROAD_X && b.cz >= 330) || (b.cx > ctx.ROAD_X && b.cz > 206 && b.cz <= 250))) continue;
+      if (!((b.cx <= 176 && b.cz >= 370) || (b.cx < ctx.ROAD_X && b.cz >= 330) || (b.cx > ctx.ROAD_X && b.cx <= 176 && b.cz > 206 && b.cz <= 250))) continue;
       
       const w = b.x1 - b.x0;
       const d = b.z1 - b.z0;
@@ -359,7 +359,7 @@ export function createOrleaRouge(ctx) {
   function downtown(bl) {
     let v = 0;
     for (const b of bl) {
-      if (!(b.cx > ctx.ROAD_X && b.cz > 250 && b.cz < 370)) continue;
+      if (!(b.cx > 176 || (b.cx > ctx.ROAD_X && b.cz > 250 && b.cz < 370))) continue;
       const bw = b.x1 - b.x0, bd = b.z1 - b.z0;
       if (bw > 26) {
         tower(b.cx - bw / 4, b.cz, bw / 2 - 2, bd - 4, 26 + ((v * 17) % 44), v++);
@@ -378,7 +378,7 @@ export function createOrleaRouge(ctx) {
       ["24 HR DAIQUIRI", "#ff4fb3", "#1a0f1a"], ["LIQUOR", "#ff5a3c", "#140a08"]];
     let s = 0;
     for (const b of bl) {
-      if (b.cz > 206 || b.x1 - b.x0 < 10) continue;
+      if (b.cz > 206 || b.cx > 176 || b.x1 - b.x0 < 10) continue;
       const w = Math.min(b.x1 - b.x0 - 2, 16);
       mesh(new THREE.BoxGeometry(w, 4.2, 6), std("brick wall", 0x7a4a3a), b.cx, 2.1, b.cz + 1);
       const [t, ink, bg] = signs[s++ % signs.length];
@@ -460,7 +460,7 @@ export function createOrleaRouge(ctx) {
       color: 0x0a1a22, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.2, name: "river water",
     });
     river.userData.gtbRealized = true;
-    plane(360, 80, river, 0, -0.25, CITY.maxZ + 42);
+    plane(CITY.maxX - CITY.minX + 40, 80, river, (CITY.maxX + CITY.minX) / 2, -0.25, CITY.maxZ + 42);
     // promenade railing, solid
     const rail = std("wrought iron railing", 0x1c1f22, { metalness: 0.6, roughness: 0.5 });
     mesh(new THREE.BoxGeometry(CITY.maxX - CITY.minX, 0.08, 0.08), rail, 0, 1.0, CITY.maxZ + 1.2, { cast: false });

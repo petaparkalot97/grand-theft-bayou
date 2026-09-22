@@ -335,10 +335,49 @@ from primitives instead. Passing it would make the three existing calls at
   venues survives anywhere in the strip.
 - **Batching:** venue groups stay in the scene and only the 56 cutaway-moved meshes
   carry `userData.noBatch` (merge.js honours it per mesh), so the parish sweep still
-  merges the furnished interiors — measured **704 district meshes → 92 in 59
-  batches**, 84 material signatures, with all 56 moving meshes surviving and the
-  cutaway still opening afterwards. Interiors cost **113 lit spots** in total, all
-  `fx:false` pooled spots (baked at build time; nothing created or hidden per frame).
+  merges the furnished interiors and the street furniture — measured **808 district
+  meshes → 124 in 76 batches**, 112 material signatures, with all 56 moving meshes
+  surviving and the cutaway still opening afterwards. The polish pass costs **+16
+  batches and +28 signatures** over the interiors-only figure (704 → 92, 84), all of
+  it instanced street furniture sharing materials across the four venues. 113 pooled
+  lit spots, all `fx:false` (baked at build time; nothing created or hidden per
+  frame); 618 blockers.
+- **Visual polish pass (2026-09-22, latest): the frontage is a street, and it is wet.**
+  Nine new venue-agnostic fixtures in `src/interiors.js` (awning, neonArrow,
+  securityLight, streetSign, bollardRow, planter, bin, queue, spill), all instanced
+  where repeated, dispatched from a new per-venue `apron` list — the same dispatcher
+  the interior `layout` uses, with local z past `FZ` meaning "out on the pavement"
+  (BAYOU GOLD 11 pieces, the rest 12). Back of house reuses `landmarks.js`'s
+  `placeStreetClutter` (dumpster, pallets, drums, hydrant, bench) on a concrete pad
+  behind each hall rather than a second set of bins — 4 pockets, at world x −94, −94,
+  94, 92.
+- **The polish pass added zero real lights.** `main.js` pools **eight** `PointLight`s
+  for the whole map, so outdoor readability is emissive geometry only: the entrance
+  spill decal, awning underglow and stripes, arrows, lamp-head + lamp-spill quads,
+  bollard bands and queue ropes. Measured: **113 lit spots before this pass, 113
+  after** — asserted, because "a PointLight for every sign" is one line away.
+- **Wet asphalt, and the neon in it.** The forecourts are now the highway's own
+  `surface("asphalt")` material at the mirror plane's height (`fx.js` PLANE_Y 0.03),
+  sized to exactly the forecourt rect the audit checks, so `wetRoads.collect(scene)`
+  patches them and the existing wet shader + planar mirror picks them up. Lit shapes
+  register through the new `b.neon(mesh)` and go on `MIRROR_LAYER` via fx.js's
+  `reflect` — **32 meshes, every one either a sign face or emissive** (asserted), so
+  the mirror pass stays a pass over bright things and not a second render of four
+  56 m buildings. `neonSignMaterial` is now memoised on its options, so a venue's
+  roof sign and its door sign share one texture and one batch instead of two.
+- **Camera:** verified rather than changed. `camera.js` pulls the lens in when the
+  head-to-camera ray crosses an occluder box, *except* when the head is already
+  inside one (`rayBox` returns null for an origin inside) — which is exactly why the
+  four enterable halls, each with a single 56 × 30 occluder box, do not collapse the
+  camera to 3 m at the door. Now asserted at 5 standing positions × 12 headings per
+  venue.
+- **Found and fixed by the new checks** (each is a bullet because the check is the
+  deliverable): security lamps mounted 0.6 m *behind* the facade, inside the wall;
+  BAYOU GOLD's and BILLY JEANS' service pockets on the wrong side of the local→world
+  flip, which put a dumpster between the hall and US-167 while still passing every
+  road-clearance test; a queue post 2 cm inside a car body; and a bin jammed against
+  a bollard. `crown_strip_test.mjs` grew from 29 to **40** checks, `crown_build_test`
+  from 26 to **31**.
 - **"Interior lighting comes on when you enter" is the light pool, not a switch.**
   `main.js` runs exactly **8** real `PointLight`s and hands them to the 8 nearest
   spots at 4 Hz, so the requirement is a claim about *which* spots are nearest from
@@ -349,13 +388,15 @@ from primitives instead. Passing it would make the three existing calls at
 - **New QA:** `crown_build_test.mjs` executes the build in a vm sandbox with the
   real kit and drive-in sign fitter loaded: the cutaway (roof down/up, walls
   dropped/raised, `insideVenue`), the walkable doorway, the no-stale-collision check,
-  the promised interaction points, a real `batchStatic` run — a **flood fill at
+  the promised interaction points, a  real `batchStatic` run — a **flood fill at
   0.5 m per venue** that proves every game, bar, cage and stage can be walked up to
   from the door (this is what caught the BILLY JEANS pool table sealed behind its
-  lounge), the **8-light pool** indoors, and which name face lifts with the roof.
-  **26/26**. `crown_strip_test.mjs` is **29/29** (four venues, data completeness,
-  fixture/prop names against the real kit, door width, floor area, the depth budget
-  between North Ave 2 and 3, and no surviving old signage).
+  lounge), the **8-light pool** indoors, which name face lifts with the roof, the
+  mirror-layer policy, the light budget, and the camera. **31/31**.
+  `crown_strip_test.mjs` is **40/40** (four venues, data completeness, fixture/prop
+  names against the real kit, door width, floor area, the depth budget between North
+  Ave 2 and 3, no surviving old signage, the frontage being outside the halls and out
+  of the doorway lane, and 79 ground pieces clear of each other and of the valet bays).
 
 **Integration notes (for Claude) — two one-liners in `main.js`; neither is required
 for the buildings, the interiors or the cutaway to work:**

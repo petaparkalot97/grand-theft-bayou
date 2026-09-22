@@ -163,6 +163,84 @@ calling it fully closed.
 
 ## 2026-09-22 — Freebuff
 
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — visual polish: the frontage, the wet road, the camera
+
+### Finding — `reflect` is exported, and that is the whole wet-neon story
+
+`traffic.js` already imports `reflect` from `fx.js` for head/tail lights, so any
+module can put its own meshes on `MIRROR_LAYER` — no `main.js` change, no
+`wetRoads` in the district's ctx. The mirror camera renders **that layer only**, so
+the rule is: the lit shapes, never the buildings. The strip registers them through a
+new `b.neon(mesh)` (awnings and arrow backing plates get none), and the QA asserts
+every reflected mesh is either a sign face or has a non-black `emissive` — 32 of
+them, for four venues. A venue group is never reflected wholesale: that would be a
+complete second render of four 56 m halls, in the cheapest place to make the
+mistake.
+
+The forecourts were dry because they were a plain `M.lot` box. They are now the
+highway's own `surface("asphalt")` at `PLANE_Y` (0.03), and `wetRoads.collect(scene)`
+finds them on its own — one surface generator call shared by all four aprons, since
+`surface()` derives three 1024 maps per call. Their size is the *forecourt rect the
+audit already checks* (`W + 10`), not a round number, so paving cannot overhang a
+kerb by a metre.
+
+### WARNING — the light pool is eight, so outdoor polish can only be emissive
+
+`initLightPool(8)`: eight real `PointLight`s for the entire map, given to the 8
+nearest spots at 4 Hz. An outdoor light near a facade is therefore not "a bit more
+glow" — it takes a slot from a slot machine indoors, and the interiors' new QA check
+(≥5 of the 8 nearest spots inside the hall) would fail. So the whole street pass is
+emissive geometry: spill decals, awning underglow, band and rope emissives, lamp
+heads. Measured **113 lit spots before and after**, asserted with a ceiling so the
+next person cannot quietly add "just one" per awning.
+
+### Finding — the enterable halls and the camera occluder agree, by luck of `rayBox`
+
+`camera.js` pulls the lens in when the head-to-camera ray crosses an occluder box,
+but `rayBox` returns **null when the origin is already inside** the box — which is
+the only reason a 56 × 30 occluder around a walk-in interior does not collapse the
+camera to 3 m the moment the player steps through the door. Nothing in the strip's
+code says so; it is a property of a single box that contains the whole room. It is
+now asserted (5 positions × 12 headings × 4 venues) because the failure mode is
+invisible until someone splits an occluder or moves one.
+
+### Finding — four real clipping bugs, all caught by new checks, none visible in a screenshot review
+
+1. **Security lamps buried in the wall.** Mounted at local z = FZ − 0.6, i.e. 0.6 m
+   *behind* a facade whose inner face is at FZ − 0.5. The lamp head was inside the
+   building. New rule: every `apron` piece must have `|z| > d/2`.
+2. **Two service pockets on the wrong side of the local→world flip.** `crownToWorld`
+   mirrors x when `rot` is π, so BAYOU GOLD and BILLY JEANS landed at world x −26
+   (between the hall and US-167) instead of −94. Every existing test passed: they were
+   clear of every road, inside the district, outside the halls. New rule: a pocket must
+   be on its venue's own side of US-167 and ≥20 m clear of it.
+3. **A queue post 2 cm inside a car body** — 5 posts at x 4.2…13.8, z 20 against bays
+   at z 18.4 (body to 20.55).
+4. **A bin jammed against a bollard** (0.94 m apart, radii 0.4 + 0.7).
+
+3 and 4 came from a new anti-overlap pass over the 79 ground-level frontage pieces
+(circle/circle against each other, circle/rect against the valet bays that
+`buildVenue` lays out). Hand-checking this is how you ship a planter in a car.
+
+### Finding — a sign is a pure function of its options, so it should be memoised
+
+`neonSignMaterial` built a fresh canvas texture and material per call. The casino
+marquee puts the same name on the roof AND beside the door, so that pair paid twice
+and could never batch together (merge.js buckets by material signature; the mirror
+pass counts them one by one). Now memoised on the full option set *including* `name`,
+because the QA reads a sign's identity out of the material name.
+
+### NOT covered, and honestly so
+
+The brief's final QA is a browser pass: F3 frame times for exterior day / exterior
+night / inside each venue / driving the length of the strip, z-fighting, missing
+textures, the night look, and whether the neon wash reads as `au natural` or as white
+fog. No browser is installed in this environment, so none of that was run. What *is*
+measured here: 808 meshes → 124 in 76 batches at 112 material signatures, 618
+blockers, 113 pooled lights, 32 mirrored meshes, 79 frontage pieces with no overlap,
+and the camera never pulling in indoors.
+
+
 **Type:** DISCOVERY · **Task:** TASK-070 (cont.) — the Crown Strip's interiors become a module
 
 ### Finding — the venue is data, so the furniture had to stop being the district's

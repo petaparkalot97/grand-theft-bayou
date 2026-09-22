@@ -21,6 +21,11 @@
 import * as THREE from "three";
 import { createComposer } from "./composer.js";
 import { CITY_BUILDING_TYPES, placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeBillboard, placeParkedCar, placeGunShop, placeTacos, placeBurgerPiz, placeSixTwelve, placeGasStation } from "./landmarks.js";
+// The wet-road mirror's layer. Reflecting a mesh here does NOT stop it drawing
+// normally in the main pass (fx.js), so this is only ever the half-dozen bright
+// things a wet road genuinely shows — a second mirror pass over a whole venue
+// would be the most expensive mistake available on this street.
+import { reflect } from "./fx.js";
 import { neonSignTexture, neonSignMaterial, aspectOf } from "./neonsign.js";
 // The interior kit: the fixtures and exterior props a venue is assembled from, and
 // the geometry/material caches they share. A venue is a data list below; the
@@ -123,6 +128,30 @@ const CROWN_VENUES = [
       { fixture: "chandelier", x: 0, z: -4 },
       { fixture: "neonBrand", x: 0, y: 11, z: -14.4, w: 20, text: "BAYOU GOLD" },
     ],
+    // The forecourt, out on the street: z past 15 is the apron. Gold/amber, a
+    // wide awning, arrows on the piers, the valet kerb bollarded, planters and
+    // bins along the pavement, and the entrance spill that tells you where the
+    // door is from the far side of North Ave 2. Nothing here is a light.
+    apron: [
+      { fixture: "spill", x: 0, z: 21, w: 22, d: 12 },
+      { fixture: "awning", x: 0, z: 17.6, w: 16, d: 5, y: 4.7 },
+      { fixture: "neonArrow", x: -8.2, z: 15.4, y: 4.4 },
+      { fixture: "neonArrow", x: 8.2, z: 15.4, y: 4.4 },
+      { fixture: "securityLight", x: -24, z: 15.45, y: 5.6 },
+      { fixture: "securityLight", x: 24, z: 15.45, y: 5.6 },
+      { fixture: "bollardRow", x: 0, z: 24, n: 8, dx: 5 },
+      { fixture: "planter", x: 0, z: 26.6, n: 2, dx: 22 },
+      { fixture: "bin", x: 0, z: 26.8, n: 2, dx: 44 },
+      { fixture: "streetSign", x: -26, z: 22, w: 4.4, h: 1.2 },
+      { fixture: "streetSign", x: 26, z: 22, w: 4.4, h: 1.2 },
+    ],
+    // Back of house, on the strip's own land on the far side from US-167, so the
+    // dumpster is behind the hall and not in the strip's view. Local x is flipped by
+    // the terrace (`crownToWorld`): this terrace is rot 0, so far-from-the-highway
+    // is local -x. The audit checks each pocket is on its venue's own side of
+    // US-167 and at least 20 m clear of it, because getting this sign wrong puts a
+    // service yard between the casino and the road, which no test would notice.
+    service: { x: -34, z: 0 },
   },
   {
     id: "billy-jeans", name: "BILLY JEANS", kind: "lounge", interior: "lounge",
@@ -154,6 +183,25 @@ const CROWN_VENUES = [
       { fixture: "chandelier", x: 0, z: 6 },
       { fixture: "neonBrand", x: 14, y: 10.2, z: -14.4, w: 16, text: "BILLY JEANS" },
     ],
+    // White / denim / red, per the palette: a white awning with red signage, a
+    // red guest rope, and white security lamps — the one cool-lit frontage on the
+    // strip, so it does not read as a fifth casino.
+    apron: [
+      { fixture: "spill", x: 0, z: 21, w: 22, d: 12 },
+      { fixture: "awning", x: 0, z: 17.6, w: 15, d: 5, y: 4.5, color: 0xf0f2f6 },
+      { fixture: "neonArrow", x: -7.5, z: 15.4, y: 4.3 },
+      { fixture: "neonArrow", x: 7.5, z: 15.4, y: 4.3 },
+      { fixture: "securityLight", x: -24, z: 15.45, y: 5.4, color: 0xd6e6ff },
+      { fixture: "securityLight", x: 24, z: 15.45, y: 5.4, color: 0xd6e6ff },
+      { fixture: "queue", x: 9, z: 21.5, n: 5, dx: 2.4, color: 0xd94a3d },
+      { fixture: "bollardRow", x: 0, z: 24, n: 8, dx: 5 },
+      { fixture: "planter", x: 0, z: 26.6, n: 2, dx: 22 },
+      { fixture: "bin", x: 0, z: 26.8, n: 2, dx: 46 },
+      { fixture: "streetSign", x: -26, z: 22, w: 4.4, h: 1.2 },
+      { fixture: "streetSign", x: 26, z: 22, w: 4.4, h: 1.2 },
+    ],
+    // rot π on this terrace: far-from-the-highway is local +x here.
+    service: { x: 34, z: 0 },
   },
   {
     id: "disco-gators", name: "DISCO GATORS", kind: "club", interior: "disco",
@@ -187,6 +235,23 @@ const CROWN_VENUES = [
       { fixture: "discoBall", x: 0, z: -7, n: 2, dx: 6 },
       { fixture: "neonBrand", x: 0, y: 12.5, z: -13.6, w: 20, text: "DISCO GATORS" },
     ],
+    // The one frontage with a queue: purple rope, magenta spill, and mirror-ball
+    // chrome on the bollard caps. Local z past 14 is the apron.
+    apron: [
+      { fixture: "spill", x: 0, z: 19.5, w: 24, d: 11 },
+      { fixture: "awning", x: 0, z: 16.4, w: 17, d: 5, y: 4.9, color: 0xb14bff },
+      { fixture: "neonArrow", x: -9, z: 14.4, y: 4.6 },
+      { fixture: "neonArrow", x: 9, z: 14.4, y: 4.6 },
+      { fixture: "securityLight", x: -22, z: 14.45, y: 5.8, color: 0xffc2f0 },
+      { fixture: "securityLight", x: 22, z: 14.45, y: 5.8, color: 0xffc2f0 },
+      { fixture: "queue", x: 8, z: 22, n: 5, dx: 2.6 },
+      { fixture: "bollardRow", x: 0, z: 24, n: 8, dx: 5.2 },
+      { fixture: "planter", x: 0, z: 24.6, n: 2, dx: 20 },
+      { fixture: "bin", x: 0, z: 24.8, n: 2, dx: 40 },
+      { fixture: "streetSign", x: -24, z: 20, w: 4.4, h: 1.2 },
+      { fixture: "streetSign", x: 24, z: 20, w: 4.4, h: 1.2 },
+    ],
+    service: { x: 32, z: 0 },
   },
   {
     id: "happy-hogs", name: "HAPPY HOGS", kind: "club", interior: "stripclub",
@@ -216,6 +281,23 @@ const CROWN_VENUES = [
       { fixture: "discoBall", x: 0, z: -2, n: 2, dx: 6 },
       { fixture: "neonBrand", x: -6, y: 10.6, z: -12.6, w: 18, text: "HAPPY HOGS" },
     ],
+    // Pink/red/purple, and a rope beside the door for the guests who are not on
+    // the list. Local z past 13 is the apron.
+    apron: [
+      { fixture: "spill", x: 0, z: 18.5, w: 22, d: 11 },
+      { fixture: "awning", x: 0, z: 15.4, w: 15, d: 5, y: 4.6, color: 0xff4fb3 },
+      { fixture: "neonArrow", x: -8, z: 13.4, y: 4.4 },
+      { fixture: "neonArrow", x: 8, z: 13.4, y: 4.4 },
+      { fixture: "securityLight", x: -20, z: 13.45, y: 5.4, color: 0xffb3d9 },
+      { fixture: "securityLight", x: 20, z: 13.45, y: 5.4, color: 0xffb3d9 },
+      { fixture: "queue", x: 7.5, z: 21, n: 5, dx: 2.4, color: 0xff2e6b },
+      { fixture: "bollardRow", x: 0, z: 22, n: 8, dx: 5 },
+      { fixture: "planter", x: 0, z: 24, n: 2, dx: 18 },
+      { fixture: "bin", x: 0, z: 24.4, n: 2, dx: 36 },
+      { fixture: "streetSign", x: -22, z: 19, w: 4.2, h: 1.2 },
+      { fixture: "streetSign", x: 22, z: 19, w: 4.2, h: 1.2 },
+    ],
+    service: { x: -30, z: 0 },
   },
 ];
 
@@ -269,6 +351,25 @@ let _crownGeo = null, _crownMat = null;
 function crownGeo() {
   return (_crownGeo ??= makeGeoCache());
 }
+/**
+ * The forecourts' paving: the SAME asphalt surface the highway and the aprons
+ * use, so fx.js's wet shader finds it (it looks for `userData.surfaceKind`), and
+ * `wetRoads.collect(scene)` patches it along with every other road. One surface
+ * generator call for all four forecourts, not four — `surface()` derives three
+ * 1024 maps per call, and the strip's four aprons tile identically anyway.
+ *
+ * A wet road only reflects what is ON the mirror layer (MIRROR_LAYER), which is
+ * why the venue neon is registered through `b.neon()` below. A dry-looking
+ * forecourt under a neon casino was the whole reason this exists.
+ */
+let _crownApron = null;
+function crownApron(surface) {
+  if (_crownApron) return _crownApron;
+  return (_crownApron = surface("asphalt", 1024).material(7, {
+    color: 0x494c54, envMapIntensity: 0.9,
+  }));
+}
+
 function crownMat() {
   if (_crownMat) return _crownMat;
   const kit = makeKit();
@@ -349,7 +450,8 @@ export function createTusouxroeNorth(ctx) {
   ctx.props = props;
 
   // The Crown Strip's enterable venues, and the frame state for their cutaway.
-  const crownRecs = [];                 // { v, g, roof, walls, sign, fixed, inside }
+  const crownRecs = [];                 // { v, g, roof, walls, sign, fixed, neon, stations, inside }
+  const crownService = [];              // where each venue's back-of-house pocket landed, in world space
   let crownPrompt = null;               // { v, text } — the venue you are at, and the line F prints
   let crownPromptEl = null;             // its DOM chip, made once in buildCrownStrip()
   const WALL_DROP = 0.22;               // walls cut to this fraction while the player is inside
@@ -439,7 +541,7 @@ export function createTusouxroeNorth(ctx) {
       // which merge.js honours per mesh. Mark any future animated mesh the same
       // way; a mesh without it is a meshes-into-the-batch, roof-will-not-lift bug.
 
-      const rec = { v, g, roof: null, walls: [], sign: [], fixed: [], stations: [], inside: false };
+      const rec = { v, g, roof: null, walls: [], sign: [], fixed: [], stations: [], neon: [], inside: false };
       const wallMat = M.of("crown wall " + v.id, v.theme.wall);
       const trimMat = M.of("crown trim " + v.id, v.theme.trim, { metalness: 0.5, roughness: 0.35 });
       const walls = [];
@@ -507,6 +609,10 @@ export function createTusouxroeNorth(ctx) {
         gl: (name, color) => M.glow(`crown ${name}`, color),
         sign: (text, ink, o) => add(G.box(o.w, o.h, 0.16), crownSignMat(text, ink, { w: o.w, h: o.h }),
           o.x, o.y, o.z, { ry: o.ry || 0 }),
+        // Register a mesh as a neon: it goes on the wet road's mirror layer, so it
+        // reflects in the forecourt. Only ever the lit shapes themselves — the
+        // matte backing plates, fascias and trim stay out of that pass.
+        neon: (mesh) => { rec.neon.push(mesh); return mesh; },
         block: (lx, lz, r) => { const p = crownToWorld(v, lx, lz); addBlocker(p.x, p.z, r); },
         lit: (lx, y, lz, power, range) => {
           const p = crownToWorld(v, lx, lz);
@@ -518,11 +624,21 @@ export function createTusouxroeNorth(ctx) {
         },
       };
       for (const s of v.layout) { const f = FIXTURES[s.fixture]; if (f) f(b, s); }
+      // ---- frontage: the same dispatcher, out on the apron. Local z past `b.FZ`
+      //      is the forecourt, so awnings, bollards, planters, bins and the
+      //      entrance spill are data here just like the furniture is.
+      for (const s of v.apron || []) { const f = FIXTURES[s.fixture]; if (f) f(b, s); }
       for (const p of v.props || []) { const f = PROPS[p]; if (f) f(b); }
 
-      // ---- forecourt: apron, painted bays, parked cars, valet kerbs ----
+      // ---- forecourt: wet asphalt apron, painted bays, cars, valet kerbs ----
+      // The apron is the highway's own surface material, so the wet shader and the
+      // neon reflection in it come for free; it sits at the mirror plane's height
+      // (fx.js PLANE_Y is 0.03, road 0.02).
+      // W + 10 is exactly the forecourt rect the layout audit checks, so the paving
+      // cannot quietly overhang the kerb or a neighbour by a metre the way a round
+      // number would.
       const fz = FZ + fore / 2;
-      add(G.box(W + 12, 0.06, fore), M.lot, 0, 0.035, fz);
+      add(G.plane(W + 10, fore), crownApron(surface), 0, 0.03, fz, { rx: -Math.PI / 2 });
       // The valet row is split either side of the entrance, never across it: an
       // enterable building needs an unbroken path from the kerb to the door.
       const aisle = gap / 2 + 2.4, pitch = 3.0, perSide = Math.max(1, Math.floor(cars / 2));
@@ -531,6 +647,18 @@ export function createTusouxroeNorth(ctx) {
       for (const x of carX) add(G.box(0.16, 0.02, 5.0), M.stripe, x, 0.09, FZ + 3.4);
       carX.forEach((x, i) => parkedCar(g, x, FZ + 3.4, i % 2 ? 0.02 : -0.02, i));
       for (const s of [-1, 1]) add(G.cyl(0.18, 1.1), M.gold, s * (W / 2 + 3.2), 0.55, FZ + 1.4, { cast: true });
+
+      // ---- back of house: a concrete pad and landmarks.js's street clutter ----
+      // (dumpster, pallets, drums, hydrant, bench). Reused rather than rebuilt: it
+      // is already the project's street-fiction set. It goes beside the hall on the
+      // strip's own land — never in the forecourt's lanes — and the layout audit
+      // checks it lands on no road and no named landmark.
+      if (v.service) {
+        const p = crownToWorld(v, v.service.x, v.service.z);
+        add(G.plane(11, 8), M.lot, v.service.x, 0.04, v.service.z, { rx: -Math.PI / 2 });
+        placeStreetClutter(ctx, p.x, p.z, v.rot + (v.service.ry || 0));
+        crownService.push({ venue: v.name, x: p.x, z: p.z });
+      }
 
       // ---- collision: the shell, with the entrance left OPEN so you can walk in.
       //      Circles are spaced so they touch; the front row skips the doorway, and
@@ -577,6 +705,12 @@ export function createTusouxroeNorth(ctx) {
         const p = crownToWorld(v, i * W * 0.28, -D * 0.15);
         addLitSpot({ x: p.x, y: H - 2.2, z: p.z, warm: v.theme.accent, power: 60, range: 22, fx: false });
       }
+
+      // Neon, last: every lit shape this venue asked to be reflected, plus its own
+      // name face. That is what `casinos.js`'s frontages cannot do — the strip's
+      // forecourt is a mirror, so a sign that is only emissive reads twice.
+      for (const m of rec.neon) reflect(m);
+      for (const m of rec.sign) reflect(m);
 
       rec.walls = walls;
       crownRecs.push(rec);
@@ -851,6 +985,9 @@ export function createTusouxroeNorth(ctx) {
 
     /** The venue the player is standing in, or null (QA, and future interiors). */
     get insideVenue() { return crownRecs.find((r) => r.inside)?.v.name ?? null; },
+
+    /** QA: where each venue's back-of-house service pocket is, in world space. */
+    get crownService() { return crownService; },
 
     /**
      * QA: the cutaway's state, per venue. `roofVisible:false` and a `wallScale`
