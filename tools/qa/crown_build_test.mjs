@@ -32,10 +32,21 @@ function check(label, ok, detail = "") {
 // A proportional text metric, so neonsign.js's fit loop is actually exercised:
 // it reads the px size out of the font string and advances ~0.64 em per glyph
 // (0.32 for a space), which is close to Arial Black uppercase.
+// The 2D ops are no-ops: characters.js paints its fabric patterns (paisley, stripes)
+// through them, and none of that affects a mesh count or a world position.
+const noop = () => {};
+const gradient = { addColorStop: noop };
 const context2d = {
   fillStyle: "", font: "", textAlign: "", textBaseline: "", shadowColor: "",
-  shadowBlur: 0, lineWidth: 0, strokeStyle: "",
-  fillRect() {}, fillText() {}, strokeRect() {},
+  shadowBlur: 0, lineWidth: 0, strokeStyle: "", globalAlpha: 1, lineCap: "", lineJoin: "",
+  fillRect: noop, fillText: noop, strokeRect: noop, strokeText: noop,
+  save: noop, restore: noop, translate: noop, rotate: noop, scale: noop, setTransform: noop,
+  beginPath: noop, closePath: noop, moveTo: noop, lineTo: noop, arc: noop, ellipse: noop,
+  rect: noop, quadraticCurveTo: noop, bezierCurveTo: noop, arcTo: noop,
+  fill: noop, stroke: noop, clip: noop, clearRect: noop, drawImage: noop, setLineDash: noop,
+  createLinearGradient: () => gradient, createRadialGradient: () => gradient,
+  createPattern: () => gradient, getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+  putImageData: noop, createImageData: () => ({ data: new Uint8ClampedArray(4) }),
   measureText(s) {
     const m = /(\d+(?:\.\d+)?)px/.exec(this.font || "");
     const size = m ? parseFloat(m[1]) : 10;
@@ -102,8 +113,15 @@ function makeThree() {
     add(...os) { for (const o of os) { if (!o) continue; o.parent = this; this.children.push(o); } return this; }
     remove(o) { const i = this.children.indexOf(o); if (i >= 0) { this.children.splice(i, 1); o.parent = null; } return this; }
     traverse(cb) { cb(this); for (const c of this.children) c.traverse(cb); }
-    updateMatrix() { this.matrix.__t.copy(this.position); return this; }
-    updateMatrixWorld() { this.matrix.updateMatrix(); this.matrixWorld.__t.copy(this.position); return this; }
+    updateMatrix() { this.matrix.compose(this.position); return this; }
+    // merge.js's mergeRigid bakes a character's rigid parts, so this now has to
+    // walk children the way real three does.
+    updateMatrixWorld() {
+      this.matrix.compose(this.position);
+      this.matrixWorld.__t.copy(this.position);
+      for (const c of this.children) c.updateMatrixWorld();
+      return this;
+    }
     getObjectByName() { return null; }
     clone() { return this; }
     lookAt() {} addEventListener() {}
@@ -123,8 +141,16 @@ function makeThree() {
   }
   const geo = (type) => class extends Geo { constructor(...a) { super(); this.type = type; this.parameters = { args: a }; } };
   class Col {
-    constructor(hex) { this.hex = hex >>> 0; }
+    constructor(hex) { this.hex = hex >>> 0; this.r = 1; this.g = 1; this.b = 1; }
+    setHex(h) { this.hex = h >>> 0; return this; }
     getHexString() { return this.hex.toString(16).padStart(6, "0"); }
+    setHSL() { return this; }
+    getHSL(o) { return o || { h: 0, s: 0, l: 0 }; }
+    lerp() { return this; }
+    copy(c) { return this.setHex(c.hex); }
+    clone() { return new Col(this.hex); }
+    setRGB(r, g, b) { this.r = r; this.g = g; this.b = b; return this; }
+    multiplyScalar() { return this; }
   }
   let muid = 0;
   class Material {
@@ -136,11 +162,22 @@ function makeThree() {
       this.map = o.map; this.transparent = !!o.transparent; this.opacity = o.opacity ?? 1;
       this.userData = { ...(o.userData || {}) };
     }
+    // characters.js clones its skin/tattoo/shirt materials per character
+    clone() {
+      const m = new Material({ name: this.name, color: this.color.hex });
+      m.emissive = this.emissive; m.emissiveIntensity = this.emissiveIntensity;
+      m.roughness = this.roughness; m.metalness = this.metalness; m.map = this.map;
+      m.userData = { ...this.userData };
+      return m;
+    }
+    copy(m) { return this.clone(); }
+    dispose() {}
   }
   class CanvasTexture { constructor(c) { this.image = c; this.repeat = new V(1, 1); this.offset = new V(); } }
 
   return {
     Vector2: V, Vector3: V, Matrix4: M4, Quaternion: Q, Euler: E, Box3, Sphere, Material,
+    Color: Col,
     Object3D: Obj3D, Group: class extends Obj3D {}, Mesh, InstancedMesh,
     BoxGeometry: geo("BoxGeometry"), CylinderGeometry: geo("CylinderGeometry"),
     SphereGeometry: geo("SphereGeometry"), ConeGeometry: geo("ConeGeometry"),
@@ -158,6 +195,10 @@ const blockers = [];        // every collision circle the district registered
 const litSpots = [];        // every pooled light spot the district registered
 const reflected = [];       // every mesh the strip put on the wet road's mirror layer
 const serviceCall = [];     // where the district asked for a back-of-house pocket
+// guestCast: the strip's crowd, measured rather than assumed (see the check below)
+const actorMeshes = (code) => vm.runInContext(
+  `(() => { let n = 0; const a = ${code}; a.traverse((o) => { if (o.isMesh) n++; }); return n; })()`,
+  sandbox, { filename: "probe" });
 // enough of a Scene for merge.js's batchStatic to walk it
 const scene = {
   children: [], visible: true,
@@ -184,6 +225,9 @@ const sandbox = {
   // the strip asks to reflect instead. That the strip asks at all — and asks for
   // the right things — is the property under test (see the neon checks below).
   reflect: (o) => { reflected.push(o); return o; },
+  // characters.js's only graphics dependency, and it is texture generation: null
+  // means "no micro-detail maps", which its own `if (micro)` guard allows.
+  microSurface: () => null,
   // The real one adds a 2.2 m blocker and pushes meshes into the scene; the
   // sandbox records the call so the audit can place the same blocker itself.
   placeStreetClutter: (c, x, z) => { calls.services++; serviceCall.push({ x, z }); },
@@ -232,6 +276,7 @@ try {
 }
 
 const CROWN_STRIP = vm.runInContext("CROWN_STRIP", sandbox);
+console.log(`\n  probe  one patron: ${actorMeshes("makeHoodrat({ seed: 1 })")} meshes · one dancer: ${actorMeshes("makeDancer({ sex: 'f', seed: 1 })")} meshes`);
 
 // landmarks.js's real placeStreetClutter ends with a 2.2 m blocker at its origin and
 // the sandbox stub cannot register it, so mirror it here: the stray-collision check

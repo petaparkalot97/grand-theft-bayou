@@ -46,11 +46,11 @@ export const TIPS = Object.freeze({
 export function createTips({ getContext }) {
   const css = document.createElement("style");
   css.textContent = `
-    #helpBox { position: fixed; left: 16px; top: 168px; z-index: 21; width: 360px; max-width: calc(100vw - 32px);
+    #helpBox { position: fixed; right: 16px; bottom: 60px; z-index: 21; width: 360px; max-width: calc(100vw - 32px);
       background: rgba(8,8,10,.86); color: #ecebe6; font: 14px/1.45 system-ui, sans-serif; padding: 12px 14px 13px;
       border-radius: 8px; border-left: 4px solid #ffd23a; box-shadow: 0 6px 24px rgba(0,0,0,.5);
       transition: opacity .35s, transform .35s; pointer-events: none; }
-    #helpBox.off { opacity: 0; transform: translateX(-12px); }
+    #helpBox.off { opacity: 0; transform: translateX(12px); }
     #helpBox h4 { margin: 0 0 4px; font: 900 13px/1.2 system-ui; letter-spacing: .12em; color: #ffd23a; }
     #helpBox b { color: #fff; }
     body.letterbox #helpBox { opacity: 0; }`;

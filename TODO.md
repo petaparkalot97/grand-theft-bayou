@@ -57,6 +57,42 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-072 — Loading-screen slideshow behind the main menu (human request + images, 2026-09-22)
+
+**Status:** `COMPLETE` · **Agent:** Claude · **Files:** `index.html`, `src/main.js`, `assets/ui/loading/`
+
+Human's own words: *"certain menu options are inaccessible while the game
+loads.. can you have a loading screen that cycles these images till the game
+loads and menu is entirely usable?"* — paired with 5 mood-art files dropped at
+the repo root (jfif) plus a Popeyes ad poster shared inline. This wasn't a bug
+(Story/Free Roam/graphics-tier buttons are deliberately disabled — see
+`startBtn.disabled`/`freeBtn.disabled` in `main.js` — until `boot()`'s asset
+loading finishes; Options/Exit always worked), just a bare "loading assets…"
+label with a static cover-art background while that finishes.
+
+**What changed:**
+- Copied the human's 5 `.jfif` files + `POPEYES2.png` into `assets/ui/loading/`
+  as `.jpg`/`.png` (the dev server's `serve.mjs` and Cloudflare Pages both
+  need a real image extension to serve the correct `Content-Type` — `.jfif`
+  isn't in either's type map, though the bytes are valid JPEG).
+- `index.html`: new `#loadScreen` layer, first child of `#overlay`, with one
+  `.slide` div per image (CSS `background-image`). Positioned at `z-index:
+  -1` so it paints above `#overlay`'s own `cover.png` background but below
+  the existing darkening scrim (`#overlay::before`) and menu text — see the
+  comment on the rule for why that z-index has to be numeric and declared
+  after the `#overlay > *` rule to win the cascade.
+- `src/main.js`: `startLoadScreen()`/`stopLoadScreen()` cross-fade through
+  the slides every 4.2s from page load; `stopLoadScreen()` is called both
+  where `loadNote.textContent = "ready."` already fires (successful boot)
+  and in the `boot().catch(...)` error path, fading `#loadScreen` out to
+  reveal the static cover art once the menu is fully usable either way.
+- Verified live in Chrome (not just read): confirmed the slideshow renders
+  and cycles during load, and that `startBtn.disabled`/`freeBtn.disabled`
+  both flip to `false` at the same moment `#loadScreen` gets its `.done`
+  class (computed `opacity: 0`).
+
+---
+
 ### TASK-071 — Police overhaul: on-foot chases, escalation by star, less overpowered (human request, 2026-09-22)
 
 **Status:** `REVIEW` (logic changed and `node --check`ed; **not yet verified in a
