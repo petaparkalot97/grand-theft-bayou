@@ -877,6 +877,226 @@ check("every venue has the interaction points its room promised",
     seen.walking && seen.dwell && seen.inside && seen.gone,
     `over 90 s: ${Object.entries(seen).map(([k, v]) => `${k}=${v}`).join(" ")}`);
 
+  // --- the drop-offs: cars stopping at the doors ----------------------------
+  // "Cars dropping people off at venue doors" is two halves, and they are tested
+  // in two places. The traffic half — a car brakes for the stop, dwells, calls
+  // onStop exactly once and pulls away — is traffic_test.mjs's, against real
+  // three. This is the strip's half: that every venue has a kerbside stop outside
+  // its own door, on the avenue *lane on its own side of the road*, wired to an
+  // arrival that walks a route this district's own collision allows.
+  {
+    const ave = CROWN_STRIP.avenue;
+    const kerbLanes = district.lanes.filter((l) => l.kerbside);
+    const stopOf = (name) => {
+      const v = CROWN_STRIP.venues.find((x) => x.name === name);
+      for (const l of kerbLanes) {
+        const st = (l.stops || []).find((s) => Math.abs(s.x - v.x) < 1.5);
+        if (st) return { lane: l, stop: st, v };
+      }
+      return null;
+    };
+    const missing = CROWN_STRIP.venues.filter((v) => !stopOf(v.name)).map((v) => v.name);
+    check("every venue has a car stop outside its own door",
+      !missing.length && kerbLanes.length === 2,
+      missing.length ? `no kerbside stop for ${missing.join(", ")}`
+        : `${kerbLanes.length} kerbside lanes carrying ${kerbLanes.reduce((n, l) => n + l.stops.length, 0)} stops`);
+
+    // the stop must be on the carriageway, in the lane on the venue's own side of
+    // it, and a car must meet the doors in the order it drives — the mistake that
+    // matters is a lane whose stops are listed the wrong way round, which makes
+    // every car sail past the near door and stop at the far one
+    let wrongSide = null, offRoad = null, noHandler = null, unordered = null;
+    for (const v of CROWN_STRIP.venues) {
+      const s = stopOf(v.name);
+      if (!s) continue;
+      const dz = s.stop.z - ave.z;
+      const want = v.side < 0 ? -1 : 1;
+      if (Math.sign(dz) !== want) wrongSide = `${v.name}: stop at z=${s.stop.z.toFixed(1)}, avenue at ${ave.z}`;
+      if (Math.abs(dz) < 0.5 || Math.abs(dz) > ave.half) offRoad = `${v.name}: stop ${Math.abs(dz).toFixed(1)} m off the centre line`;
+      if (typeof s.stop.onStop !== "function") noHandler = v.name;
+    }
+    for (const l of kerbLanes) {
+      const ward = Math.sign(l.points[l.points.length - 1][0] - l.points[0][0]) || 1;
+      for (let i = 1; i < l.stops.length; i++) {
+        if ((l.stops[i].x - l.stops[i - 1].x) * ward <= 0) unordered = `${l.name}: ${l.stops[i - 1].x} then ${l.stops[i].x}`;
+      }
+    }
+    check("a car stops on the carriageway, on its venue's own side of the avenue",
+      !wrongSide && !offRoad, wrongSide || offRoad || "every stop is in the near lane, off the sidewalk");
+    check("the stop is wired to somebody getting out", !noHandler, noHandler || "every stop has an onStop");
+    check("each kerbside lane meets its doors in the order it drives them",
+      !unordered, unordered || `${kerbLanes.length} lanes, stops in travel order`);
+
+    // and the walk in: the kerb point is on the venue's own forecourt, in front of
+    // the door, clear of the furniture
+    let kerbOff = null, kerbBlocked = null;
+    for (const v of CROWN_STRIP.venues) {
+      const mine = district.crownCrowd.find((c) => c.venue === v.name);
+      const k = mine && mine.kerb;
+      if (!k) { kerbOff = `${v.name} has no kerb point`; break; }
+      const p = toWorld(v, k.x, k.z);
+      if (!insideRect(v.fore, p.x, p.z)) { kerbOff = `${v.name}: kerb at (${p.x.toFixed(0)}, ${p.z.toFixed(0)}) is off its own forecourt`; break; }
+      if (Math.abs(p.x - v.x) > 1.0) { kerbOff = `${v.name}: kerb is not in front of the door`; break; }
+      for (const b of blockers) {
+        if (Math.hypot(b.x - p.x, b.z - p.z) < b.r + 0.5) { kerbBlocked = `${v.name}: something is parked on the kerb point`; break; }
+      }
+      if (kerbBlocked) break;
+    }
+    check("every kerb point is on the venue's own forecourt, in front of its door, and clear",
+      !kerbOff && !kerbBlocked, kerbOff || kerbBlocked || "four kerbs, all walkable");
+
+    // the errand itself, run and watched: a spare comes up at the kerb, walks the
+    // doorway axis in, and is retired — so an hour of drop-offs cannot leave the
+    // street full of people who arrived in cars
+    const v = CROWN_STRIP.venues.find((x) => x.name === "BAYOU GOLD");
+    const mine = () => district.crownCrowd.find((c) => c.venue === v.name);
+    const at = toWorld(v, mine().kerb.x, mine().kerb.z);
+    for (let i = 0; i < 6; i++) district.update(0.1, at);        // let the LOD turn on
+    const cast = mine().people.length + mine().spares.length;
+    const fired = stopOf(v.name).stop.onStop();
+    let up = false, retired = false, closest = Infinity;
+    for (let i = 0; i < 400; i++) {                             // 40 s: a 15 m walk and then some
+      district.update(0.1, at);
+      const s = mine().spares.find((x) => x.busy);
+      if (s) { up = true; closest = Math.min(closest, s.lz); }
+      else if (up) { retired = true; break; }
+    }
+    check("a car's arrival walks from the kerb in through the door, and is retired when he is in",
+      fired !== false && up && retired && closest < v.d / 2,
+      `spare ${up ? "came up" : "never appeared"}, walked in to local z=${closest === Infinity ? "-" : closest.toFixed(1)} (door at ${(v.d / 2).toFixed(1)}), ${retired ? "retired inside" : "still out"}`);
+    check("an arrival is an actor the venue already cast, not a new one",
+      mine().people.length + mine().spares.length === cast, `${cast} cast, ${mine().people.length + mine().spares.length} after`);
+  }
+
+  // --- the crossing over US-167 ---------------------------------------------
+  // The one piece of the block that is nobody's frontage. It is checked in three
+  // parts: it is a real crossing (spans the carriageway, off the avenue's own
+  // traffic), nobody crosses through a bollard, and it is *used* — the numbers
+  // that matter are for a strip whose pedestrians actually walk over the road.
+  {
+    const x = district.crownCrossing;
+    const ave = CROWN_STRIP.avenue;
+    check("the strip has a crossing over US-167", !!x,
+      x ? `kerbs at x=${x.kerbA.x} and x=${x.kerbB.x}, z=${x.kerbA.z}` : "none built");
+    if (x) {
+      const spans = Math.abs(x.kerbA.x - x.kerbB.x) > 2 * x.roadHalf;
+      const offAve = Math.abs(x.kerbA.z - ave.z) > ave.half;
+      check("the crossing spans the carriageway and stands clear of the avenue's own traffic",
+        spans && offAve,
+        `x ${x.kerbA.x}..${x.kerbB.x} over a ${2 * x.roadHalf} m carriageway, ${Math.abs(x.kerbA.z - ave.z).toFixed(1)} m off the avenue centre`);
+
+      // both edges of the corridor, sampled: a person crosses the whole width of
+      // this, so a bollard or a lamp inside it is somebody walking through one
+      const sampleWorld = (a, b) => {
+        const n = Math.max(2, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.25));
+        const out = [];
+        for (let i = 0; i <= n; i++) out.push({ x: a.x + ((b.x - a.x) * i) / n, z: a.z + ((b.z - a.z) * i) / n });
+        return out;
+      };
+      let inWay = null;
+      for (const r of x.routes) {
+        for (const q of sampleWorld(r.a, r.b)) {
+          for (const b of blockers) {
+            if (Math.hypot(b.x - q.x, b.z - q.z) < b.r + 0.4) {
+              if (x.roadHalf < 0 || Math.abs(q.x - (x.kerbA.x + x.kerbB.x) / 2) > x.roadHalf) {
+                inWay = `${r.what} runs through a ${b.r} m blocker at x=${q.x.toFixed(1)}`;
+              }
+            }
+          }
+          if (inWay) break;
+        }
+        if (inWay) break;
+      }
+      check("nothing is standing in the crossing corridor off the carriageway",
+        !inWay, inWay || "both edges sampled every 0.25 m");
+
+      // the pedestrians traffic is given are only ever the ones in the road: a
+      // car that brakes for somebody on the kerb would never move again
+      const probe = { x: x.kerbA.x - 6, y: 0, z: x.kerbA.z };
+      let stray = null, crossings = 0, inRoadFrames = 0;
+      const side = x.people.map((p) => Math.sign(p.x - Math.min(x.kerbA.x, x.kerbB.x) - 1));
+      for (let i = 0; i < 1200; i++) {                          // two minutes at the strip
+        district.update(0.1, probe);
+        const now = district.crownCrossing;
+        const given = district.crownCrossers.reduce((n, o) => n + (o.x < 1e4 ? 1 : 0), 0);
+        if (given !== now.inRoad) { stray = `handed traffic ${given} pedestrians while ${now.inRoad} were in the road`; break; }
+        if (now.inRoad > 0) inRoadFrames++;
+        now.people.forEach((p, j) => {
+          const s = Math.sign(p.x - (now.kerbA.x + now.kerbB.x) / 2);
+          if (s !== 0 && side[j] !== 0 && s !== side[j]) crossings++;
+          if (s !== 0) side[j] = s;
+        });
+      }
+      check("traffic is handed only the pedestrians who are in the carriageway",
+        !stray, stray || "every frame of 1,200, exactly");
+      check("people use the crossing instead of the strip having a painted one",
+        crossings >= 3 && inRoadFrames > 20,
+        `${crossings} kerb-to-kerb crossings, ${inRoadFrames}/1200 frames with somebody in the road`);
+    }
+  }
+
+  // --- the odd bit of street theatre ----------------------------------------
+  // A cheer, and security walking somebody out. Both happen *to* the people the
+  // district already has, so both are checked by watching them: a cheer nobody
+  // reacts to, or a bouncer who never goes back to his post, would pass a
+  // screenshot and fail here.
+  {
+    const v = CROWN_STRIP.venues.find((x) => x.name === "HAPPY HOGS");
+    const mine = () => district.crownCrowd.find((c) => c.venue === v.name);
+    const at = toWorld(v, mine().kerb.x, mine().kerb.z);
+    for (let i = 0; i < 6; i++) district.update(0.1, at);
+
+    const e = district.crownEvent("cheer", v.name);
+    check("a cheer can be started at a venue by name, and is recorded",
+      !!e && e.kind === "cheer" && e.venue === v.name && district.crownEvents.some((x) => x.t === e.t),
+      e ? `${e.kind} at ${e.venue}` : "nothing happened");
+    let cheering = 0;
+    for (let i = 0; i < 40; i++) {
+      district.update(0.1, at);
+      const m = mine();
+      cheering = Math.max(cheering,
+        m.people.filter((p) => p.anim === "cheer").length + m.walkers.filter((p) => p.anim === "cheer").length);
+    }
+    let settled = 0;
+    for (let i = 0; i < 60; i++) {
+      district.update(0.1, at);
+      const m = mine();
+      settled = m.people.filter((p) => p.anim === "cheer").length + m.walkers.filter((p) => p.anim === "cheer").length;
+    }
+    check("the frontage and the door crew cheer at it", cheering >= 3, `${cheering} celebrating at once`);
+    check("...and settle back down afterwards", settled === 0, `${settled} still cheering 6 s later`);
+
+    const e2 = district.crownEvent("bounce", v.name);
+    let spareUp = false, spareGone = false, left = false, back = false, maxOut = 0;
+    for (let i = 0; i < 700; i++) {                            // 70 s: the escort and back
+      district.update(0.1, at);
+      const m = mine();
+      const s = m.spares.find((x) => x.busy);
+      if (s) spareUp = true;
+      else if (spareUp) spareGone = true;
+      const d = m.people.filter((p) => p.role === "bouncer")
+        .map((p) => Math.hypot(p.lx - p.rest.lx, p.lz - p.rest.lz));
+      if (d.length) {
+        maxOut = Math.max(maxOut, Math.max(...d));
+        if (Math.max(...d) > 3) left = true;
+        if (left && Math.max(...d) < 0.8) back = true;
+      }
+    }
+    check("security walks somebody out to the kerb", !!e2 && e2.kind === "bounce" && spareUp && left,
+      `spare ${spareUp ? "sent out" : "never claimed"}, door staff left his post by ${maxOut.toFixed(1)} m`);
+    check("the escort goes back to his post and the one walked out is retired",
+      back && spareGone,
+      `${back ? "back at his spot" : `still ${maxOut.toFixed(1)} m off it`}, escortee ${spareGone ? "retired" : "still on the strip"}`);
+
+    // and the strip stages its own, without being asked
+    const logged = district.crownEvents;
+    const t0 = logged.length ? logged[logged.length - 1].t : -1;
+    for (let i = 0; i < 1800; i++) district.update(0.1, at);    // three minutes on the strip
+    const fresh = district.crownEvents.filter((x) => x.t > t0).length;
+    check("the strip stages its own street theatre without being asked",
+      fresh >= 2, `${fresh} events in three minutes`);
+  }
+
   // --- the act: BILLY JEANS on the lounge's stage ---------------------------
   // A performer is not a person standing on a stage. This runs his routine for
   // real, from inside the room, and checks the three things that make it a show:

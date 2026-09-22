@@ -185,6 +185,8 @@ const CROWN_VENUES = [
       { fixture: "booths", x: -16, z: 5, n: 3, dx: 5 },
       { fixture: "poolTable", x: 16, z: 6, n: 2, dx: 6 },
       { fixture: "lounge", x: -19, z: 11, n: 1, dx: 10 },
+      // signature prop hanging prominently inside!
+      { fixture: "propGlove", x: 14, y: 7.5, z: -11, scale: 0.8 },
       // the stage end: deck, cans, PA stacks flanking it — and the headliner, who
       // works the front-centre of that deck all night (crowd.js's `star` role)
       { fixture: "stage", x: 14, z: -11, w: 14, d: 6, rise: 0.8, star: "BILLY JEANS" },
@@ -305,6 +307,8 @@ const CROWN_VENUES = [
       { fixture: "dressingRoom", x: 13, z: -10, w: 14, d: 5 },
       { fixture: "columns", x: 0, z: 0, n: 2, dx: 28 },
       { fixture: "discoBall", x: 0, z: -2, n: 2, dx: 6 },
+      // signature prop hanging prominently inside!
+      { fixture: "propPig", x: -6, y: 7.5, z: -10, scale: 0.8 },
       { fixture: "neonBrand", x: -6, y: 10.6, z: -12.6, w: 18, text: "HAPPY HOGS" },
     ],
     // Pink/red/purple, and a rope beside the door for the guests who are not on
@@ -1321,8 +1325,13 @@ export function createTusouxroeNorth(ctx) {
         // is on its feet, and what it is doing
         walkers: r.pave ? r.pave.actors.map((p) => ({
           live: p.live !== false, state: p.state, goal: p.target ? p.target.kind : null,
-          lx: p.a.position.x, lz: p.a.position.z,
+          anim: p.a.anim, lx: p.a.position.x, lz: p.a.position.z,
         })) : [],
+        // the two runtime errands this frontage casts for: a spare is `busy` when
+        // it is out — an arrival walking in, or somebody being walked out
+        spares: r.crowdOut.spares.map((s) => ({
+          busy: s.busy, visible: s.a.visible, lx: s.a.position.x, lz: s.a.position.z,
+        })),
         // every route a walker or an errand can take on this frontage, in local
         // space: the pavement's own legs, and the kerb spur a car's arrival uses
         routes: r.pave ? [...r.pave.routes, ...(r.dropRoutes || [])] : [],

@@ -49,6 +49,7 @@ export function createCameraController({ camera, dom, canCapture }) {
   let yaw = 0, targetYaw = 0;
   let pitch = C.onFoot.cameraPitch, targetPitch = C.onFoot.cameraPitch;
   let footDist = C.onFoot.cameraDistance, driveDist = C.driving.cameraDistance, dist = footDist;
+  let rightOffset = 0;
   let wasDriving = false;
   let aiming = false;
   let lastMouse = -1e9;

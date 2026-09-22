@@ -174,6 +174,65 @@ export function makeKit() {
 const chipColors = [0xff4f6d, 0xffd23a, 0xf4f1ea];
 
 export const FIXTURES = {
+  /** A very large white performance glove for interior use. */
+  propGlove(b, s) {
+    const white = b.m("glove white", 0xf4f7ff, { roughness: 0.22, metalness: 0.12, emissive: 0xffffff, emissiveIntensity: 0.35 });
+    const seam = b.e("glove sequin", 0xffffff, 0.9);
+    const gg = new THREE.Group();
+    gg.position.set(s.x || 0, s.y || 4.0, s.z || 0);
+    gg.rotation.set(0, s.ry || 0, 0.16);
+    if (s.scale) gg.scale.setScalar(s.scale);
+    b.g.add(gg);
+    const put = (geo, mat, x, y, z, rx = 0) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.rotation.x = rx;
+      m.castShadow = true;
+      gg.add(m);
+      return m;
+    };
+    put(b.G.box(5.2, 5.6, 2.3), white, 0, 0, 0);                       // palm
+    [-1.75, -0.6, 0.55, 1.7].forEach((x, i) =>                          // four fingers
+      put(b.G.box(1.15, 3.5 - i * 0.35, 2.0), white, x, 4.3 - i * 0.18, 0.1, -0.12 - i * 0.02));
+    put(b.G.box(1.3, 3.1, 1.9), white, -3.2, 1.5, 0.1, 0.55);           // thumb
+    put(b.G.box(5.6, 1.5, 2.7), b.m("glove cuff", 0x1a1a1a), 0, -3.5, 0);
+    put(b.G.box(5.9, 0.4, 3.0), b.m("glove gold", b.v.theme.trim, { metalness: 0.9, roughness: 0.2 }), 0, -2.7, 0);
+    const sequins = [];
+    for (let ix = -2; ix <= 2; ix++) for (let iy = -2; iy <= 1; iy++) sequins.push({ x: ix, y: iy * 0.9 + 0.2, z: 1.25 });
+    instanced(gg, b.G.sph(0.16), seam, sequins);
+    b.lit(s.x || 0, s.y || 4.0, s.z || 0, 95, 26);
+  },
+
+  /** A pig's head for interior use. */
+  propPig(b, s) {
+    const pink = b.m("pig pink", 0xff8fb0, { roughness: 0.5, emissive: 0xff4f7a, emissiveIntensity: 0.3 });
+    const dark = b.m("pig dark", 0x5a2030);
+    const pg = new THREE.Group();
+    pg.position.set(s.x || 0, s.y || 4.0, s.z || 0);
+    pg.rotation.set(0, s.ry || 0, 0);
+    if (s.scale) pg.scale.setScalar(s.scale);
+    b.g.add(pg);
+    const put = (geo, mat, x, y, z, rx = 0, ry = 0) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.rotation.set(rx, ry, 0);
+      m.castShadow = true;
+      pg.add(m);
+      return m;
+    };
+    put(b.G.sph(3.4), pink, 0, 0, 0);
+    put(b.G.cyl(1.7, 1.4), pink, 0, -0.7, 3.1, Math.PI / 2);
+    for (const sx of [-1, 1]) {
+      put(b.G.box(0.6, 0.6, 0.2), dark, sx * 0.7, 0.4, 3.3);           // eyes
+      put(b.G.box(0.5, 0.8, 0.2), dark, sx * 0.5, -0.5, 3.8);          // snout
+      put(b.G.box(2.2, 3.1, 0.4), pink, sx * 2.8, 2.5, 0.4, 0, sx * 0.4); // ears
+    }
+    put(b.G.box(4.2, 1.2, 0.6), b.m("pig tie 1", 0x1a1a1a), 0, -3.7, 1.9, 0.2); // tie
+    put(b.G.box(0.8, 1.4, 0.8), b.m("pig tie 2", 0x1a1a1a), 0, -3.7, 2.0, 0.2);
+    put(b.G.torus(3.9, 0.2), b.e("pig halo", b.v.theme.accent, 1.1), 0, 0, -0.6);
+    b.lit(s.x || 0, s.y || 4.0, s.z || 0, 85, 24);
+  },
+
   /** The way in: a carpet runner, its brass edges, four bell posts — and light. */
   runner(b, s) {
     const w = s.w ?? 9, d = s.d ?? 12;
