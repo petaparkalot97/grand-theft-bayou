@@ -116,19 +116,32 @@ function loadFBX(url, cullRe) {
     const textureRoot = packTextureRoot(url);
     const manager = new THREE.LoadingManager();
     manager.setURLModifier((u) => {
-      // The model file itself passes through untouched; so does anything that
-      // already resolves into the pack's real Textures/ folder.
+      // Already-resolved sources, never touched. This line matters far more than
+      // it looks: FBXLoader hands EMBEDDED textures to the manager as `blob:`
+      // URLs, and those have no file extension. An allow-list that only
+      // recognises image extensions therefore blanks every embedded texture in
+      // every pack — which is exactly what happened the first time this
+      // modifier was inverted, and it turned the shop packs white.
+      if (/^(blob:|data:|https?:)/i.test(u)) return u;
+      // The model file itself, and anything already resolving into the pack's
+      // real Textures/ folder.
       if (/\.(fbx|glb|gltf|dae|bin|fbm)$/i.test(u) || u.includes("/Textures/")) return u;
-      // Everything else is supposed to be a texture, so anything that ISN'T a
-      // real image filename is a broken reference in the pack. three's
-      // FBXLoader.loadTexture() declares `let fileName;` and uses it without
-      // ever assigning it when a texture node has no image child, so a material
-      // with no texture ends up requesting the model's own folder — that is the
-      // "assets/models/tacos/Tacos/Models/ 403" on every load. Nothing is there
-      // to fetch; hand back a 1x1 transparent pixel and make no request at all.
-      if (!/\.(jpe?g|png|tga|bmp|exr|tif?f|webp)$/i.test(u)) return BLANK_PIXEL;
       const asked = u.split(/[\\/]/).pop();
-      return `${textureRoot}Textures/${TEXTURE_ALIASES[asked.toLowerCase()] || asked}`;
+      // No filename, or one with no extension at all: a broken reference.
+      // three's FBXLoader.loadTexture() declares `let fileName;` and uses it
+      // without ever assigning it when a texture node has no image child, so it
+      // resolves nothing against the model's own folder and requests the FOLDER
+      // — the "assets/models/tacos/Tacos/Models/ 403" on every load. There is
+      // nothing to fetch; hand back a 1x1 pixel and make no request.
+      if (!asked || !/\.[a-z0-9]+$/i.test(asked)) return BLANK_PIXEL;
+      // A real image filename that is simply in the wrong place: these packs
+      // keep their textures one level down in Textures/, not beside the model.
+      if (/\.(jpe?g|png|tga|bmp|exr|tif?f|webp)$/i.test(asked)) {
+        return `${textureRoot}Textures/${TEXTURE_ALIASES[asked.toLowerCase()] || asked}`;
+      }
+      // Anything else (.dds, .uasset, formats three cannot load anyway) goes
+      // through exactly as the pack asked for it rather than being guessed at.
+      return u;
     });
     const loader = new FBXLoader(manager);
     _fbxCache.set(url, new Promise((r) => loader.load(url, r, undefined, (e) => { console.warn("FBX load failed", url, e); r(null); })));

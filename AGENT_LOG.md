@@ -112,6 +112,84 @@ meshes, **0** of them merged. If you add a module with a `props` getter, add it
 to `moving` in the same commit, and if its props are a mix of static and moving
 parts, split the getter rather than excluding the whole district from batching.
 
+### REGRESSION, caught same day — an allow-list that blanked every embedded texture
+
+`landmarks.js`'s `loadFBX` URL modifier was inverted from a deny-list to an
+allow-list earlier the same day to stop a directory request. The allow-list
+recognised model extensions and image extensions, and blanked everything else.
+
+**`blob:` URLs have no file extension.** FBXLoader hands EMBEDDED textures to
+the manager as `blob:` URLs, so the allow-list replaced every embedded texture
+in every pack with a 1x1 transparent pixel. `data:` URIs and `.dds`/`.uasset`
+went the same way. The shop packs went white.
+
+It did not throw, did not log, and did not fail a request — the only trace was
+texture coverage dropping from 42.1% of material slots to 37.6%, which is not a
+number anyone looks at. It took a human playtest to notice.
+
+The fix, and the rule: **an allow-list over URLs must pass `blob:`, `data:` and
+`http(s):` first, before any extension test.** Those are already-resolved
+sources and were never the loader's problem. Then test the FILENAME, not the
+whole URL, and blank only a reference with no filename or no extension at all —
+that is the genuinely broken case. Anything with an unrecognised extension goes
+through untouched rather than guessed at.
+
+Verified after: coverage back to 42.4%, 24 blank pixels (the real broken refs),
+0 console errors.
+
+### Human playtest, 2026-09-21 — police walked through walls
+
+Reported: "the cop vehicles should not be able to go through walls, buildings
+and other objects." Three separate causes, all real.
+
+**1. Foot deputies had no collision at all.** `police.js` integrated position
+straight onto the world —
+
+```js
+p.x += dx * c.T.speed * dt;
+p.z += dz * c.T.speed * dt;
+```
+
+— because `createPoliceSystem` was never given a collision function. It took
+`{ scene, MAP, npcs, loot, hitPlayer, busted, shootPlayer }` and nothing else.
+Every other mover in the game consults `blockerGrid`; this was the one that
+could not. It now takes `resolveCollision` and routes through it.
+
+**2. WARNING — `resolveCollision(current, next, radius)` writes its answer into
+`current`, NOT into `next`.** It is `blockerGrid.resolve(next, radius, current,
+null)`, and `resolve(next, radius, out, skip)` writes to `out`. The first
+attempt at the fix above did
+
+```js
+resolveCollision(p, _step, FOOT_R);
+p.x = _step.x; p.z = _step.z;     // WRONG: _step is the UNRESOLVED position
+```
+
+which computed the collision and then threw it away, so the deputies kept
+walking through walls with the grid correctly wired up. `main.js`'s own player
+call is the reference: `resolveCollision(playerPos, next, 0.6)` and then it uses
+`playerPos`. Pass the mover as `current` and read the result from it.
+
+**3. Cruisers and foot cops spawned inside geometry.** Both picked a random
+bearing on a ring around the player with no test for what was there —
+`playerPos + (cos a, sin a) * 55` for a cruiser, `* (14..30)` for a deputy. In a
+dense block that lands inside a building, and the push-out in `updateSheriffs`
+then walks the car out through a wall, which reads exactly like a police car
+driving through a wall, because it is. Both now search bearings for clear ground
+(`clearOfBlockers`) and skip the spawn entirely rather than bury one.
+
+`clearOfBlockers` tests the footprints in `losBoxes` as well as the blocker
+grid, because **plenty of buildings are hollow** — blockers ring the walls and
+the middle is empty, so a point inside one reads as perfectly clear. Nothing can
+walk in there, which means anything found in there was spawned in there.
+
+**QA note:** "is it inside a building" is a bad metric. Occluder boxes are
+camera volumes, not footprints — downtown's run 23x22 m around a smaller tower,
+so a cop on the pavement scores as inside. Measure **overlap with the blocker
+grid** instead: that went 4/4 to 0/0 for deputies and stayed 0 for cruisers.
+Clearance of exactly 0 is the correct resting state for a pushed-out mover, not
+a failure.
+
 ### TASK-069 — the renderer was never the problem
 
 Recorded because it will come up again: this project's post chain is
