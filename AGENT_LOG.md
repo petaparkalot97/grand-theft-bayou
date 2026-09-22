@@ -895,6 +895,38 @@ grid** instead: that went 4/4 to 0/0 for deputies and stayed 0 for cruisers.
 Clearance of exactly 0 is the correct resting state for a pushed-out mover, not
 a failure.
 
+### The click that captures the mouse was also firing the gun
+
+Playtest: "when left clicking and holding, the weapons still shoot and swing
+while I am rotating the screen."
+
+`camera.js` requests Pointer Lock on left-mousedown, and `input.js` dispatched
+`attack` on that same event. So the click you make to grab the pointer fired,
+and once automatic weapons landed, holding left click to drag the view emptied
+the magazine. `input.js` now drops button 0 entirely while the pointer is free.
+
+**WARNING — gate the button BEFORE `mouseHeld.add`, not just before the handler
+dispatch.** The first cut of this fix skipped only the edge-triggered `attack`
+handler and changed nothing, because `main.js`'s automatic fire reads
+`input.isDown("attack")` — which is backed by `mouseHeld` — and calls `fire()`
+straight from the tick. Any future guard on a mouse button has the same two
+paths to close: the edge dispatch and the held state.
+
+Right click is deliberately NOT gated: `camera.js` keeps right-drag as the look
+fallback while the pointer is free, and aiming has no side effects.
+
+`window.__qaPointerLock` joins `__qaAim` as a headless escape hatch, since a
+synthetic `MouseEvent` can never hold Pointer Lock. Either flag satisfies the
+guard, so the existing QA scripts that only set `__qaAim` keep working.
+
+**And the weapon now starts holstered.** Left click is the button you press to
+capture the pointer and to look around; defaulting to "armed" meant the first
+thing a new player did was fire. `fire()` flashes "Weapon away — press X to draw
+it." on a 4 s cooldown so it does not read as broken, and the hint is
+rate-limited because a held automatic trigger would otherwise repeat it every
+frame. Holstering applies in a vehicle too — "put it away" that still permits a
+drive-by is not put away.
+
 ### TASK-070 — two new bindings, and where they live
 
 `input.js` gained `holster: ["KeyX"]` and `radio: ["KeyK"]`. Reminder from the

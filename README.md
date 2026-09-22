@@ -299,9 +299,9 @@ Then hit **Start the story**.
 | **WASD** | walk: **W** always goes where the camera looks · drive: **W** / **S** throttle and brake-reverse, **A** / **D** steer (the camera never changes where the car goes) |
 | **F** | get in / out of a car, enter the truck. At a car someone's driving, Keseme pulls the driver out first (it has to be going slower than ~8 m/s) |
 | **Shift** | sprint on foot · handbrake in a car |
-| **Left click** | shoot / swing — hold **Right click** to aim first, on foot |
+| **Left click** | shoot / swing — needs the weapon drawn (**X**), and on foot hold **Right click** to aim. The click that captures the mouse never fires |
 | **Right click** | aim |
-| **X** | put the weapon away / take it out. Holstered, left click does nothing at all — walk and look around without firing |
+| **X** | draw / put away the weapon. **Starts away**, so left click is free for grabbing the pointer and looking around; press X before you expect to shoot or swing |
 | **Space** | jump |
 | **C** | crouch |
 | **Mouse** | look around — click the game to capture the mouse, **Esc** releases it |

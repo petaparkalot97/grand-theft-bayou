@@ -1067,10 +1067,12 @@ const state = {
   heat: 0,            // crime heat -> wanted stars
   wanted: 0,
   crimeCd: 0,         // time since last crime (heat holds while > 0)
-  // Weapon put away (X). Starts drawn, so nothing about the existing game
-  // changes until the key is pressed. While holstered, fire() refuses, the
-  // view-model is hidden and the HUD says so.
-  holstered: false,
+  // Weapon put away (X). Starts AWAY: left click is for looking around, and
+  // nobody expects grabbing the pointer or dragging the view to empty a
+  // magazine. Draw with X when you actually want to use it. While holstered,
+  // fire() refuses, the view-model is hidden and the HUD dims.
+  holstered: true,
+  holsterHintCd: 0,
   bustCd: 0,          // seconds a sheriff has been on top of you
   cinematic: false,   // a cutscene owns the world: simulation and input pause
 };
@@ -3174,9 +3176,19 @@ const _tmpV = new THREE.Vector3();
 const _muzzleV = new THREE.Vector3();
 function fire() {
   if (state.fireCd > 0 || state.over || state.cinematic) return;
-  // Weapon away: left click is inert. Checked before the aim prompt below so
-  // holstering doesn't nag you to hold right click.
-  if (state.holstered && !state.veh) return;
+  // Weapon away: left click is inert, in a car as much as on foot — "put it
+  // away" that still lets you drive-by is not put away. Checked before the aim
+  // prompt below so holstering doesn't nag you to hold right click either.
+  if (state.holstered) {
+    // Say why nothing happened. Without this, starting holstered just reads as
+    // "shooting is broken". Rate-limited, or an automatic weapon's held trigger
+    // would repeat it every frame.
+    if (state.holsterHintCd <= 0) {
+      state.holsterHintCd = 4;
+      flashObjective("Weapon away — press X to draw it.");
+    }
+    return;
+  }
   
   if (state.veh && state.weapon !== "pistol" && state.weapon !== "tec9") {
     // Try to auto-switch to a drive-by capable weapon if they have ammo
@@ -3712,6 +3724,7 @@ let lastElev = -1.8, lastAz = 200;
 const _sunDir = new THREE.Vector3();
 function simulate(dt) {
   state.fireCd = Math.max(0, state.fireCd - dt);
+  state.holsterHintCd = Math.max(0, state.holsterHintCd - dt);
   state.hurtCd = Math.max(0, state.hurtCd - dt);
   worldTime.update(dt);
   weather.update(dt);
