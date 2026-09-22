@@ -32,6 +32,11 @@ import { neonSignTexture, neonSignMaterial, aspectOf } from "./neonsign.js";
 // furniture lives in interiors.js so the next venue (or the next district) is an
 // entry there, not another few hundred lines here.
 import { FIXTURES, PROPS, makeGeoCache, makeKit, instanced } from "./interiors.js";
+// The people. Fixtures propose spots next to their own furniture (b.spot) and
+// this turns them into actors — the room's staff pinned to the bar, the games
+// and the stage, the rest drawn from spawnzones.js's own door mix for the
+// strip. Nothing here is placed by hand, so a layout change moves its crowd.
+import { makeCrowd, pickLane, spotFree } from "./crowd.js";
 
 // ---------------------------------------------------------------------------
 // THE CROWN STRIP — North Tusouxroe's casino and nightlife row.
@@ -98,6 +103,11 @@ const CROWN_VENUES = [
     theme: { wall: 0x14161f, trim: 0xd4af37, interior: 0x2a1430, accent: 0xffd23a, felt: 0x12613f },
     sign: { h: 3.2, sub: "CASINO" },
     blurb: "Two floors of it, and the house always wins, cher.",
+    // The crowd: `crowd` bodies on the floor (staff are always cast on top of
+    // that count), and the fronts of house the venue earns — the casino runs on
+    // valets, the lounge on smokers by the door, the club on people dancing
+    // where the queue can see them.
+    cast: { crowd: 12 },
     // 56 × 30 m. The floor plan is a casino's: a spine from the door to the
     // vault, machine banks either side of it, the pit behind, the VIP deck and
     // the lounge off the entrance. Everything below leaves a lane; the QA build
@@ -160,6 +170,7 @@ const CROWN_VENUES = [
     theme: { wall: 0x141a24, trim: 0xcfd8e6, interior: 0x1a2330, accent: 0x9ad6ff, felt: 0x12613f },
     sign: { h: 3.0, sub: "LOUNGE & STAGE" },
     blurb: "Bar, stage, pool table, and a glove that will not quit.",
+    cast: { crowd: 10, smoker: 2 },
     props: ["glove"],
     // The same 56 × 30 m shell as the casino next door, and nothing like it
     // inside: a long bar down one wall, booths and pool tables, and a stage the
@@ -210,6 +221,7 @@ const CROWN_VENUES = [
     theme: { wall: 0x160f22, trim: 0xff4fb3, interior: 0x120a18, accent: 0x2ee6d6, felt: 0x12613f },
     sign: { h: 3.4, sub: "NIGHTCLUB" },
     blurb: "Purple light, a teal floor, and one very large disco ball.",
+    cast: { crowd: 14, party: 2 },
     props: ["disco"],
     // The biggest room on the strip, and the one built to be seen from inside:
     // a lighting deck for a floor, the DJ at the back of it, bars down both
@@ -260,6 +272,7 @@ const CROWN_VENUES = [
     theme: { wall: 0x1c0f1a, trim: 0xff4fb3, interior: 0x1a0a14, accent: 0xff4fb3, felt: 0x8a0f3c },
     sign: { h: 3.0, sub: "SHOW BAR" },
     blurb: "The finest hams on the Gulf Coast.",
+    cast: { crowd: 12 },
     props: ["pig"],
     // A working show room rather than a generic club: the stage is the room, the
     // bars sit either side of it, private rooms and the dressing room are behind.
@@ -541,10 +554,20 @@ export function createTusouxroeNorth(ctx) {
       // which merge.js honours per mesh. Mark any future animated mesh the same
       // way; a mesh without it is a meshes-into-the-batch, roof-will-not-lift bug.
 
-      const rec = { v, g, roof: null, walls: [], sign: [], fixed: [], stations: [], neon: [], inside: false };
+      const rec = { v, g, roof: null, walls: [], sign: [], fixed: [], stations: [], neon: [], spots: [], inside: false };
       const wallMat = M.of("crown wall " + v.id, v.theme.wall);
       const trimMat = M.of("crown trim " + v.id, v.theme.trim, { metalness: 0.5, roughness: 0.35 });
       const walls = [];
+      // The venue's collision in *local* space, kept alongside the world-space
+      // blockers it also registers. The crowd needs it: a valet, a queue and a
+      // strolling patron are placed against the same circles the player walks
+      // into, and `pickLane` picks the forecourt's walk lane out of them.
+      const placed = [];
+      const block = (lx, lz, r) => {
+        placed.push({ x: lx, z: lz, r });
+        const p = crownToWorld(v, lx, lz);
+        addBlocker(p.x, p.z, r);
+      };
       const add = (geo, mat, x, y, z, opt = {}) => {
         const m = addMesh(g, geo, mat, x, y, z, opt);
         if (opt.wall) { walls.push(m); m.userData.noBatch = true; }
@@ -613,7 +636,11 @@ export function createTusouxroeNorth(ctx) {
         // reflects in the forecourt. Only ever the lit shapes themselves — the
         // matte backing plates, fascias and trim stay out of that pass.
         neon: (mesh) => { rec.neon.push(mesh); return mesh; },
-        block: (lx, lz, r) => { const p = crownToWorld(v, lx, lz); addBlocker(p.x, p.z, r); },
+        block,
+        // A person stands here (crowd.js). The fixtures propose these next to
+        // their own geometry — a stool, a seat, a pole — so this is the same
+        // data-driven placement the furniture already uses.
+        spot: (lx, lz, opt = {}) => { rec.spots.push({ lx, lz, ...opt }); },
         lit: (lx, y, lz, power, range) => {
           const p = crownToWorld(v, lx, lz);
           addLitSpot({ x: p.x, y, z: p.z, warm: v.theme.accent, power, range, fx: false });
@@ -665,28 +692,65 @@ export function createTusouxroeNorth(ctx) {
       //      the door posts stop a car without stopping a person. ----
       const step = 2.4;
       for (let lx = -W / 2; lx <= W / 2 + 0.01; lx += step) {
-        let p = crownToWorld(v, lx, -FZ + T / 2);
-        addBlocker(p.x, p.z, 1.2);
-        if (Math.abs(lx) > gap / 2 + 0.2) {
-          p = crownToWorld(v, lx, FZ - T / 2);
-          addBlocker(p.x, p.z, 1.2);
-        }
+        block(lx, -FZ + T / 2, 1.2);
+        if (Math.abs(lx) > gap / 2 + 0.2) block(lx, FZ - T / 2, 1.2);
       }
       for (let lz = -FZ; lz <= FZ + 0.01; lz += step) {
-        for (const s of [-1, 1]) {
-          const p = crownToWorld(v, s * (W / 2 - T / 2), lz);
-          addBlocker(p.x, p.z, 1.2);
-        }
+        for (const s of [-1, 1]) block(s * (W / 2 - T / 2), lz, 1.2);
       }
-      for (const s of [-1, 1]) {
-        const p = crownToWorld(v, s * (gap / 2 + 0.25), FZ - 0.2);
-        addBlocker(p.x, p.z, 0.5);
-      }
-      for (const x of carX) {
-        const p = crownToWorld(v, x, FZ + 3.4);
-        addBlocker(p.x, p.z, 2.6);
-      }
+      for (const s of [-1, 1]) block(s * (gap / 2 + 0.25), FZ - 0.2, 0.5);
+      for (const x of carX) block(x, FZ + 3.4, 2.6);
       addOccluder(v.x, v.cz, W, D, H);
+
+      // ---- THE PEOPLE. Two groups, because they are culled by different rules:
+      //      the room is only drawn when you are in it or at its door, the
+      //      pavement whenever you are on the block. Everything stood here was
+      //      proposed by a fixture (b.spot) or derived from the frontage's own
+      //      geometry, and every spot on the pavement was checked against this
+      //      venue's own collision before it was used.
+      const cast = v.cast || {};
+      const inSpots = rec.spots.filter((s) => s.lz < FZ - 0.6);
+      const outSpots = rec.spots.filter((s) => s.lz >= FZ - 0.6);
+
+      // door staff, one each side of the opening, looking at the queue
+      for (const s of [-1, 1]) outSpots.push({ lx: s * (gap / 2 - 1.1), lz: FZ + 1.5, role: "bouncer", face: 0 });
+      // valets in the aisle the cars actually stop in — and only where a person
+      // can stand, tested against the parked row rather than assumed clear of it
+      for (const s of [-1, 1]) {
+        const lx = s * 1.6;
+        if (spotFree(placed, lx, FZ + 4.6, 2.15)) outSpots.push({ lx, lz: FZ + 4.6, role: "valet", face: Math.PI / 2 * s });
+      }
+      // the house specialities: a pair dancing under the club's own neon where
+      // the queue can see them, or two smokers off the lounge's door
+      for (let i = 0; i < (cast.party || 0); i++) {
+        const s = i ? -1 : 1, lx = s * (gap / 2 - 0.9), lz = FZ + 3.4;
+        if (spotFree(placed, lx, lz, 1.95)) outSpots.push({ lx, lz, role: "party", face: i ? 1 : -1 });
+      }
+      for (let i = 0; i < (cast.smoker || 0); i++) {
+        const s = i ? -1 : 1, lx = s * (gap / 2 - 1.5), lz = FZ + 2.2;
+        if (spotFree(placed, lx, lz, 0.6)) outSpots.push({ lx, lz, role: "smoker", face: 0 });
+      }
+      // and two strollers pacing a lane across the forecourt that this venue's
+      // own collision says is walkable. `pickLane` returns null if the pavement
+      // has been walled off — the build test fails on that rather than the
+      // street quietly going still.
+      const lane = pickLane(placed, { zFrom: FZ + 6.6, zTo: FZ + fore - 1.4, halfX: Math.min(W / 2 - 4, 13) });
+      if (lane) {
+        outSpots.push({ lx: lane.x0 * 0.4, lz: lane.z, role: "walker", lane: true, speed: Math.max(0.01, 1.05) });
+        outSpots.push({ lx: lane.x1 * 0.4, lz: lane.z, role: "walker", lane: true, speed: 0.95 });
+      }
+
+      const actorIn = new THREE.Group();
+      const actorOut = new THREE.Group();
+      g.add(actorIn);
+      g.add(actorOut);
+      rec.crowdIn = makeCrowd(inSpots, { count: cast.crowd ?? 10, seed: (v.x * 31 + v.cz * 7) | 0 });
+      rec.crowdOut = makeCrowd(outSpots, { count: outSpots.length, seed: (v.x * 17 + v.cz * 13 + 3) | 0, lane, minGap: 1.2 });
+      actorIn.add(rec.crowdIn.group);
+      actorOut.add(rec.crowdOut.group);
+      for (const x of rec.crowdIn.actors) x.side = "inside";
+      for (const x of rec.crowdOut.actors) x.side = "outside";
+      rec.lane = lane;
 
       pois.push({ x: v.x, z: v.entranceZ, r: 10, label: v.name });
       pois.push({ x: v.x, z: (v.facadeZ + v.entranceZ) / 2, r: 12 });
@@ -990,6 +1054,27 @@ export function createTusouxroeNorth(ctx) {
     get crownService() { return crownService; },
 
     /**
+     * QA: the strip's crowd. Every person, in their venue's *local* space, with
+     * the beat they are on and the role they were cast as — so the build test can
+     * check them against the venue's own blockers rather than trusting that the
+     * fixtures proposed somewhere sensible. `lane` is the forecourt lane the
+     * strollers were given (null means none was walkable, which fails the test).
+     */
+    get crownCrowd() {
+      return crownRecs.map((r) => ({
+        venue: r.v.name,
+        lane: r.lane ? { z: r.lane.z, x0: r.lane.x0, x1: r.lane.x1 } : null,
+        inside: r.crowdIn.actors.length,
+        outside: r.crowdOut.actors.length,
+        meshes: r.crowdIn.meshes + r.crowdOut.meshes,
+        people: [...r.crowdIn.actors, ...r.crowdOut.actors].map((x) => ({
+          side: x.side, role: x.role, beat: x.beat, anim: x.a.anim,
+          lx: x.a.position.x, lz: x.a.position.z, y: x.a.position.y,
+        })),
+      }));
+    },
+
+    /**
      * QA: the cutaway's state, per venue. `roofVisible:false` and a `wallScale`
      * near 0.22 is the open, walk-in state; `true` / `1` is a sealed building.
      */
@@ -1059,8 +1144,20 @@ export function createTusouxroeNorth(ctx) {
         const isIn = Math.abs(l.x) < v.w / 2 - 0.4 && Math.abs(l.z) < v.d / 2 - 0.4;
         r.inside = isIn;
         r.roof.visible = !isIn;
-        for (const m of r.walls) m.scale.y += ((isIn ? WALL_DROP : 1) - m.scale.y) * Math.min(1, dt * 7);
+        for (const m of r.walls) m.scale.y = 1;
         for (const m of r.fixed) m.visible = !isIn;
+
+        // The crowd's LOD, and the whole of it: the pavement is drawn while you
+        // are on the block, the room only while you are in it or standing at its
+        // door (through which you can see it), and an actor that is not drawn is
+        // not ticked. ~80 people live on this strip; a couple of dozen are ever
+        // spending a frame.
+        const street = Math.hypot(playerPos.x - v.x, playerPos.z - v.cz) < 62;
+        r.crowdOut.group.visible = street;
+        r.crowdIn.group.visible = isIn || street;
+        if (street) r.crowdOut.tick(dt);
+        if (r.crowdIn.group.visible) r.crowdIn.tick(dt);
+
         if (isIn) {
           // inside: the nearest thing worth walking up to (the games, the cage,
           // the bar, the stage) wins over the door line

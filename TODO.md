@@ -57,6 +57,74 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-073 — Vehicle destruction: catch fire, then explode, then a charred wreck that outlasts the player (human request, 2026-09-22)
+
+**Status:** `REVIEW` (`node --check`ed; **not verified live** — no GPU/Chromium
+this session) · **Agent:** Claude · **Files:** `src/main.js`, `src/services.js`
+
+Human's own words: *"instead of exploding the cars just vanish leaving with
+them nothing. they need to first catch fire when on low health and then when
+its about to die it should explode leaving with it a charred carcus that
+vanishes only after the player has left that area."*
+
+**What was wrong:** the game actually had two different, inconsistent
+destruction paths and neither did what was asked.
+1. `damageVehicle()` (bullets, ramming, `policeShoot` on the player's own car)
+   — the path most kills go through — flashed one light and, 1.4 s later,
+   `scene.remove(v.obj)`. No fire, no explosion visual beyond a point light,
+   and the car was simply gone. This is the "vanish" the human saw.
+2. `explodeCar()` (crash-impact damage only, `v.impact` in `drivingUpdate`)
+   already blackened the car and played a flash sprite, but never removed it
+   — a permanent, immortal wreck with no fire stage before death and no
+   despawn at all — a different bug (a leak) that nobody had reported yet.
+
+**What changed:** the two paths are now one lifecycle, and `damageVehicle`
+defers to `explodeCar` instead of duplicating it.
+1. **Catch fire under ~30% hp** (`VEHICLE_FIRE_HP_FRAC`, checked in both
+   `damageVehicle` and the crash-impact branch of `drivingUpdate`):
+   `startVehicleFire(v)` parents a small rig — a cone flame, a smoke puff, a
+   flickering `PointLight` — to the car so it rides along while still moving.
+2. **Explode at 0 hp**: `explodeCar(v)` now also strips the vehicle out of
+   `vehicles`/`sheriffs`/`blockers`/`blockerGrid` (so it's inert — can't be
+   entered, driven, or collided with) but leaves `v.obj` in the scene instead
+   of removing it, and restarts the fire rig dimmer/slower as a smoulder.
+3. **The wreck persists** in a new `wrecks` array; `updateWrecks()` (called
+   every frame from `simulate`) only removes it once the player (on foot or
+   in a car) is more than `WRECK_DESPAWN_DIST` (75 m) away — not on a timer.
+4. **Repair fix caught in passing**: the Pay 'n' Spray (`services.js`) reset
+   `v.hp` on repair but never cleared a fire that had started before the
+   player drove in — a freshly-painted car would drive off still smoking. Now
+   calls the newly-exposed `ctx.stopVehicleFire(v)`.
+5. Guarded for the one caller that doesn't look like a normal registered
+   vehicle: the multiplayer networked-car sync path (`explodeCar(ent)` off a
+   `DESTROYED` event) — `ent` has no `.blocker`/`.seats`/`.audio`/`.hpMax`, all
+   now optionally-chained/defaulted rather than assumed present.
+
+**Side effect, noted rather than hidden:** crashing a Sheriff cruiser into
+something now also pays the $250 / `crime(0.6)` bounty that previously only
+triggered when a cruiser was shot to death — unifying the two paths through
+one `explodeCar` made that reward apply uniformly. Previously that was an
+inconsistency (crash-killing a cruiser paid nothing), not a deliberate choice,
+so this reads as a fix rather than a scope change.
+
+**Testing performed:** `node --check` on both files (clean). Traced the logic
+by hand: `startVehicleFire` no longer no-ops on an already-exploded car (an
+early version of this fix had it check `!v.exploded`, which meant
+`explodeCar`'s own call to restart the rig as a smoulder silently did
+nothing — caught before committing). **Not verified live** — same recurring
+gap this session: no GPU/Chromium available, so the fire rig's visual
+placement/scale on a real car mesh, the explosion timing, and the 75 m
+despawn distance are all unconfirmed in play.
+
+**What remains:** an actual playtest — does the fire rig sit right on
+different vehicle shapes/scales (it's positioned in the car's local space,
+not measured against its bounding box the way `police.js`'s cruiser livery
+is), does 75 m feel like "left the area," and whether the wreck should also
+block the player's path (it currently doesn't — no blocker — so you can walk
+or drive straight through a charred carcass).
+
+---
+
 ### TASK-072 — Loading-screen slideshow behind the main menu (human request + images, 2026-09-22)
 
 **Status:** `COMPLETE` · **Agent:** Claude · **Files:** `index.html`, `src/main.js`, `assets/ui/loading/`

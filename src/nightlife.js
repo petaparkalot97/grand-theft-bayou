@@ -501,12 +501,12 @@ export function createNightlife(ctx) {
       const l = local(c, playerPos);
       const isIn = !state.veh && Math.abs(l.x) < W / 2 - 0.1 && Math.abs(l.z) < D / 2 - 0.1;
       if (isIn) inside = c;
-      // the cutaway: roof off, walls to knee height, while you're inside
+      // the cutaway: roof off while you're inside (but leave walls full height to enclose the room)
       c.roof.visible = !isIn;
       c.sign.visible = !isIn;               // it hangs over the door, right between the camera and the stage
       for (const w of c.walls) {
         if (w.userData.fixedY != null) w.visible = !isIn;
-        else w.scale.y += ((isIn ? DROP : 1) - w.scale.y) * Math.min(1, dt * 8);
+        else w.scale.y = 1;
       }
       if (!near) continue;
       c.ball.rotation.y += dt * 0.8;

@@ -1125,6 +1125,7 @@ const state = {
 const vehicles = [];   // every drivable car
 let lastVehAudio = null;   // the previous frame's state.veh.audio, so exiting a car tears its sound down
 const sheriffs = [];   // active police units
+const wrecks = [];      // exploded vehicles left standing — see updateWrecks
 let sheriffSpawnCd = 0;   // stagger cruiser call-outs — see updateSheriffs
 let footSpawnCd = 0;      // stagger deputy call-outs — see updateSheriffs
 const cashEl = document.getElementById("cash");
@@ -1334,6 +1335,7 @@ const services = createServices({
   scene, state, playerPos, arsenal, flashObjective, addBlocker,
   get cine() { return cine; },
   syncHUD: () => syncHUD(),
+  stopVehicleFire: (v) => stopVehicleFire(v),
   clearWanted: () => {
     state.heat = 0;
     state.wanted = 0;
@@ -1640,18 +1642,79 @@ function applyNetworkSnapshot(snapshot) {
 }
 
 
+// A beat-up car smokes and licks with flame before it dies, rather than going
+// from "fine" straight to "gone." One small rig (cone flame + smoke puff +
+// flickering light) parented to the car so it rides along while still driving
+// or rolling to a stop.
+const VEHICLE_FIRE_HP_FRAC = 0.3;   // catch fire once this much health is left
+const WRECK_DESPAWN_DIST = 75;      // m: how far the player has to move off before a wreck clears
+function startVehicleFire(v) {
+  // No `!v.exploded` guard: explodeCar deliberately restarts this rig as the
+  // wreck's smoulder once the car is already flagged exploded.
+  if (v.onFire || !v.obj) return;
+  v.onFire = true;
+  const flameMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff6a1e).multiplyScalar(2.6) });
+  flameMat.userData.gtbRealized = true;
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.85, 7), flameMat);
+  flame.position.y = 0.4;
+  const smokeMat = new THREE.MeshBasicMaterial({ color: 0x161513, transparent: true, opacity: 0.45, depthWrite: false });
+  smokeMat.userData.gtbRealized = true;
+  const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), smokeMat);
+  smoke.position.y = 1.0;
+  const light = new THREE.PointLight(0xff5a1e, 5, 9, 2);
+  light.position.y = 0.55;
+  const group = new THREE.Group();
+  group.add(flame, smoke, light);
+  group.position.set(0, 0.85, 0);          // above the hood, in the car's own local space
+  v.obj.add(group);
+  v.fireFx = { group, flame, smoke, light, phase: Math.random() * 9 };
+}
+function stopVehicleFire(v) {
+  if (!v.fireFx) return;
+  v.obj.remove(v.fireFx.group);
+  v.fireFx = null;
+  v.onFire = false;
+}
+function updateVehicleFire(v, dt) {
+  const f = v.fireFx;
+  if (!f) return;
+  f.phase += dt * (7 + Math.sin(f.phase * 0.3) * 2);
+  const flick = 0.75 + Math.sin(f.phase) * 0.25;
+  f.light.intensity = (v.exploded ? 2.2 : 5) * flick;
+  f.flame.scale.setScalar((v.exploded ? 0.55 : 0.85) + Math.sin(f.phase * 1.3) * 0.15);
+}
+function updateVehicleFires(dt) {
+  for (const v of vehicles) if (v.fireFx && !v.exploded) updateVehicleFire(v, dt);
+}
+/** Charred wrecks left standing after an explosion; they clear once the
+ * player has moved well away rather than on a fixed timer. */
+function updateWrecks(dt) {
+  const at = state.veh ? state.veh.obj.position : playerPos;
+  for (let i = wrecks.length - 1; i >= 0; i--) {
+    const v = wrecks[i];
+    updateVehicleFire(v, dt);
+    const d = Math.hypot(at.x - v.obj.position.x, at.z - v.obj.position.z);
+    if (d > WRECK_DESPAWN_DIST) {
+      stopVehicleFire(v);
+      scene.remove(v.obj);
+      wrecks.splice(i, 1);
+    }
+  }
+}
+
 function explodeCar(v) {
   if (v.exploded) return;
   v.exploded = true;
+  v.dead = true;
   v.speed = 0;
   if (v.audio) v.audio.destroy();
-  
-  // Turn it black
+
+  // Turn it black — the charred wreck left behind, not just a paused car.
   v.obj.traverse(o => {
     if (o.isMesh && o.material) {
       if (Array.isArray(o.material)) {
-        o.material.forEach(m => m.color.setHex(0x111111));
-      } else {
+        o.material.forEach(m => m.color && m.color.setHex(0x111111));
+      } else if (o.material.color) {
         o.material.color.setHex(0x111111);
       }
     }
@@ -1663,8 +1726,15 @@ function explodeCar(v) {
   scene.add(ex);
   ex.play("flash", { fps: 12, loop: false });
   setTimeout(() => scene.remove(ex), 500);
+  wreckLight.position.copy(v.obj.position).setY(1.5);
+  wreckLight.intensity = 30;
+  setTimeout(() => { if (wreckLight.intensity === 30) wreckLight.intensity = 0; }, 1400);
 
-  // Play sound if possible
+  // The pre-death flame becomes the wreck's smoulder: same rig, calmer, and it
+  // stays lit (updateWrecks) until the carcass itself despawns.
+  stopVehicleFire(v);
+  startVehicleFire(v);
+
   // Kick occupants out
   if (v.seats) {
     for (const seat of v.seats) {
@@ -1677,6 +1747,22 @@ function explodeCar(v) {
       }
     }
   }
+
+  // No longer driveable, in the way, or chasing anyone — but v.obj stays in
+  // the scene as a wreck (see wrecks / updateWrecks) instead of vanishing.
+  if (v.blocker) {
+    const bi = blockers.indexOf(v.blocker);
+    if (bi >= 0) blockers.splice(bi, 1);
+    blockerGrid.remove(v.blocker);
+  }
+  const vi = vehicles.indexOf(v);
+  if (vi >= 0) vehicles.splice(vi, 1);
+  const si = sheriffs.indexOf(v);
+  if (si >= 0) sheriffs.splice(si, 1);
+  if (v.sheriff) { state.cash += 250; crime(0.6); flashObjective("Cruiser wrecked. +$250"); syncHUD(); }
+  if (state.veh === v) state.veh = null;
+
+  wrecks.push(v);
 }
 
 function updateRemotePlayers(dt) {
@@ -1960,7 +2046,7 @@ async function buildLevel() {
     scene.add(dash);
   }
 
-  loadNote.textContent = "loading the kit…";
+  setLoadStage("loading the kit…", 8);
   const [wall, doorway, windowW, roofC, lamp, stop] = await Promise.all([
     loadKit("Wall/wall_01.gltf"), loadKit("Wall/Doorway/wall_doorway_01.gltf"),
     loadKit("Wall/Window/wall_window_01.gltf"), loadKit("Roof/Concrete/roof_concrete_01.gltf"),
@@ -2100,7 +2186,7 @@ async function buildLevel() {
   makeWaterTower(52, -92, "TUSOUXROE", ["CITY LIMITS"]);
 
   // ================= VEHICLES =================
-  loadNote.textContent = "towing in the cars…";
+  setLoadStage("towing in the cars…", 18);
   const [carR, carB, van, pickup, truckMesh, doclorean, beetle, landy, carY, tristar, toyoyo] = await Promise.all([
     loadVehicle("Car_1_R.fbx", "Car_1_R_128x128_Color.png"),
     loadVehicle("Car_1_B.fbx", "Car_1_B_128x128_Color.png"),
@@ -3706,6 +3792,9 @@ function simulate(dt) {
   if (state.veh) drivingUpdate(dt);
   else onFootUpdate(dt);
 
+  updateVehicleFires(dt);
+  updateWrecks(dt);
+
   // Car audio: the player's car only — the traffic pool never builds or plays.
   // Every exit path (walking out, hijacked, crashed) just clears state.veh, so
   // tear the *previous* car's audio down here instead of at each exit site.
@@ -3963,6 +4052,7 @@ function drivingUpdate(dt) {
     v.hp -= v.impact * 1.5;
     v.impact = 0;
     if (v.hp <= 0 && !v.exploded) { crime(0.5); explodeCar(v); }
+    else if (v.hp / (v.hpMax || 40) < VEHICLE_FIRE_HP_FRAC) startVehicleFire(v);
   }
   if (v.jolt > 0) {
     v.jolt = Math.max(0, v.jolt - dt * 3.2);
@@ -4351,23 +4441,9 @@ function updateSheriffs(dt) {
 
 function damageVehicle(v, amount) {
   v.hp -= amount;
-  if (v.hp <= 0) {
-    v.dead = true;
-    // burn + remove after a beat
-    wreckLight.position.copy(v.obj.position).setY(1.5);
-    wreckLight.intensity = 30;
-    setTimeout(() => { wreckLight.intensity = 0; scene.remove(v.obj); }, 1400);
-    const bi = blockers.indexOf(v.blocker);
-    if (bi >= 0) blockers.splice(bi, 1);
-    blockerGrid.remove(v.blocker);
-    // it used to stay in `vehicles`, so F could "enter" the invisible wreck
-    const vi = vehicles.indexOf(v);
-    if (vi >= 0) vehicles.splice(vi, 1);
-    const si = sheriffs.indexOf(v);
-    if (si >= 0) sheriffs.splice(si, 1);
-    if (v.sheriff) { state.cash += 250; crime(0.6); flashObjective("Cruiser wrecked. +$250"); syncHUD(); }
-    if (state.veh === v) state.veh = null;
-  }
+  if (v.exploded) return;
+  if (v.hp <= 0) { explodeCar(v); return; }
+  if (v.hp / (v.hpMax || 40) < VEHICLE_FIRE_HP_FRAC) startVehicleFire(v);
 }
 
 function updateEnemy(e, dt) {

@@ -197,6 +197,13 @@ export const FIXTURES = {
     b.inst(b.G.cyl(0.26, 0.5), b.m("stool seat", b.v.theme.trim, { metalness: 0.5 }), stool);
     b.lit(rot ? s.x + 2.6 : s.x, 3.0, rot ? s.z : s.z + 2.6, 48, 15);
     b.station(rot ? s.x + 1.4 : s.x, rot ? s.z : s.z + 1.4, "slots", "Slots — $10 a spin");
+    // a punter on every other stool, facing the machine: nobody plays a bank of
+    // eight alone, and crowd.js spreads whichever of these it casts
+    for (let i = 0; i < n; i += 2) {
+      const o = (i - (n - 1) / 2) * pitch;
+      if (rot) b.spot(s.x + 1.05, s.z + o, { face: -Math.PI / 2 });
+      else b.spot(s.x + o, s.z + 1.05, { face: Math.PI });
+    }
     // a solid bank, so nobody can wedge in behind the machines
     const span = n * pitch;
     const rows = Math.max(1, Math.round(span / 2.0));
@@ -218,6 +225,11 @@ export const FIXTURES = {
     b.lit(s.x, 2.7, s.z, 26, 11);
     b.block(s.x, s.z, 2.1);
     b.station(s.x, s.z + 2.5, "roulette", "Roulette — $25 on the felt");
+    // the croupier on the far side of the wheel, and three punters on the rim
+    b.spot(s.x + 1.9, s.z - 1.9, { role: "croupier", face: -Math.PI / 4 });
+    b.spot(s.x - 2.55, s.z + 0.5, { face: Math.PI / 2 });
+    b.spot(s.x + 2.55, s.z + 0.5, { face: -Math.PI / 2 });
+    b.spot(s.x - 1.9, s.z - 1.9, { face: Math.PI / 4 });
   },
 
   /** A blackjack / poker table with three seats on the player's side. */
@@ -233,6 +245,9 @@ export const FIXTURES = {
     b.lit(s.x, 2.5, s.z, 22, 9);
     b.block(s.x, s.z, 1.6);
     b.station(s.x, s.z + 1.9, "cards", "Blackjack — the dealer's in");
+    // the dealer behind the shoe, two of the three seats taken
+    b.spot(s.x, s.z - d / 2 - 0.8, { role: "dealer", face: 0 });
+    for (const sx of [-1, 1]) b.spot(s.x + sx * (w / 3), s.z + d / 2 + 0.75, { face: Math.PI });
   },
 
   /** The cashier's cage: counter, gold top, bars over the window. */
@@ -249,6 +264,8 @@ export const FIXTURES = {
     b.sign("CASHIER", b.v.ink, { x: s.x, y: 4.4, z: s.z - d / 2 + 0.2, w: w * 0.66, h: 0.85 });
     b.lit(s.x, 3.0, s.z + 2.2, 40, 13);
     b.station(s.x, s.z + 2.4, "cashier", "Cashier — chips and cash");
+    // the teller behind the counter, window side
+    b.spot(s.x - w * 0.18, s.z - 1.5, { role: "clerk", face: 0 });
     const rows = Math.max(2, Math.round(w / 2.2));
     for (let i = 0; i <= rows; i++) b.block(s.x - w / 2 + (i * w) / rows, s.z, 1.0);
   },
@@ -306,6 +323,14 @@ export const FIXTURES = {
     }
     b.lit(rot ? s.x + 3.0 : s.x, 3.4, rot ? s.z : s.z + 3.0, 62, 17);
     b.station(rot ? s.x + 1.9 : s.x, rot ? s.z : s.z + 1.9, "bar", "Bar — what are you having?");
+    // the barman between the counter and his shelf, then drinkers on the near side
+    if (rot) {
+      b.spot(s.x - 1.05, s.z, { role: "barkeep", face: Math.PI / 2 });
+      for (let i = 0; i < ns; i += 2) b.spot(s.x + 1.35, s.z + (i - (ns - 1) / 2) * 1.7, { face: -Math.PI / 2, beat: "still" });
+    } else {
+      b.spot(s.x, s.z - 1.05, { role: "barkeep", face: 0 });
+      for (let i = 0; i < ns; i += 2) b.spot(s.x + (i - (ns - 1) / 2) * 1.7, s.z + 1.55, { face: Math.PI, beat: "still" });
+    }
   },
 
   /** Bench booths: table, two seats, high backs. */
@@ -321,6 +346,7 @@ export const FIXTURES = {
       }
       b.block(x, s.z, 1.5);
       b.lit(x, 2.7, s.z, 28, 10);      // one per booth: a row of three is a 12 m span
+      for (const sz of [-1, 1]) b.spot(x + sz * 0.75, s.z + sz * 1.3, { face: sz < 0 ? 0 : Math.PI, beat: "still" });
     }
   },
 
@@ -338,6 +364,9 @@ export const FIXTURES = {
       b.block(x, s.z + 1.9, 1.6);
       b.block(x, s.z - 1.9, 1.6);
       b.block(x, s.z, 0.9);
+      // two sitting-and-talking: one on each sofa, turned in to the table
+      b.spot(x - 1.3, s.z + 1.9, { face: Math.PI, beat: "still" });
+      b.spot(x + 1.3, s.z - 1.9, { face: 0, beat: "still" });
     }
     b.lit(s.x, 2.8, s.z, 34, 12);
   },
@@ -356,6 +385,9 @@ export const FIXTURES = {
       b.lit(x, 2.4, s.z, 30, 10);
       b.block(x, s.z, 1.8);
       b.station(x, s.z + 2.0, "pool", "Pool table — rack 'em up");
+      // a break in progress: one player lining up, one waiting his turn
+      b.spot(x - 1.5, s.z, { face: Math.PI / 2, beat: "still" });
+      b.spot(x + 1.5, s.z + 1.4, { face: -Math.PI / 2, beat: "still" });
     }
   },
 
@@ -380,6 +412,16 @@ export const FIXTURES = {
     for (let i = 0; i <= 3; i++) b.block(s.x - w / 2 + (i * w) / 3, s.z + d / 2 - 0.2, 0.8);
     b.lit(s.x, 4.6, s.z, 80, 18);
     b.station(s.x, s.z + d / 2 + 1.0, "stage", "The stage — the show's about to start");
+    // the act, on the deck: a girl on each pole if this stage has them, else two
+    // go-go dancers working the front corners. Height is the deck, not the floor.
+    if (s.poles) {
+      for (let i = 0; i < s.poles; i++) {
+        const x = s.x + (i - (s.poles - 1) / 2) * (w / (s.poles + 1));
+        b.spot(x + 0.7, s.z + 0.2, { role: "performer", face: 0, y: rise });
+      }
+    } else {
+      for (const sx of [-1, 1]) b.spot(s.x + sx * w * 0.26, s.z + 0.3, { role: "gogo", face: 0, y: rise });
+    }
   },
 
   /** A stack of PA speakers. */
@@ -409,6 +451,16 @@ export const FIXTURES = {
     for (const sz of [-1, 1]) b.add(b.G.box(w + 0.2, 0.1, 0.2), b.e("floor trim", b.v.theme.trim, 1.0), s.x, 0.1, s.z + sz * d / 2);
     for (const sx of [-1, 1]) b.add(b.G.box(0.2, 0.1, d + 0.2), b.e("floor trim", b.v.theme.trim, 1.0), s.x + sx * w / 2, 0.1, s.z);
     b.lit(s.x, 2.4, s.z, 55, 20);
+    // the floor itself: a loose grid of people, dancing on the spot. `shuffle` +
+    // `dance` rather than the `dancer` role, so the room is the strip's own mix
+    // of patrons out on the floor instead of a chorus line of sequins.
+    const dx = 4.2, dz = 3.6;
+    const cols = Math.max(1, Math.round(w / dx)), rows = Math.max(1, Math.round(d / dz));
+    for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+      if ((i + j) % 3 === 2) continue;              // leave gaps, so it reads as a crowd not a lattice
+      b.spot(s.x + (i - (cols - 1) / 2) * dx, s.z + (j - (rows - 1) / 2) * dz,
+        { anim: "dance", beat: "shuffle", r: 0.9 });
+    }
   },
 
   /** The DJ booth: riser, console, screens, decks. */
@@ -424,6 +476,9 @@ export const FIXTURES = {
     for (let i = 0; i <= 2; i++) b.block(s.x + (i - 1) * (w / 2), s.z, 0.9);
     b.lit(s.x, 3.6, s.z + 1.4, 45, 13);
     b.station(s.x, s.z + d / 2 + 1.3, "dj", "The DJ booth — requests taken");
+    // the DJ on the riser, behind the console and facing the floor, the screens
+    // at their back — which is what the console's own geometry already implies
+    b.spot(s.x, s.z - 1.1, { role: "dj", face: 0, y: 0.5 });
   },
 
   /** Structural columns. Instanced, and each one is real collision. */
@@ -465,6 +520,9 @@ export const FIXTURES = {
     b.lit(s.x, rise + 2.4, s.z, 46, 14);
     b.block(s.x, s.z, Math.min(w, d) / 2 - 0.5);
     b.station(s.x, s.z + d / 2 + 1.0, "vip", "VIP — velvet rope policy");
+    // high rollers on the deck at the rail, and the host working the rope
+    for (const sx of [-1, 1]) b.spot(s.x + sx * (w / 2 - 2.0), s.z + (d / 2 - 1.6), { y: rise, face: 0, beat: "still" });
+    b.spot(s.x - 2.2, s.z + d / 2 + 1.2, { role: "host", face: 0 });
   },
 
   /** A private room: three walls, a door gap, a curtain, a bench. */
@@ -486,6 +544,9 @@ export const FIXTURES = {
     for (let i = 0; i <= 2; i++) b.block(s.x - w / 2, s.z - d / 2 + (i * d) / 2, 0.5);
     b.block(s.x + w / 2, s.z - d / 2 + 0.4, 0.5);
     b.block(s.x + w / 2, s.z + d / 2 - 0.4, 0.5);
+    // a guest (or two) behind the curtain — the room exists to have somebody in it
+    b.spot(s.x - 1.1, s.z + 0.3, { beat: "still" });
+    b.spot(s.x + 0.6, s.z - 0.5, { beat: "still" });
   },
 
   /** Backstage: mirrors, a rack of costumes, a bench. */
@@ -509,6 +570,9 @@ export const FIXTURES = {
     b.lit(s.x, 2.6, s.z, 30, 10);
     for (let i = 0; i <= 3; i++) b.block(s.x - w / 2 + (i * w) / 3, s.z - d / 2, 0.5);
     for (let i = 0; i <= 2; i++) b.block(s.x - w / 2, s.z - d / 2 + (i * d) / 2, 0.5);
+    // off-shift: somebody at the mirrors, somebody on the bench
+    b.spot(s.x - w * 0.25, s.z - d / 2 + 0.9, { beat: "still", face: 0 });
+    b.spot(s.x + w * 0.2, s.z + d / 2 - 1.2, { beat: "still", face: 0 });
   },
 
   /** A gold chandelier: a ring of bulbs on a chain. */
@@ -685,6 +749,11 @@ export const FIXTURES = {
     }
     b.inst(b.G.cyl(0.07, 1.1), b.m("queue post", b.v.theme.trim, { metalness: 0.8, roughness: 0.25 }), posts);
     b.inst(b.G.cyl(0.05, dx), b.e("queue rope", s.color ?? b.v.theme.accent, 0.45), ropes);
+    // the line itself: one guest between each pair of posts, facing the door
+    // (which is at a smaller local z — the rope runs along the pavement)
+    for (let i = 0; i < n - 1; i++) {
+      b.spot(s.x + (i - (n - 1) / 2) * dx + dx / 2, s.z + 0.75, { role: "queue", face: Math.PI });
+    }
   },
 
   /** A painted pool of light on the apron: "the entrance is here", no light cost. */
@@ -705,6 +774,7 @@ export const FIXTURES = {
       b.add(b.G.box(0.7, 0.5, 0.06), b.e("monitor", b.v.theme.accent, 0.7), x, 1.1, s.z - 0.3);
       b.add(b.G.box(0.5, 0.9, 0.5), b.M.steel, x + 0.7, 0.45, s.z + 0.9);
       b.block(x, s.z, 1.2);
+      b.spot(x, s.z + 0.9, { face: 0, beat: "still" });      // back office, night shift
     }
     b.lit(s.x, 2.6, s.z, 30, 11);
   },

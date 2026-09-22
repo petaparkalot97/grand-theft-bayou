@@ -80,7 +80,15 @@ function makeThree() {
     constructor(x = 0, y = 0, z = 0) { this.x = x; this.y = y; this.z = z; }
     set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; }
   }
-  class Q { setFromEuler() { return this; } setFromAxisAngle() { return this; } }
+  class Q {
+    constructor() { this.x = 0; this.y = 0; this.z = 0; this.w = 1; }
+    setFromEuler() { return this; } setFromAxisAngle() { return this; }
+    // characters.js's update() clears the support-arm quaternion every frame
+    // (the weapon IK poses shoulders with one, every clip drives them with
+    // Euler angles), so a stub without this cannot run an actor at all.
+    identity() { this.x = 0; this.y = 0; this.z = 0; this.w = 1; return this; }
+    copy(q) { this.x = q.x; this.y = q.y; this.z = q.z; this.w = q.w; return this; }
+  }
   // Translation-only matrices: enough for the batching chunk maths (merge.js
   // buckets by world position), and honest about that in the output.
   class M4 {
@@ -108,6 +116,9 @@ function makeThree() {
       this.position = new V(); this.rotation = new E(); this.scale = new V(1, 1, 1);
       this.visible = true; this.userData = {}; this.name = ""; this.type = "Object3D";
       this.matrix = new M4(); this.matrixWorld = new M4(); this.matrixAutoUpdate = true;
+      // real three keeps a quaternion alongside the Euler; characters.js's
+      // update() clears it on every arm pivot before each clip runs
+      this.quaternion = new Q();
       this.castShadow = false; this.receiveShadow = false; this.renderOrder = 0;
     }
     add(...os) { for (const o of os) { if (!o) continue; o.parent = this; this.children.push(o); } return this; }
@@ -247,7 +258,11 @@ const strip = (file) => `"use strict";\n` + fs.readFileSync(path.join(SRC, file)
 // and the actors' mesh cost is a number this test should be measuring rather than
 // trusting. It is procedural (no SkinnedMesh, no AnimationMixer), so a stub three
 // can genuinely run it.
-for (const f of ["neonsign.js", "interiors.js", "characters.js", "merge.js", "composer.js", "tusouxroeNorth.js"]) {
+// spawnzones.js and crowd.js join them for the same reason: the strip's crowd is
+// built from the spawn table (ZONE_MIX.entertainment) and characters.js's own
+// people, and the audit should measure the actors it actually builds rather than
+// a stub of them. Order matters — crowd.js reads ZONE_MIX at load.
+for (const f of ["spawnzones.js", "neonsign.js", "interiors.js", "characters.js", "crowd.js", "merge.js", "composer.js", "tusouxroeNorth.js"]) {
   try { vm.runInContext(strip(f), sandbox, { filename: f }); }
   catch (e) { console.error(`load ${f}: ${e.stack || e}`); process.exit(1); }
 }

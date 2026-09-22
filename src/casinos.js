@@ -158,7 +158,7 @@ export function createCasinos(ctx) {
       if (isIn) inside = c;
       c.roof.visible = !isIn;
       c.sign.visible = !isIn;
-      c.walls.forEach((w) => { w.scale.y += ((isIn ? 0.2 : 1) - w.scale.y) * Math.min(1, dt * 8); });
+      c.walls.forEach((w) => { w.scale.y = 1; });
       if (d < 70) {
         c.table.rotation.y += dt * 0.12;
         c.slots.forEach((s, i) => { const mesh = c.g.children.find((x) => x.position.x === s.x && x.position.z === s.z); if (mesh) mesh.position.y = 0.88 + Math.sin(performance.now() * 0.004 + i) * 0.015; });

@@ -108,7 +108,7 @@ export const ROLES = {
   host:      { anim: "idle",  h: 1.78, make: (r, h) => randomHighEndEscort(r, h) },
   dj:        { anim: "dance", h: 1.82, make: (r, h) => randomGayMan(r, h) },
   performer: { anim: "twerk", h: 1.72, make: (r) => makeDancer({ sex: "f", seed: (r() * 1e9) | 0, height: 1.72 }) },
-  go-go:     { anim: "dance", h: 1.78, make: (r) => makeDancer({ sex: r() < 0.5 ? "m" : "f", seed: (r() * 1e9) | 0, height: 1.78 }) },
+  gogo:      { anim: "dance", h: 1.78, make: (r) => makeDancer({ sex: r() < 0.5 ? "m" : "f", seed: (r() * 1e9) | 0, height: 1.78 }) },
   // ---- outside: the strip's front-of-house --------------------------------
   bouncer:   { anim: "idle",  h: 1.98, make: (r, h) => randomHoodrat(r, h), beat: "still" },
   valet:     { anim: "idle",  h: 1.84, make: (r, h) => randomHoodrat(r, h), beat: "shuffle", r: 1.6 },
