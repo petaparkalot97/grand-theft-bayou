@@ -304,7 +304,7 @@ try {
 }
 
 const CROWN_STRIP = vm.runInContext("CROWN_STRIP", sandbox);
-console.log(`\n  probe  one patron: ${actorMeshes("makeHoodrat({ seed: 1 })")} meshes · one dancer: ${actorMeshes("makeDancer({ sex: 'f', seed: 1 })")} meshes`);
+console.log(`\n  probe  one patron: ${actorMeshes("makeHoodrat({ seed: 1 })")} meshes · one dancer: ${actorMeshes("makeDancer({ sex: 'f', seed: 1 })")} meshes · one hog: ${actorMeshes("makeHog({ seed: 1 })")} / barman: ${actorMeshes("makeHog({ seed: 2, variant: 'barman' })")} meshes`);
 
 // landmarks.js's real placeStreetClutter ends with a 2.2 m blocker at its origin and
 // the sandbox stub cannot register it, so mirror it here: the stray-collision check
@@ -680,8 +680,9 @@ check("every venue has the interaction points its room promised",
   // croupier, a stage has an act. Derived from the venue's own layout, so a new
   // fixture that needs staffing is one line here rather than a hand-written spot.
   const STAFF_OF = {
-    barBig: ["barkeep"], cardTable: ["dealer"], roulette: ["croupier"], cashier: ["clerk"],
-    djBooth: ["dj"], stage: ["performer", "gogo", "star"], vipDeck: ["host"],
+    barBig: ["barkeep", "hogkeep"], cardTable: ["dealer"], roulette: ["croupier"],
+    cashier: ["clerk"], djBooth: ["dj"], vipDeck: ["host"],
+    stage: ["performer", "gogo", "star", "hogdancer"], podiums: ["hogdancer"],
   };
   let missing = null;
   for (const v of CROWN_STRIP.venues) {
@@ -735,14 +736,20 @@ check("every venue has the interaction points its room promised",
       if (!inHall && !inFore) offFloor = `${v.name}: ${p.role} at local (${p.lx.toFixed(1)}, ${p.lz.toFixed(1)})`;
       if (Math.abs(p.z - (-320)) < 5.5) inRoad = `${v.name}: ${p.role} is on North Ave 2`;
 
-      for (const b of blockers) {
+      // Somebody standing on a deck, a podium or the VIP riser is not on this
+      // floor plane at all: the circles the place registered are for the floor, and
+      // a person on top of the thing they describe is exactly where the fixture
+      // wanted them. (Their footing is checked separately, below.)
+      if (p.y <= 0.3) for (const b of blockers) {
         const d = Math.hypot(b.x - p.x, b.z - p.z), gap = d - b.r;
-        // A stroller or a dancer takes steps, so its whole radius has to be clear;
-        // somebody standing at a stool only has to be out of the thing itself.
-        // A coarse circle for a 5 m sofa will always contain the people sitting on
-        // it, so the big ones are held to half their radius — a person planted in
-        // the middle of a bar or a parked car still fails.
-        const need = p.beat === "still" ? -0.5 * b.r : 0.55;
+        // A stroller or a dancer takes steps, so its whole radius has to be clear.
+        // Somebody *at* a station — standing at a stool, working a bar — only has
+        // to be out of the thing itself, and the big ones are held to half their
+        // radius: a collision circle is coarser than the object it stands for (a
+        // 12 m counter is one row of 0.85 m circles, which is wider than the
+        // counter), so a barman standing in the 1 m aisle behind it inside that
+        // margin is correct, and a barman dropped *into* the bar still fails.
+        const need = p.beat === "still" || p.beat === "work" ? -0.5 * b.r : 0.55;
         if (gap < need) buried = `${v.name}: ${p.role} (${p.beat}) ${gap.toFixed(2)} m from a ${b.r} m blocker`;
       }
     }
@@ -950,6 +957,63 @@ check("every venue has the interaction points its room promised",
     const after = mine().act.t;
     check("the act is culled with his room — no show for an empty room",
       after === before, `routine clock ${before} → ${after} while standing on North Ave 2`);
+  }
+
+  // --- HAPPY HOGS: the house is hogs ----------------------------------------
+  // The other half of "give the venue its own identity": the staff are the animal
+  // on the door sign. Three things make that real rather than a palette swap — the
+  // dancers are on podiums (and stay on them), the barman is *working* rather than
+  // posed (his shift cycles, and the counter is walked), and nobody else in the
+  // strip has one.
+  {
+    const hogs = CROWN_STRIP.venues.find((v) => v.name === "HAPPY HOGS");
+    const stage = hogs.layout.find((s) => s.fixture === "stage");
+    const mine = () => district.crownCrowd.find((c) => c.venue === "HAPPY HOGS");
+    const standIn = { x: hogs.x, y: 0, z: hogs.cz };
+    district.update(0.1, standIn);
+
+    const castHogs = mine().people.filter((p) => p.hog);
+    const hirers = crown.filter((c) => c.venue !== "HAPPY HOGS" && c.people.some((p) => p.hog));
+    const dancers = castHogs.filter((p) => p.role === "hogdancer");
+    const keeps = castHogs.filter((p) => p.role === "hogkeep");
+    check("HAPPY HOGS is staffed by hogs, and no other venue has one",
+      castHogs.length >= 6 && dancers.length >= 5 && keeps.length === 2 && hirers.length === 0,
+      `${castHogs.length} hogs: ${dancers.length} dancers, ${keeps.length} on the bars` +
+      (hirers.length ? ` — also in ${hirers.map((h) => h.venue).join(", ")}` : ""));
+
+    // the shift: 30 s at the bar, watching what he actually does and where
+    const clips = new Set();
+    let berth = 0, onPodium = 0, offPodium = null, offDeck = null;
+    for (let i = 0; i < 300; i++) {
+      district.update(0.1, standIn);
+      for (const p of mine().people) {
+        const away = Math.hypot(p.lx - p.rest.lx, p.lz - p.rest.lz);
+        if (p.role === "hogkeep") { clips.add(p.anim); berth = Math.max(berth, away); }
+        // a podium dancer: the podium row, not the stage (which has its own check)
+        if (p.role === "hogdancer" && Math.abs(p.rest.lz - stage.z) > 3) {
+          onPodium = Math.max(onPodium, away);
+          if (Math.abs(p.y - 0.42) > 1e-6) offPodium = `${p.role} at y=${p.y}`;
+        }
+        if (p.role === "hogdancer" && p.y > 0.3 && Math.abs(p.rest.lz - stage.z) <= 3) {
+          if (Math.abs(p.lx - stage.x) > stage.w / 2 || Math.abs(p.lz - stage.z) > stage.d / 2) {
+            offDeck = `${p.role} at (${p.lx.toFixed(1)}, ${p.lz.toFixed(1)})`;
+          }
+        }
+      }
+    }
+    const worked = ["pour", "polish", "serve", "barlean"].filter((c) => clips.has(c));
+    check("the hog barman works the bar instead of holding a pose",
+      worked.length >= 3 && berth > 0.15 && berth <= 1.6,
+      `30 s at the bar: ${[...clips].join(", ")} — ${worked.length}/4 of the shift, stepping ${berth.toFixed(2)} m of counter`);
+    check("the bar he works is on the floor — he never climbs into it",
+      berth <= 1.6, `furthest he got from his station: ${berth.toFixed(2)} m`);
+
+    const podiumDancers = mine().people.filter((p) => p.role === "hogdancer" && Math.abs(p.rest.lz - stage.z) > 3);
+    check("the podium dancers are on their podiums, and stay there",
+      podiumDancers.length >= 3 && !offPodium && onPodium <= 0.4,
+      offPodium || `${podiumDancers.length} on risers at y=0.42, wandering at most ${onPodium.toFixed(2)} m`);
+    check("the stage hogs never leave the deck",
+      !offDeck, offDeck || `${stage.poles} on the poles, all inside the ${stage.w} × ${stage.d} m deck`);
   }
 }
 

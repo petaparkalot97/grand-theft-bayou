@@ -163,6 +163,65 @@ calling it fully closed.
 
 ## 2026-09-22 — Freebuff
 
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — BILLY JEANS is on: a named act, a scripted routine, and a pit that reacts
+
+### Finding — a moonwalk is a yaw lock, not a clip
+
+The clip was the easy half: `danceClip` now has six stage poses, and the glide is
+both feet flat on the floor, the lead leg straight and skating, the trailing toe
+pointed. The half that makes it read is in `crowd.js`. Every actor in this game turns
+itself to face its own travel — `characters.js`'s `update()` measures the ground it
+covered and lerps `_yaw` toward it — so an actor moved backwards while playing a glide
+pose is a man *walking backwards*, and the better the clip the more convincing the
+wrong thing is. So `makeAct` re-applies the stage's facing AFTER `a.update(dt)`, every
+frame, for every beat except the spin (which is the one beat where the turn is the
+move). Measured over three routines: **2.40 m of backward travel per moonwalk with the
+facing held to 0.0000 rad**. Nothing about the rig changed; the ordering did.
+
+### Finding — a scripted actor needs a box, or it is a bug generator
+
+A pose-driven NPC wanders a radius and cannot leave its room. A *scripted* one walks
+wherever the script says, and a six-metre riser in a 30 m hall is a short walk to the
+bar. So the stage fixture hands over its deck as a rectangle (`b.spot(…, { bounds })`)
+and `tick` clamps every step to it — sideways drift, the backward glide and the walk
+back up to the front all live inside it. A beat with too much speed in it now stalls at
+the edge instead of stepping off, and the check runs three full routines asserting he
+never leaves the rect and never sinks below the deck's rise.
+
+### Finding — the crowd reaction is a timer, and 40% of the time is the ceiling
+
+The pit is a fixture (`stagefront`) that proposes people only: six `fan` spots in front
+of the stage, `hype: true`, each one asking the builder (`b.free`) whether a column has
+claimed that patch first. A `big` beat calls `hype()`, which sets a `cheer` timer on the
+pit and on anybody else within 7 m — bar a `WORKING` set (barman, dealer, croupier, DJ,
+the go-go girls flanking him), because the room is still open. Two decisions worth
+recording: **only three of the nine beats are `big`** (signature, moonwalk, freeze — the
+spin at 4.5 rpm is spectacular and unsurprising, and marking it too would leave the pit
+in the air for half the show), and **the cheer is per-beat data** (`cheer: 3.2` on the
+moonwalk, which is 3.0 s long), so a reaction covers its move instead of expiring in the
+middle of it. Measured over 56 s: 6 cheering at once, ~40% of samples mid-show, 60%
+with the pit back on its own feet — asserted in both directions, because a crowd that is
+always cheering is not reacting to anything.
+
+### WARNING — a spot hook that was documented and ignored
+
+`b.spot`'s interface comment has promised `{ anim }` since the kit was written, and
+`makeCrowd` was silently reading `role.anim` instead — so a fixture asking for a dancing
+front row got an idle one and nothing reported it. Now honoured (spot over role over
+`idle`), along with `name` (which names a performer) and `bounds`. Small, but it is the
+kind of gap that gets debugged twice: once as "the crowd looks wrong", once when
+somebody re-reads the comment and believes it.
+
+### Gotcha — the QA snapshot is not the QA
+
+The crowd section of `crown_build_test` takes `const crown = district.crownCrowd` once
+and works from it (positions, roles, beats — all static facts). Reading *live* state
+from that snapshot is silently wrong: my new block sampled the act's beat from it and
+got "spin" 560 times while the act had cycled three routines behind it, and reported "he
+never moonwalked" and a pit pinned mid-cheer. The district re-reads on every frame
+(`district.crownCrowd.find(...)`) now, and the "he is culled with his room" check — which
+had also been comparing a stale `t` to itself and passing vacuously — is real.
+
 **Type:** DISCOVERY · **Task:** TASK-070 (cont.) — the strip is inhabited: the crowd kit, the pavement, the shift
 
 ### Finding — the fixtures were the only thing that knew where a person could stand
@@ -222,11 +281,11 @@ of work that looks like churn and is not.
 
 ### What the brief still wants, and where it belongs
 
-BILLY JEANS as a performer needs a `moonwalk`/glide clip — `characters.js`'s
-`danceClip` is the extension point and has no such clip; the crowd kit's `spot.anim`
-is already the hook. HAPPY HOGS' hog dancers and hog barman need a hog *character* on
-the actor rig, and `main.js`'s `buildHog()` is a static mesh, so that is character
-work in `characters.js`, not more crowd code. Traffic, crossings, ambient events,
+BILLY JEANS as a performer needed a `moonwalk`/glide clip — `characters.js`'s
+`danceClip` was the extension point and had no such clip. **Done in the entry above**
+(the clip, the scripted routine, the pit that reacts). HAPPY HOGS' hog dancers and hog
+barman still need a hog *character* on the actor rig, and `main.js`'s `buildHog()` is a
+static mesh, so that is character work in `characters.js`, not more crowd code. Traffic, crossings, ambient events,
 per-venue audio, and the exposure/tone-mapping audit the brief asks for before new
 lighting are all still open — and that last one is orchestrator-owned (main.js), so it
 should be measured rather than guessed.

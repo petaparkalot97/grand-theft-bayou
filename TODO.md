@@ -610,7 +610,7 @@ for the buildings, the interiors or the cutaway to work:**
   hoodrat, high-end escort, prostitute, gay man, lesbian, suit), at the same heights
   main.js's `ENEMY_TYPES` uses. Staff parts are pinned by the fixture that owns that
   part of the room; everything else is a patron.
-- **88 people on the strip** (BAYOU GOLD 12+6, BILLY JEANS 10+12, DISCO GATORS
+- **94 people on the strip** (BAYOU GOLD 12+6, BILLY JEANS 16+12, DISCO GATORS
   14+12, HAPPY HOGS 12+10 posed, plus 6 pavement walkers each) at **~12–15 meshes
   each**, and the audit checks (a) every room staffed for what is *in* it — derived
   from the venue's own `layout` through one `STAFF_OF` table, so a new fixture that
@@ -656,18 +656,49 @@ for the buildings, the interiors or the cutaway to work:**
   `spawnzones.js` + `crowd.js` + `characters.js` in its sandbox, so it measures the
   actors it actually builds. It runs 90 s of the pavement state machine to prove
   people reach a door, go in and come back out; it runs the block through 11:00,
-  18:00 and 23:00; and it checks a single tick never moves anybody more than 0.35 m.
+  18:00 and 23:00; it watches **three full routines of the act** from inside the
+  lounge (every beat visited, the moonwalk's backward travel, his deck bounds, the
+  pit cheering and settling, and the room being culled while he keeps not
+  performing); and it checks a single tick never moves anybody more than 0.35 m.
   The vm stub needed real `Quaternion.identity`, `MathUtils.clamp`, `Vector3.sub/
   addScaledVector/lerp` and a traversing `updateMatrixWorld` — all gaps in the stub,
   not in the game.
 
-**Remaining (the rest of the nightlife brief, in the order I would take it):**
-- **BILLY JEANS as an attraction:** a named performer with a scripted dance state
-  machine (idle pose → mic → side-to-side → signature pose → spin → footwork →
-  **moonwalk** → freeze → crowd call) needs a `moonwalk`/glide clip in
-  `characters.js`'s `danceClip` (the extension point exists; the clip does not), plus
-  a crowd in front of the stage that reacts. `makeCrowd`'s `spot.anim`/`beat` already
-  carry the room; the venue-specific act is the piece that is missing.
+- **BILLY JEANS IS ON, and he moonwalks (2026-09-22, latest).** The lounge's stage
+  now carries `star: "BILLY JEANS"`, and the pit in front of it is a fixture
+  (`stagefront`) that only proposes *people*. Three pieces:
+  - **`src/characters.js`** — six stage clips in `danceClip` (`showboat` the pose,
+    `moonwalk`, `spin`, `footwork`, `lean`, `cheer` for the room) and `makeStar`: the
+    same rig as everybody else in a black fedora (the `fedora` headwear that already
+    existed for this silhouette), a dark sequin jacket, white low-tops because every
+    step he does is a foot step, and **the one white performance glove on the right
+    hand** (`opts.glove`) — the hand the mic is in, and the hand the giant glove over
+    the lounge door is a portrait of. No new geometry, textures, skinning or mixer.
+  - **`src/crowd.js`** — `ACT_SCRIPT`, the routine as data: pose, mic, side-to-side,
+    signature pose, spin, footwork, **moonwalk**, freeze, crowd call (the brief's nine
+    beats, in its order). `makeAct` drives it: `side`/`back`/`fwd` move his feet while
+    the clip holds the pose, `spin` turns him whole revolutions, and three beats
+    (`signature`, `moonwalk`, `freeze`) are `big` — the pit cheers for `cheer`
+    seconds. **The moonwalk works because the yaw is re-applied after the actor's own
+    update**: the rig turns an actor to face its travel, so without the lock the
+    glide clip reads as a man walking backwards. Measured: **2.40 m of backward
+    travel per moonwalk, facing held to 0.0000 rad.**
+  - **The show cannot leave the stage.** The stage fixture hands over the deck as a
+    rect (`bounds`) and `tick` clamps every step to it, so no beat — including a
+    re-timed one — can walk him off a 6 m riser into the bar. Asserted over three
+    full routines.
+  - **The pit reacts, and stops reacting.** Six `fan` spots in front of the stage
+    (`hype: true`) cheer on a big move and go back to their own dance when it ends;
+    the rest of the room joins in from within 7 m, except the people whose job it is
+    not to (`WORKING`: barman, dealer, DJ, the go-go girls flanking him). Measured
+    over 56 s: **6 cheering at once, ~40% of samples mid-show, 60% with the pit back
+    on its own feet** — asserted both ways, because a crowd that is always cheering
+    is not reacting to anything.
+  - **Cost:** the lounge is 16 on the floor (from 10) — the act, two go-go dancers,
+    the barman, six in the pit, and a working bar behind them. The act only ticks
+    when the room is drawn (the same LOD the rest of the crowd lives by), asserted
+    by standing on North Ave 2 and watching his routine clock not move.
+- **Remaining:**
 - **HAPPY HOGS as its own venue:** hog dancers on podiums and a hog bartender need a
   hog *character* on the actor rig — `main.js`'s `buildHog()` is a static procedural
   mesh, and `characters.js` has no hog factory. That is real character work and
@@ -4325,6 +4356,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `tools/qa/neonsign_test.mjs` (new) | Freebuff | TASK-070 (cont.) | Locked by TASK-070 |
 | `src/interiors.js` (new) | Freebuff | TASK-070 (cont.) — the interior kit; adopt freely | Locked by TASK-070 |
 | `src/crowd.js` (new) | Freebuff | TASK-070 (cont.) — the casting sheet, the beats, the pavement; adopt freely | Locked by TASK-070 |
+| `src/characters.js` | Freebuff | TASK-070 (cont.) — stage clips (`moonwalk`, `showboat`, `spin`, `footwork`, `lean`, `cheer`) + `makeStar` only; adopt freely | Locked by TASK-070 |
 | `src/composer.js` | Claude | TASK-041 (REVIEW) — road options | Available |
 | `tools/qa/roads.mjs` (new), `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs` | Claude | TASK-041 | Available |
 | `tools/qa/traffic_test.mjs` | Freebuff | TASK-039 | Locked |

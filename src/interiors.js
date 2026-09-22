@@ -334,12 +334,19 @@ export const FIXTURES = {
     }
     b.lit(rot ? s.x + 3.0 : s.x, 3.4, rot ? s.z : s.z + 3.0, 62, 17);
     b.station(rot ? s.x + 1.9 : s.x, rot ? s.z : s.z + 1.9, "bar", "Bar — what are you having?");
-    // the barman between the counter and his shelf, then drinkers on the near side
+    // the barman between the counter and his shelf, then drinkers on the near
+    // side. `s.keep` is who is minding the bar — HAPPY HOGS puts a hog behind it
+    // (crowd.js's `hogkeep`, which works the shift rather than standing at it),
+    // and that is the only line the venue has to change to do it.
+    const keep = s.keep || "barkeep";
+    // and a counter runs along one axis: `patrol` is what the `work` beat walks,
+    // so a barman steps along his bar instead of drifting into the bottles
+    const patrol = rot ? "z" : "x";
     if (rot) {
-      b.spot(s.x - 1.05, s.z, { role: "barkeep", face: Math.PI / 2 });
+      b.spot(s.x - 1.05, s.z, { role: keep, face: Math.PI / 2, patrol, r: 1.5 });
       for (let i = 0; i < ns; i += 2) b.spot(s.x + 1.35, s.z + (i - (ns - 1) / 2) * 1.7, { face: -Math.PI / 2, beat: "still" });
     } else {
-      b.spot(s.x, s.z - 1.05, { role: "barkeep", face: 0 });
+      b.spot(s.x, s.z - 1.05, { role: keep, face: 0, patrol, r: 1.5 });
       for (let i = 0; i < ns; i += 2) b.spot(s.x + (i - (ns - 1) / 2) * 1.7, s.z + 1.55, { face: Math.PI, beat: "still" });
     }
   },
@@ -426,9 +433,10 @@ export const FIXTURES = {
     // the act, on the deck: a girl on each pole if this stage has them, else two
     // go-go dancers working the front corners. Height is the deck, not the floor.
     if (s.poles) {
+      // `s.who` is who works the poles (HAPPY HOGS' are hogs)
       for (let i = 0; i < s.poles; i++) {
         const x = s.x + (i - (s.poles - 1) / 2) * (w / (s.poles + 1));
-        b.spot(x + 0.7, s.z + 0.2, { role: "performer", face: 0, y: rise });
+        b.spot(x + 0.7, s.z + 0.2, { role: s.who || "performer", face: 0, y: rise });
       }
     } else {
       for (const sx of [-1, 1]) b.spot(s.x + sx * w * 0.26, s.z + 0.3, { role: "gogo", face: 0, y: rise });
@@ -473,6 +481,34 @@ export const FIXTURES = {
       placed++;
     }
     b.lit(s.x, 2.6, s.z, 40, 12);
+  },
+
+  /**
+   * A row of dance podiums: small lit risers with one dancer on each.
+   *
+   * The podium is a *riser*, so its collision is one circle under a person who
+   * stands above it — which is exactly what the audit's floor-plane rule already
+   * allows for (see the raised-actor note in `crown_build_test`). The dancer's own
+   * shuffle radius (0.3 m, crowd.js's `hogdancer`) is what keeps her on a 0.6 m
+   * disc; the fixture does not need to fence her in.
+   */
+  podiums(b, s) {
+    const n = s.n ?? 3, dx = s.dx ?? 3.4, rise = s.rise ?? 0.42, r = s.r ?? 0.62;
+    const tops = [], rims = [];
+    for (let i = 0; i < n; i++) {
+      const x = s.x + (i - (n - 1) / 2) * dx;
+      tops.push({ x, y: rise / 2, z: s.z });
+      rims.push({ x, y: rise, z: s.z });
+      b.block(x, s.z, r * 1.5);
+      b.spot(x, s.z, {
+        role: s.role || "hogdancer", face: (s.face ?? 0) + (i - (n - 1) / 2) * 0.5,
+        y: rise, r: 0.3, beat: "shuffle",
+      });
+    }
+    b.inst(b.G.cyl(r, rise), b.m("podium", b.v.theme.interior), tops, { cast: true });
+    b.inst(b.G.cyl(r + 0.06, 0.07), b.e("podium rim", b.v.theme.accent, 1.2), rims);
+    // one pooled light for the row: three 0.6 m risers do not each need a lamp
+    b.lit(s.x, rise + 2.4, s.z, 42, 13);
   },
 
   /** A stack of PA speakers. */

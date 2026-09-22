@@ -29,7 +29,7 @@
 import * as THREE from "three";
 import { ZONE_MIX } from "./spawnzones.js";
 import {
-  makeDancer, makeStar, randomGayMan, randomHighEndEscort, randomHoodrat,
+  makeDancer, makeHog, makeStar, randomGayMan, randomHighEndEscort, randomHoodrat,
   randomLesbian, randomProstitute, randomRedneck, randomTuxedo,
 } from "./characters.js";
 
@@ -93,6 +93,13 @@ function makeMixed(rng, scale = 1) {
 }
 
 /**
+ * The bar shift, in order: pour, wipe down, hand it over, lean and watch the
+ * room, breathe. Four poses plus idle, shuffled by the beat, is enough that the
+ * counter never settles into a loop you can read from the door.
+ */
+const BAR_POSES = ["pour", "polish", "serve", "barlean", "idle", "pour", "barlean"];
+
+/**
  * The casting sheet. A fixture's `role` hint is a *staff* part (somebody has to
  * be behind the bar); anything unhinted is drawn from the door mix.
  *
@@ -113,6 +120,17 @@ export const ROLES = {
   bouncer:   { anim: "idle",  h: 1.98, make: (r, h) => randomHoodrat(r, h), beat: "still" },
   valet:     { anim: "idle",  h: 1.84, make: (r, h) => randomHoodrat(r, h), beat: "shuffle", r: 1.6 },
   smoker:    { anim: "idle",  h: 1.96, make: (r, h) => randomRedneck(r, h), beat: "still" },
+  // ---- HAPPY HOGS: the house is hogs ---------------------------------------
+  // The same animal on the people rig; what differs is the job, which is the same
+  // distinction the sheet draws for people. A `hogdancer`'s shuffle radius is 0.3 m
+  // and that is the whole trick of the podiums — the beat cannot walk her off a
+  // 0.6 m disc. A `hogkeep` works the counter instead: `beat: "work"` cycles the
+  // poses in `poses` on his own clock and drifts a step along the bar between
+  // them, so the bar is never being minded by a statue.
+  hogdancer: { anim: "dance", h: 1.78, beat: "shuffle", r: 0.3,
+    make: (r, h, s) => makeHog({ variant: "dancer", sex: s && s.sex === "m" ? "m" : r() < 0.5 ? "m" : "f", seed: (r() * 1e9) | 0, height: h }) },
+  hogkeep:   { anim: "pour",  h: 1.86, beat: "work", r: 1.5, poses: BAR_POSES,
+    make: (r, h, s) => makeHog({ variant: "barman", sex: "m", seed: (r() * 1e9) | 0, height: h }) },
   // ---- the act: one per venue at most, and only the lounge has one ----------
   // `beat: "act"` hands the actor to makeAct() below instead of the still /
   // shuffle / stroll beats: a script drives him, because a performer who stands
@@ -134,7 +152,7 @@ export const ROLES = {
 /** Who is on the clock in daylight: the people a venue needs to be open. */
 const DAY_ROLES = new Set([
   "barkeep", "dealer", "croupier", "clerk", "host", "dj", "performer", "gogo",
-  "bouncer", "valet", "smoker",
+  "bouncer", "valet", "smoker", "hogkeep",
 ]);
 
 /** Resolve a role name, falling back to a patron. */
@@ -189,7 +207,7 @@ function place(a, s, role, rng) {
 //
 // The whole difference between "a performer NPC" and "a show" is that the
 // performer is scripted rather than idle: a routine of nine beats that he runs
-// on his own clock, with his feet doing something specific in each one, and four
+// on his own clock, with his feet doing something specific in each one, and three
 // of them big enough that the room is supposed to react. It is data (ACT_SCRIPT),
 // not nine functions, because re-timing a show should be editing a number.
 //
@@ -224,14 +242,11 @@ function place(a, s, role, rng) {
  * and marking every dramatic beat would leave the pit in the air for half the
  * show — a crowd that is always cheering is not reacting to anything.
  *
- * Nothing here may move him off the deck: `tick` clamps to the stage's rect, so a
- * beat with too much speed in it stalls at the edge instead of walking off the
- * riser into the bar.
- *
  * The order is the order in the brief: pose, mic, side-to-side, signature pose,
- * spin, footwork, moonwalk, freeze, crowd — then repeat. He moonwalks about every
- * eighteen seconds and the crowd's reaction to it is the loudest thing on the
- * strip, which is the point: it has to be obvious from the pavement.
+ * spin, footwork, moonwalk, freeze, crowd — then repeat, so he moonwalks every
+ * eighteen seconds or so. Nothing here may move him off the deck either: `tick`
+ * clamps to the stage's rect, so a beat with too much speed in it stalls at the
+ * edge instead of walking off the riser into the bar.
  */
 export const ACT_SCRIPT = [
   { state: "pose",      clip: "showboat", dur: 1.6 },
@@ -372,7 +387,9 @@ export function makeAct(o = {}) {
  *   seed     deterministic casting, so a rebuild looks the same
  *   lane     { z, x0, x1 } a verified-clear line the `walker` role paces
  *   reach    actors only hold still beyond this... (unused; the district hides groups)
- * @returns {{ group, actors, meshes, tick }}
+ * @returns {{ group, actors, meshes, tick, setShift, act, fans }}
+ *   `act`  the show, if a fixture cast a `star` in this room (makeAct), and
+ *   `fans` the pit that reacts to his big moves — both null / empty elsewhere
  */
 export function makeCrowd(spots, o = {}) {
   const rng = mulberry((o.seed | 0) || 7);
@@ -400,6 +417,14 @@ export function makeCrowd(spots, o = {}) {
       hype: 0, fan: !!s.hype,
       // a scripted actor's stage, if its fixture staged one
       bounds: s.bounds,
+      // the bar shift, for the `work` beat: which poses, and which way the
+      // counter runs (`patrol`), so his steps go along the bar and not into it
+      poses: s.poses || role.poses || BAR_POSES,
+      pose: 0,
+      patrol: s.patrol || null,
+      // the facing the part was cast at, for beats that move an actor who is not
+      // supposed to turn with its feet (a barman walking his counter)
+      face: s.face != null ? s.face : a._yaw,
     };
     if (beat === "stroll" && o.lane) {
       const l = o.lane;
@@ -430,9 +455,9 @@ export function makeCrowd(spots, o = {}) {
 
   // ---- the act, if a fixture staged one ------------------------------------
   // The stage hands over his mark and the deck he may not leave; everything else
-  // about the show is the script above. Reacting to a big move is deliberately
-  // the *fans* plus whoever else is close: `hype` is polite enough to leave the
-  // barman and the pool players alone.
+  // about the show is the script above. Reacting to a big move is the *pit* plus
+  // whoever else is close enough to see it — so the room has a front row that
+  // loses it and a bar that keeps serving.
   const actRec = actors.find((x) => x.beat === "act");
   const act = actRec ? makeAct({
     actor: actRec.a,
@@ -482,6 +507,21 @@ export function makeCrowd(spots, o = {}) {
   }
 
   const target = new THREE.Vector3();
+
+  /**
+   * A new place to be, inside the actor's own radius — along `patrol`'s axis when
+   * the part has one. A barman's radius is 1.5 m of *counter*, not a 1.5 m circle:
+   * the bar has a wall of bottles behind it and drinkers in front of it, and a disc
+   * of random points would have him step through the first and into the second.
+   */
+  function repoint(x) {
+    const r = x.radius || 0.8, ang = Math.random() * Math.PI * 2;
+    if (x.patrol === "z") x.goal.set(x.home.x, x.home.y, x.home.z + Math.sin(ang) * r);
+    else if (x.patrol === "x") x.goal.set(x.home.x + Math.sin(ang) * r, x.home.y, x.home.z);
+    else x.goal.set(x.home.x + Math.cos(ang) * r, x.home.y, x.home.z + Math.sin(ang) * r);
+    return x.goal;
+  }
+
   /**
    * Advance every actor. Cheap by construction: a beat is one timer and at most
    * one lerp, and the district only calls this for the groups it is drawing.
@@ -517,6 +557,35 @@ export function makeCrowd(spots, o = {}) {
           a.position.x += Math.sign(d) * Math.min(Math.abs(d), x.speed * dt);
         }
         a.update(dt);
+        continue;
+      }
+
+      // work: the bar shift. A pose timer of his own on top of the movement —
+      // hold the pour, step along the counter, wipe it down, hand the drink over,
+      // lean and look at the room — so "at work" is a thing he is doing rather
+      // than a place he is standing. `repoint` keeps every step along the bar's
+      // own axis inside `radius`, so he never turns his back to serve the shelf.
+      if (x.beat === "work") {
+        const d = Math.hypot(x.goal.x - a.position.x, x.goal.z - a.position.z);
+        if (d > 0.25) {
+          target.copy(x.goal).sub(a.position);
+          const len = target.length() || 1;
+          a.position.addScaledVector(target, Math.min(len, x.speed * 0.5 * dt) / len);
+          a.play("walk");
+        } else {
+          x.wait -= dt;
+          if (x.wait <= 0) {
+            x.pose = (x.pose + 1) % x.poses.length;
+            x.anim = x.poses[x.pose];
+            a.play(x.anim, { force: true, loop: true });
+            x.wait = 1.3 + Math.random() * 2.3;
+            repoint(x);
+          }
+        }
+        a.update(dt);
+        // he serves the room, not the aisle: a step along the counter turns the
+        // rig to face its travel, so the bar's own facing goes back on after it
+        if (x.face != null) { a._yaw = x.face; a.rotation.y = x.face; }
         continue;
       }
 

@@ -278,22 +278,29 @@ const CROWN_VENUES = [
     theme: { wall: 0x1c0f1a, trim: 0xff4fb3, interior: 0x1a0a14, accent: 0xff4fb3, felt: 0x8a0f3c },
     sign: { h: 3.0, sub: "SHOW BAR" },
     blurb: "The finest hams on the Gulf Coast.",
-    cast: { crowd: 12 },
+    // 14 on the floor: the house is hogs (three on the poles, three podiums, two
+    // bars) and the rest are the customers they are performing for
+    cast: { crowd: 14 },
     props: ["pig"],
     // A working show room rather than a generic club: the stage is the room, the
-    // bars sit either side of it, private rooms and the dressing room are behind.
+    // bars sit either side of it, private rooms and the dressing room are behind —
+    // and the house itself is hogs. `who` on the stage, `role` on the podiums and
+    // `keep` on both bars is the whole of that: the same fixtures, staffed by the
+    // venue's own animal (crowd.js's `hogdancer`/`hogkeep`).
     layout: [
       { fixture: "runner", x: 0, z: 10, w: 8, d: 7 },
       // the main stage, with its poles and the rail along the front of it
-      { fixture: "stage", x: -6, z: -9, w: 14, d: 5, poles: 3, rise: 0.7 },
+      { fixture: "stage", x: -6, z: -9, w: 14, d: 5, poles: 3, rise: 0.7, who: "hogdancer" },
       { fixture: "rail", x: -6, z: -5, n: 4, dx: 4 },
       // audience: a lounge on the floor, booths on the wings
       { fixture: "lounge", x: 0, z: 3, n: 1, dx: 10 },
       { fixture: "booths", x: -16, z: 10, n: 2, dx: 5 },
       { fixture: "booths", x: 16, z: 8, n: 2, dx: 5 },
-      // two bars, private rooms and backstage
-      { fixture: "barBig", x: -20, z: 1, rot: 1, len: 12 },
-      { fixture: "barBig", x: 18, z: 0, rot: 1, len: 12 },
+      // the floor podiums, on the way in from the door: three hogs on three risers
+      { fixture: "podiums", x: 7, z: -3, n: 3, dx: 3.4, rise: 0.42 },
+      // two bars, both kept by a hog, private rooms and backstage
+      { fixture: "barBig", x: -20, z: 1, rot: 1, len: 12, keep: "hogkeep" },
+      { fixture: "barBig", x: 18, z: 0, rot: 1, len: 12, keep: "hogkeep" },
       { fixture: "privateRoom", x: -17, z: -10, w: 8, d: 5, name: "CHAMPAGNE" },
       { fixture: "dressingRoom", x: 13, z: -10, w: 14, d: 5 },
       { fixture: "columns", x: 0, z: 0, n: 2, dx: 28 },
@@ -1122,6 +1129,9 @@ export function createTusouxroeNorth(ctx) {
         awake: liveOf(r.crowdIn) + liveOf(r.crowdOut) + (r.pave ? liveOf(r.pave) : 0),
         people: [...r.crowdIn.actors, ...r.crowdOut.actors].map((x) => ({
           side: x.side, role: x.role, beat: x.beat, anim: x.a.anim,
+          // HAPPY HOGS' house, for the audit: `characters.js` tags the actor when
+          // it was built by `makeHog`
+          hog: !!x.a.userData.hog,
           lx: x.a.position.x, lz: x.a.position.z, y: x.a.position.y,
           // where the fixture cast them: the others wander a step or two off it,
           // so this is the pose the floor plan is responsible for

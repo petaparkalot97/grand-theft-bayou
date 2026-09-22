@@ -514,7 +514,10 @@ class Hoodrat extends THREE.Object3D {
       brow.rotation.z = side * -0.12;
     }
 
-    if (female) {
+    // A hog wears no hair and no headwear: the head below is built off this same
+    // skull, and a hairstyle underneath a snout would be a hairline sticking out
+    // of a muzzle (see the `opts.hog` block after the hats).
+    if (female && !opts.hog) {
       if (headwear === "band") {
         // tied headband, tails to one side
         const hb = add(head, cyl(0.121, 0.121, 0.075, 14), band, 0, 0.12, 0);
@@ -608,7 +611,7 @@ class Hoodrat extends THREE.Object3D {
           tail.rotation.z = side * 0.18;
           tail.rotation.x = -0.22;
         }
-      } else {
+      } else if (!opts.hog) {
         // close-cropped hair
         crown(hairMat, 0.119);
       }
@@ -643,6 +646,49 @@ class Hoodrat extends THREE.Object3D {
       add(head, cyl(0.116, 0.116, 0.03, 16), mat("leather", 0x0b0b0d), 0, 0.14, -0.012);
       const pinch = add(head, box(0.055, 0.02, 0.07), felt, 0, 0.26, -0.012);
       pinch.rotation.x = 0.22;
+    }
+
+    if (opts.hog) {
+      // ---- the hog (HAPPY HOGS' house: its dancers and its barman) ----------
+      // Anthropomorphic, on the *people rig* — so a hog dances on a podium,
+      // cheers, walks and works a bar with the same clips and the same beats as
+      // everybody else on the strip, and costs the same to draw. What makes it a
+      // hog is the head, built here over the human skull:
+      //
+      //   * a dropped muzzle that swallows the jaw and chin (which are already at
+      //     z 0.095, so there is nothing to hide) and hangs a little below them,
+      //   * the snout disc on its end, with two nostrils, which is the shape that
+      //     reads as a pig from the front, and the front is where the audience is,
+      //   * two floppy ears flopped forward and outward, tapering wider than the
+      //     skull the way a hog's do, and
+      //   * a pair of small tusks, because HAPPY HOGS is a *show* bar.
+      //
+      // The body is the skin material the caller passed (`makeHog` hands the hog's
+      // own hide colour in as `skin`), so no part of the rig needed a branch —
+      // only this block, and the two `!opts.hog` guards above.
+      const snoutMat = mat("hog snout", opts.snoutColor != null ? opts.snoutColor : 0xd98a86);
+      const earMat = mat("hog ear", opts.earColor != null ? opts.earColor : 0xc47f78);
+      const innerEar = mat("hog ear inner", 0xe9a9a4);
+      const ivory = mat("hog tusk", 0xf2ead6);
+      const nostril = mat("hog nostril", 0x6b403f);
+      const muzzle = add(head, box(0.115, 0.105, 0.15), snoutMat, 0, -0.02, 0.145);
+      muzzle.rotation.x = -0.06;
+      const disc = add(head, cyl(0.056, 0.028, 14), snoutMat, 0, -0.012, 0.222);
+      disc.rotation.x = Math.PI / 2;         // the flat snout, facing the room
+      for (const side of [-1, 1]) add(head, sph(0.016, 6, 5), nostril, side * 0.026, -0.008, 0.234);
+      for (const side of [-1, 1]) {
+        const ear = add(head, box(0.03, 0.13, 0.085), earMat, side * 0.108, 0.14, -0.015);
+        ear.rotation.z = side * -0.6;         // folded over, outwards
+        ear.rotation.x = -0.28;               // and forward, over the brow
+        ear.scale.set(1, 1, 1.15);
+        add(head, box(0.016, 0.09, 0.055), innerEar, side * 0.115, 0.135, -0.012);
+        const tusk = add(head, box(0.02, 0.06, 0.02), ivory, side * 0.047, -0.05, 0.2);
+        tusk.rotation.x = -0.3;
+        tusk.rotation.z = side * 0.22;
+      }
+      // ...and the curl, off the back of the hips
+      const tail = add(hips, torus(0.045, 0.012, 5, 10), snoutMat, 0, 0.0, -0.15);
+      tail.rotation.y = Math.PI / 2;
     }
 
     if (headwear === "cap") {
@@ -993,7 +1039,9 @@ class Hoodrat extends THREE.Object3D {
     if (this.anim === "twerk" || this.anim === "grind" || this.anim === "dance" || this.anim === "sit"
       || this.anim === "kiss" || this.anim === "ride" || this.anim === "moonwalk"
       || this.anim === "showboat" || this.anim === "cheer" || this.anim === "spin"
-      || this.anim === "footwork" || this.anim === "lean") {
+      || this.anim === "footwork" || this.anim === "lean"
+      || this.anim === "pour" || this.anim === "polish" || this.anim === "serve"
+      || this.anim === "barlean") {
       this.position.y = this.baseY || 0;
       danceClip(this, dt);
       return;
@@ -1260,6 +1308,68 @@ function danceClip(r, dt) {
     r.arms[1].elbow.rotation.x = 0.06;
     r.arms[0].pivot.rotation.set(-2.3, 0, r.arms[0].side * 0.32);       // gloved hand on the hat
     r.arms[0].elbow.rotation.x = -1.55;
+    return;
+  }
+  if (r.anim === "pour") {
+    // the bottle in the gun hand, the glass under it: the pouring wrist is the
+    // elbow's roll, so the bottle tips over the glass and comes back up
+    const p = t * 1.15 + r.phase;
+    r.hips.position.y = 0.92;
+    r.hips.rotation.set(0, 0, 0);
+    r.torso.rotation.set(0.12, 0.24, 0);
+    r.head.rotation.set(0.16, -0.18, 0);      // watching the glass, not the room
+    r.legs[0].pivot.rotation.x = -0.05; r.legs[0].knee.rotation.x = 0.08; r.legs[0].foot.rotation.x = 0;
+    r.legs[1].pivot.rotation.x = 0.05; r.legs[1].knee.rotation.x = 0.12; r.legs[1].foot.rotation.x = 0;
+    r.arms[0].pivot.rotation.set(-1.15, 0, r.arms[0].side * 0.3);
+    r.arms[0].elbow.rotation.set(-1.25, 0, -0.45 - Math.sin(p) * 0.3);
+    r.arms[1].pivot.rotation.set(-0.95, 0, r.arms[1].side * 0.42);
+    r.arms[1].elbow.rotation.set(-1.35, 0, Math.sin(p) * 0.12);
+    return;
+  }
+  if (r.anim === "polish") {
+    // the glass and the cloth: both hands on the bar top in a small circle
+    const p = t * 2.6 + r.phase;
+    r.hips.position.y = 0.92;
+    r.hips.rotation.set(0, 0, 0);
+    r.torso.rotation.set(0.16, 0, 0);
+    r.head.rotation.set(-0.24, Math.sin(p * 0.5) * 0.2, 0);
+    r.legs[0].pivot.rotation.x = 0; r.legs[0].knee.rotation.x = 0.06; r.legs[0].foot.rotation.x = 0;
+    r.legs[1].pivot.rotation.x = 0; r.legs[1].knee.rotation.x = 0.06; r.legs[1].foot.rotation.x = 0;
+    r.arms.forEach((a, i) => {
+      a.pivot.rotation.set(-1.0 + Math.sin(p + i * 2.1) * 0.07, 0, a.side * 0.3 + Math.cos(p + i * 2.1) * 0.05);
+      a.elbow.rotation.set(-1.3, 0, 0);
+    });
+    return;
+  }
+  if (r.anim === "serve") {
+    // the drink goes across the counter, on the flat of the hand, and comes back
+    const p = Math.max(0, Math.sin(t * 1.1)) * 0.55;
+    r.hips.position.y = 0.92;
+    r.hips.rotation.set(0, 0, 0);
+    r.torso.rotation.set(0.08, 0.14, 0);
+    r.head.rotation.set(-0.06, -0.1, 0);
+    r.legs[0].pivot.rotation.x = 0; r.legs[0].knee.rotation.x = 0.06; r.legs[0].foot.rotation.x = 0;
+    r.legs[1].pivot.rotation.x = 0; r.legs[1].knee.rotation.x = 0.06; r.legs[1].foot.rotation.x = 0;
+    r.arms[0].pivot.rotation.set(-1.05 - p * 0.5, 0, r.arms[0].side * 0.22);
+    r.arms[0].elbow.rotation.set(-0.85 + p * 0.6, 0, 0);
+    r.arms[1].pivot.rotation.set(-0.6, 0, r.arms[1].side * 0.34);
+    r.arms[1].elbow.rotation.set(-1.15, 0, 0);
+    return;
+  }
+  if (r.anim === "barlean") {
+    // elbows on the counter, chin on the fist, eyes on the room — the pose every
+    // bar in the world has somebody in, and the break between two drinks
+    const p = t * 0.7 + r.phase;
+    r.hips.position.y = 0.92;
+    r.hips.rotation.set(0, 0, 0);
+    r.torso.rotation.set(0.26, Math.sin(p) * 0.18, 0);
+    r.head.rotation.set(-0.1, Math.sin(p) * 0.42, 0.06);
+    r.legs[0].pivot.rotation.x = -0.12; r.legs[0].knee.rotation.x = 0.3; r.legs[0].foot.rotation.x = -0.18;
+    r.legs[1].pivot.rotation.x = 0.1; r.legs[1].knee.rotation.x = 0.14; r.legs[1].foot.rotation.x = 0;
+    r.arms[0].pivot.rotation.set(-1.35, 0, r.arms[0].side * 0.34);
+    r.arms[0].elbow.rotation.set(-1.5, 0, 0);
+    r.arms[1].pivot.rotation.set(-0.95, 0, r.arms[1].side * 0.5);
+    r.arms[1].elbow.rotation.set(-1.6, 0, 0);
     return;
   }
   if (r.anim === "cheer") {
@@ -1604,6 +1714,78 @@ export function makeDancer(opts = {}) {
     crew: { cloth: top === "rainbow" ? 0xff2e93 : top, accent: top === "rainbow" ? 0xff2e93 : top, chain: 0xd4af37, shoe: bottom, legging: bottom, maleShoe: "low" },
     ...opts,
   });
+}
+
+/** The hogs of HAPPY HOGS: hide and snout tones, in pairs. */
+const HOG_HIDES = [
+  [0xe8a49c, 0xd98a86], [0xd9948a, 0xc47f78], [0xf2bdb0, 0xdc9a94], [0xc98a80, 0xb06f6b],
+];
+
+/**
+ * A HAPPY HOGS hog — the house's own staff, on the *people* rig.
+ *
+ * That is the whole point of building it here rather than as a mesh like the
+ * boars out in the woods (`main.js`'s `buildHog` is the quadruped you shoot, and
+ * it is a different animal): a hog on this rig dances on a podium, walks, leans on
+ * a bar and gets batched by the same sweep as everybody else, and needs no clip
+ * the crowd kit does not already run. What makes it a hog is the hide worn as
+ * skin, the muzzle, the snout disc, the floppy ears, the tusks and the curl — one
+ * block in the constructor (`opts.hog`), no new rig, no new materials.
+ *
+ * Two variants, because the venue needs both: `"dancer"` (the default) wears a
+ * sequined top and does the podiums, and `"barman"` wears a dark vest and works
+ * the counter all night (crowd.js's `work` beat cycles pour → polish → serve →
+ * lean, so he is never a statue behind the bar).
+ *
+ * @param {object} opts
+ * @param {"dancer"|"barman"} opts.variant
+ * @param {"m"|"f"} opts.sex      dancers are either, the barman is a boar
+ */
+export function makeHog(opts = {}) {
+  const rng = mulberry(opts.seed != null ? opts.seed : (Math.random() * 1e9) | 0);
+  const barman = opts.variant === "barman";
+  const tag = (h) => { h.userData.hog = true; return h; };
+  const [hide, snout] = opts.hide ? [opts.hide, opts.snout ?? opts.hide] : pickOf(rng, HOG_HIDES);
+  const female = opts.sex === "f";
+  const top = opts.top != null ? opts.top
+    : barman ? 0x1d1a20
+      : pickOf(rng, [0xff2e93, 0xffd23a, 0x2ee6d6, 0x9b27b0, 0xf4f1ea]);
+  const trim = barman ? 0x2b2730 : top;
+  return tag(new Hoodrat({
+    sex: female ? "f" : "m",
+    seed: (opts.seed != null ? opts.seed : (rng() * 1e9) | 0),
+    yaw: opts.yaw,
+    height: opts.height ?? (barman ? 1.86 : 1.78),
+    hog: true,
+    skin: hide,
+    hogColor: hide,
+    snoutColor: snout,
+    earColor: snout,
+    headwear: "none",
+    beard: false,
+    top,
+    denim: barman ? 0x141216 : trim,
+    hair: 0x16100d,
+    shoe: barman ? "low" : "high",
+    // a hog has a snout where a chain would hang, so the neckline stays bare and
+    // the palette does the talking: sequins for the podiums, a dark vest and a
+    // pale cuff for the bar
+    crew: {
+      cloth: trim,
+      accent: 0xf4f1e8,
+      chain: barman ? 0xcfd3da : 0xd4af37,
+      belt: barman ? 0x141414 : trim,
+      legging: barman ? 0x141216 : trim,
+      shoe: barman ? 0x0b0b0d : trim,
+      maleShoe: barman ? "low" : "high",
+    },
+    ...opts,
+  }));
+}
+
+/** A random hog — the crowd kit's factory for the `mix`-style roles. */
+export function randomHog(rng = Math.random, height, opts = {}) {
+  return makeHog({ ...opts, seed: (rng() * 1e9) | 0, height });
 }
 
 /**
