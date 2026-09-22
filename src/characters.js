@@ -677,12 +677,18 @@ class Hoodrat extends THREE.Object3D {
       disc.rotation.x = Math.PI / 2;         // the flat snout, facing the room
       for (const side of [-1, 1]) add(head, sph(0.016, 6, 5), nostril, side * 0.026, -0.008, 0.234);
       for (const side of [-1, 1]) {
-        const ear = add(head, box(0.03, 0.13, 0.085), earMat, side * 0.108, 0.14, -0.015);
-        ear.rotation.z = side * -0.6;         // folded over, outwards
-        ear.rotation.x = -0.28;               // and forward, over the brow
+        // the ear: rooted *inside* the skull (its inner end is buried at x 0.07,
+        // where the skull is still 0.11 wide) and flopped out and forward, so a
+        // hog reads as a hog from the side as well as the front
+        const ear = add(head, box(0.03, 0.13, 0.085), earMat, side * 0.112, 0.138, -0.015);
+        ear.rotation.z = side * -0.6;
+        ear.rotation.x = -0.28;
         ear.scale.set(1, 1, 1.15);
-        add(head, box(0.016, 0.09, 0.055), innerEar, side * 0.115, 0.135, -0.012);
-        const tusk = add(head, box(0.02, 0.06, 0.02), ivory, side * 0.047, -0.05, 0.2);
+        // the pink inside of it, parallel to the plate and just outboard
+        const inner = add(head, box(0.024, 0.088, 0.052), innerEar, side * 0.126, 0.134, -0.015);
+        inner.rotation.z = side * -0.6;
+        inner.rotation.x = -0.28;
+        const tusk = add(head, box(0.02, 0.06, 0.02), ivory, side * 0.048, -0.055, 0.226);
         tusk.rotation.x = -0.3;
         tusk.rotation.z = side * 0.22;
       }

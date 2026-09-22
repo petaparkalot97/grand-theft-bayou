@@ -163,6 +163,58 @@ calling it fully closed.
 
 ## 2026-09-22 — Freebuff
 
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — HAPPY HOGS: the staff are the sign on the door
+
+### Finding — the hog is a *person* with a muzzle, and that is cheaper than an asset
+
+There is already a hog in this repo and it is a different animal: `main.js`'s
+`buildHog()` is the quadruped boar you shoot in the woods — boxes, tusks, four legs,
+no rig. The house at HAPPY HOGS needs the other thing: something that can dance on a
+0.6 m podium and work a counter for an hour. So `makeHog` is built on the actor rig
+(`Hoodrat`) and the hog is one block in its constructor (`opts.hog`): a muzzle dropped
+over the jaw, the flat snout disc with two nostrils, floppy ears rooted inside the
+skull and flopped out and forward, tusks, a curl. The body is the hide colour handed
+in as `skin`, so nothing else in the rig needed a branch — only two `!opts.hog` guards
+where hair and headwear would otherwise grow through a muzzle. **16 meshes against a
+patron's 14**, dancing with the clips the crowd kit already runs, and batched by the
+same sweep. Recording the distinction explicitly because "there is already a
+buildHog" is the reason this looked like a solved problem and was not.
+
+### Finding — "works the bar" is a beat, and the beat needs an axis
+
+A barman with an idle clip is a statue in an apron, so `work` is now the fifth beat:
+a pose timer of the actor's own on top of the movement, cycling pour → polish →
+serve → lean → idle with a step between each. Two things about it are not obvious.
+The step is confined to an **axis** (`patrol`, which the bar fixture hands over)
+because a barman's berth is not a disc — it is 1.5 m of counter with a wall of bottles
+behind it and drinkers in front, so random points in a circle put him through one or
+into the other. And his **facing is re-applied after the step**, because the rig turns
+an actor to face its travel: walking two metres along the bar is enough to leave him
+facing down the bar, mid-pour, with his back to the room. Measured inside HAPPY HOGS:
+all four work poses within 30 s, 1.3 m of counter walked, and never more than 1.6 m
+from his station.
+
+### WARNING — the floor-plane audit was wrong in two places, and both were load-bearing
+
+Podiums broke the collision check the moment they existed: a person standing on a
+riser is *inside* the riser's collision circle by construction, so the audit called
+every dancer in the venue buried in the furniture. The rule the circles actually
+describe is a **floor plane**, so an actor above it (y > 0.3: a stage deck, a podium,
+the VIP riser) is now exempt, and their footing is checked as what it really is — a
+podium dancer must stay within her own shuffle radius of her riser (measured: 0.00 m
+of wander), a stage dancer inside the deck's own rect.
+
+The second is subtler. The audit demands 0.55 m of clearance from any blocker for an
+actor that moves, which is right for a walker in open floor — but a 12 m bar counter
+is registered as one row of 0.85 m circles, i.e. *wider than the counter*, so the
+barman standing in the 1 m aisle behind it is inside that margin by arithmetic and
+correct by geometry. A `work` actor is therefore held to the same rule as somebody
+standing at a station (out of the object itself, half its coarse circle tolerated),
+while the barman dropped *into* the bar still fails. Both changes are loosening a
+check, which is worth saying out loud: they loosen it for a reason that is a fact
+about the world rather than a preference, and the thing each one was protecting
+(a person inside furniture) still fails as before.
+
 **Type:** DISCOVERY · **Task:** TASK-070 (cont.) — BILLY JEANS is on: a named act, a scripted routine, and a pit that reacts
 
 ### Finding — a moonwalk is a yaw lock, not a clip
@@ -283,9 +335,10 @@ of work that looks like churn and is not.
 
 BILLY JEANS as a performer needed a `moonwalk`/glide clip — `characters.js`'s
 `danceClip` was the extension point and had no such clip. **Done in the entry above**
-(the clip, the scripted routine, the pit that reacts). HAPPY HOGS' hog dancers and hog
-barman still need a hog *character* on the actor rig, and `main.js`'s `buildHog()` is a
-static mesh, so that is character work in `characters.js`, not more crowd code. Traffic, crossings, ambient events,
+(the clip, the scripted routine, the pit that reacts), and HAPPY HOGS' hog dancers and
+hog barman are **done in the entry above too** (`makeHog` on the actor rig, the
+podiums, the `work` beat) — that one needed a hog *character*, which is why it was
+`characters.js` work and not more crowd code. Traffic, crossings, ambient events,
 per-venue audio, and the exposure/tone-mapping audit the brief asks for before new
 lighting are all still open — and that last one is orchestrator-owned (main.js), so it
 should be measured rather than guessed.

@@ -22,8 +22,10 @@
 //
 // Beats, and nothing more: `still` (standing where the fixture wanted them),
 // `shuffle` (a step inside a small radius — the dance floor and the sidewalk),
-// and `stroll` (walking a lane the district has checked is clear). A strolling
-// actor is why walk lanes are picked against the venue's own collision.
+// `stroll` (walking a lane the district has checked is clear), `work` (a shift at
+// a station — HAPPY HOGS' barman cycles pour/polish/serve/lean along his counter),
+// and `act` (a scripted performance, and there is only ever one). A strolling actor
+// is why walk lanes are picked against the venue's own collision.
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";

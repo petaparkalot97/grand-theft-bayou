@@ -488,9 +488,12 @@ export const FIXTURES = {
    *
    * The podium is a *riser*, so its collision is one circle under a person who
    * stands above it — which is exactly what the audit's floor-plane rule already
-   * allows for (see the raised-actor note in `crown_build_test`). The dancer's own
-   * shuffle radius (0.3 m, crowd.js's `hogdancer`) is what keeps her on a 0.6 m
-   * disc; the fixture does not need to fence her in.
+   * allows for (see the raised-actor note in `crown_build_test`).
+   *
+   * `r: 0.3` is what keeps a dancer on a 0.6 m disc, and it does it by being under
+   * the crowd's own 0.3 m arrival threshold (crowd.js) — so a podium dancer turns
+   * on the spot inside her pose rather than pacing off the edge. A wider radius
+   * would put her on the floor; the fixture does not need to fence her in.
    */
   podiums(b, s) {
     const n = s.n ?? 3, dx = s.dx ?? 3.4, rise = s.rise ?? 0.42, r = s.r ?? 0.62;

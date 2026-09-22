@@ -482,9 +482,10 @@ from primitives instead. Passing it would make the three existing calls at
 - **Refactor, not four more functions:** `buildVenue()` is one builder driven by a
   venue's own `w/d/h/fore/door/cars`, `theme` palette, `sign`, `interior`, `props`
   and a `layout` list, dispatched through the shared kit's `FIXTURES` table
-  (24 builders — runner, slotBank, roulette, cardTable, cashier, vault, barBig,
-  booths, lounge, poolTable, stage, speakers, danceFloor, djBooth, columns, vipDeck,
-  privateRoom, dressingRoom, chandelier, discoBall, neonBrand, decorWall, rail, desk)
+  (25 builders — runner, slotBank, roulette, cardTable, cashier, vault, barBig,
+  booths, lounge, poolTable, stage, stagefront, podiums, speakers, danceFloor, djBooth,
+  columns, vipDeck, privateRoom, dressingRoom, chandelier, discoBall, neonBrand,
+  decorWall, rail, desk)
   and `PROPS` (glove, pig, disco). A fifth venue is a new entry in `CROWN_VENUES`,
   not new code; a fifth *furniture type* is one function in `src/interiors.js`.
   `v.k` keeps the hall-spec shape the layout audit and `zoneAt()` already read.
@@ -521,9 +522,9 @@ from primitives instead. Passing it would make the three existing calls at
   meshes → 124 in 76 batches**, 112 material signatures, with all 56 moving meshes
   surviving and the cutaway still opening afterwards. The polish pass costs **+16
   batches and +28 signatures** over the interiors-only figure (704 → 92, 84), all of
-  it instanced street furniture sharing materials across the four venues. 113 pooled
+  it instanced street furniture sharing materials across the four venues. 115 pooled
   lit spots, all `fx:false` (baked at build time; nothing created or hidden per
-  frame); 618 blockers.
+  frame); 621 blockers.
 - **Visual polish pass (2026-09-22, latest): the frontage is a street, and it is wet.**
   Nine new venue-agnostic fixtures in `src/interiors.js` (awning, neonArrow,
   securityLight, streetSign, bollardRow, planter, bin, queue, spill), all instanced
@@ -536,8 +537,9 @@ from primitives instead. Passing it would make the three existing calls at
 - **The polish pass added zero real lights.** `main.js` pools **eight** `PointLight`s
   for the whole map, so outdoor readability is emissive geometry only: the entrance
   spill decal, awning underglow and stripes, arrows, lamp-head + lamp-spill quads,
-  bollard bands and queue ropes. Measured: **113 lit spots before this pass, 113
+  bollard bands and queue rings. Measured: **113 lit spots before that pass, 113
   after** — asserted, because "a PointLight for every sign" is one line away.
+  (115 today: the lounge's pit and the podiums' row each own one.)
 - **Wet asphalt, and the neon in it.** The forecourts are now the highway's own
   `surface("asphalt")` material at the mirror plane's height (`fx.js` PLANE_Y 0.03),
   sized to exactly the forecourt rect the audit checks, so `wetRoads.collect(scene)`
@@ -610,8 +612,8 @@ for the buildings, the interiors or the cutaway to work:**
   hoodrat, high-end escort, prostitute, gay man, lesbian, suit), at the same heights
   main.js's `ENEMY_TYPES` uses. Staff parts are pinned by the fixture that owns that
   part of the room; everything else is a patron.
-- **94 people on the strip** (BAYOU GOLD 12+6, BILLY JEANS 16+12, DISCO GATORS
-  14+12, HAPPY HOGS 12+10 posed, plus 6 pavement walkers each) at **~12–15 meshes
+- **96 people on the strip** (BAYOU GOLD 12+6, BILLY JEANS 16+12, DISCO GATORS
+  14+12, HAPPY HOGS 14+10 posed, plus 6 pavement walkers each) at **~12–16 meshes
   each**, and the audit checks (a) every room staffed for what is *in* it — derived
   from the venue's own `layout` through one `STAFF_OF` table, so a new fixture that
   needs staffing is one line — (b) two on every door and two valets, (c) a walkable
@@ -639,7 +641,7 @@ for the buildings, the interiors or the cutaway to work:**
   the queue rope and the guests at it are registered through a new `b.soft()` that
   stops a walker's lane without becoming collision for the player.
 - **The routes are the test.** Every leg a walker can take (the lane, the door spur)
-  is sampled every 0.25 m against all 618 blockers and against the avenue. This is
+  is sampled every 0.25 m against all 621 blockers and against the avenue. This is
   the "NPCs walking through buildings" check, and it earned its keep immediately:
   moving BILLY JEANS' queue line 1.5 m out (done to keep the lane off it) put the
   queue's people inside a bollard, which the *other* new check caught within a run.
@@ -698,11 +700,41 @@ for the buildings, the interiors or the cutaway to work:**
     the barman, six in the pit, and a working bar behind them. The act only ticks
     when the room is drawn (the same LOD the rest of the crowd lives by), asserted
     by standing on North Ave 2 and watching his routine clock not move.
+- **HAPPY HOGS IS ITS OWN VENUE (2026-09-22, latest).** The house is hogs — the same
+  animal as the sign over the door, on the *people* rig:
+  - **`characters.js`** — `makeHog()` (`variant: "dancer" | "barman"`) plus one
+    `opts.hog` block in the constructor: a dropped muzzle over the (already
+    lower-face) human jaw, the flat snout disc with two nostrils, floppy ears rooted
+    inside the skull and flopped out and forward, small tusks, and a curl. The body
+    is the hog's own hide handed in as `skin`, so no part of the rig needed a branch
+    — only that block and two `!opts.hog` guards where hair and headwear would have
+    grown through the muzzle. **16 meshes**, against a patron's 14.
+  - **Four new clips** for the bar shift: `pour` (the bottle tips over the glass on
+    the elbow's roll), `polish` (both hands on the counter in a slow circle), `serve`
+    (the drink goes across on the flat of the hand and comes back) and `barlean`
+    (elbows down, chin on the fist, eyes on the room).
+  - **`crowd.js`** — two roles (`hogdancer`, `hogkeep`) and the fifth beat, `work`:
+    a pose timer of the actor's own on top of the movement, cycling pour → polish →
+    serve → lean → idle with a step between them. The step is *along the bar* —
+    `patrol: "z"` from the fixture, because a random disc of a barman's berth would
+    have him through the bottles on one side and the drinkers on the other — and his
+    facing is re-applied after the step, so he serves the room rather than the aisle.
+    Measured: **all four work poses inside 30 s, 1.3 m of counter walked.**
+  - **`interiors.js`** — a `podiums` fixture (instanced risers with a lit rim, one
+    dancer each, one pooled light for the row) and two one-word hooks: `keep` on
+    `barBig` and `who` on `stage`, so "this bar is kept by a hog" is a value in
+    `CROWN_VENUES`, not a second builder. `barBig` also hands over `patrol` for the
+    work beat. HAPPY HOGS is therefore `who: "hogdancer"`, `keep: "hogkeep"`, one
+    `podiums` row — the venue's identity is three tokens of data.
+  - **The audit grew two rules, both earned** (see the entries in `AGENT_LOG.md`):
+    an actor standing *above* floor level (a deck, a podium, the VIP riser) is not on
+    the plane the collision circles describe; and a `work` actor is treated as being
+    *at* a station rather than walking, because a 12 m counter's collision is one row
+    of 0.85 m circles — wider than the counter — so the person in the 1 m aisle behind
+    it is inside that margin. A barman dropped *into* the bar still fails. Six new
+    checks: no other venue has a hog, the shift cycles, the dancers stay on their
+    risers (0.00 m of wander), and the stage hogs stay on the deck.
 - **Remaining:**
-- **HAPPY HOGS as its own venue:** hog dancers on podiums and a hog bartender need a
-  hog *character* on the actor rig — `main.js`'s `buildHog()` is a static procedural
-  mesh, and `characters.js` has no hog factory. That is real character work and
-  belongs in `characters.js` (or the sprite path), not in the crowd kit.
 - **Traffic and crossings** (`traffic.js` lanes + a crosswalk at US-167) and
   **ambient events** (a cheer, a stumble, security walking somebody out) — the beat
   engine has room for both, but neither is in yet.
