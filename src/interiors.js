@@ -152,7 +152,11 @@ export function makeKit() {
 //   b.sign(text, ink, { x, y, z, w, h, ry, vertical })   a neon name face
 //   b.block(lx, lz, r)                 collision, in local hall space
 //   b.lit(lx, y, lz, power, range)     a pooled light spot, in local hall space
-//   b.spot(lx, lz, { role, face, y, anim, beat, r })
+//   b.free(lx, lz, r)                  is this clear of everything built so far?
+//                                      Blocks are registered as fixtures run, so
+//                                      ask for a spot *after* the furniture that
+//                                      might own it (a column, a speaker).
+//   b.spot(lx, lz, { role, face, y, anim, beat, r, hype, name, bounds })
 //                                      a person stands here (crowd.js). A
 //                                      fixture proposes people the same way it
 //                                      places furniture, so a bar that moves
@@ -160,6 +164,11 @@ export function makeKit() {
 //                                      staff part; leave it off for a punter
 //                                      drawn from the strip's own door mix.
 //                                      `face` is a local yaw (models face +z).
+//                                      `anim` overrides the role's pose for this
+//                                      spot, `hype` marks somebody who is watching
+//                                      a stage act, `name` names a performer, and
+//                                      `bounds` is the rectangle a scripted actor
+//                                      (the `star` role) may not leave.
 // ---------------------------------------------------------------------------
 
 const chipColors = [0xff4f6d, 0xffd23a, 0xf4f1ea];
@@ -424,6 +433,46 @@ export const FIXTURES = {
     } else {
       for (const sx of [-1, 1]) b.spot(s.x + sx * w * 0.26, s.z + 0.3, { role: "gogo", face: 0, y: rise });
     }
+    // ...and the headliner, if this stage has one (`star: "BILLY JEANS"`). He
+    // gets front-centre, the facing the room has (0 = at the crowd), and the deck
+    // itself as a rectangle he is not allowed to leave — his routine walks him
+    // sideways and glides him backwards, and the bounds are what keep a scripted
+    // actor from stepping off a 6 m riser mid-moonwalk.
+    if (s.star) {
+      const z1 = s.z + d / 2 - 2.2, z0 = s.z - d / 2 + 1.4;
+      b.spot(s.x, z1, {
+        role: "star", face: 0, y: rise, name: s.star,
+        bounds: { x0: s.x - w * 0.2, x1: s.x + w * 0.2, z0: Math.min(z0, z1 - 1.2), z1 },
+      });
+    }
+  },
+
+  /**
+   * The floor in front of a stage: the crowd the act plays to.
+   *
+   * People only — a barricade here would be collision between the room and its own
+   * stage — and every spot faces the stage (local −z, yaw π), dances on the spot,
+   * and is flagged `hype`, which is what makes the *front row* rather than the
+   * whole bar lose it when the act lands a move (crowd.js). A game room has a
+   * column in it, so the fixture asks the builder what is actually free (`b.free`)
+   * instead of proposing a person inside a pillar and letting the audit find it.
+   */
+  stagefront(b, s) {
+    const w = s.w ?? 12, d = s.d ?? 3.4, n = s.n ?? 6, dz = s.dz ?? 1.7;
+    const cols = Math.max(2, Math.round(w / 3)), rows = Math.max(1, Math.round(d / dz));
+    const cand = [];
+    for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+      cand.push({ x: s.x + (i - (cols - 1) / 2) * (w / cols), z: s.z + (j - (rows - 1) / 2) * dz });
+    }
+    const step = Math.max(1, Math.round(cand.length / n));
+    let placed = 0;
+    for (let k = 0; k < cand.length && placed < n; k += step) {
+      const c = cand[k];
+      if (!b.free(c.x, c.z, 0.7)) continue;
+      b.spot(c.x, c.z, { role: "fan", face: Math.PI, hype: true, r: 0.5, anim: "dance" });
+      placed++;
+    }
+    b.lit(s.x, 2.6, s.z, 40, 12);
   },
 
   /** A stack of PA speakers. */
@@ -748,6 +797,10 @@ export const FIXTURES = {
       const x = s.x + (i - (n - 1) / 2) * dx;
       posts.push({ x, y: 0.55, z: s.z });
       if (i < n - 1) ropes.push({ x: x + dx / 2, y: 0.95, z: s.z, rz: Math.PI / 2 });
+      // soft: the player walks through a rope line, a stroller's lane does not.
+      // Recorded at the guests' side of the rope `crowd.js` stands people on, so
+      // the lane a walker gets keeps clear of the queue, not just the posts.
+      b.soft(x, s.z + 0.75, 0.6);
     }
     b.inst(b.G.cyl(0.07, 1.1), b.m("queue post", b.v.theme.trim, { metalness: 0.8, roughness: 0.25 }), posts);
     b.inst(b.G.cyl(0.05, dx), b.e("queue rope", s.color ?? b.v.theme.accent, 0.45), ropes);

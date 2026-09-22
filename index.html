@@ -107,35 +107,44 @@
   #overlay button.alt:not(.menu-item) { background: linear-gradient(180deg, #3a3f46, #22262b); border-color: #8a93a0; }
   #overlay.hidden { display: none; }
 
-  /* Loading screen: mood-art slideshow behind the menu, in place of the
-     static cover.png, for as long as boot() is still loading assets (Story/
-     Free Roam/graphics-tier buttons stay disabled that whole time — see
-     main.js). Sits between #overlay's own background and its ::before
-     scrim/menu text (negative z-index paints above an element's own
-     background but below its normal-flow content, per the stacking spec —
-     the #overlay > * rule above would otherwise win this element's z-index
-     too since it's an equal-specificity id selector, hence this rule has to
-     come after it in source order). Fades out once loadNote says "ready."
-     so the classic cover art is what's left once the menu is fully usable. */
+  /* Mood-art slideshow, the permanent backdrop for the whole menu — no
+     static cover.png any more, this is what's always behind the SNES-style
+     panel below, cycling before, during and after loading (main.js's
+     startLoadScreen() never stops it; finishLoading() only retires the
+     #loadHud percentage readout). Negative z-index paints above #overlay's
+     own flat background but below its normal-flow content (the #overlay > *
+     rule above would otherwise win this element's z-index too since it's an
+     equal-specificity id selector, hence this rule has to come after it in
+     source order). */
   #loadScreen {
-    position: absolute; inset: 0; z-index: -1; overflow: hidden;
-    opacity: 1; transition: opacity 1s ease; background: #05070a;
+    position: absolute; inset: 0; z-index: -1; overflow: hidden; background: #05070a;
   }
-  #loadScreen.done { opacity: 0; }
   #loadScreen .slide {
-    /* contain, not cover: the human asked to see the whole image, not a
-       cropped/zoomed slice of it — letterboxing against #loadScreen's own
-       dark fill beats cutting off the art. */
+    /* contain, not cover: show the whole image, not a cropped/zoomed slice —
+       letterboxing against #loadScreen's own dark fill beats cutting off the
+       art. */
     position: absolute; inset: 0; background-size: contain; background-repeat: no-repeat;
     background-position: center; opacity: 0; transition: opacity 1.8s ease;
   }
   #loadScreen .slide.on { opacity: 1; }
+  /* Portrait images alone waste most of a widescreen frame as pillarboxing
+     either side — group them 3-up instead, each in its own contained pane,
+     so the width actually gets used. */
+  #loadScreen .slide.group { display: flex; gap: 3px; }
+  #loadScreen .slide.group .pane {
+    flex: 1; height: 100%; background-size: contain; background-repeat: no-repeat;
+    background-position: center;
+  }
   /* Retro arcade loading readout: a neon LOADING/percentage row over a
      segmented LED-style bar, with the current boot stage underneath — the
      "what's it doing" text used to stand alone here as plain gray copy. */
   #loadHud {
     position: absolute; left: 6vw; bottom: calc(2vh + env(safe-area-inset-bottom, 0px));
     width: min(360px, 70vw); font-family: "Arial Black", Arial, sans-serif;
+    background: rgba(6, 10, 14, .7);
+    border: 3px solid #29d6ff;
+    box-shadow: 0 0 0 3px #05070a, 0 0 22px rgba(41, 214, 255, .4), inset 0 0 22px rgba(0, 0, 0, .55);
+    padding: 12px 16px;
   }
   #loadHudRow {
     display: flex; justify-content: space-between; align-items: baseline;
@@ -171,41 +180,58 @@
   /* -------------------------------------------------- main menu (GTA-style) */
   #introPanel {
     position: absolute; inset: 0; align-self: stretch;
-    display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
     gap: clamp(20px, 3.4vh, 38px);
-    padding: 6vh 7vw; text-align: left;
+    padding: 6vh 7vw; text-align: center;
   }
   #introPanel[hidden], #characterSelect[hidden], #multiplayerPanel[hidden] { display: none !important; }
   #menuLogo { line-height: 1; }
   .menu-kicker {
     font: 700 clamp(13px, 1.6vw, 18px) Arial, sans-serif; letter-spacing: .5em;
-    text-transform: uppercase; color: #cfe8bf; opacity: .85;
+    text-transform: uppercase; color: #7ff2ff;
+    text-shadow: 0 0 6px rgba(41, 214, 255, .7);
   }
   .menu-wordmark {
     font: 900 clamp(54px, 9vw, 120px)/.86 "Arial Black", Impact, sans-serif;
-    color: #f4f0e2; text-shadow: 0 6px 0 #101c10, 0 0 60px rgba(232,161,58,.45);
-    letter-spacing: -.01em;
+    color: #f4f0e2; letter-spacing: -.01em;
+    text-shadow:
+      0 4px 0 #101018,
+      0 0 10px rgba(41, 214, 255, .75), 0 0 28px rgba(41, 214, 255, .45),
+      0 0 40px rgba(255, 43, 184, .35);
   }
   .menu-tagline {
-    font: italic 700 clamp(15px, 1.9vw, 24px) Georgia, serif; color: #e8a13a; margin-top: 4px;
+    font: italic 700 clamp(15px, 1.9vw, 24px) Georgia, serif; color: #ff8fe0; margin-top: 4px;
+    text-shadow: 0 0 8px rgba(255, 43, 184, .5);
   }
 
-  .menu-list, .menu-panel { display: flex; flex-direction: column; align-items: flex-start; gap: clamp(4px, 1.3vh, 13px); }
+  /* SNES-style menu box: a chunky double-bordered panel the options sit
+     inside, instead of the old full-screen darkening wash — the art stays
+     visible everywhere outside the box. */
+  .menu-list, .menu-panel {
+    display: flex; flex-direction: column; align-items: stretch; gap: clamp(4px, 1.3vh, 13px);
+    background: rgba(6, 10, 14, .7);
+    border: 3px solid #29d6ff;
+    box-shadow: 0 0 0 3px #05070a, 0 0 22px rgba(41, 214, 255, .4), inset 0 0 22px rgba(0, 0, 0, .55);
+    padding: clamp(18px, 3vh, 30px) clamp(28px, 5vw, 52px);
+    min-width: min(360px, 82vw);
+  }
   .menu-list[hidden], .menu-panel[hidden] { display: none; }
   .menu-item {
     all: unset; cursor: pointer; pointer-events: auto; box-sizing: border-box;
     font: 700 clamp(19px, 2.5vw, 29px) "Arial Black", Arial, sans-serif;
     color: rgba(244, 240, 226, .72); letter-spacing: .04em; text-transform: uppercase;
-    padding: 1px 6px 1px 26px; position: relative;
+    padding: 1px 26px; text-align: center; position: relative;
     transition: color .12s, transform .12s;
   }
   .menu-item::before {
     content: ""; position: absolute; left: 0; top: 50%; width: 16px; height: 4px;
-    background: #e8a13a; transform: translateY(-50%) scaleX(0); transform-origin: left;
+    background: #7ff2ff; box-shadow: 0 0 8px rgba(41, 214, 255, .8);
+    transform: translateY(-50%) scaleX(0); transform-origin: left;
     transition: transform .12s;
   }
   .menu-item:hover, .menu-item:focus-visible, .menu-item.active {
     color: #fff; transform: translateX(6px); outline: none;
+    text-shadow: 0 0 10px rgba(127, 242, 255, .85);
   }
   .menu-item:hover::before, .menu-item:focus-visible::before, .menu-item.active::before {
     transform: translateY(-50%) scaleX(1);
@@ -242,7 +268,8 @@
   .menu-row { display: flex; gap: clamp(20px, 3vw, 36px); margin-top: 4px; }
 
   .menu-footer {
-    position: absolute; left: 7vw; bottom: calc(3.4vh + env(safe-area-inset-bottom, 0px));
+    position: absolute; left: 50%; bottom: calc(3.4vh + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%); text-align: center;
     font: 12px Arial, sans-serif; color: rgba(230, 230, 220, .45); letter-spacing: .02em;
     max-width: 88vw; background: none; padding: 0;
   }
@@ -375,12 +402,17 @@
 
 <div id="overlay">
   <div id="loadScreen" aria-hidden="true">
-    <div class="slide" style="background-image:url('./assets/ui/loading/aesthetic.jpg')"></div>
     <div class="slide" style="background-image:url('./assets/ui/loading/neon-bayou.jpg')"></div>
+    <div class="slide group">
+      <div class="pane" style="background-image:url('./assets/ui/loading/hillbilly-heroin.jpg')"></div>
+      <div class="pane" style="background-image:url('./assets/ui/loading/riverboat-night.jpg')"></div>
+      <div class="pane" style="background-image:url('./assets/ui/loading/aesthetic.jpg')"></div>
+    </div>
     <div class="slide" style="background-image:url('./assets/ui/loading/happy-hogs.jpg')"></div>
-    <div class="slide" style="background-image:url('./assets/ui/loading/riverboat-night.jpg')"></div>
-    <div class="slide" style="background-image:url('./assets/ui/loading/porch-hangout.jpg')"></div>
-    <div class="slide" style="background-image:url('./assets/ui/loading/popeyes-ad.png')"></div>
+    <div class="slide group">
+      <div class="pane" style="background-image:url('./assets/ui/loading/popeyes-ad.png')"></div>
+      <div class="pane" style="background-image:url('./assets/ui/loading/porch-hangout.jpg')"></div>
+    </div>
   </div>
   <div id="introPanel" hidden>
     <div id="menuLogo">

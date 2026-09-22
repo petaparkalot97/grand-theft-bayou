@@ -631,6 +631,20 @@ class Hoodrat extends THREE.Object3D {
       }
     }
 
+    if (headwear === "fedora") {
+      // a narrow-brimmed felt hat, snapped down over one eye — the stage act's,
+      // not the sheriff's (that is `"hat"`, a full 360° campaign brim), so the
+      // silhouette is different at a glance from across the room
+      const felt = mat("leather", crew.hat != null ? crew.hat : 0x1a1a1c);
+      const brim = add(head, cyl(0.185, 0.185, 0.014, 20), felt, 0, 0.122, 0);
+      brim.scale.z = 1.1;
+      brim.rotation.x = -0.16;
+      add(head, cyl(0.1, 0.112, 0.14, 16), felt, 0, 0.19, -0.012);
+      add(head, cyl(0.116, 0.116, 0.03, 16), mat("leather", 0x0b0b0d), 0, 0.14, -0.012);
+      const pinch = add(head, box(0.055, 0.02, 0.07), felt, 0, 0.26, -0.012);
+      pinch.rotation.x = 0.22;
+    }
+
     if (headwear === "cap") {
       // redneck-styled trucker/baseball cap: a rounded crown and a flat brim
       // over the front only (unlike "hat"'s full 360° brim)
@@ -658,7 +672,13 @@ class Hoodrat extends THREE.Object3D {
       elbow.position.y = -0.26;
       pivot.add(elbow);
       add(elbow, cyl(0.042 * bulk, 0.036 * bulk, 0.24, 8), inked || skin, 0, -0.12, 0);
-      add(elbow, sph(0.045), skin, 0, -0.25, 0);               // fist
+      // `opts.glove` puts the white one on the RIGHT hand (side -1) — the gun
+      // hand, which is the hand an act holds the mic in, and the hand the
+      // Crown Strip's stage prop is about (makeStar, below). A material swap on
+      // the fist itself, so nothing about the rig or the IK changes.
+      const glove = opts.glove && side === -1 ? mat("leather", opts.gloveColor != null ? opts.gloveColor : 0xf4f7ff) : null;
+      add(elbow, sph(0.045), glove || skin, 0, -0.25, 0);      // fist
+      if (glove) add(elbow, cyl(0.05, 0.05, 0.05, 8), glove, 0, -0.2, 0);   // cuff
       // ---- the hand socket -------------------------------------------------
       // Where a weapon is attached (weapons_3d.js). It sits at the middle of
       // the fist, because that is where a grip actually is — not at the wrist,
@@ -970,7 +990,10 @@ class Hoodrat extends THREE.Object3D {
 
     this.torso.rotation.x = 0;
 
-    if (this.anim === "twerk" || this.anim === "grind" || this.anim === "dance" || this.anim === "sit" || this.anim === "kiss" || this.anim === "ride") {
+    if (this.anim === "twerk" || this.anim === "grind" || this.anim === "dance" || this.anim === "sit"
+      || this.anim === "kiss" || this.anim === "ride" || this.anim === "moonwalk"
+      || this.anim === "showboat" || this.anim === "cheer" || this.anim === "spin"
+      || this.anim === "footwork" || this.anim === "lean") {
       this.position.y = this.baseY || 0;
       danceClip(this, dt);
       return;
@@ -1141,6 +1164,118 @@ function squat(r, th, h) {
 }
 function danceClip(r, dt) {
   const A = r.arms, t = r.time;
+  if (r.anim === "moonwalk") {
+    // THE GLIDE (BILLY JEANS, the Crown Strip's act). The whole trick is that
+    // the feet do not step: both stay flat on the floor while the body slides
+    // *backwards*, the lead leg straight and skating, the trailing leg dragged
+    // with the toe pointed. crowd.js moves the actor; this holds the pose, so it
+    // reads as a moonwalk and not as walking backwards.
+    const p = t * Math.PI * 2 * 1.15 + r.phase;
+    squat(r, 0.06, 0);
+    r.hips.rotation.z = 0;
+    r.torso.rotation.set(0.15, Math.sin(p) * 0.16, 0);      // weight back, chest up
+    r.head.rotation.set(-0.08, Math.sin(p * 0.5) * 0.28, 0);
+    const kick = Math.sin(p) * 0.13;
+    r.legs[0].pivot.rotation.x = -0.5 + kick;               // lead leg out in front
+    r.legs[0].knee.rotation.x = 0.06;
+    r.legs[0].foot.rotation.x = 0.42;                       // flat: it is sliding
+    r.legs[1].pivot.rotation.x = 0.34 - kick;               // trailing leg dragged back
+    r.legs[1].knee.rotation.x = 0.42;
+    r.legs[1].foot.rotation.x = -0.6;                       // toe pointed down
+    r.arms[0].pivot.rotation.set(-2.15, 0, 0.42);           // gloved hand at the mic
+    r.arms[0].elbow.rotation.x = -1.35;
+    r.arms[1].pivot.rotation.set(-0.4 + Math.sin(p) * 0.22, 0, 0.32);
+    r.arms[1].elbow.rotation.x = -0.55;
+    return;
+  }
+  if (r.anim === "showboat") {
+    // the stage pose (makeStar): gloved hand up at the mouth, free hand out,
+    // hips cocked, one heel up, chin up and working the crowd. Held — this is
+    // the pose the act freezes in, and the one the crowd cheers at.
+    const p = t * 1.15 + r.phase;
+    r.hips.position.y = 0.92;
+    r.hips.rotation.set(0, 0, 0.07);
+    r.torso.rotation.set(0.02, Math.sin(p) * 0.22, -0.05);
+    r.head.rotation.set(-0.14, Math.sin(p * 0.7) * 0.32, 0);
+    r.legs[0].pivot.rotation.x = -0.05; r.legs[0].knee.rotation.x = 0.05; r.legs[0].foot.rotation.x = 0;
+    r.legs[1].pivot.rotation.x = -0.2; r.legs[1].knee.rotation.x = 0.3; r.legs[1].foot.rotation.x = -0.34;
+    r.arms[0].pivot.rotation.set(-2.55, 0, 0.5);
+    r.arms[0].elbow.rotation.x = -1.3;
+    r.arms[1].pivot.rotation.set(-0.5, 0, 0.55);
+    r.arms[1].elbow.rotation.x = -0.7;
+    return;
+  }
+  if (r.anim === "spin") {
+    // the pirouette: weight on one foot, the other crossed behind it, arms out
+    // level, chin up. The TURN is the act's (crowd.js drives `_yaw` through whole
+    // revolutions); this is only the body that goes round.
+    const p = t * 1.5;
+    r.hips.position.y = 0.92 + Math.sin(p * 2) * 0.012;
+    r.hips.rotation.z = 0;
+    r.torso.rotation.set(0, 0, 0);
+    r.head.rotation.set(-0.12, 0, 0.08);
+    r.legs[0].pivot.rotation.x = -0.06; r.legs[0].knee.rotation.x = 0.2; r.legs[0].foot.rotation.x = -0.18;
+    r.legs[1].pivot.rotation.x = 0.2; r.legs[1].knee.rotation.x = 0.62; r.legs[1].foot.rotation.x = -0.5;
+    r.arms.forEach((a, i) => {
+      a.pivot.rotation.set(-0.2, 0, a.side * (1.28 - i * 0.34));
+      a.elbow.rotation.x = -0.12 - i * 0.1;
+    });
+    return;
+  }
+  if (r.anim === "footwork") {
+    // the staccato: both feet doing small quick work under him, ~3.2 a second,
+    // knees soft, weight low, hands tucked in and counter-swinging. Fast enough
+    // that the eye reads it as a dance step rather than a walk.
+    const p = t * Math.PI * 2 * 3.2 + r.phase;
+    const s = Math.sin(p);
+    squat(r, 0.3, 0.1);
+    r.torso.rotation.set(0.3, s * 0.22, 0);
+    r.head.rotation.set(-0.1, -s * 0.24, 0);
+    r.legs[0].pivot.rotation.x = -0.3 - s * 0.42;
+    r.legs[0].knee.rotation.x = 0.6 + Math.max(0, -s) * 0.55;
+    r.legs[0].foot.rotation.x = -0.22 + Math.max(0, -s) * 0.5;
+    r.legs[1].pivot.rotation.x = -0.3 + s * 0.42;
+    r.legs[1].knee.rotation.x = 0.6 + Math.max(0, s) * 0.55;
+    r.legs[1].foot.rotation.x = -0.22 + Math.max(0, s) * 0.5;
+    r.arms.forEach((a, i) => {
+      const d = i ? -s : s;
+      a.pivot.rotation.set(-0.85 + d * 0.3, 0, a.side * 0.34);
+      a.elbow.rotation.x = -1.15 - Math.max(0, d) * 0.35;
+    });
+    return;
+  }
+  if (r.anim === "lean") {
+    // THE LEAN: heels down, pelvis driven out past the toes, chest 40° past
+    // vertical and the head turned up at the crowd — the pose that made the
+    // sequin jacket famous. Legs counter-rotate by exactly the pelvis angle
+    // (the convention `squat` documents) so the feet stay under the body and
+    // only the body goes over: an anti-gravity lean, not a stumble.
+    const p = t * 1.4;
+    r.hips.position.y = 0.9;
+    r.hips.rotation.x = 0.42;
+    for (const l of r.legs) { l.pivot.rotation.x = -0.42; l.knee.rotation.x = 0.1; l.foot.rotation.x = 0.42; }
+    r.torso.rotation.set(0.34, 0, 0);
+    r.head.rotation.set(-0.5, 0, 0.1);
+    r.arms[1].pivot.rotation.set(-1.15, 0, r.arms[1].side * 1.18 + Math.sin(p) * 0.06);
+    r.arms[1].elbow.rotation.x = 0.06;
+    r.arms[0].pivot.rotation.set(-2.3, 0, r.arms[0].side * 0.32);       // gloved hand on the hat
+    r.arms[0].elbow.rotation.x = -1.55;
+    return;
+  }
+  if (r.anim === "cheer") {
+    // the crowd, when the act lands a move: both arms up, bouncing on the beat
+    const p = t * Math.PI * 2 * 1.7 + r.phase;
+    const up = Math.abs(Math.sin(p));
+    squat(r, 0.1 + up * 0.1, 0);
+    r.torso.rotation.set(0, Math.sin(p * 0.5) * 0.2, 0);
+    r.head.rotation.set(-0.24, 0, 0);
+    r.arms.forEach((a) => {
+      a.pivot.rotation.set(-2.7 + up * 0.25, 0, a.side * 0.4);
+      a.elbow.rotation.x = -0.22;
+    });
+    r.position.y = (r.baseY || 0) + up * 0.045;
+    return;
+  }
   if (r.anim === "twerk") {
     // NOLA bounce: a low squat, hands on the knees, the hips popping ~3.6 times a
     // second (pelvis tilting back and forth) with a little bounce on every pop
@@ -1467,6 +1602,43 @@ export function makeDancer(opts = {}) {
     curly: rng() < 0.5,
     beard: false,
     crew: { cloth: top === "rainbow" ? 0xff2e93 : top, accent: top === "rainbow" ? 0xff2e93 : top, chain: 0xd4af37, shoe: bottom, legging: bottom, maleShoe: "low" },
+    ...opts,
+  });
+}
+
+/**
+ * BILLY JEANS — the Crown Strip's act (crowd.js's `star` role, on the lounge's
+ * stage). The rig is everybody else's, because he has to stand in the same room
+ * as the crowd he plays to: what makes him a *named* performer is the palette
+ * and the props, all of which already existed for this silhouette —
+ *
+ *   * the black fedora snapped down over one eye (`fedora`, whose comment says
+ *     it is the stage act's rather than the sheriff's campaign `hat`),
+ *   * the one white performance glove, on the RIGHT hand (side -1, `opts.glove`)
+ *     — the gun hand, which is the hand the mic is in, and the hand the giant
+ *     glove over the lounge's door is a portrait of,
+ *   * all-white low-tops (`shoe: "low"`), because every step he does is a foot
+ *     step and the feet have to be legible from the back of a dark room.
+ *
+ * No new geometry, no textures, no skinning and no mixer: the six stage clips he
+ * performs are poses in `danceClip` (moonwalk, showboat, spin, footwork, lean,
+ * cheer), driven by crowd.js's script. That is what keeps a named character
+ * affordable on a strip that already has a hundred people on it.
+ */
+export function makeStar(opts = {}) {
+  return new Hoodrat({
+    sex: "m",
+    seed: opts.seed != null ? opts.seed : 77,
+    yaw: opts.yaw != null ? opts.yaw : 0,
+    height: opts.height ?? 1.84,
+    headwear: "fedora",
+    glove: true,
+    shoe: "low",
+    top: 0x14141c,                     // the sequined jacket, dark until a light hits it
+    denim: 0x0f0f14,                   // and the trousers, with the cuff showing
+    hair: 0x16100d,
+    beard: false,
+    crew: { cloth: 0x0e0e14, accent: 0xf4f7ff, chain: 0xd4af37, shoe: 0x0b0b0d, belt: 0x141414, hat: 0x121216, maleShoe: "low" },
     ...opts,
   });
 }

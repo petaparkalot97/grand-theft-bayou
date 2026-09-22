@@ -176,6 +176,67 @@ menu-shaped clickable until the game is actually ready. Changed:
   Confirmed via JS immediately after navigation, before `window.__game`
   exists: `introPanel.hidden === true` and a slide already cycling.
 
+**Redesign (2026-09-22, same session, several rapid human follow-ups + a lot
+of screenshots):** the human wanted portrait images grouped 3-up instead of
+pillarboxed alone, cover.png/og3.png gone from the menu entirely, the
+slideshow alternating permanently (loading *and* ready state, not fading to
+a static image), the big full-screen darkening scrim gone ("remove the
+shadow shit... so we can see the images clearly"), the menu centered, and
+the whole thing reading as "an oldschool SNES game" — plus a real bug: a
+mid-edit save left two `loadNote.textContent = ...` calls converted to a
+`setLoadStage()` that didn't exist yet, so `boot()` threw immediately
+("load error: setLoadStage is not defined") — a genuinely broken build for
+however long that was live. Also implemented the earlier-requested retro
+neon `LOADING: [%]` readout in the same pass (human: *"during loading
+screen please put a neon retro arcade looking LOADING: [progress meter %]
+... We want the overall aesthetic of this game to be retro"*).
+
+**What changed (`index.html`, `src/main.js`):**
+- Fixed the crash: defined `setLoadStage(text, pct)` (sets `loadNote`, plus
+  `#loadPct`/`#loadBarFill` width) and finished converting every boot-stage
+  label to call it, at hand-picked percentages (8→92, `ready.`→100).
+- Added the neon readout markup: `#loadHud` (`LOADING` in cyan / `NN%` in
+  magenta over a segmented cyan→magenta LED-style bar), now inside its own
+  SNES-style bordered panel — plain text on top of a busy loading image was
+  unreadable, same fix as the menu box below.
+- `assets/ui/loading/` gained `hillbilly-heroin.jpg` (human-provided). Split
+  `#loadScreen`'s 7 images into landscape solo slides (neon-bayou,
+  happy-hogs) and two `.slide.group` triptychs of flexed `.pane`s for the 5
+  portraits (hillbilly-heroin + riverboat-night + aesthetic; popeyes-ad +
+  porch-hangout) — each pane still `background-size: contain`, just sharing
+  a row instead of one pillarboxed image alone.
+- `#overlay` no longer references `cover.png` (`background: #05070a` only)
+  and `#overlay::before`'s full-screen darkening gradient is gone outright.
+  `startLoadScreen()`'s interval is never cleared any more — the slideshow
+  now runs forever, through the ready state too; `finishLoading()` only
+  reveals `#introPanel` and hides `#loadHud` (a frozen 100% readout means
+  nothing once you're just looking at art).
+- `#introPanel` re-centered (`align-items/text-align: center`), and
+  `.menu-list`/`.menu-panel` (and `#loadHud`, same treatment) got a chunky
+  cyan-bordered, semi-transparent dark panel — the actual fix for "menu
+  items are unreadable over a busy image," replacing the old full-screen
+  scrim with a local backing only where text sits. Wordmark/kicker/tagline
+  and the menu-item cursor dash/hover glow shifted from the old amber GTA
+  palette to cyan/magenta neon to match.
+- `.gitignore`: added `/*.mp4` and untracked a stray `Can_you_make_this_
+  into_a_gif_t.mp4` the human flagged mid-session (human: *"tHERES A MP4
+  FILE IN THE REPO PUT INTO GIT IGNORE"*) — file kept on disk, just out of
+  git.
+
+**Verified live in Chrome, not just read:** confirmed `boot()` completes
+with zero console errors after the crash fix; confirmed via
+`getBoundingClientRect`/computed-style that `#loadScreen`/`.slide.group`/
+`.pane` are genuinely full-viewport with correct `contain` sizing (no real
+cropping) — screenshots taken through the browser-automation tool show the
+lower portion of tall images as black, but `window.innerWidth/innerHeight`
+in that tab exceeds its own `outerWidth/outerHeight`, which is only
+possible with a virtualized/oversized viewport the tool's screenshot buffer
+doesn't fully cover. **That's the automation tool's background-tab
+rendering, not the page** — resizing the window and forcing focus didn't
+change it. Flagged to the human as needing their own confirmation (does a
+real, foregrounded browser window show the same cutoff, or only
+screenshots?) since I can't rule out something on their end without that.
+
 ---
 
 ### TASK-071 — Police overhaul: on-foot chases, escalation by star, less overpowered (human request, 2026-09-22)
@@ -533,12 +594,94 @@ for the buildings, the interiors or the cutaway to work:**
   `{ kind: "casino"|"club", x, z }` and `minimap.js` already has both badges. Without
   it the four doors have no badge (POIs and the map footprint already work).
 
-**Known issues (redesign):** the interiors are not *staffed* — the rooms are sized for
-a crowd and the `entertainment` zone still populates the forecourts and avenue, but
-putting bartenders, dancers and dealers inside needs `characters.js` actors the way
-nightlife.js does it, which is a follow-up. Paid interactions (gambling, drinks, a
-dance) remain TASK-059. The camera occluder is still one box per venue, so a
-real-browser pass should check the camera inside a 15 m hall.
+- **THE PEOPLE (2026-09-22, latest): the strip is inhabited, and it works a shift.**
+  `src/crowd.js` (new) is the casting sheet and the beat engine; **`src/interiors.js`
+  fixtures propose the people** next to their own furniture (`b.spot` — a punter on
+  every other stool facing the machine, a croupier behind each wheel, a dealer behind
+  each shoe, a teller behind the cage, a barman between the counter and his shelf, a
+  DJ on the riser behind the console, the act on the stage, high rollers on the VIP
+  deck, guests in the private rooms and the dressing room, drinkers on the bar
+  stools, a dancer grid on the dance floor, guests between every pair of queue
+  posts), so a floor plan that moves a bar moves its barman with it. Nothing about
+  the crowd is hand-placed.
+- **Who they are is spawnzones.js's business, not a second casting call:** the
+  unhinted spots are drawn from `ZONE_MIX.entertainment` — the same weights that
+  already decide who walks the strip when the player is not looking (tuxedo, tourist,
+  hoodrat, high-end escort, prostitute, gay man, lesbian, suit), at the same heights
+  main.js's `ENEMY_TYPES` uses. Staff parts are pinned by the fixture that owns that
+  part of the room; everything else is a patron.
+- **88 people on the strip** (BAYOU GOLD 12+6, BILLY JEANS 10+12, DISCO GATORS
+  14+12, HAPPY HOGS 12+10 posed, plus 6 pavement walkers each) at **~12–15 meshes
+  each**, and the audit checks (a) every room staffed for what is *in* it — derived
+  from the venue's own `layout` through one `STAFF_OF` table, so a new fixture that
+  needs staffing is one line — (b) two on every door and two valets, (c) a walkable
+  lane across every frontage, (d) nobody posed inside another person, (e) nobody
+  buried in the venue's own collision (walking actors need their whole radius clear,
+  standers only need to be out of the thing itself, because a 5 m sofa's blocker
+  circle will always contain the people sitting on it), (f) nobody on North Ave 2 or
+  off their own floor, (g) the room's crowd spans at least a third of the room
+  instead of bunching in the doorway.
+- **Day/night is a shift, not a second cast.** `main.js` now passes `worldTime` into
+  this district (**the one live-game wiring this pass needed**); `crowd.js`
+  `setShift()` keeps the staff (barkeep, dealer, croupier, clerk, host, DJ, the act,
+  bouncers, valets, smokers) on all day, brings every other nightlifer back at dusk
+  and all of them at night. Measured from the middle of North Ave 2: **21 actors at
+  11:00, 35 at 18:00, 52 at 23:00** — asserted, so an afternoon Crown Strip is a
+  staffed street rather than an abandoned one.
+- **The pavement walks, stops, goes in, comes back out.** `crowd.js` `makePavement()`
+  gives each frontage 6 people with a small state machine (walk → dwell → inside →
+  gone → walk back on from the far end), travelling in parties of 1–3 rather than as
+  solitaries. **There is no pathfinding, and none is needed:** a venue's pavement is
+  one verified-clear lane with a spur to its door — the same centreline the player
+  walks in on. `pickLane()` walks *outwards from the door axis* at each candidate z
+  and takes the widest run of clear pavement, which is why a frontage jammed with a
+  valet row and a rope still has a lane (BILLY JEANS' is narrower and further out);
+  the queue rope and the guests at it are registered through a new `b.soft()` that
+  stops a walker's lane without becoming collision for the player.
+- **The routes are the test.** Every leg a walker can take (the lane, the door spur)
+  is sampled every 0.25 m against all 618 blockers and against the avenue. This is
+  the "NPCs walking through buildings" check, and it earned its keep immediately:
+  moving BILLY JEANS' queue line 1.5 m out (done to keep the lane off it) put the
+  queue's people inside a bollard, which the *other* new check caught within a run.
+- **Cost, measured:** 88 posed + 24 pavement actors, and they are culled in two
+  tiers — the forecourt crew while you are within 62 m of the hall, the pavement
+  while within 40 m, the room while you are in it or at its door — with hidden
+  groups neither drawn nor ticked. From the middle of North Ave 2 that is **52
+  actors / ~780 meshes**, asserted under 60 so a "just one more" cannot creep. Every
+  actor mesh carries `userData.noBatch` (+ `userData.crowd`, so the audit can tell
+  them from the cutaway's 56 movers): **1,324 actor meshes, 0 merged into a static
+  batch** by a real `batchStatic` run — a batched actor is an actor that can never
+  dance again.
+- **New QA:** `crown_build_test.mjs` grew a crowd section and now loads
+  `spawnzones.js` + `crowd.js` + `characters.js` in its sandbox, so it measures the
+  actors it actually builds. It runs 90 s of the pavement state machine to prove
+  people reach a door, go in and come back out; it runs the block through 11:00,
+  18:00 and 23:00; and it checks a single tick never moves anybody more than 0.35 m.
+  The vm stub needed real `Quaternion.identity`, `MathUtils.clamp`, `Vector3.sub/
+  addScaledVector/lerp` and a traversing `updateMatrixWorld` — all gaps in the stub,
+  not in the game.
+
+**Remaining (the rest of the nightlife brief, in the order I would take it):**
+- **BILLY JEANS as an attraction:** a named performer with a scripted dance state
+  machine (idle pose → mic → side-to-side → signature pose → spin → footwork →
+  **moonwalk** → freeze → crowd call) needs a `moonwalk`/glide clip in
+  `characters.js`'s `danceClip` (the extension point exists; the clip does not), plus
+  a crowd in front of the stage that reacts. `makeCrowd`'s `spot.anim`/`beat` already
+  carry the room; the venue-specific act is the piece that is missing.
+- **HAPPY HOGS as its own venue:** hog dancers on podiums and a hog bartender need a
+  hog *character* on the actor rig — `main.js`'s `buildHog()` is a static procedural
+  mesh, and `characters.js` has no hog factory. That is real character work and
+  belongs in `characters.js` (or the sprite path), not in the crowd kit.
+- **Traffic and crossings** (`traffic.js` lanes + a crosswalk at US-167) and
+  **ambient events** (a cheer, a stumble, security walking somebody out) — the beat
+  engine has room for both, but neither is in yet.
+- **Audio per venue** (`audio.js`) and the **post-processing/exposure audit** the
+  brief asks for before any new lighting: the Crown Strip's own pass added no lights
+  and no bloom, so what would change tonight is main.js's global tone mapping, which
+  is orchestrator-owned and should be measured, not guessed.
+- Paid interactions (gambling, drinks, a dance) remain TASK-059. The camera occluder
+  is still one box per venue, so a real-browser pass should check the camera inside a
+  15 m hall.
 
 ---
 
@@ -4181,6 +4324,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/casinos.js` | Freebuff | TASK-070 (cont.) — casino fascia only | Locked by TASK-070 |
 | `tools/qa/neonsign_test.mjs` (new) | Freebuff | TASK-070 (cont.) | Locked by TASK-070 |
 | `src/interiors.js` (new) | Freebuff | TASK-070 (cont.) — the interior kit; adopt freely | Locked by TASK-070 |
+| `src/crowd.js` (new) | Freebuff | TASK-070 (cont.) — the casting sheet, the beats, the pavement; adopt freely | Locked by TASK-070 |
 | `src/composer.js` | Claude | TASK-041 (REVIEW) — road options | Available |
 | `tools/qa/roads.mjs` (new), `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs` | Claude | TASK-041 | Available |
 | `tools/qa/traffic_test.mjs` | Freebuff | TASK-039 | Locked |

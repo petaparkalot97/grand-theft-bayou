@@ -36,7 +36,7 @@ import { FIXTURES, PROPS, makeGeoCache, makeKit, instanced } from "./interiors.j
 // this turns them into actors — the room's staff pinned to the bar, the games
 // and the stage, the rest drawn from spawnzones.js's own door mix for the
 // strip. Nothing here is placed by hand, so a layout change moves its crowd.
-import { makeCrowd, pickLane, spotFree } from "./crowd.js";
+import { makeCrowd, makePavement, pickLane, spotFree } from "./crowd.js";
 
 // ---------------------------------------------------------------------------
 // THE CROWN STRIP — North Tusouxroe's casino and nightlife row.
@@ -170,7 +170,9 @@ const CROWN_VENUES = [
     theme: { wall: 0x141a24, trim: 0xcfd8e6, interior: 0x1a2330, accent: 0x9ad6ff, felt: 0x12613f },
     sign: { h: 3.0, sub: "LOUNGE & STAGE" },
     blurb: "Bar, stage, pool table, and a glove that will not quit.",
-    cast: { crowd: 10, smoker: 2 },
+    // 16 on the floor: the stage staff and the pit (nine of them, pinned by the
+    // fixtures) plus a working bar, the booths and the pool tables
+    cast: { crowd: 16, smoker: 2 },
     props: ["glove"],
     // The same 56 × 30 m shell as the casino next door, and nothing like it
     // inside: a long bar down one wall, booths and pool tables, and a stage the
@@ -183,8 +185,9 @@ const CROWN_VENUES = [
       { fixture: "booths", x: -16, z: 5, n: 3, dx: 5 },
       { fixture: "poolTable", x: 16, z: 6, n: 2, dx: 6 },
       { fixture: "lounge", x: -19, z: 11, n: 1, dx: 10 },
-      // the stage end: deck, cans, PA stacks flanking it
-      { fixture: "stage", x: 14, z: -11, w: 14, d: 6, rise: 0.8 },
+      // the stage end: deck, cans, PA stacks flanking it — and the headliner, who
+      // works the front-centre of that deck all night (crowd.js's `star` role)
+      { fixture: "stage", x: 14, z: -11, w: 14, d: 6, rise: 0.8, star: "BILLY JEANS" },
       { fixture: "speakers", x: 5, z: -9, n: 2, dx: 3 },
       // back of house: dressing room, office, and pictures over it
       { fixture: "dressingRoom", x: -16, z: -11, w: 11, d: 5 },
@@ -193,6 +196,9 @@ const CROWN_VENUES = [
       { fixture: "columns", x: 0, z: 0, n: 2, dx: 18, dz: 14 },
       { fixture: "chandelier", x: 0, z: 6 },
       { fixture: "neonBrand", x: 14, y: 10.2, z: -14.4, w: 16, text: "BILLY JEANS" },
+      // the pit, last: the pit has a column on its left corner, so it asks what is
+      // free (`b.free`) rather than seating somebody inside it
+      { fixture: "stagefront", x: 14, z: -5.4, w: 11, d: 3.6, n: 6 },
     ],
     // White / denim / red, per the palette: a white awning with red signage, a
     // red guest rope, and white security lamps — the one cool-lit frontage on the
@@ -465,6 +471,7 @@ export function createTusouxroeNorth(ctx) {
   // The Crown Strip's enterable venues, and the frame state for their cutaway.
   const crownRecs = [];                 // { v, g, roof, walls, sign, fixed, neon, stations, inside }
   const crownService = [];              // where each venue's back-of-house pocket landed, in world space
+  let crownShift = null;                // "day" | "dusk" | "night" — what the crowd is staffed for
   let crownPrompt = null;               // { v, text } — the venue you are at, and the line F prints
   let crownPromptEl = null;             // its DOM chip, made once in buildCrownStrip()
   const WALL_DROP = 0.22;               // walls cut to this fraction while the player is inside
@@ -641,6 +648,12 @@ export function createTusouxroeNorth(ctx) {
         // their own geometry — a stool, a seat, a pole — so this is the same
         // data-driven placement the furniture already uses.
         spot: (lx, lz, opt = {}) => { rec.spots.push({ lx, lz, ...opt }); },
+        // Is this clear of everything built so far? Fixtures that propose people
+        // (a pit, a queue) can ask rather than guess — and the answer is against
+        // the same circles the player and the walkers use. Blocks are registered
+        // as the layout runs, so a fixture that needs a clear patch asks after
+        // the furniture that might own it.
+        free: (lx, lz, r = 0.5) => spotFree(placed, lx, lz, r),
         lit: (lx, y, lz, power, range) => {
           const p = crownToWorld(v, lx, lz);
           addLitSpot({ x: p.x, y, z: p.z, warm: v.theme.accent, power, range, fx: false });
@@ -649,6 +662,10 @@ export function createTusouxroeNorth(ctx) {
           const p = crownToWorld(v, lx, lz);
           rec.stations.push({ kind, label, x: p.x, z: p.z });
         },
+        // An obstacle that stops a *walker's lane* but never the player: a queue
+        // rope, a velvet line, the things a person steps around and a collision
+        // engine should not. pickLane sees these; addBlocker does not.
+        soft: (lx, lz, r = 0.45) => { placed.push({ x: lx, z: lz, r }); },
       };
       for (const s of v.layout) { const f = FIXTURES[s.fixture]; if (f) f(b, s); }
       // ---- frontage: the same dispatcher, out on the apron. Local z past `b.FZ`
@@ -734,7 +751,7 @@ export function createTusouxroeNorth(ctx) {
       // own collision says is walkable. `pickLane` returns null if the pavement
       // has been walled off — the build test fails on that rather than the
       // street quietly going still.
-      const lane = pickLane(placed, { zFrom: FZ + 6.6, zTo: FZ + fore - 1.4, halfX: Math.min(W / 2 - 4, 13) });
+      const lane = pickLane(placed, { zFrom: FZ + 6.6, zTo: FZ + fore - 1.4, halfX: Math.min(W / 2 - 3, 20) });
       if (lane) {
         outSpots.push({ lx: lane.x0 * 0.4, lz: lane.z, role: "walker", lane: true, speed: Math.max(0.01, 1.05) });
         outSpots.push({ lx: lane.x1 * 0.4, lz: lane.z, role: "walker", lane: true, speed: 0.95 });
@@ -751,6 +768,22 @@ export function createTusouxroeNorth(ctx) {
       for (const x of rec.crowdIn.actors) x.side = "inside";
       for (const x of rec.crowdOut.actors) x.side = "outside";
       rec.lane = lane;
+
+      // ---- and the traffic using the frontage: the people who make the strip a
+      //      district rather than a diorama. They walk the same verified lane,
+      //      browse at the door, go in and come back out somewhere else, and are
+      //      culled closer than the door crew because they are the least of it.
+      rec.pave = lane ? makePavement({
+        seed: (v.x * 29 + v.cz * 11 + 5) | 0,
+        count: cast.pavement ?? 6,
+        line: lane,
+        door: { x: 0, z: FZ + 1.2 },
+        // No destinations off the lane: the queue's guests stand behind a
+        // bollard row, and a leg from the pavement to them would cross it — the
+        // route audit rejects exactly that, which is the point of the audit.
+        spots: [],
+      }) : null;
+      if (rec.pave) actorOut.add(rec.pave.group);
 
       pois.push({ x: v.x, z: v.entranceZ, r: 10, label: v.name });
       pois.push({ x: v.x, z: (v.facadeZ + v.entranceZ) / 2, r: 12 });
@@ -1061,21 +1094,46 @@ export function createTusouxroeNorth(ctx) {
      * strollers were given (null means none was walkable, which fails the test).
      */
     get crownCrowd() {
+      const liveOf = (g) => g.actors.reduce((n, x) => n + (x.live === false ? 0 : 1), 0);
       return crownRecs.map((r) => ({
         venue: r.v.name,
         lane: r.lane ? { z: r.lane.z, x0: r.lane.x0, x1: r.lane.x1 } : null,
+        shift: crownShift,
+        // The show, live: which beat the act is on, where he is on his deck, and
+        // how many big moves the room has cheered at so far. Only the lounge has
+        // one (`star: "BILLY JEANS"` on its stage fixture); everywhere else null.
+        act: r.crowdIn.act ? r.crowdIn.act.info() : null,
+        fans: r.crowdIn.fans ? r.crowdIn.fans.length : 0,
         inside: r.crowdIn.actors.length,
         outside: r.crowdOut.actors.length,
-        meshes: r.crowdIn.meshes + r.crowdOut.meshes,
-        shown: { inside: r.crowdIn.group.visible, outside: r.crowdOut.group.visible },
+        pavement: r.pave ? r.pave.actors.length : 0,
+        meshes: r.crowdIn.meshes + r.crowdOut.meshes + (r.pave ? r.pave.meshes : 0),
+        shown: {
+          inside: r.crowdIn.group.visible,
+          outside: r.crowdOut.group.visible,
+          pavement: !!r.pave && r.pave.group.visible,
+        },
         // what this venue is actually costing right now: a hidden group is not
-        // drawn and not ticked, so this is the number that matters
-        visible: (r.crowdIn.group.visible ? r.crowdIn.actors.length : 0)
-               + (r.crowdOut.group.visible ? r.crowdOut.actors.length : 0),
+        // drawn and not ticked, and neither is anyone off shift — so this is the
+        // number that matters, not the cast list
+        visible: (r.crowdIn.group.visible ? liveOf(r.crowdIn) : 0)
+               + (r.crowdOut.group.visible ? liveOf(r.crowdOut) : 0)
+               + (r.pave && r.pave.group.visible ? liveOf(r.pave) : 0),
+        awake: liveOf(r.crowdIn) + liveOf(r.crowdOut) + (r.pave ? liveOf(r.pave) : 0),
         people: [...r.crowdIn.actors, ...r.crowdOut.actors].map((x) => ({
           side: x.side, role: x.role, beat: x.beat, anim: x.a.anim,
           lx: x.a.position.x, lz: x.a.position.z, y: x.a.position.y,
+          // where the fixture cast them: the others wander a step or two off it,
+          // so this is the pose the floor plan is responsible for
+          rest: { lx: x.home.x, lz: x.home.z },
         })),
+        // the pavement traffic, for the audit: where each of them is, whether it
+        // is on its feet, and what it is doing
+        walkers: r.pave ? r.pave.actors.map((p) => ({
+          live: p.live !== false, state: p.state, goal: p.target ? p.target.kind : null,
+          lx: p.a.position.x, lz: p.a.position.z,
+        })) : [],
+        routes: r.pave ? r.pave.routes : [],
       }));
     },
 
@@ -1141,6 +1199,23 @@ export function createTusouxroeNorth(ctx) {
       C.update(dt, ctx.camera ? ctx.camera.position : playerPos);
       if (!playerPos) return;
 
+      // The clock, read once a second's worth of frames rather than per venue:
+      // staff hold these rooms all day, and the people the rooms are *for* only
+      // turn up after dark (crowd.js setShift). Cheap, and it is the difference
+      // between an afternoon block and a Friday night on the same geometry.
+      const hour = ctx.worldTime ? ctx.worldTime.hours : null;
+      const shift = hour == null ? "night"
+        : ctx.worldTime.isNight && ctx.worldTime.isNight() ? "night"
+          : hour >= 8 && hour < 17 ? "day" : "dusk";
+      if (shift !== crownShift) {
+        crownShift = shift;
+        for (const r of crownRecs) {
+          r.crowdIn.setShift(shift);
+          r.crowdOut.setShift(shift);
+          if (r.pave) r.pave.setShift(shift);
+        }
+      }
+
       crownPrompt = null;
       let near = null, nearD = STATION_REACH;
       for (const r of crownRecs) {
@@ -1157,12 +1232,23 @@ export function createTusouxroeNorth(ctx) {
         // door — which is the only way you can see in, through the opening — and
         // an actor that is not drawn is not ticked. 88 people live on this strip;
         // a couple of dozen ever spend a frame.
-        const away = Math.hypot(playerPos.x - v.x, playerPos.z - v.cz);
-        const street = away < 62, atDoor = away < 26;
+        // Distance to the *hall*, not to its centre: a 56 m-wide building fronting
+        // the avenue is 26 m from the middle of that avenue, not 65 — which is
+        // exactly the difference between "the strip is alive as you drive it" and
+        // "the strip draws nothing until you are inside one building".
+        const hx = Math.max(v.hall.x0 - playerPos.x, 0, playerPos.x - v.hall.x1);
+        const hz = Math.max(v.hall.z0 - playerPos.z, 0, playerPos.z - v.hall.z1);
+        const away = Math.hypot(hx, hz);
+        const street = away < 62, atDoor = away < 18;
         r.crowdOut.group.visible = street;
         r.crowdIn.group.visible = isIn || atDoor;
         if (street) r.crowdOut.tick(dt);
         if (r.crowdIn.group.visible) r.crowdIn.tick(dt);
+        if (r.pave) {
+          const walking = away < 40;
+          r.pave.group.visible = walking;
+          if (walking) r.pave.tick(dt);
+        }
 
         if (isIn) {
           // inside: the nearest thing worth walking up to (the games, the cage,

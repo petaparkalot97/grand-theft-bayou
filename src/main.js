@@ -136,6 +136,7 @@ const overlay = document.getElementById("overlay");
 const loadNote = document.getElementById("loadNote");
 const loadPct = document.getElementById("loadPct");
 const loadBarFill = document.getElementById("loadBarFill");
+const loadHud = document.getElementById("loadHud");
 const startBtn = document.getElementById("startBtn");
 const freeBtn = document.getElementById("freeBtn");
 const loadScreen = document.getElementById("loadScreen");
@@ -2477,6 +2478,9 @@ async function buildLevel() {
     roadMaterial: () => asphalt.material(1, { envMapIntensity: 0.9 }),
     addLitSpot: (spot) => litSpots.push(spot),
     placeGlbLandmark, loadGLB,
+    // the strip's crowd works a shift off this (crowd.js setShift): staff hold
+    // the venues all day, the nightlife turns up after dark
+    worldTime,
   });
   tusouxroeNorth.buildSet();
   NPC_POIS.push(...tusouxroeNorth.pois);
@@ -4732,8 +4736,7 @@ function setLoadStage(text, pct) {
 }
 function finishLoading() {
   introPanel.hidden = false;
-  const hud = document.getElementById("loadHud");
-  if (hud) hud.hidden = true;
+  if (loadHud) loadHud.hidden = true;
 }
 startLoadScreen();
 

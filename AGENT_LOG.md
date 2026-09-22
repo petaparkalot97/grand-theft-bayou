@@ -163,6 +163,75 @@ calling it fully closed.
 
 ## 2026-09-22 — Freebuff
 
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — the strip is inhabited: the crowd kit, the pavement, the shift
+
+### Finding — the fixtures were the only thing that knew where a person could stand
+
+The venues already knew where every bar, stool, wheel, shoe, pole and machine is, and
+`b.station()` was already recording where the *player* walks up to. So a person is the
+same kind of fact: each fixture now proposes the people beside its own geometry
+(`b.spot`), and `src/crowd.js` casts them. That is why there is no list of coordinates
+anywhere for the crowd — 88 people come out of the floor plans, and moving a bar moves
+its barman. It also means the *role* hint ("this is a croupier") stays the fixture's
+business while "who walks in off the avenue" stays `spawnzones.js`'s: unhinted spots
+draw from `ZONE_MIX.entertainment`, the table that already decides the strip's crowd
+when the player is not looking.
+
+### WARNING — a batched actor is an actor that can never move again
+
+Every crowd mesh carries `userData.noBatch` (and `userData.crowd`, so the audit can
+tell the 1,324 actor meshes from the cutaway's 56 movers instead of lumping them).
+merge.js skips `noBatch` per mesh, so this is the same mechanism the roof and walls
+already use; a missing flag would bake a dancer into a chunk of scenery, and nothing
+would report it. The build test now runs a real `batchStatic` and asserts **0 of the
+actor meshes were merged**.
+
+### Finding — the *routes* are the test, not the walkers
+
+There is no pathfinding here, and there does not need to be: a frontage's pavement is
+one verified-clear lane (and a spur to the door, which is the same centreline the
+player walks in on). But the lane has to *earn* that: `pickLane` walks outwards from
+the door axis at each candidate z and takes the widest clear run, because a fixed
+width fails on a frontage with a valet row and a queue on it. BILLY JEANS' lane is
+therefore narrower and further out than the other three, decided by geometry rather
+than by a number somebody typed. And every leg is then sampled every 0.25 m against
+all 618 blockers and against the avenue — which is the "NPCs walking through
+buildings" check, and it fired twice during this pass: once when moving the queue line
+out put the queue's *people* inside a bollard, and once when the walkers' rest
+positions landed on top of the queue's.
+
+### Finding — "alive" means the shift changes, and that is a behaviour, not a filter
+
+`main.js` did not pass `worldTime` in this district's ctx. It does now (one token),
+and `crowd.js` `setShift()` keeps the staff — barman, dealer, croupier, teller, host,
+DJ, the act, bouncers, valets, smokers — working all day, halves the night crowd at
+dusk and runs all of it at night. Measured from the middle of North Ave 2: **21
+actors at 11:00, 35 at 18:00, 52 at 23:00**. The same geometry, three different
+streets, and the check fails if an afternoon Crown Strip becomes as busy as a Friday
+night.
+
+### Finding — the vm stub was missing real three.js, not just features
+
+Running an actor headlessly needed `Quaternion.identity` (characters.js clears the
+support-arm quaternion every frame before the clip), `MathUtils.clamp` (the walk
+clip scales its stride by ground speed), `Vector3.sub/addScaledVector/lerp`, and an
+`updateMatrixWorld` that walks children (merge.js's `mergeRigid` bakes a character's
+rigid parts). All of these are gaps in the *stub*: the same code has always been fine
+against the real library. Recorded because "the test needs a better stub" is the kind
+of work that looks like churn and is not.
+
+### What the brief still wants, and where it belongs
+
+BILLY JEANS as a performer needs a `moonwalk`/glide clip — `characters.js`'s
+`danceClip` is the extension point and has no such clip; the crowd kit's `spot.anim`
+is already the hook. HAPPY HOGS' hog dancers and hog barman need a hog *character* on
+the actor rig, and `main.js`'s `buildHog()` is a static mesh, so that is character
+work in `characters.js`, not more crowd code. Traffic, crossings, ambient events,
+per-venue audio, and the exposure/tone-mapping audit the brief asks for before new
+lighting are all still open — and that last one is orchestrator-owned (main.js), so it
+should be measured rather than guessed.
+
+
 **Type:** DISCOVERY · **Task:** TASK-070 (cont.) — visual polish: the frontage, the wet road, the camera
 
 ### Finding — `reflect` is exported, and that is the whole wet-neon story
