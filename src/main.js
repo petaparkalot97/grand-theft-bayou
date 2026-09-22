@@ -1667,11 +1667,11 @@ function explodeCar(v) {
     }
   });
 
-  // Spawn explosion effect
-  const ex = new AnimatedSprite(atlases.muzzle, 8.0);
+  // Spawn explosion effect (using torch since muzzle is missing)
+  const ex = new AnimatedSprite(atlases.torch, 8.0);
   ex.position.copy(v.obj.position).setY(1.5);
   scene.add(ex);
-  ex.play("flash", { fps: 12, loop: false });
+  ex.play("burn", { fps: 12, loop: false });
   setTimeout(() => scene.remove(ex), 500);
   wreckLight.position.copy(v.obj.position).setY(1.5);
   wreckLight.intensity = 30;
