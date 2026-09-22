@@ -786,8 +786,15 @@ check("every venue has the interaction points its room promised",
   check("an actor crosses ground one step at a time, and none of them teleport",
     stride < 3 && walked > 0, `${walked} of ${before2.length} moved in 2 s, furthest ${stride.toFixed(2)} m`);
 
+  // the number that matters for the frame budget: how many people are on screen
+  // at the one moment the whole strip is meant to be seen — driving past it
+  district.update(0.1, { x: -6, y: 0, z: -320 });
+  const live = district.crownCrowd.reduce((n, c) => n + c.visible, 0);
+  const meshCount = district.crownCrowd.reduce((n, c) => n + (c.visible ? c.meshes * (c.visible / (c.inside + c.outside)) : 0), 0);
+  check("driving the strip draws a street, not the whole population",
+    live < 60, `${live} of ${total} actors visible from the middle of North Ave 2 (~${Math.round(meshCount)} meshes)`);
   const per = (total / CROWN_STRIP.venues.length).toFixed(1);
-  console.log(`         ${total} actors on the strip (${per} a venue) · ${crown[0].meshes} meshes in ${v0.name} alone`);
+  console.log(`         ${total} actors on the strip (${per} a venue, ~${(meshCount ? 0 : 0) + Math.round(district.crownCrowd.reduce((n, c) => n + c.meshes, 0) / total)} meshes each)`);
 }
 
 // ------------------------------------------------------------------ the sweep

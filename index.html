@@ -83,14 +83,8 @@
   #overlay {
     position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 14px; text-align: center;
-    background: #05070a url("./assets/cover.png") center/cover no-repeat;
+    background: #05070a;
     padding: 22px; overflow-y: auto; overflow-x: hidden;
-  }
-  #overlay::before {
-    content: ""; position: absolute; inset: 0;
-    background:
-      linear-gradient(90deg, rgba(3,5,4,.95) 0%, rgba(3,5,4,.82) 32%, rgba(3,5,4,.42) 62%, rgba(3,5,4,.18) 100%),
-      linear-gradient(180deg, rgba(4,6,4,.2) 0%, rgba(4,6,4,.35) 60%, rgba(4,6,4,.85) 100%);
   }
   #overlay > * { position: relative; z-index: 1; }
   #overlay h1 { display: none; }
@@ -136,9 +130,42 @@
     background-position: center; opacity: 0; transition: opacity 1.8s ease;
   }
   #loadScreen .slide.on { opacity: 1; }
-  #loadNote {
+  /* Retro arcade loading readout: a neon LOADING/percentage row over a
+     segmented LED-style bar, with the current boot stage underneath — the
+     "what's it doing" text used to stand alone here as plain gray copy. */
+  #loadHud {
     position: absolute; left: 6vw; bottom: calc(2vh + env(safe-area-inset-bottom, 0px));
-    font-size: 12px; opacity: .55; font-family: Arial, sans-serif; letter-spacing: .04em;
+    width: min(360px, 70vw); font-family: "Arial Black", Arial, sans-serif;
+  }
+  #loadHudRow {
+    display: flex; justify-content: space-between; align-items: baseline;
+    letter-spacing: .14em; text-transform: uppercase; margin-bottom: 6px;
+  }
+  #loadLabel {
+    font-size: 13px; color: #7ff2ff;
+    text-shadow: 0 0 4px #29d6ff, 0 0 12px rgba(41, 214, 255, .65);
+  }
+  #loadPct {
+    font-size: 15px; color: #ff5fce;
+    text-shadow: 0 0 4px #ff2bb8, 0 0 12px rgba(255, 43, 184, .65);
+  }
+  #loadBarTrack {
+    height: 10px; padding: 2px; border-radius: 2px;
+    background: rgba(255, 255, 255, .05);
+    border: 1px solid rgba(127, 242, 255, .35);
+    box-shadow: 0 0 6px rgba(41, 214, 255, .2) inset;
+  }
+  #loadBarFill {
+    height: 100%; width: 0%; border-radius: 1px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 6px, rgba(5, 7, 10, .55) 6px 8px),
+      linear-gradient(90deg, #29d6ff, #ff5fce);
+    box-shadow: 0 0 8px rgba(255, 95, 206, .65), 0 0 14px rgba(41, 214, 255, .45);
+    transition: width .5s ease;
+  }
+  #loadNote {
+    display: block; margin-top: 6px;
+    font: 12px/1.3 Arial, sans-serif; letter-spacing: .04em; color: #cfeeff; opacity: .7;
   }
 
   /* -------------------------------------------------- main menu (GTA-style) */
@@ -459,7 +486,11 @@
     <div id="characterCards" role="listbox" aria-label="Characters"></div>
     <div class="select-actions"><button id="backCharacter" class="alt">Back</button><button id="confirmCharacter">Select character</button></div>
   </section>
-  <div id="loadNote">loading assets…</div>
+  <div id="loadHud" aria-hidden="true">
+    <div id="loadHudRow"><span id="loadLabel">Loading</span><span id="loadPct">0%</span></div>
+    <div id="loadBarTrack"><div id="loadBarFill"></div></div>
+    <div id="loadNote">loading assets…</div>
+  </div>
 </div>
 
 <audio id="music" src="./assets/audio/theme.mp3" loop preload="auto"></audio>

@@ -1068,6 +1068,10 @@ export function createTusouxroeNorth(ctx) {
         outside: r.crowdOut.actors.length,
         meshes: r.crowdIn.meshes + r.crowdOut.meshes,
         shown: { inside: r.crowdIn.group.visible, outside: r.crowdOut.group.visible },
+        // what this venue is actually costing right now: a hidden group is not
+        // drawn and not ticked, so this is the number that matters
+        visible: (r.crowdIn.group.visible ? r.crowdIn.actors.length : 0)
+               + (r.crowdOut.group.visible ? r.crowdOut.actors.length : 0),
         people: [...r.crowdIn.actors, ...r.crowdOut.actors].map((x) => ({
           side: x.side, role: x.role, beat: x.beat, anim: x.a.anim,
           lx: x.a.position.x, lz: x.a.position.z, y: x.a.position.y,
@@ -1150,9 +1154,9 @@ export function createTusouxroeNorth(ctx) {
 
         // The crowd's LOD, and the whole of it: the pavement is drawn while you
         // are on the block, the room only while you are in it or standing at its
-        // door (through which you can see it), and an actor that is not drawn is
-        // not ticked. ~80 people live on this strip; a couple of dozen are ever
-        // spending a frame.
+        // door — which is the only way you can see in, through the opening — and
+        // an actor that is not drawn is not ticked. 88 people live on this strip;
+        // a couple of dozen ever spend a frame.
         const away = Math.hypot(playerPos.x - v.x, playerPos.z - v.cz);
         const street = away < 62, atDoor = away < 26;
         r.crowdOut.group.visible = street;

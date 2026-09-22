@@ -134,6 +134,8 @@ function inKeepout(x, z) {
 
 const overlay = document.getElementById("overlay");
 const loadNote = document.getElementById("loadNote");
+const loadPct = document.getElementById("loadPct");
+const loadBarFill = document.getElementById("loadBarFill");
 const startBtn = document.getElementById("startBtn");
 const freeBtn = document.getElementById("freeBtn");
 const loadScreen = document.getElementById("loadScreen");
@@ -4703,10 +4705,10 @@ async function boot() {
 // Loading screen: while boot() is loading assets, the menu (logo, Start/
 // Options/Exit — all of #introPanel, hidden by default in index.html) stays
 // off-screen entirely and this cycles mood art full-bleed instead, so there's
-// nothing half-clickable to notice is disabled. finishLoading() reveals the
-// menu and fades the slideshow out to the static cover art — called both
-// where loadNote already says "ready." (successful boot) and from boot()'s
-// catch (so a load error still leaves Exit Game reachable).
+// nothing half-clickable to notice is disabled. The slideshow itself keeps
+// alternating forever, through the ready state too — finishLoading() only
+// reveals the menu and retires the numeric readout (#loadHud), since a
+// percentage stuck at 100% means nothing once you're just looking at art.
 let loadScreenTimer = null;
 function startLoadScreen() {
   if (!loadScreen) return;
@@ -4720,10 +4722,18 @@ function startLoadScreen() {
     slides[i].classList.add("on");
   }, 4200);
 }
+// Drives #loadHud's neon readout — text plus a segmented percentage bar,
+// standing in for the plain "loading assets…" label the boot stages used to
+// write straight to loadNote.
+function setLoadStage(text, pct) {
+  loadNote.textContent = text;
+  if (loadPct) loadPct.textContent = Math.round(pct) + "%";
+  if (loadBarFill) loadBarFill.style.width = Math.round(pct) + "%";
+}
 function finishLoading() {
-  if (loadScreenTimer) { clearInterval(loadScreenTimer); loadScreenTimer = null; }
-  if (loadScreen) loadScreen.classList.add("done");
   introPanel.hidden = false;
+  const hud = document.getElementById("loadHud");
+  if (hud) hud.hidden = true;
 }
 startLoadScreen();
 
