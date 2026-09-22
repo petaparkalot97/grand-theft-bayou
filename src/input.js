@@ -26,11 +26,18 @@ export const DEFAULT_BINDINGS = Object.freeze({
   crouch: ["KeyC"],
   mute: ["KeyM"],
   nextTrack: ["KeyN"],
+  // M mutes the soundtrack; K silences the in-car radio (radio.js) on its own,
+  // so you can keep the music and lose the DJ.
+  radio: ["KeyK"],
   gfxDown: ["BracketLeft"],
   gfxUp: ["BracketRight"],
   perf: ["F3"],
   debugOrientation: ["F4"],
   reload: ["KeyR"],
+  // Put the weapon away / take it out again. With it holstered, left click does
+  // nothing at all — you can walk and look around without firing every time you
+  // click to grab the pointer.
+  holster: ["KeyX"],
   equipBat: ["Digit1"],
   horn: ["KeyH"],                      // honk / call a prostitute to the passenger door
 });

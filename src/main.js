@@ -1023,6 +1023,10 @@ const state = {
   heat: 0,            // crime heat -> wanted stars
   wanted: 0,
   crimeCd: 0,         // time since last crime (heat holds while > 0)
+  // Weapon put away (X). Starts drawn, so nothing about the existing game
+  // changes until the key is pressed. While holstered, fire() refuses, the
+  // view-model is hidden and the HUD says so.
+  holstered: false,
   bustCd: 0,          // seconds a sheriff has been on top of you
   cinematic: false,   // a cutscene owns the world: simulation and input pause
 };
@@ -1038,6 +1042,19 @@ const soundtrackReady = createSoundtrack(music, { fallback: "./assets/audio/them
 const radio = createRadio();   // assets/audio/radio/ — plays only while state.veh is set, see tick()
 initAudio(camera);   // THREE.AudioListener on the camera; car audio builds from it lazily (audio.js)
 document.getElementById("mute").onclick = () => toggleMute();
+// The in-car radio, silenced on its own (K, or the button beside the music one).
+// Separate from the soundtrack mute: M kills the music, K kills the DJ, and
+// wanting one without the other is the normal case.
+let radioOff = false;
+const radioBtn = document.getElementById("radioBtn");
+function toggleRadio() {
+  radioOff = !radioOff;
+  if (radioOff) radio.stop();
+  else if (state.veh) radio.play();
+  if (radioBtn) radioBtn.classList.toggle("off", radioOff);
+  flashObjective(radioOff ? "Car radio off." : "Car radio on.");
+}
+if (radioBtn) radioBtn.onclick = () => toggleRadio();
 function toggleMute() {
   music.muted = !music.muted;
   document.getElementById("mute").textContent = music.muted ? "♪̶" : "♪";
@@ -2839,6 +2856,9 @@ const WEAPON_SFX = { pistol: "pistolShot", tec9: "tec9Shot", sawnoff: "shotgun",
 const _tmpV = new THREE.Vector3();
 function fire() {
   if (state.fireCd > 0 || state.over || state.cinematic) return;
+  // Weapon away: left click is inert. Checked before the aim prompt below so
+  // holstering doesn't nag you to hold right click.
+  if (state.holstered && !state.veh) return;
   
   if (state.veh && state.weapon !== "pistol" && state.weapon !== "tec9") {
     // Try to auto-switch to a drive-by capable weapon if they have ammo
@@ -3149,7 +3169,10 @@ function tick() {
     // teleport…), so it reacts correctly no matter how the player left the
     // car.
     const inVehicle = !!state.veh;
-    if (inVehicle !== wasInVehicle) { wasInVehicle = inVehicle; if (inVehicle) radio.play(); else radio.stop(); }
+    if (inVehicle !== wasInVehicle) {
+      wasInVehicle = inVehicle;
+      if (inVehicle && !radioOff) radio.play(); else radio.stop();
+    }
     if (missionClinic) missionClinic.update(dt);
     if (prologue) prologue.update(dt);
     if (actOne) actOne.update(dt);
@@ -3203,7 +3226,8 @@ function tick() {
     // View-model weapon: runs from the tick, not just on foot, so switching to
     // the bat / a gun is instant. Hidden while driving (the car is the view) and
     // during cutscenes — without the gate its last pose froze in the world.
-    updateWeapon3D(playerPos, _camFwd, state.weapon, dt, input.isDown("aim"), state.cinematic || !!state.veh);
+    updateWeapon3D(playerPos, _camFwd, state.weapon, dt, input.isDown("aim"),
+      state.cinematic || !!state.veh || state.holstered);
     compass.update(camCtl.heading);
     minimap.visible = !(nolantis && nolantis.inside);
     minimap.update({
@@ -4159,7 +4183,8 @@ async function boot() {
       player.position.set(x, 0, z);
       player.visible = true;
       if (player._last) player._last.copy(player.position);
-    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, klan,
+    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, klan, radio,
+    get radioOff() { return radioOff; },
     get newton() { return newton; }, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
     get playerMoveHeading() { return playerMoveHeading; },
     get soundtrack() { return soundtrackReady; }, get casinos() { return casinos; } };
@@ -4301,6 +4326,15 @@ function honkHorn() {
 // to a gunshot (cemetery.js), which is how it finally showed up.
 input.onPress("attack", () => { if (state.running) fire(); });
 input.onPress("reload", () => { if (state.running) arsenal.reload(); });
+input.onPress("radio", () => { if (state.running) toggleRadio(); });
+input.onPress("holster", () => {
+  if (!state.running || state.cinematic) return;
+  state.holstered = !state.holstered;
+  arsenal.render();
+  flashObjective(state.holstered
+    ? "Weapon away. Left click won't fire — X to draw."
+    : `Drew the ${arsenal.stats(!!state.veh).name}. Hold right click to aim, left click to use it.`);
+});
 input.onPress("equipBat", () => { if (state.running) arsenal.give("bat"); });
 input.onPress("nextWeapon", () => { if (state.running) arsenal.cycleWeapon(1); });
 input.onPress("prevWeapon", () => { if (state.running) arsenal.cycleWeapon(-1); });

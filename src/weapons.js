@@ -74,6 +74,10 @@ export function createArsenal({ state, flashObjective }) {
 
   function render() {
     const w = WEAPONS[state.weapon] || WEAPONS.bat;
+    // Holstered (main.js, X): dim the icon right down so the HUD reads as
+    // "carrying it, not holding it" rather than looking like the weapon is gone.
+    hud.style.opacity = state.holstered ? "0.35" : "1";
+    hud.title = state.holstered ? "Weapon away — X to draw" : "";
     const iconName = ICONS[w.id] || BAT_ICON;
     const iconSrc = iconName.startsWith("data:") ? iconName : `./assets/ui/weapons/${iconName}`;
     const imgHtml = `<div style="background: rgba(0,0,0,0.6); border: 2px solid #000; border-radius: 12px; padding: 4px; display: flex; align-items: center; justify-content: center; width: 64px; height: 64px;"><img src="${iconSrc}" style="width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(2px 2px 0px #000) drop-shadow(-1px -1px 0px #000);"></div>`;

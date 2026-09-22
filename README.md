@@ -299,14 +299,16 @@ Then hit **Start the story**.
 | **WASD** | walk: **W** always goes where the camera looks · drive: **W** / **S** throttle and brake-reverse, **A** / **D** steer (the camera never changes where the car goes) |
 | **F** | get in / out of a car, enter the truck. At a car someone's driving, Keseme pulls the driver out first (it has to be going slower than ~8 m/s) |
 | **Shift** | sprint on foot · handbrake in a car |
-| **Left click** | shoot |
+| **Left click** | shoot / swing — hold **Right click** to aim first, on foot |
 | **Right click** | aim |
+| **X** | put the weapon away / take it out. Holstered, left click does nothing at all — walk and look around without firing |
 | **Space** | jump |
 | **C** | crouch |
 | **Mouse** | look around — click the game to capture the mouse, **Esc** releases it |
 | **Wheel** | zoom the camera in / out |
 | **Q / E** | rotate the camera (secondary) |
 | **M** | mute music |
+| **K** | mute the car radio on its own (or click 📻 next to the ♪ button) |
 | **N** | next soundtrack track |
 | **F3** | frame-time / draw-call readout |
 | **F4** | orientation debug: world axes, player / camera / vehicle headings and arrows |

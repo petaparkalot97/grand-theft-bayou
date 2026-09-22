@@ -128,11 +128,14 @@
   #characterCards button.selected { color: #111; background: var(--accent); border-color: #fff1c5; box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 55%, transparent); transform: translateY(-3px); }
   .select-actions { display: flex; justify-content: flex-end; gap: 10px; }
   @media (max-width: 700px) { #characterSelect { min-height: 0; } .select-stage { grid-template-columns: 1fr; gap: 8px; } #characterPortrait { min-height: 150px; font-size: 120px; } #characterInfo { padding: 14px; } #characterSubtitle { margin-bottom: 10px; } #characterCards { grid-template-columns: repeat(2, 1fr); } }
-  #mute {
+  #mute, #radioBtn {
     position: fixed; bottom: 14px; right: 14px; z-index: 15; pointer-events: auto; cursor: pointer;
     background: rgba(6,10,8,.6); border: 1px solid rgba(160,190,150,.25); color: #f2efe6;
     border-radius: 8px; padding: 6px 10px; font-size: 15px; font-family: Arial, sans-serif;
   }
+  /* the car radio sits to the left of the music toggle */
+  #radioBtn { right: 60px; }
+  #mute.off, #radioBtn.off { opacity: .45; text-decoration: line-through; }
   #crosshair { position: fixed; left: 50%; top: 56%; width: 5px; height: 5px; margin: -2.5px;
     background: rgba(255,240,200,.75); border-radius: 50%; z-index: 9; pointer-events: none; display: none; }
   .flash { animation: fl .4s ease-out; }
@@ -219,6 +222,7 @@
   <div id="cineSkip">Enter · next line &nbsp;&nbsp; Esc · skip scene</div>
 </div>
 <div id="mute" title="mute music (M)">♪</div>
+<div id="radioBtn" title="mute the car radio (K)">📻</div>
 
 <div id="overlay">
   <div id="introPanel">

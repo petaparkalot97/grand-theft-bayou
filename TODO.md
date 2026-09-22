@@ -166,6 +166,44 @@ should merge cleanly; if it touched `cemetery(b)`, take this version.
 
 ---
 
+### TASK-070 — Holster toggle, and muting the car radio (human playtest, 2026-09-22)
+
+**Status:** `REVIEW` · **Agent:** Claude
+**Files:** `src/input.js`, `src/main.js`, `src/weapons.js`, `index.html`, `README.md`
+
+Two requests off the back of the human's playtest.
+
+**1. `X` puts the weapon away.** Left click was the only thing bound to the
+mouse, so every click — including the click you make to grab the pointer —
+fired a gun or swung a bat. Holstered, `fire()` refuses before it even reaches
+the "hold right click to aim" prompt, the view-model is hidden
+(`updateWeapon3D`'s existing `hidden` flag) and the HUD icon dims to 35% with a
+"Weapon away — X to draw" tooltip.
+
+Starts **drawn**, so nothing about the existing game changes until the key is
+pressed — flip `state.holstered` in `main.js` if you'd rather it started away.
+
+**2. `K` mutes the car radio** on its own, or click the 📻 button that now sits
+beside the ♪ music toggle. Deliberately separate from `M`: M kills the
+soundtrack, K kills the DJ, and wanting one without the other is the normal
+case. Muting persists across getting in and out of cars.
+
+**Testing performed** (headless):
+- Drawn, left click: `fireCd` 0.08, ammo 50 → 49. Holstered: `fireCd` stays 0,
+  ammo unchanged, HUD dimmed, message shown.
+- **Melee too** — a holstered bat does not swing (`fireCd` 0), which was the
+  explicit ask ("no longer shoots guns or swings bats and other non-gun
+  weapons"). Redrawn, it swings again.
+- Radio checked against the real `<audio>` element, not just the button class:
+  on + in car → playing; on foot → stopped; muted then entering a car → stays
+  silent; un-muted while driving → comes straight on.
+- No console errors.
+
+**Notes:** `radio` and `radioOff` are now on `window.__game` so this is
+testable at all — it wasn't before.
+
+---
+
 ### TASK-069 — Toward the HD-remaster look: broken pack textures, and the chamfer (human request, 2026-09-21)
 
 **Status:** `REVIEW` · **Agent:** Claude

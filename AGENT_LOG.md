@@ -186,6 +186,28 @@ grid** instead: that went 4/4 to 0/0 for deputies and stayed 0 for cruisers.
 Clearance of exactly 0 is the correct resting state for a pushed-out mover, not
 a failure.
 
+### TASK-070 — two new bindings, and where they live
+
+`input.js` gained `holster: ["KeyX"]` and `radio: ["KeyK"]`. Reminder from the
+fire() bug earlier this week: **`input.onPress` fails silently on an action that
+is not in `DEFAULT_BINDINGS`** — it appends to a handler list nobody reads. Both
+of these were added to the table in the same edit as their handlers.
+
+`state.holstered` gates `fire()` *before* the aim check, so holstering does not
+nag you to hold right click. The view-model reuses `updateWeapon3D`'s existing
+`hidden` parameter rather than adding a second mechanism — it already took one
+for cutscenes and driving.
+
+The car radio mute is separate from `M` on purpose. `M` toggles `music.muted`
+(the soundtrack `<audio>`); `K` sets `radioOff`, which both stops `radio` now
+and stops the tick re-starting it on the next vehicle entry — that second half
+is the bit that is easy to miss, since `radio.play()` is called from the
+in-vehicle transition in `tick()`, not from the key.
+
+`window.__game` now exposes `radio` and `radioOff`. Without them the only thing
+a test could assert was a CSS class, which proves nothing about whether audio is
+actually playing.
+
 ### TASK-069 — the renderer was never the problem
 
 Recorded because it will come up again: this project's post chain is
