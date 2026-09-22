@@ -523,8 +523,18 @@ export function createOrleaRouge(ctx) {
   }
 
   function riverfront() {
+    // Silt, not water. The Mississippi at New Orleans carries a colossal
+    // suspended sediment load — it is the reason the delta exists — and the
+    // result is opaque café-au-lait brown, not the near-black blue this had.
+    // You cannot see into it at all; what you see is the silt, lit.
+    //
+    // So the base colour does the work of the sediment (a high diffuse albedo,
+    // warm and desaturated) and the clearcoat does the work of the surface (the
+    // sky sheen and the neon off the boat). Roughness is up from 0.12: turbid
+    // water is not glass, and a mirror-smooth brown reads as varnish.
     const river = new THREE.MeshPhysicalMaterial({
-      color: 0x0a1a22, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.2, name: "river water",
+      color: 0x5a4a30, roughness: 0.17, clearcoat: 1, clearcoatRoughness: 0.09,
+      envMapIntensity: 1.05, name: "river water",
     });
     river.userData.gtbRealized = true;
     // The Mississippi, and the only reason the riverboat is a riverboat.
