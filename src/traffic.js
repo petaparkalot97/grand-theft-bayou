@@ -9,6 +9,20 @@
 //
 // A car the player jacks is released from traffic and becomes an ordinary
 // vehicle; the pool quietly builds a replacement.
+//
+// Three things beyond "drive along the line" live here, and all three exist for
+// the Crown Strip's nightlife (TASK-070):
+//
+//   * **Kerbside stops** — a lane may carry `stops` (world points, projected onto
+//     the lane at construction). A car brakes for one like a red light, dwells
+//     with `onStop(car, stop)` called exactly once, and pulls away. That is a
+//     drop-off: the *caller* owns what "somebody gets out here" means.
+//   * **Junctions** — where two lanes cross, the car nearer the crossing goes and
+//     the other one yields. Without it, an avenue and a highway pass through each
+//     other's traffic.
+//   * **Wide obstacles** — an obstacle may carry a radius (`{x, z, r}`), so a
+//     pedestrian in the middle of the carriageway is waited for instead of being
+//     "eased past" after a few seconds. A point obstacle still behaves as before.
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
@@ -20,8 +34,48 @@ function makeLane(def) {
   const pts = def.points.map(([x, z]) => new THREE.Vector2(x, z));
   const acc = [0];
   for (let i = 1; i < pts.length; i++) acc.push(acc[i - 1] + pts[i].distanceTo(pts[i - 1]));
-  return { name: def.name, pts, acc, length: acc[acc.length - 1], cruise: def.cruise || [13, 20], next: def.next || null };
+  const lane = { name: def.name, pts, acc, length: acc[acc.length - 1], cruise: def.cruise || [13, 20], next: def.next || null, stops: [] };
+  // Stops are given as world points (a venue knows its door, not its kilometre
+  // mark) and resolved onto the lane here, in order, so a car meets them in the
+  // order it drives.
+  if (def.stops) {
+    lane.stops = def.stops
+      .map((st) => ({ s: projectLane(lane, st.x, st.z), dwell: st.dwell || [2.5, 5], onStop: st.onStop || null, what: st.what || null }))
+      .sort((a, b) => a.s - b.s);
+  }
+  return lane;
 }
+
+/** Where two lanes cross each other, as (distance along either). */
+function laneCrossings(lanes) {
+  const out = [];
+  for (let i = 0; i < lanes.length; i++) {
+    for (let j = i + 1; j < lanes.length; j++) {
+      const A = lanes[i], B = lanes[j];
+      for (let a = 1; a < A.pts.length; a++) {
+        for (let b = 1; b < B.pts.length; b++) {
+          const p = A.pts[a - 1], q = A.pts[a], r = B.pts[b - 1], s = B.pts[b];
+          const d1x = q.x - p.x, d1z = q.y - p.y, d2x = s.x - r.x, d2z = s.y - r.y;
+          const den = d1x * d2z - d1z * d2x;
+          if (Math.abs(den) < 1e-6) continue;              // parallel (or one lane straight on top of the other)
+          const t = ((r.x - p.x) * d2z - (r.y - p.y) * d2x) / den;
+          const u = ((r.x - p.x) * d1z - (r.y - p.y) * d1x) / den;
+          if (t < 0 || t > 1 || u < 0 || u > 1) continue;
+          out.push({
+            x: p.x + d1x * t, z: p.y + d1z * t,
+            a: { lane: A, s: A.acc[a - 1] + Math.hypot(d1x, d1z) * t },
+            b: { lane: B, s: B.acc[b - 1] + Math.hypot(d2x, d2z) * u },
+          });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** How close a car has to be to a crossing before it starts giving way. */
+const YIELD_LOOK = 14;
+const YIELD_HOLD = 7;
 
 /** Position at distance `s` along `lane` into `out` ({x, z}); returns the heading. */
 function sampleLane(lane, s, out) {
@@ -109,6 +163,7 @@ export function createTraffic(o) {
   const WRAP_HIDE = o.wrapHide || 165; // a lane-end U-turn happens only beyond this (in the mist)
   const cars = [];
   const tmp = { x: 0, z: 0 };
+  const crossings = laneCrossings(lanes);
   let spawnCd = 0;
 
   function buildCar() {
@@ -156,7 +211,10 @@ export function createTraffic(o) {
       rider.update?.(0);
       obj.add(rider);
     }
-    const car = { obj, v, rider, lane: null, s: 0, speed: 0, target: 0, cruise: 15, think: 0, active: false };
+    const car = {
+      obj, v, rider, lane: null, s: 0, speed: 0, target: 0, cruise: 15, think: 0, active: false,
+      approach: null, atStop: null, served: -1, dwell: 0, wait: 0,
+    };
     v.traffic = car;
     return car;
   }
@@ -172,6 +230,10 @@ export function createTraffic(o) {
     car.speed = car.cruise;
     car.target = car.cruise;
     car.think = Math.random() * 0.3;           // stagger decisions across cars
+    car.approach = null;
+    car.atStop = null;
+    car.served = -1;
+    car.wait = 0;
     car.active = true;
     car.obj.visible = true;
     apply(car);
@@ -244,6 +306,42 @@ export function createTraffic(o) {
     }
   }
 
+  /**
+   * The next kerbside stop in front of this car, or null. `car.served` keeps a
+   * car from re-triggering the stop it is parked on while it dwells.
+   */
+  function nextStop(car) {
+    const stops = car.lane.stops;
+    if (!stops || !stops.length) return null;
+    for (const st of stops) if (st.s > car.s + 0.4 && st.s !== car.served) return st;
+    return null;
+  }
+
+  /**
+   * Does `car` have to wait at a junction right now? True when a crossing is
+   * within `YIELD_LOOK` of its nose and another car is in it with priority.
+   * Priority is "nearer the crossing goes"; a dead heat breaks on lane index, so
+   * one of the two always wins and a junction cannot deadlock.
+   */
+  function yieldAt(car) {
+    if (!crossings.length) return false;
+    for (const x of crossings) {
+      const mine = x.a.lane === car.lane ? x.a.s : x.b.lane === car.lane ? x.b.s : null;
+      if (mine == null) continue;
+      const d = mine - car.s;
+      if (d < -3 || d > YIELD_LOOK) continue;          // not this junction
+      const other = x.a.lane === car.lane ? x.b : x.a;
+      for (const c of cars) {
+        if (c === car || !c.active || c.lane !== other.lane) continue;
+        if (Math.abs(c.s - other.s) > YIELD_HOLD) continue;
+        const theirD = other.s - c.s;
+        if (theirD < d - 0.5) return true;             // they are closer: give way
+        if (Math.abs(theirD - d) <= 0.5 && other.lane.name < car.lane.name) return true;
+      }
+    }
+    return false;
+  }
+
   /** How far ahead the lane is clear, looking at traffic and `obstacles`. */
   function clearance(car, obstacles) {
     let gap = Infinity;
@@ -263,8 +361,11 @@ export function createTraffic(o) {
       const lateral = Math.abs(rx * fz - rz * fx);
       // After waiting a few seconds, only something squarely in the lane holds
       // the car up; a pedestrian on the edge of the road gets eased past
-      // instead of blocking the highway forever.
-      if (lateral < (car.wait > 3 ? 1.2 : 2.4) && along < gap) gap = along;
+      // instead of blocking the highway forever. An obstacle that carries a
+      // radius is never eased past: `{x, z, r}` is somebody in the carriageway
+      // (a crossing), and the car waits for as long as they are in it.
+      const tol = ob.r || (car.wait > 3 ? 1.2 : 2.4);
+      if (lateral < tol && along < gap) gap = along;
     }
     // called right after `car.think` is reset, so it holds the think interval
     car.wait = gap < 7 ? (car.wait || 0) + car.think : 0;
@@ -316,6 +417,37 @@ export function createTraffic(o) {
           car.think = dist < 60 ? 0.15 : dist < 110 ? 0.45 : 1.0;
           const gap = clearance(car, obstacles);
           car.target = gap < 7 ? 0 : gap < 24 ? car.cruise * (gap - 7) / 17 : car.cruise;
+          // A kerbside stop (a venue's door): brake for it like a red light, so
+          // the car comes to rest *on* the stop instead of rolling past it.
+          car.approach = nextStop(car);
+          if (car.approach) {
+            const toStop = car.approach.s - car.s;
+            if (toStop < 20) car.target = Math.min(car.target, Math.max(0, car.cruise * (toStop - 0.4) / 19.6));
+          }
+          // A junction: whoever is nearer goes, the other one waits. Both cars
+          // compute this the same way from the same numbers, so exactly one of
+          // them yields and neither can wait for the other forever.
+          if (yieldAt(car)) car.target = 0;
+        }
+
+        // Dwelling at the kerb: the stop's own business (a drop-off) runs on the
+        // caller's clock; the car pulls away when it is done.
+        if (car.atStop) {
+          car.dwell -= dt;
+          if (car.dwell <= 0) { car.atStop = null; car.s += 0.5; car.think = 0; }
+          apply(car);
+          continue;
+        }
+        if (car.approach && car.s >= car.approach.s - 0.4 && car.speed < 1.4) {
+          car.atStop = car.approach;
+          car.served = car.approach.s;
+          car.approach = null;
+          car.speed = 0;
+          car.target = 0;
+          car.dwell = car.atStop.dwell[0] + Math.random() * (car.atStop.dwell[1] - car.atStop.dwell[0]);
+          if (car.atStop.onStop) car.atStop.onStop(car, car.atStop);
+          apply(car);
+          continue;
         }
         // Lane end: hand over to the paired return lane (a circuit, never a
         // vanish) — but only when the swap happens in the mist. In view, the car
@@ -326,6 +458,8 @@ export function createTraffic(o) {
             car.lane = car.lane.next;
             car.s = 1;                       // the return lane starts where this one ended
             car.think = 0;                   // re-decide speed for the new lane at once
+            car.approach = null;             // ...and its own stops, from the top
+            car.atStop = null;
           } else {
             car.s = car.lane.length - 1;
             car.speed = 0;

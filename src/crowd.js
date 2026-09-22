@@ -455,6 +455,87 @@ export function makeCrowd(spots, o = {}) {
   }
   for (const x of actors) x.live = true;
 
+  // ---- the spares: people who arrive later ---------------------------------
+  // A venue's crowd is cast at build time, but a drop-off happens at *runtime* —
+  // somebody gets out of a car at the kerb and walks in. So `spares` casts a
+  // couple of extra people and parks them under the floor, invisible: `claim()`
+  // brings one up at the kerb (the street's callers do that), and `retire()`
+  // puts it back when it has gone inside. Same idea as the pavement's INSIDE
+  // state, which is where the pattern came from.
+  const PARK_Y = -50;
+  const spares = [];
+  const spareCount = o.spares || 0;
+  for (let n = 0; n < spareCount; n++) {
+    const a = makeMixed(rng);
+    a.position.set(0, PARK_Y, 0);
+    a.baseY = 0;
+    a.visible = false;
+    a.play("idle", { force: true, loop: true });
+    a.update(0.001);
+    a.traverse((m) => {
+      if (!m.isMesh) return;
+      m.userData.noBatch = true;
+      m.userData.crowd = true;
+      meshes++;
+    });
+    group.add(a);
+    spares.push({ a, busy: false, role: "arrival", anim: "idle", beat: "script", speed: 1.2 });
+  }
+
+  /**
+   * Bring a spare up at (lx, lz) for a scripted errand (a drop-off, an escort).
+   * Returns null when they are all out already — a caller that cannot get one
+   * simply skips the event, rather than stealing somebody out of the room.
+   */
+  function claim(lx, lz, opt = {}) {
+    const s = spares.find((x) => !x.busy);
+    if (!s) return null;
+    s.busy = true;
+    s.a.visible = true;
+    s.a.position.set(lx, opt.y || 0, lz);
+    s.a.baseY = opt.y || 0;
+    s.a._yaw = opt.yaw != null ? opt.yaw : 0;
+    s.a.rotation.y = s.a._yaw;
+    if (s.a._last) s.a._last.copy(s.a.position);
+    s.a.play("idle", { force: true, loop: true });
+    return s;
+  }
+
+  /** Send one back under the floor once it is done (it walked in, or drove off). */
+  function retire(s) {
+    if (!s) return;
+    s.busy = false;
+    s.script = null;
+    s.a.visible = false;
+    s.a.position.set(0, PARK_Y, 0);
+    s.a.play("idle", { force: true, loop: true });
+  }
+
+  /** Walk one scripted leg. See `scriptActor` for the shape of `x.script`. */
+  function runScript(x, dt) {
+    const a = x.a, s = x.script;
+    const leg = s.legs[s.i];
+    if (!leg) { x.script = null; if (s.done) s.done(x); return; }
+    const dx = leg.x - a.position.x, dz = leg.z - a.position.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 0.25) {
+      const m = Math.min(d, (leg.speed || x.speed || 1.2) * dt);
+      a.position.x += (dx / d) * m;
+      a.position.z += (dz / d) * m;
+      a.play("walk");
+    } else if (s.wait > 0) {
+      s.wait -= dt;
+      if (a.anim !== (leg.on || "idle")) a.play(leg.on || "idle", { loop: true });
+    } else {
+      s.i++;
+      const nxt = s.legs[s.i];
+      s.wait = nxt ? nxt.wait || 0 : 0;
+      if (nxt) { if (nxt.on) a.play(nxt.on, { loop: true }); }
+      else { x.script = null; if (s.done) s.done(x); return; }
+    }
+    a.update(dt);
+  }
+
   // ---- the act, if a fixture staged one ------------------------------------
   // The stage hands over his mark and the deck he may not leave; everything else
   // about the show is the script above. Reacting to a big move is the *pit* plus
@@ -529,11 +610,20 @@ export function makeCrowd(spots, o = {}) {
    * one lerp, and the district only calls this for the groups it is drawing.
    */
   function tick(dt) {
+    // the spares first: one that is out on an errand is on the pavement for the
+    // whole street to see, whatever the room's LOD is doing
+    for (const s of spares) {
+      if (!s.busy) continue;
+      if (s.script) runScript(s, dt);
+      else s.a.update(dt);
+    }
     for (const x of actors) {
       if (x.live === false) continue;
       const a = x.a;
       // the act runs his own script; `hype` is what he does to the room
       if (x.act) { x.act.tick(dt, hype); continue; }
+      // ...and a scripted errand (an escort, an arrival) owns the actor outright
+      if (x.script) { runScript(x, dt); continue; }
       // A cheer interrupts whatever the actor was on — that is the reaction. When
       // it is over they go back to their own pose and their own beat, so the
       // front row is only up in the air while something is happening.
@@ -612,7 +702,24 @@ export function makeCrowd(spots, o = {}) {
     group, actors, meshes, tick, setShift,
     // the show, for the district to expose (and for the QA to watch run)
     act, fans,
+    // runtime arrivals: `claim()` brings one up at the kerb, `retire()` sends it
+    // back; `scriptActor` walks it wherever it is going
+    spares, claim, retire,
   };
+}
+
+/**
+ * Give an actor a route to walk, one leg at a time, and take it off its beat
+ * until the route is done.
+ *
+ * @param {object} x    a record from `makeCrowd` / `makePavement` / a spare
+ * @param {Array}  legs [{ x, z, wait, on, speed }] — walk here, hold `wait`
+ *                      seconds playing `on`, then the next one
+ * @param {Function} [done]  called when the last leg is finished (and clears it)
+ */
+export function scriptActor(x, legs, done) {
+  x.script = { legs, i: 0, wait: legs.length ? legs[0].wait || 0 : 0, done: done || null };
+  return x.script;
 }
 
 // ---------------------------------------------------------------------------
@@ -684,6 +791,7 @@ export function makePavement(spec) {
       const rec = {
         a, group: n, state: OUT, speed: speed * (1 + i * 0.03), t: rng() * 3,
         legs: [], target: null, dwell: 0, inside: 0, rest: rng() < 0.25 ? "dance" : "idle",
+        hype: 0,
         // most of the pavement is nightlife; a fifth of it works in daylight
         // (deliveries, cleaners, staff arriving) and the rest turns up after dark
         night: rng() < 0.8, dayOk: false, live: true, sway: (rng() - 0.5) * 1.6,
@@ -719,6 +827,16 @@ export function makePavement(spec) {
       if (!x.live) continue;
       const a = x.a;
       x.t += dt;
+
+      // a cheer interrupts a pavement walker the same way it does a crowd
+      // (`hype`): a street event has to be able to reach whoever is nearest
+      if (x.hype > 0) {
+        x.hype -= dt;
+        if (a.anim !== "cheer") a.play("cheer", { loop: true });
+        if (x.hype <= 0) a.play(x.rest, { loop: true });
+        a.update(dt);
+        continue;
+      }
 
       if (x.state === INSIDE) {
         // hidden inside the venue, then back out onto the pavement somewhere

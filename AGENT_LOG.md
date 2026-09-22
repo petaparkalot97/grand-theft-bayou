@@ -194,6 +194,21 @@ facing down the bar, mid-pour, with his back to the room. Measured inside HAPPY 
 all four work poses within 30 s, 1.3 m of counter walked, and never more than 1.6 m
 from his station.
 
+### WARNING — the head does not move, and every clip in the file pretends it does
+
+Found while checking why a hog's parts could not be introspected: `mergeRigid(this, [hips,
+torso, ...arms, ...legs])` does **not** list the head as a joint, so every mesh added
+under `this.head` is baked into the torso's mesh and `this.head.children` is empty on a
+finished actor. Which means the `r.head.rotation.set(...)` line in every pose in this
+file — and in the six stage clips and four bar clips added this pass — is authoring
+intent with no motion behind it: a head-turn cannot survive the merge. Not fixed here,
+because "make the head a joint" is one word that adds a mesh group per actor per
+material across ~1,400 actor meshes and needs measuring, not guessing. What is fixed is
+the two things that matter: a note at `this.head` so the next person does not spend an
+hour choreographing a neck that is welded shut, and the poses that had to *read* moved
+to the torso (the barman's slow scan of the room now turns his shoulders, not his
+face).
+
 ### WARNING — the floor-plane audit was wrong in two places, and both were load-bearing
 
 Podiums broke the collision check the moment they existed: a person standing on a

@@ -142,7 +142,6 @@ const freeBtn = document.getElementById("freeBtn");
 const loadScreen = document.getElementById("loadScreen");
 const hpFill = document.getElementById("hpFill");
 const spFill = document.getElementById("spFill");
-const cansEl = document.getElementById("cans");
 const objEl = document.getElementById("objective");
 const crosshair = document.getElementById("crosshair");
 const introPanel = document.getElementById("introPanel");
@@ -873,57 +872,6 @@ function makeFence(x1, z1, x2, z2) {
   scene.add(m);
 }
 
-// ---------------------------------------------------------------- gas cans
-const cans = [];
-function makeCan(x, z) {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(0.6, 0.75, 0.32),
-    new THREE.MeshStandardMaterial({ color: 0xe23a1e, roughness: 0.5, emissive: 0xd23010, emissiveIntensity: 0.9 })
-  );
-  body.castShadow = true;
-  const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3),
-    new THREE.MeshStandardMaterial({ color: 0x333333 }));
-  spout.position.set(0.22, 0.5, 0); spout.rotation.z = 0.5;
-  g.add(body, spout);
-  // a faint glow column, so a can reads from across a lot and not just on the radar
-  const beamMat = new THREE.MeshBasicMaterial({
-    color: 0xff7a2a, transparent: true, opacity: 0.13, depthWrite: false,
-    blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-  });
-  beamMat.userData.gtbRealized = true;
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 7, 12, 1, true), beamMat);
-  beam.position.y = 3.5 - 0.55;
-  g.add(beam);
-  g.position.set(x, 0.55, z);
-  g.userData = { taken: false, baseY: 0.55 };
-  scene.add(g);
-  cans.push(g);
-}
-
-/**
- * Keep every can reachable. A can whose spot ended up inside something's
- * collision (a building added or swapped later, a parked car) moves to the
- * nearest clear ground around it. Runs once, when every blocker exists.
- */
-function settleCans() {
-  const clear = (x, z) => blockers.every((b) => Math.hypot(b.x - x, b.z - z) > b.r + 0.9);
-  for (const c of cans) {
-    const { x, z } = c.position;
-    if (clear(x, z)) continue;
-    search: for (let r = 1; r <= 10; r += 0.75) {
-      for (let a = 0; a < 16; a++) {
-        const nx = x + Math.cos((a / 16) * Math.PI * 2) * r, nz = z + Math.sin((a / 16) * Math.PI * 2) * r;
-        if (!clear(nx, nz)) continue;
-        c.position.x = nx;
-        c.position.z = nz;
-        console.info(`[cans] a can at (${x.toFixed(1)}, ${z.toFixed(1)}) was inside collision; moved to (${nx.toFixed(1)}, ${nz.toFixed(1)})`);
-        break search;
-      }
-    }
-  }
-}
-
 // ---------------------------------------------------------------- Popeyes (everywhere)
 function signTexture() {
   const c = document.createElement("canvas");
@@ -1221,7 +1169,7 @@ const mapEditor = createMapEditor({
   removeLitSpot: (spot) => { const i = litSpots.indexOf(spot); if (i >= 0) litSpots.splice(i, 1); },
 });
 
-input.onPress("interact", () => { if (services.interact() || nightlife.interact() || casinos.interact() || (orlea && orlea.interact()) || (newton && newton.interact())) return; enterExitVehicle(); tryInteract(); });
+input.onPress("interact", () => { if (services.interact() || nightlife.interact() || casinos.interact() || (orlea && orlea.interact()) || (newton && newton.interact())) return; enterExitVehicle(); });
 input.onPress("mute", () => toggleMute());
 input.onPress("nextTrack", () => soundtrackReady.then((s) => s.next()));
 // [ / ] step the graphics tier down / up; once you touch it, the auto
@@ -1311,15 +1259,9 @@ function minimapBlips() {
   }
   const wp = (blueLight && blueLight.waypoint) || (actOne && actOne.waypoint) || (greedoCampaign && greedoCampaign.waypoint) || (syncCampaign && syncCampaign.waypoint) || (prologue && prologue.waypoint);
   if (wp) _blips.push({ kind: "waypoint", x: wp.x, z: wp.z });
-  if (!storyObjective) {
-    // free roam: the escape plan (the cans, then the truck)
-    if (state.cans >= CAN_GOAL) _blips.push({ kind: "waypoint", x: truckPos.x, z: truckPos.z });
-    else for (const c of cans) if (!c.userData.taken) _blips.push({ kind: "can", x: c.position.x, z: c.position.z });
-  }
   for (const b of services.blips()) _blips.push(b);
   for (const b of nightlife.blips()) _blips.push(b);
   for (const b of casinos.blips()) _blips.push(b);
-  _blips.push({ kind: "truck", x: truckPos.x, z: truckPos.z });
   for (const s of sheriffs) if (!s.dead) _blips.push({ kind: "cop", x: s.obj.position.x, z: s.obj.position.z });
   for (const e of enemies) if (!e.dead && e.state === "hostile") _blips.push({ kind: "hostile", x: e.spr.position.x, z: e.spr.position.z });
   return _blips;
@@ -2012,6 +1954,9 @@ function trafficObstacles() {
   _obstacles.push(playerPos);
   if (traffic) for (const c of traffic.cars) if (c.active) _obstacles.push(c.obj.position);
   for (const s of sheriffs) if (!s.dead) _obstacles.push(s.obj.position);
+  for (const c of police.footCops) {
+    if (!c.dead && Math.abs(c.spr.position.x - ROAD_X) < ROAD_HALF + 3) _obstacles.push(c.spr.position);
+  }
   for (const e of enemies) {
     if (!e.dead && Math.abs(e.spr.position.x - ROAD_X) < ROAD_HALF + 3) _obstacles.push(e.spr.position);
   }
@@ -2590,24 +2535,13 @@ async function buildLevel() {
                    // measured ~2.4k draw calls, still under the ~4.5k driving budget guardrail
   });
 
-  // ---- the escape truck ----
-  truck = truckMesh || fallbackCar(null);
-  truck.position.copy(truckPos);
-  truck.rotation.y = Math.PI / 2;
-  scene.add(truck);
-  addBlocker(truckPos.x, truckPos.z, 2.4);
-  truckMarker = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.6, 4),
-    new THREE.MeshBasicMaterial({ color: 0x7ee87e }));
-  truckMarker.position.set(truckPos.x, 5.5, truckPos.z);
-  scene.add(truckMarker);
-  poolLight(0x7ee87e, 26, 34, truckPos.x, 4, truckPos.z);
-
-  // ================= PICKUPS ================= (spread down the highway)
-  makeCan(...landmarkPos(1, 100), true);        // at the 6twelve pumps
-  makeCan(-16, 41, true);                       // out front of the storefront lot (z 52), clear of its walls
-  makeCan(30, 66, true);                        // by a shack
-  makeCan(3, -50, true);                        // out front of the storefront lot (z -34), by the road: (11, -42) ended up inside that building's collision
-  makeCan(ROAD_X - 2, -100, true);              // near the truck
+  // The "collect 4 gas cans, drive the escape truck out of Dixie Beaux" free-roam
+  // objective predates Act One's story campaign and was never wired to it (nothing
+  // outside the pickup loop below ever set state.cans). It's gone per a human
+  // report: no cans were actually reachable in the current world, the "Jack a ride
+  // rob gas cans: 0/4" objective was stuck showing forever, and the parked escape
+  // truck itself was reported as an oddly-placed leftover. win()/tryInteract's
+  // truck check and the gas-can HUD panel were removed with it.
 
   const be = ROAD_X + ROAD_HALF + 8;
   for (const [bx, bz] of [[be, 96], [-be, 62], [be, 30], [-be, 0], [be, -28],
@@ -3211,16 +3145,6 @@ function placeParked(obj, x, z, rot) {
   return registerVehicle(obj, 1.9, { hp: 34 });
 }
 
-// ---------------------------------------------------------------- interactions
-function tryInteract() {
-  if (!state.running) return;
-  // near truck?
-  if (playerPos.distanceTo(truckPos) < 4.5) {
-    if (state.cans >= CAN_GOAL) return win();
-    flashObjective(`The tank is dry — need ${CAN_GOAL - state.cans} more can(s).`);
-  }
-}
-
 // ---------------------------------------------------------------- combat
 // Distinct gunfire per weapon (human report: "the guns should have sounds,
 // different sounds"). Procedural, via cinema.js's sfx() — see there for the
@@ -3311,6 +3235,20 @@ function fire() {
       if (score < bestScore) { bestScore = score; best = e; bestKind = "enemy"; bestDist = d; }
     }
   }
+  for (const c of police.footCops) {
+    if (c.dead) continue;
+    const dx = c.spr.position.x - playerPos.x, dz = c.spr.position.z - playerPos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > gun.range || d < 1e-3) continue;
+    const facing = (dx * _aim.x + dz * _aim.z) / d;
+    if (state.weapon === "sawnoff") {
+      if (facing > 0.82) hitTargets.push({ t: c, kind: "footCop", d });
+    } else {
+      if (facing < -0.2 && d > 6) continue;
+      const score = d * 0.6 * (1.6 - facing);
+      if (score < bestScore) { bestScore = score; best = c; bestKind = "footCop"; bestDist = d; }
+    }
+  }
   for (const s of sheriffs) {
     if (s.dead) continue;
     const dx = s.obj.position.x - playerPos.x, dz = s.obj.position.z - playerPos.z;
@@ -3387,6 +3325,20 @@ function fire() {
       else t.spr.position.addScaledVector(t.spr.position.clone().sub(playerPos).setY(0).normalize(), 0.4);
       if (t.hp <= 0) { killEnemy(t); if (t.type !== "hog") crime(1.2); }
       else if (freshFight) speakPedestrian(t, fightLine(t.type, t.T.label, t.mood));
+    } else if (kind === "footCop") {
+      t.hp -= dmg;
+      if (t.spr.play) { t.spr.play("hurt", { loop: false, force: true }); t.t = 0; }
+      if (t.hp <= 0) { 
+        // Custom kill logic since killEnemy accesses t.T.label which footCops lack
+        t.dead = true; 
+        t.state = "dead";
+        if (t.spr.play) t.spr.play("death", { fps: 9, loop: false, force: true });
+        loot.dropFor(t);
+        crime(2.0); // Killing a cop is a serious crime
+        flashObjective(`Deputy down.  ${EMOJI.hog} ${kills.hog}   ${EMOJI.redneck} ${kills.redneck}   ${EMOJI.hoodrat} ${kills.hoodrat}`);
+      } else {
+        crime(0.4); // Shooting a cop
+      }
     } else if (kind === "sheriff") {
       crime(0.4);
       damageVehicle(t, dmg * 2);
@@ -3429,7 +3381,6 @@ function killEnemy(e, { turf = false } = {}) {
 function syncHUD() {
   hpFill.style.width = Math.max(0, state.hp) + "%";
   spFill.style.width = Math.max(0, state.sp) + "%";
-  cansEl.innerHTML = `${state.cans} <small>/ ${CAN_GOAL}</small>`;
   cashEl.textContent = "$" + state.cash.toLocaleString();
   let s = "";
   if (copsActive()) for (let i = 0; i < 6; i++) s += `<span class="${i < state.wanted ? "on" : "off"}">★</span>`;
@@ -3470,18 +3421,10 @@ function scoreLine() {
     ${EMOJI.redneck}${kills.redneck} ${EMOJI.hoodrat}${kills.hoodrat}
     &nbsp;·&nbsp; ${state.wanted}★ at the line`;
 }
-function win() {
-  endScreen("left dixie beaux",
-    `The truck catches on the third try and you point it north, out of Dixie Beaux,
-     as the sun comes up over the cypress. Somebody still owes somebody money, and
-     somebody still has the ledger — but that's a sequel problem.<br><br>${scoreLine()}`,
-    "Run it back");
-}
 function lose() {
   if (storyFail && storyFail("wasted")) return;   // a mission may respawn you instead
   endScreen('<span style="color:#b8202a;font-style:italic">WASTED</span>',
-    `The swamp took you back. ${state.cans}/${CAN_GOAL} gas cans, and the truck's
-     still sitting up past the city line with the keys in it.<br><br>${scoreLine()}`,
+    `The swamp took you back.<br><br>${scoreLine()}`,
     "Respawn");
 }
 function busted() {
@@ -3679,15 +3622,6 @@ function tick() {
     pos.needsUpdate = true;
   }
 
-  for (const c of cans) {
-    if (c.userData.taken) continue;
-    c.rotation.y += dt * 1.4;
-    c.position.y = c.userData.baseY + Math.sin(time * 2 + c.position.x) * 0.12;
-  }
-  if (truckMarker) {
-    truckMarker.rotation.y += dt * 2;
-    truckMarker.position.y = 5.2 + Math.sin(time * 3) * 0.25;
-  }
   for (const s of shrooms) s.update(dt, camera);
   for (const t of torches) t.update(dt, camera);
   updateLightPool(dt, camera.position);
@@ -3838,22 +3772,6 @@ function simulate(dt) {
     updateSheriffs(dt);
   }
 
-  // ---- cans ----
-  for (const c of cans) {
-    if (c.userData.taken) continue;
-    const at = state.veh ? state.veh.obj.position : playerPos;
-    const reach = state.veh ? CAN_REACH_VEHICLE : CAN_REACH;
-    if (Math.hypot(at.x - c.position.x, at.z - c.position.z) < reach) {
-      c.userData.taken = true;
-      c.visible = false;
-      state.cans = Math.min(CAN_GOAL, state.cans + 1);
-      syncHUD();
-      flashObjective(state.cans >= CAN_GOAL
-        ? "Tank's full — get to the truck on the road!"
-        : `Gas can! ${state.cans}/${CAN_GOAL}. Keep looking.`);
-    }
-  }
-
   // ---- Popeyes buckets (health) ----
   for (const b of buckets) {
     if (b.userData.taken) continue;
@@ -3870,9 +3788,6 @@ function simulate(dt) {
 
   // ---- loot on the ground ----
   loot.update(dt);
-
-  // ---- truck proximity / auto win ----
-  if (state.cans >= CAN_GOAL && playerPos.distanceTo(truckPos) < 4.2) win();
 
   // ---- enemies ----
   const a0 = performance.now();
@@ -3905,9 +3820,7 @@ function setStoryObjective(text) {
 function defaultObjective() {
   if (storyObjective) return storyObjective;
   if (copsActive() && state.wanted >= 1) return "Lose the Sheriff.";
-  return state.cans >= CAN_GOAL
-    ? "Get to the truck past the Tusouxroe city limits."
-    : `Jack a ride · rob gas cans: ${state.cans}/${CAN_GOAL}`;
+  return "Free roam. Explore Dixie Beaux.";
 }
 
 function hitPlayer(dmg) {
@@ -4078,6 +3991,24 @@ function drivingUpdate(dt) {
         e.spr.position.addScaledVector(_fwd, 1.2);
         v.speed *= 0.82;
         if (e.hp <= 0) { killEnemy(e); if (e.type !== "hog") crime(1.1); }
+      }
+    }
+    for (const c of police.footCops) {
+      if (c.dead) continue;
+      if (c.spr.position.distanceTo(next) < 2.4) {
+        c.hp -= 5;
+        c.spr.position.addScaledVector(_fwd, 1.2);
+        v.speed *= 0.82;
+        if (c.hp <= 0) {
+          c.dead = true; 
+          c.state = "dead";
+          if (c.spr.play) c.spr.play("death", { fps: 9, loop: false, force: true });
+          loot.dropFor(c);
+          crime(2.0); // Killing a cop
+          flashObjective(`Deputy down.  ${EMOJI.hog} ${kills.hog}   ${EMOJI.redneck} ${kills.redneck}   ${EMOJI.hoodrat} ${kills.hoodrat}`);
+        } else {
+          crime(0.4);
+        }
       }
     }
   }
@@ -4585,12 +4516,10 @@ async function boot() {
   // strip). batchStatic merges siblings into their own parent now, so a cluster still
   // hides itself with everything it owns, and it can be batched safely (TASK-011).
   // Anything that moves, or that a set piece shows and hides, stays out of the
-  // batcher entirely. `...cans` matters: a gas can hides itself when you pick it up
-  // (`c.visible = false`), and a can merged into a static batch cannot do that — it
-  // would sit there, collected but still standing.
+  // batcher entirely.
   const moving = new Set([
-    player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
-    ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
+    player, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
+    ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
     ...services.props, ...nightlife.props,      // garage doors, markers, club cutaways: they move
     ...casinos.props,                           // casino roof/sign cutaways, wall scale, the roulette table and the slots all animate in casinos.update()
     ...(orlea ? orlea.props : []),              // Marie Laveau's ghost, drifting the cemetery alleys
@@ -4686,7 +4615,6 @@ async function boot() {
     if (stateWorld) { const m = stateWorld.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water||[])); }
     minimap.build({ roads, areas, water, buildings });
   }
-  settleCans();                  // every blocker exists now: no can may sit inside one
   setLoadStage("ready.", 100);
   finishLoading();
   startBtn.disabled = false;

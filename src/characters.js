@@ -494,6 +494,12 @@ class Hoodrat extends THREE.Object3D {
 
     // ---- head ----------------------------------------------------------
     const neck = add(torso, cyl(0.055, 0.06, 0.1, 8), skin, 0, 0.58, 0);
+    // NOTE: `head` is not one of mergeRigid's joints (see the list at the end of
+    // this constructor), so every mesh added under it is baked into the torso's
+    // mesh and the clips' `r.head.rotation` lines are authoring intent rather than
+    // motion — a head-turn does not survive the merge. It costs nothing and it is
+    // load-bearing documentation: anything that *must* read in a pose (a scan of
+    // the room, a chin-up showboat) has to be carried by the torso or the arms.
     const head = new THREE.Object3D();
     head.position.y = 0.66;
     torso.add(head);
@@ -1368,7 +1374,9 @@ function danceClip(r, dt) {
     const p = t * 0.7 + r.phase;
     r.hips.position.y = 0.92;
     r.hips.rotation.set(0, 0, 0);
-    r.torso.rotation.set(0.26, Math.sin(p) * 0.18, 0);
+    // the slow scan of the room is the *torso*'s: the head is not a merge joint,
+    // so it cannot turn on its own (see the note at `this.head`)
+    r.torso.rotation.set(0.26, Math.sin(p) * 0.34, 0);
     r.head.rotation.set(-0.1, Math.sin(p) * 0.42, 0.06);
     r.legs[0].pivot.rotation.x = -0.12; r.legs[0].knee.rotation.x = 0.3; r.legs[0].foot.rotation.x = -0.18;
     r.legs[1].pivot.rotation.x = 0.1; r.legs[1].knee.rotation.x = 0.14; r.legs[1].foot.rotation.x = 0;
