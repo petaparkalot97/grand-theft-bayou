@@ -19,6 +19,10 @@ export default async function run(page) {
   const log = {};
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.waitForFunction(() => { const b = document.getElementById("freeBtn"); return b && !b.disabled; }, null, { timeout: 240000 });
+  // The menu nests now: root -> "Start Game" -> Story / Free Roam / Multiplayer,
+  // so #freeBtn is zero-size until its submenu is open.
+  await page.click('[data-menu="start"]');
+  await page.waitForTimeout(300);
   await page.click("#freeBtn");
   await page.waitForFunction(() => window.__game && window.__game.state.running, null, { timeout: 60000 });
 

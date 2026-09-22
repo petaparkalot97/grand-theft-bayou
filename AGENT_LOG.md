@@ -895,6 +895,92 @@ grid** instead: that went 4/4 to 0/0 for deputies and stayed 0 for cruisers.
 Clearance of exactly 0 is the correct resting state for a pushed-out mover, not
 a failure.
 
+### The Bravado chase dialogue was gated behind a skill check
+
+Playtest: "the dialogue in regard to the Green Bravado chase for Mally is
+missing." It was in the file the whole time — `prologue.js` has 88 `say()`
+calls and the phone call plays fine. The five-line exchange DURING the chase
+was the missing part, and it was gated on `gap < 26`:
+
+```js
+if (gap < 26 && chase.shotCd <= 0) { ... dialogue(...) }
+```
+
+`updateChase`'s rubber band winds the Bravado up to 27 m/s the moment you close,
+so a player who never quite catches it heard **none** of it, and one who caught
+it late heard the first line or two before the route ended and the stampede
+cut in. Measured before the fix, hanging back: 0 lines. Closing hard: 2 of 5.
+
+**The rule this is an instance of: never gate dialogue on a skill check unless
+missing it is the point.** The banter is the mission's best writing and it was
+reachable only by players who least needed the entertainment. It now fires on
+its own timer (`chase.talkCd`, 2.5 s into the chase) whatever the gap is; only
+the thief actually SHOOTING still needs him near enough to shoot.
+
+Second half of the same bug: `startStampede()` flips `phase` synchronously and
+stops the route being driven, so reaching the end of the route left the thief
+talking to an empty road. It now waits on `chase.talking` — the in-flight
+dialogue promise — before queueing the stampede. `cine.scene` already queues, so
+the scenes were never going to overlap; the problem was purely that the chase
+stopped existing underneath the conversation.
+
+Verified after: all five lines play with the gap ranging 30–110 m, i.e. never
+once inside the old threshold.
+
+### The click that captures the mouse was also firing the gun
+
+Playtest: "when left clicking and holding, the weapons still shoot and swing
+while I am rotating the screen."
+
+`camera.js` requests Pointer Lock on left-mousedown, and `input.js` dispatched
+`attack` on that same event. So the click you make to grab the pointer fired,
+and once automatic weapons landed, holding left click to drag the view emptied
+the magazine. `input.js` now drops button 0 entirely while the pointer is free.
+
+**WARNING — gate the button BEFORE `mouseHeld.add`, not just before the handler
+dispatch.** The first cut of this fix skipped only the edge-triggered `attack`
+handler and changed nothing, because `main.js`'s automatic fire reads
+`input.isDown("attack")` — which is backed by `mouseHeld` — and calls `fire()`
+straight from the tick. Any future guard on a mouse button has the same two
+paths to close: the edge dispatch and the held state.
+
+Right click is deliberately NOT gated: `camera.js` keeps right-drag as the look
+fallback while the pointer is free, and aiming has no side effects.
+
+`window.__qaPointerLock` joins `__qaAim` as a headless escape hatch, since a
+synthetic `MouseEvent` can never hold Pointer Lock. Either flag satisfies the
+guard, so the existing QA scripts that only set `__qaAim` keep working.
+
+**And the weapon now starts holstered.** Left click is the button you press to
+capture the pointer and to look around; defaulting to "armed" meant the first
+thing a new player did was fire. `fire()` flashes "Weapon away — press X to draw
+it." on a 4 s cooldown so it does not read as broken, and the hint is
+rate-limited because a held automatic trigger would otherwise repeat it every
+frame. Holstering applies in a vehicle too — "put it away" that still permits a
+drive-by is not put away.
+
+### TASK-070 — two new bindings, and where they live
+
+`input.js` gained `holster: ["KeyX"]` and `radio: ["KeyK"]`. Reminder from the
+fire() bug earlier this week: **`input.onPress` fails silently on an action that
+is not in `DEFAULT_BINDINGS`** — it appends to a handler list nobody reads. Both
+of these were added to the table in the same edit as their handlers.
+
+`state.holstered` gates `fire()` *before* the aim check, so holstering does not
+nag you to hold right click. The view-model reuses `updateWeapon3D`'s existing
+`hidden` parameter rather than adding a second mechanism — it already took one
+for cutscenes and driving.
+
+The car radio mute is separate from `M` on purpose. `M` toggles `music.muted`
+(the soundtrack `<audio>`); `K` sets `radioOff`, which both stops `radio` now
+and stops the tick re-starting it on the next vehicle entry — that second half
+is the bit that is easy to miss, since `radio.play()` is called from the
+in-vehicle transition in `tick()`, not from the key.
+
+`window.__game` now exposes `radio` and `radioOff`. Without them the only thing
+a test could assert was a CSS class, which proves nothing about whether audio is
+actually playing.
+
 ### TASK-069 — the renderer was never the problem
 
 Recorded because it will come up again: this project's post chain is

@@ -26,11 +26,18 @@ export const DEFAULT_BINDINGS = Object.freeze({
   crouch: ["KeyC"],
   mute: ["KeyM"],
   nextTrack: ["KeyN"],
+  // M mutes the soundtrack; K silences the in-car radio (radio.js) on its own,
+  // so you can keep the music and lose the DJ.
+  radio: ["KeyK"],
   gfxDown: ["BracketLeft"],
   gfxUp: ["BracketRight"],
   perf: ["F3"],
   debugOrientation: ["F4"],
   reload: ["KeyR"],
+  // Put the weapon away / take it out again. With it holstered, left click does
+  // nothing at all — you can walk and look around without firing every time you
+  // click to grab the pointer.
+  holster: ["KeyX"],
   equipBat: ["Digit1"],
   horn: ["KeyH"],                      // honk / call a prostitute to the passenger door
 });
@@ -60,6 +67,25 @@ export function createInput({ bindings = DEFAULT_BINDINGS, target = window } = {
   });
   target.addEventListener("keyup", (e) => held.delete(e.code));
   target.addEventListener("mousedown", (e) => {
+    // The click that CAPTURES the mouse must not also swing the bat. camera.js
+    // requests Pointer Lock on this same left-mousedown, so with the pointer
+    // free every click-to-look fired — and with an automatic weapon, holding it
+    // to drag the view emptied the magazine.
+    //
+    // The button is dropped BEFORE `mouseHeld.add`, not just before the handler
+    // dispatch: main.js's automatic fire reads `input.isDown("attack")` from
+    // `mouseHeld` and calls fire() straight from the tick, so a guard that only
+    // skipped the edge-triggered handler let the held-trigger path through
+    // untouched and changed nothing.
+    //
+    // Right click is deliberately not gated — camera.js keeps right-drag as the
+    // look fallback while the pointer is free, and aiming has no side effects.
+    //
+    // `__qaPointerLock` / `__qaAim` are the headless escape hatches: a synthetic
+    // mousedown can never hold Pointer Lock. Existing QA scripts set `__qaAim`
+    // to get past fire()'s aim check, so either flag counts.
+    if (e.button === 0 && !document.pointerLockElement
+        && !window.__qaPointerLock && !window.__qaAim) return;
     mouseHeld.add(e.button);
     if (e.button === 2) {
       for (const fn of handlers.get("aim") || []) fn(e);

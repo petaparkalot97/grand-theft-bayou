@@ -117,6 +117,10 @@ export function createArsenal({ state, flashObjective, onReload }) {
   // is the only container, and the icon's own card sits directly on it.
   function render() {
     const w = WEAPONS[state.weapon] || WEAPONS.bat;
+    // Holstered (main.js, X): dim the icon right down so the HUD reads as
+    // "carrying it, not holding it" rather than looking like the weapon is gone.
+    hud.style.opacity = state.holstered ? "0.35" : "1";
+    hud.title = state.holstered ? "Weapon away — X to draw" : "";
     const iconName = ICONS[w.id] || BAT_ICON;
     const iconSrc = iconName.startsWith("data:") ? iconName : `./assets/ui/weapons/${iconName}`;
     const tint = RARITY[w.rarity] ? "#" + RARITY[w.rarity].color.toString(16).padStart(6, "0") : "#f4f1ea";
