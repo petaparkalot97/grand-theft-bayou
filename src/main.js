@@ -3211,7 +3211,6 @@ function fire() {
     _aim.set(Math.sin(player._yaw), 0, Math.cos(player._yaw));
     _aim3D.copy(_aim);
   }
-  flashObjective("Aim: " + _aim.x.toFixed(2) + ", " + _aim.z.toFixed(2));
 
   if (!state.veh) { 
     attackTimer = 0.42; 
