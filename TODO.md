@@ -57,6 +57,71 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-071 — Police overhaul: on-foot chases, escalation by star, less overpowered (human request, 2026-09-22)
+
+**Status:** `REVIEW` (logic changed and `node --check`ed; **not yet verified in a
+running browser** — no GPU/Chromium available this session) · **Agent:** Claude
+**Files:** `src/main.js` (`updateSheriffs`, `checkHeatUp`), `src/police.js`
+(deputy stats, deputy/heli fire rate)
+
+Human's report: *"the way they drive at the player is not very realistic... they
+tend to not make a discretion as to whether the user is inside a vehicle or on
+foot. When on foot, they shouldn't try to just ram the user off the road or run
+the user over. The time in which they spawn should be a bit slower and they
+should be a bit less overpowered."* Mid-turn follow-up: *"one star wanted level
+should only make on foot officers chase."*
+
+**What was wrong (`src/main.js`'s `updateSheriffs`):**
+1. A cruiser steered straight at the player's exact live position at up to
+   22 m/s whether the player was on foot or driving, only easing to 8 m/s
+   inside 6 m. The player has no blocker in `blockerGrid`, so nothing stopped
+   the car closing the last few metres onto a pedestrian — it read exactly
+   like an attempt to run them over, even though the underlying "arrest" tick
+   (`hitPlayer(dt * 3.5)`) was gentle.
+2. Cruisers spawned with **no cooldown** — the whole wanted-level quota of up
+   to 6 could appear in a single frame the moment heat crossed the threshold.
+   Same for foot deputies (an unbounded `while` loop).
+3. `want`/`footWant` were backwards from what a first star should look like:
+   1 star spawned **1 cruiser and 0 foot deputies**.
+
+**What changed:**
+1. **Star-gated response type.** `want = wanted >= 2 ? min(6, wanted-1) : 0`,
+   `footWant = wanted >= 1 ? min(8, wanted+1) : 0`. One star now turns out
+   foot deputies only — no cruiser at all — mirroring the helicopter already
+   waiting for 3 stars (`HELI_MIN_STARS`). Cruisers, gunfire from cruisers, and
+   the cruiser ram/PIT are now all gated on `state.veh` and 2+ stars.
+2. **On-foot standoff.** New `CRUISER_FOOT_STANDOFF = 9`m: a cruiser chasing a
+   pedestrian eases its speed to 0 once within that range instead of closing
+   to point-blank. It no longer fires at a pedestrian at all and the ram/PIT
+   branch is now `state.veh`-only. Deputies (`police.js`, walking pace, melee
+   range 1.9 m) are the only ones who make contact with a player on foot —
+   that was already true for the actual arrest countdown, just not for how
+   close the car itself got.
+3. **Staggered dispatch.** `sheriffSpawnCd` / `footSpawnCd` cooldowns
+   (~3.5–5.5 s between cruisers, ~2.5–4 s between deputies, plus an initial
+   1.5–3 s beat when the first star lights up in `checkHeatUp`) replace the
+   old spawn-everything-this-frame loops.
+4. **Toned down:** cruiser chase top speed 22→18 m/s; cruiser gunfire
+   4.5 dmg/1.15–1.7 s → 3.5 dmg/1.4–2.0 s; deputy melee 8 dmg/0.9 s gap → 6
+   dmg/1.1 s gap, speed 4.8→4.3; deputy gunfire 3.5 dmg/1.35–1.8 s →
+   3 dmg/1.6–2.2 s; helicopter gunfire 5.5 dmg/1.1–1.8 s → 4.5 dmg/1.4–2.2 s.
+
+**Testing performed:** `node --check` on both files (clean). Hand-checked the
+new `want`/`footWant` formula against every star value 0–6. **Not verified
+live** — `tools/qa/police_test.mjs` fails before and after this change on an
+unrelated pre-existing headless-stub gap (`src/merge.js`'s `mergeInto` expects
+`geo.index`/`geo.attributes` the stub's `Hoodrat`/`makeDeputy` build doesn't
+supply — confirmed by reproducing the same failure on a clean `git stash` of
+this session's changes). No browser/GPU available this session to confirm the
+standoff distance, escalation feel, or damage balance in play.
+
+**What remains:** an actual playtest — does 9 m read as a natural "car pulls
+up" distance, does the 1-star foot-only response feel right, and does the
+overall damage nerf land where the human wants it (this pass used moderate,
+reversible numbers, not a full rebalance pass).
+
+---
+
 > **Task-ID collision, 2026-09-20 (second one — see the next note down for the
 > first):** this session and the one merged in below it both wrote new tasks
 > under TASK-053 through TASK-056 for unrelated work, independently, at the

@@ -496,6 +496,8 @@ let lampPower = 1;
 let lampsLit = true;
 const lampFx = [];
 let poolTimer = 0;
+// Soft ceiling for a pooled light's near-field brightness — see updateLightPool.
+const POOL_LIGHT_CAP = 30;
 function updateLightPool(dt, focus) {
   poolTimer -= dt;
   if (poolTimer > 0 || !litSpots.length) return;
@@ -516,7 +518,18 @@ function updateLightPool(dt, focus) {
     // fade the outermost lights in rather than popping them on
     // Street lamps are accent lighting, not a second sun. Keep authored
     // interior/fire lights at full strength, but soften pooled lamp spill.
-    l.intensity = sp.power * THREE.MathUtils.smoothstep(90 * 90 - sp.d, 0, 30 * 30) * (sp.fx === false ? 1 : lampPower * 0.72);
+    // Every `power` here feeds a real, physically-decaying PointLight (decay 2,
+    // set in initLightPool) with no minimum-distance floor, so a light placed a
+    // couple of metres from its own prop (a sign, a torch, a bonfire — exactly
+    // where most of these sit) blows that prop's surface to solid white and
+    // bloom smears it across the frame; the sun itself never exceeds ~3.2
+    // (daycycle.js), so a `power` of 16-170 is catastrophic up close no matter
+    // how reasonable it looks from across the street. Soft-cap with a knee
+    // (POOL_LIGHT_CAP) instead of a hard clamp: small fixtures barely move,
+    // the worst offenders (klan bonfires, casino fronts) get pulled way down,
+    // and every light keeps its authored ranking relative to the others.
+    const nearFieldSafePower = POOL_LIGHT_CAP * sp.power / (POOL_LIGHT_CAP + sp.power);
+    l.intensity = nearFieldSafePower * THREE.MathUtils.smoothstep(90 * 90 - sp.d, 0, 30 * 30) * (sp.fx === false ? 1 : lampPower * 0.72);
   }
 }
 
@@ -1102,6 +1115,8 @@ const state = {
 const vehicles = [];   // every drivable car
 let lastVehAudio = null;   // the previous frame's state.veh.audio, so exiting a car tears its sound down
 const sheriffs = [];   // active police units
+let sheriffSpawnCd = 0;   // stagger cruiser call-outs — see updateSheriffs
+let footSpawnCd = 0;      // stagger deputy call-outs — see updateSheriffs
 const cashEl = document.getElementById("cash");
 const starsEl = document.getElementById("stars");
 const vehIndic = document.getElementById("vehIndic");
@@ -3883,10 +3898,15 @@ function spawnSheriff() {
 // Stars go the GTA ways: get out of sight and stay hidden until they give up
 // (police.js), or drive into a Pay 'n' Spray (services.js).
 const WANTED_HEAT = 1.4;              // one star (see the stars formula in simulate)
+const CRUISER_FOOT_STANDOFF = 9;      // m: how close a cruiser will get to a pedestrian before holding off
 function copsActive() { return state.forceCops || !!state.copsCalled; }
 function checkHeatUp() {
   if (state.copsCalled || state.heat < WANTED_HEAT) return;
   state.copsCalled = true;
+  // Give dispatch a beat before anyone turns out, rather than a cruiser
+  // appearing on the same frame the first star lights up.
+  footSpawnCd = Math.max(footSpawnCd, 1.5);
+  sheriffSpawnCd = Math.max(sheriffSpawnCd, 3);
   flashObjective("★ WANTED. Sheriff Mercer's on the way. Lose him: get out of sight and stay hidden, or drive into a Pay 'n' Spray.");
   syncHUD();
 }
@@ -3960,10 +3980,22 @@ function retireSheriff(v) {
   if (si >= 0) sheriffs.splice(si, 1);
 }
 function updateSheriffs(dt) {
-  const want = state.wanted > 0 ? Math.min(6, state.wanted) : 0;
-  if (state.wanted > 0 && sheriffs.filter((s) => !s.dead).length < want && sheriffProto) spawnSheriff();
-  const footWant = Math.min(8, Math.max(0, state.wanted - 1));
-  while (police.footCops.filter((c) => !c.dead).length < footWant) {
+  // One star is a beat cop's business, not a car chase: only foot deputies
+  // turn out. Cruisers wait for two stars and up, same as the helicopter
+  // waits for three (HELI_MIN_STARS) — the response escalates in kind, not
+  // just in number.
+  const want = state.wanted >= 2 ? Math.min(6, state.wanted - 1) : 0;
+  const footWant = state.wanted >= 1 ? Math.min(8, state.wanted + 1) : 0;
+
+  // Dispatch staggers who it sends, instead of the whole shift arriving on
+  // the same frame the star count ticks over.
+  sheriffSpawnCd = Math.max(0, sheriffSpawnCd - dt);
+  if (sheriffSpawnCd <= 0 && sheriffs.filter((s) => !s.dead).length < want && sheriffProto) {
+    spawnSheriff();
+    sheriffSpawnCd = 3.5 + Math.random() * 2;
+  }
+  footSpawnCd = Math.max(0, footSpawnCd - dt);
+  if (footSpawnCd <= 0 && police.footCops.filter((c) => !c.dead).length < footWant) {
     // Same unchecked-ring bug the cruisers had: a random bearing with no test
     // for what is there drops deputies INSIDE buildings, and a foot cop that
     // starts in a wall spends its life being pushed out of one. Find clear
@@ -3978,7 +4010,7 @@ function updateSheriffs(dt) {
       police.spawnFootCop(x, z);
       placed = true;
     }
-    if (!placed) break;
+    footSpawnCd = placed ? 2.5 + Math.random() * 1.5 : 0.4;
   }
 
   // Where they drive: you while they can see you, the last place they saw you
@@ -4025,8 +4057,13 @@ function updateSheriffs(dt) {
       while (dh > Math.PI) dh -= Math.PI * 2;
       while (dh < -Math.PI) dh += Math.PI * 2;
       s.heading += THREE.MathUtils.clamp(dh, -2.4 * dt, 2.4 * dt);
-      // a searching cruiser cruises; only one that can see you floors it
-      const spd = d < 6 ? 8 : searching ? 12 : 22;
+      // A cruiser chasing a car drives to catch and PIT it. Chasing a
+      // pedestrian, it holds a standoff instead of closing the last few
+      // metres — nobody has a blocker to stop a car walking through them, so
+      // without this it just drove straight over you. Deputies (on foot,
+      // police.js) make the actual arrest.
+      const holdingOff = !state.veh && gone < CRUISER_FOOT_STANDOFF;
+      const spd = holdingOff ? 0 : d < 6 ? 7 : searching ? 11 : 18;
       s.speed = THREE.MathUtils.lerp(s.speed, spd, dt * 1.5);
     } else {
       s.speed = THREE.MathUtils.lerp(s.speed, 0, dt * 1.2);
@@ -4044,15 +4081,19 @@ function updateSheriffs(dt) {
     s.obj.rotation.y = s.heading;
 
     s.shootCd = Math.max(0, (s.shootCd || 0) - dt);
-    if (!standDown && gone < 45 && gone > 7 && s.shootCd <= 0 && sheriffSees(0)) {
-      s.shootCd = 1.15 + Math.random() * 0.55;
-      policeShoot(s.obj.position, 4.5, "cruiser");
+    // Cruisers don't fire on a pedestrian at all — a car shooting at someone
+    // on foot read as far more aggressive than the arrest it's supposed to
+    // be; deputies (police.js) carry that job when you're not in a vehicle.
+    if (!standDown && state.veh && gone < 45 && gone > 7 && s.shootCd <= 0 && sheriffSees(0)) {
+      s.shootCd = 1.4 + Math.random() * 0.6;
+      policeShoot(s.obj.position, 3.5, "cruiser");
     }
-    if (!standDown && gone < 4) {
+    // Close contact is a PIT/ram — only meaningful car-to-car. On foot the
+    // standoff above keeps the cruiser back; the deputy melee (footOnTop)
+    // is what actually busts you.
+    if (!standDown && state.veh && gone < 4) {
       onTop = true;
-      // Close contact is an arrest attempt, not an opaque damage loop.
-      if (!state.veh) hitPlayer(dt * 3.5);
-      else state.veh.speed *= (1 - dt * 1.5);       // ram / pit
+      state.veh.speed *= (1 - dt * 1.5);
     }
   }
   for (; lit < beaconLights.length; lit++) beaconLights[lit].intensity = 0;

@@ -4,6 +4,11 @@
 
 import assert from "assert";
 import * as THREE from "three";
+// The local three stub has no `BufferGeometry.index`, so merge.js reads
+// `undefined !== null` -> "indexed" and then throws on `.count`, and no test in
+// the suite could build a character at all. This adds real transforms and the
+// missing default; see the file for what it does and does not upgrade.
+import "./lib/three_math.mjs";
 if (typeof globalThis.document === "undefined") {
   globalThis.document = {
     createElement: () => ({

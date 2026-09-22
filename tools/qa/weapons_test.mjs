@@ -14,6 +14,10 @@ globalThis.document = {
   }),
   body: { appendChild: () => {} },
   head: { appendChild: () => {} },
+  // weapons.js renders its HUD panel into #hudRight, falling back to <body>. It
+  // has to be able to ASK for that element — without getElementById the whole
+  // arsenal threw at construction and this file tested nothing.
+  getElementById: () => null,
 };
 
 // 1. Starter Weapon Check

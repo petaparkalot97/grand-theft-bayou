@@ -63,6 +63,55 @@ I have implemented items 2 and 5 of TASK-053:
   
   # 🧠 DISCOVERIES
   
+## 2026-09-22 — Claude
+
+**Type:** DISCOVERY · **Task:** new — "the brightness and the textures going white" (human report, screenshots)
+
+### Finding
+Human reported two things that looked separate but traced to the same class
+of bug: overexposed bloom, and plain (non-textured) surfaces reading as solid
+white. Reproduced live on the deployed build via Claude in Chrome.
+
+The vehicle-headlight half (`SpotLight.intensity = 420` in `createHeadlights`,
+`src/fx.js` — 5-14x every other light in the scene) was independently found
+and fixed the same day by a parallel local session (`420 * level` →
+`45 * level`); that part is already in this history.
+
+The second half, not yet covered: **decorative point lights at close range.**
+`poolLight()`-created fixtures (roadside signs, torches, casino/klan fires —
+always-on, `fx: false`, see the comment above `updateLightPool`) are real
+`PointLight`s with `decay: 2` and no minimum-distance floor. Their `power`
+values (16 for the "Welcome to Dixie Beaux" sign, up to 120 for a Klan
+bonfire) are tuned for how they read from a distance, but most sit 1-3 m from
+their own prop — a sign panel, a torch pole. At that range `power /
+distance²` dwarfs the sun (peaks ~3.2, `daycycle.js`): confirmed live, the
+welcome sign's own support post — plain `MeshStandardMaterial`, no texture at
+all — read as solid white at point-blank range, and zeroing that one light's
+intensity in the console visibly softened it (before the pool's 4 Hz refresh
+put it back). Every `poolLight` call site across the codebase (`main.js`,
+`actone.js`, `bluelight.js`, `casinos.js`, `cemetery.js`, `klan.js`,
+`newton.js`, `nightlife.js`, `nolantis.js`, `orlearouge.js`,
+`welcomeback.js`) shares this risk, not just the one reproduced.
+
+### Impact
+Anyone adding a new `poolLight` fixture close to its own geometry will hit
+this again unless the near-field cap below stays in place. `addLitSpot`
+street lamps (already fade with `lampPower` in daylight) go through the same
+pool and pick up the same cap — nothing else about their day/night behaviour
+changed.
+
+### Action
+`src/main.js`: `updateLightPool` now runs every pooled light's `power`
+through a soft-knee compression (`POOL_LIGHT_CAP = 30`,
+`cap * power / (cap + power)`) before it becomes `l.intensity`. Small
+fixtures barely move (16 → ~10.4); the worst offenders get pulled down hard
+(120 → 24) without a hard clamp, so everything keeps its authored ranking
+relative to everything else. Not independently re-verified live past the
+initial repro — this environment's egress blocks the CDN three.js/jsDelivr
+imports the game loads at runtime, so headless Playwright here can't boot the
+game. Reasoned from live-measured intensities; wants a real-GPU look before
+calling it fully closed.
+
 ## 2026-09-22 — Freebuff
 
 **Type:** DISCOVERY · **Task:** TASK-070 (the Crown Strip — casinos and bars/nightclubs north of Chatboro)
