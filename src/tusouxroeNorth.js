@@ -1144,7 +1144,7 @@ export function createTusouxroeNorth(ctx) {
         const isIn = Math.abs(l.x) < v.w / 2 - 0.4 && Math.abs(l.z) < v.d / 2 - 0.4;
         r.inside = isIn;
         r.roof.visible = !isIn;
-        for (const m of r.walls) m.scale.y = 1;
+        for (const m of r.walls) m.scale.y += ((isIn ? WALL_DROP : 1) - m.scale.y) * Math.min(1, dt * 7);
         for (const m of r.fixed) m.visible = !isIn;
 
         // The crowd's LOD, and the whole of it: the pavement is drawn while you

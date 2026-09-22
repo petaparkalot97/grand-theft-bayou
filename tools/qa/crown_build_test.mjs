@@ -350,10 +350,16 @@ check("every venue is on the minimap", district.minimap.buildings.length >= CROW
   `${district.minimap.buildings.length} footprints`);
 check("the strip is lit", calls.litSpots > 40, `${calls.litSpots} lit spots this district alone`);
 // The strip is left in the scene so main.js's batch sweep still merges its
-// interiors; only the meshes the cutaway moves carry `userData.noBatch`. Count
-// them, then run the real sweep and prove they survived it.
+// interiors; only the meshes the cutaway moves, and every mesh of a crowd actor,
+// carry `userData.noBatch` (crowd.js marks its own, and tags them `userData.crowd`
+// so the two sets stay tellable apart). Count them, then run the real sweep and
+// prove they survived it.
 const movers = [];
-const collectMovers = (o) => { if (o.isMesh && o.userData.noBatch) movers.push(o); for (const c of o.children) collectMovers(c); };
+const crowdMeshes = [];
+const collectMovers = (o) => {
+  if (o.isMesh && o.userData.noBatch) (o.userData.crowd ? crowdMeshes : movers).push(o);
+  for (const c of o.children) collectMovers(c);
+};
 for (const c of scene.children) collectMovers(c);
 check("the cutaway's moving meshes are marked noBatch for the batch sweep",
   movers.length >= CROWN_STRIP.venues.length * 6, `${movers.length} meshes marked`);
@@ -658,6 +664,9 @@ check("every venue has the interaction points its room promised",
   const recount = (o) => { if (o.isMesh && o.userData.noBatch) after++; for (const c of o.children) recount(c); };
   for (const c of scene.children) recount(c);
   check("the sweep did not merge away a single moving mesh", after === before, `${before} before, ${after} after`);
+  check("not one actor's mesh was merged into a static batch",
+    crowdMeshes.length === crowdActorMeshes && crowdMeshes.length > 400,
+    `${crowdMeshes.length} actor meshes survive the sweep`);
 
   const v = CROWN_STRIP.venues[0];
   for (let i = 0; i < 40; i++) district.update(0.1, { x: v.x, y: 0, z: v.cz });
