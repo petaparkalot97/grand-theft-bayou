@@ -145,6 +145,7 @@ function makeThree() {
     BoxGeometry: geo("BoxGeometry"), CylinderGeometry: geo("CylinderGeometry"),
     SphereGeometry: geo("SphereGeometry"), ConeGeometry: geo("ConeGeometry"),
     PlaneGeometry: geo("PlaneGeometry"), TorusGeometry: geo("TorusGeometry"),
+    CircleGeometry: geo("CircleGeometry"), RepeatWrapping: 1000,
     MeshStandardMaterial: Material, MeshBasicMaterial: Material,
     CanvasTexture, SRGBColorSpace: "srgb",
     MathUtils: { smoothstep: (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }, lerp: (a, b, t) => a + (b - a) * t },
@@ -198,7 +199,11 @@ const strip = (file) => `"use strict";\n` + fs.readFileSync(path.join(SRC, file)
 // neonsign.js and interiors.js first: tusouxroeNorth.js's `import` lines for them
 // are stripped by `strip()`, and their `export function`s become sandbox globals
 // when they load. So the kit is exercised for real here, not stubbed.
-for (const f of ["neonsign.js", "interiors.js", "merge.js", "composer.js", "tusouxroeNorth.js"]) {
+// characters.js is loaded too: the Crown Strip's crowd is built from its factories,
+// and the actors' mesh cost is a number this test should be measuring rather than
+// trusting. It is procedural (no SkinnedMesh, no AnimationMixer), so a stub three
+// can genuinely run it.
+for (const f of ["neonsign.js", "interiors.js", "characters.js", "merge.js", "composer.js", "tusouxroeNorth.js"]) {
   try { vm.runInContext(strip(f), sandbox, { filename: f }); }
   catch (e) { console.error(`load ${f}: ${e.stack || e}`); process.exit(1); }
 }
