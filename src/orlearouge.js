@@ -47,6 +47,72 @@ function canvasTex(w, h, draw, repeat = true) {
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
+/**
+ * A tiling water-surface normal map: long, low swells stretched ALONG the flow
+ * with finer chop across it, which is what moving water actually looks like
+ * from a bank. Written as a real normal map (RGB = XYZ) rather than a grey
+ * bump, because the river material is physical and its clearcoat needs a
+ * believable surface to reflect the sky and the neon off.
+ *
+ * `stretch` is how many times longer a swell is than it is wide.
+ */
+function waterNormalTex(size = 256, stretch = 5) {
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d");
+  const img = g.createImageData(size, size);
+  // a small sum of sines makes a seamless, tileable height field: every term
+  // uses an integer number of periods across the texture, so the edges match
+  // Wavenumbers MUST be whole numbers of periods across the texture or it does
+  // not tile — a fractional kx leaves a seam every repeat, which at this scale
+  // is a visible line across the river every 22 m.
+  //
+  // Long wavelength along the flow (small kx) and short across it (kz = kx *
+  // stretch) is what gives swells that lie down the current instead of a
+  // uniform ripple.
+  const waves = [];
+  for (let i = 0; i < 5; i++) {
+    const kx = 1 + i;
+    waves.push({
+      kx,                                    // few periods along the flow: long swells
+      kz: Math.max(1, Math.round(kx * stretch)),   // many across it: chop
+      amp: 1 / (1 + i * 1.3),
+      phase: i * 1.7,                        // break up the harmonic regularity
+    });
+  }
+  const height = (u, v) => {
+    let h = 0;
+    for (const w of waves) {
+      h += w.amp * Math.sin((u * w.kx + v * w.kz) * Math.PI * 2 + w.phase);
+    }
+    return h;
+  };
+  const e = 1 / size;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = x / size, v = y / size;
+      // central differences give the slope, and the normal is its cross product
+      const dx = (height(u + e, v) - height(u - e, v)) / (2 * e);
+      const dz = (height(u, v + e) - height(u, v - e)) / (2 * e);
+      const sc = 0.012;                      // keep the surface gentle, not choppy
+      let nx = -dx * sc, ny = 1, nz = -dz * sc;
+      const len = Math.hypot(nx, ny, nz);
+      nx /= len; ny /= len; nz /= len;
+      const i = (y * size + x) * 4;
+      img.data[i] = (nx * 0.5 + 0.5) * 255;
+      img.data[i + 1] = (nz * 0.5 + 0.5) * 255;
+      img.data[i + 2] = (ny * 0.5 + 0.5) * 255;
+      img.data[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  // a normal map is data, not colour — tagging it sRGB would wash the vectors out
+  t.colorSpace = THREE.NoColorSpace;
+  return t;
+}
+
 /** A box whose side UVs repeat once per `unit` metres, so shared textures tile to size. */
 function tiledBox(w, h, d, unitX = 6, unitY = 4) {
   const g = new THREE.BoxGeometry(w, h, d);
@@ -68,6 +134,7 @@ function tiledBox(w, h, d, unitX = 6, unitY = 4) {
 export function createOrleaRouge(ctx) {
   const { scene } = ctx;
   const neon = [];          // { mat, base, speed, phase } — flickered in update()
+  const currents = [];      // { maps[], speed, tile } — river surfaces scrolled in update()
   const pois = [];
   const occluders = [];     // overhead boxes the camera must not look through
   let graveyard = null;     // cemetery.js — holds the ghost, so it has an update and props
@@ -473,7 +540,38 @@ export function createOrleaRouge(ctx) {
     // tempting and wrong: the expanded map now has blockers scattered out to
     // z 470 across the whole x span, so a wider river floods real content. If
     // the riverfront is ever reworked, that overlap needs sorting out first.
-    plane(CITY.maxX - CITY.minX + 40, 80, river, (CITY.maxX + CITY.minX) / 2, 0.03, CITY.maxZ + 42);
+    const RIVER_LEN = CITY.maxX - CITY.minX + 40, RIVER_W = 80;
+    plane(RIVER_LEN, RIVER_W, river, (CITY.maxX + CITY.minX) / 2, 0.03, CITY.maxZ + 42);
+
+    // ---- the current ----
+    // The Mississippi at New Orleans does NOT run south. It comes down from the
+    // north-west, swings through the bend the Crescent City is named after, and
+    // past the French Quarter it is running roughly EAST — it does not turn
+    // south-east for the Gulf until well downstream. So this river flows toward
+    // +x, with the city on its bank, which is the same relationship the Quarter
+    // has to the water.
+    //
+    // Surface speed there averages about 3 mph — call it 1.3 m/s — over a
+    // channel getting on for 60 m deep at the Quarter, which is why it looks
+    // slow and calm and will still take a barge with it.
+    //
+    // Two layers at different scales and slightly different rates: one set of
+    // long swells and one of finer chop drifting over it. A single scrolling
+    // layer reads as a sliding texture, two read as water.
+    const TILE = 22;                       // metres per repeat of the coarse layer
+    const swell = waterNormalTex(256, 6);
+    swell.repeat.set(RIVER_LEN / TILE, RIVER_W / TILE);
+    const chop = waterNormalTex(256, 3);
+    chop.repeat.set(RIVER_LEN / (TILE * 0.45), RIVER_W / (TILE * 0.45));
+    river.normalMap = swell;
+    river.normalScale = new THREE.Vector2(0.55, 0.55);
+    river.clearcoatNormalMap = chop;
+    river.clearcoatNormalScale = new THREE.Vector2(0.3, 0.3);
+    river.needsUpdate = true;
+    currents.push(
+      { map: swell, tile: TILE, speed: 1.3 },              // the river itself
+      { map: chop, tile: TILE * 0.45, speed: 1.75 },       // surface chop, running a touch faster
+    );
     // promenade railing, solid
     const rail = std("wrought iron railing", 0x1c1f22, { metalness: 0.6, roughness: 0.5 });
     mesh(new THREE.BoxGeometry(CITY.maxX - CITY.minX, 0.08, 0.08), rail, 0, 1.0, CITY.maxZ + 1.2, { cast: false });
@@ -565,6 +663,12 @@ export function createOrleaRouge(ctx) {
 
     update(dt) {
       if (graveyard) graveyard.update(dt);
+      // The river runs. `offset` shifts where the texture is SAMPLED, so the
+      // pattern appears to travel the opposite way — subtract to move the water
+      // toward +x (downstream, east, past the Quarter).
+      for (const c of currents) {
+        c.map.offset.x = (c.map.offset.x - (c.speed / c.tile) * dt) % 1;
+      }
       const t = performance.now() / 1000;
       for (const n of neon) {
         // mostly steady, with the occasional sputter

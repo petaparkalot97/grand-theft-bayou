@@ -895,6 +895,34 @@ grid** instead: that went 4/4 to 0/0 for deputies and stayed 0 for cruisers.
 Clearance of exactly 0 is the correct resting state for a pushed-out mover, not
 a failure.
 
+### Making the river actually flow, and which way
+
+Asked for the water to flow the way the Mississippi does at New Orleans. Two
+things worth recording, one geographic and one technical.
+
+**The direction is not south.** The Mississippi comes down to New Orleans from
+the north-west, swings through the bend the Crescent City is named after, and
+past the French Quarter it is running roughly **east** — it does not turn
+south-east for the Gulf until well downstream. The in-game river runs along x
+with the city on its bank, so it flows toward **+x**. Surface speed there
+averages about 3 mph (1.3 m/s) over a channel getting on for 60 m deep at the
+Quarter, which is why it looks calm and will still carry a barge off.
+
+Implemented as two scrolling normal maps — long swells at 1.3 m/s and finer
+chop at 1.75 — rather than one. A single scrolling layer reads as a sliding
+texture; two at different scales and rates read as water. `offset` shifts where
+the texture is SAMPLED, so it is subtracted to move the surface toward +x.
+
+**WARNING — a procedural tiling texture needs INTEGER wavenumbers.** The first
+version built its height field from `sin((u*kx + v*kz) * 2π)` with
+`kx = (1+i)/stretch`, which is fractional, so the pattern did not wrap and left
+a seam across the whole river every 22 m. Elongation along the flow comes from
+keeping kx small and setting `kz = kx * stretch` — both whole numbers. Proved
+by evaluating the field at u=0 vs u=1 and v=0 vs v=1: max error 1e-15.
+
+A normal map is data, not colour: `colorSpace = NoColorSpace`. Tagging it sRGB
+washes the vectors out and the surface goes flat.
+
 ### The Mississippi was drawn underneath the ground
 
 Playtest: there should be river water for the Grand Crescent riverboat to sit
