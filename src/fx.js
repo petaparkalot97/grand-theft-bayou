@@ -319,7 +319,12 @@ export function createHeadlights(scene) {
         const lx = L.sx * dims.half * 0.62;
         L.light.position.set(lx, y, dims.front - 0.1);
         L.target.position.set(lx * 1.4, -2.2, dims.front + 18);
-        L.light.intensity = 420 * level;
+        // Every other light in the game (streetlamps, muzzle flash, wreck fire,
+        // beacons) tops out around 30-90 (see main.js's poolLight()/litSpots).
+        // This was 420 — 5-14x that — which blew the road and anything near
+        // the beam to white the moment the player got in a car. 45 reads as a
+        // bright, distinctly-headlight light without nuking everything it touches.
+        L.light.intensity = 45 * level;
         L.beam.position.set(lx, y, dims.front);
         L.beam.visible = on;
         L.beam.material.uniforms.uIntensity.value = 0.22 * level;

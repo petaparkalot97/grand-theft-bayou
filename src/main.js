@@ -12,7 +12,7 @@ import { createSoundtrack } from "./music.js";
 import { createRadio } from "./radio.js";
 import { batchStatic } from "./merge.js";
 import { initAudio, createCarAudio, resumeAudio } from "./audio.js";
-import { initWeapons3D, updateWeapon3D, playFireAnim3D } from "./weapons_3d.js";
+import { initWeapons3D, updateWeapon3D, playFireAnim3D, notifyReload3D, getWeaponMuzzle } from "./weapons_3d.js";
 import { createNpcSystem } from "./npc.js";
 import { bumpLine, fightLine } from "./pedestrianChatter.js";
 import { pedestrianVoiceWho } from "./voiceCast.js";
@@ -1142,7 +1142,10 @@ const compass = createCompass();
 // GTA-style radar (minimap.js): the base map is built once the level exists
 const minimap = createMinimap({ MAP });
 // the player's weapon slot (weapons.js) and what NPCs drop (loot.js)
-const arsenal = createArsenal({ state, flashObjective });
+// onReload is the one seam between the weapon slot and how it is presented:
+// weapons.js says "this reload started and it takes this long" and weapons_3d.js
+// turns that into the dip-and-return. Neither has to know about the other.
+const arsenal = createArsenal({ state, flashObjective, onReload: notifyReload3D });
   initWeapons3D(scene);
 const kills = { hog: 0, redneck: 0, hoodrat: 0, prostitute: 0 };
 const EMOJI = { hog: "🐗", redneck: "🧢", hoodrat: "🎧", prostitute: "💋" };
@@ -2837,6 +2840,7 @@ function tryInteract() {
 // actual noise/filter shaping of each kind.
 const WEAPON_SFX = { pistol: "pistolShot", tec9: "tec9Shot", sawnoff: "shotgun", deerRifle: "rifleShot" };
 const _tmpV = new THREE.Vector3();
+const _muzzleV = new THREE.Vector3();
 function fire() {
   if (state.fireCd > 0 || state.over || state.cinematic) return;
   
@@ -2870,7 +2874,12 @@ function fire() {
   }
   state.fireCd = gun.cooldown;
   if (shotWitnessed()) crime(0.12);
+  // Shots come out of the BARREL, not the player's navel. weapons_3d.js exposes
+  // the muzzle node in world space; the chest-height point is only the fallback
+  // for the frames before a freshly-swapped weapon's model is up, and while
+  // driving (the rig is hidden and the car is the view).
   const origin = _tmpV.copy(playerPos).setY(state.veh ? 1.4 : 1.2);
+  if (!state.veh && getWeaponMuzzle(_muzzleV)) origin.copy(_muzzleV);
 
   if (!state.veh) { 
     attackTimer = 0.42; 
@@ -3200,10 +3209,21 @@ function tick() {
         camera.position.y += (Math.random() - 0.5) * 0.35 * j;
       }
     }
-    // View-model weapon: runs from the tick, not just on foot, so switching to
-    // the bat / a gun is instant. Hidden while driving (the car is the view) and
-    // during cutscenes — without the gate its last pose froze in the world.
-    updateWeapon3D(playerPos, _camFwd, state.weapon, dt, input.isDown("aim"), state.cinematic || !!state.veh);
+    // The held weapon: parented to the character's hand, so this has to run
+    // after the player's own update (the pose and the hand's world matrix have
+    // to be current) and it takes the ACTOR, not a screen position. Hidden while
+    // driving (the car is the view) and during cutscenes — without the gate its
+    // last pose froze in the world.
+    const shooting = input.isDown("attack") && !arsenal.current.melee;
+    updateWeapon3D(player, playerPos, _camFwd, state.weapon, dt, input.isDown("aim"), state.cinematic || !!state.veh, shooting);
+
+    // Automatic fire: holding the trigger keeps firing at the weapon's own rate.
+    // fire() gates on state.fireCd (= 60/rpm), so this cannot outrun the
+    // configured rate, cannot spawn a second firing loop, and cannot fire at all
+    // once the button is released — input.isDown("attack") goes false on mouseup.
+    // Only "auto" weapons repeat; a semi-auto (and the bat) still needs a fresh
+    // press per shot, and melee still needs its cooldown between swings.
+    if (!state.cinematic && !state.paused && arsenal.auto && input.isDown("attack")) fire();
     compass.update(camCtl.heading);
     minimap.visible = !(nolantis && nolantis.inside);
     minimap.update({

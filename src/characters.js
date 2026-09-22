@@ -274,6 +274,92 @@ function add(parent, geometry, material, x, y, z) {
   return m;
 }
 
+// The gun arm, per weapon class, carried and aimed. These are the ONLY numbers
+// that know about weapons being held, and they are deliberately about the gun
+// HAND: the support hand is solved onto the weapon (see applyWeaponHold), so a
+// new weapon of a new length gets a correct two-handed hold without a new entry
+// here. `pivot` is [pitch, spread] — the upper arm's forward rotation and how
+// far out from the ribs — and `blade` turns the torso onto the target.
+const HOLD_POSES = {
+  pistol: {
+    carry: { pivot: [-1.2, 0.14], elbow: -0.4, blade: 0.16 },
+    aim:   { pivot: [-1.42, 0.1], elbow: -0.18, blade: 0.06 },
+  },
+  long: {
+    // stock into the shoulder pocket, elbow tucked
+    carry: { pivot: [-1.02, 0.34], elbow: -1.5, blade: 0.3 },
+    aim:   { pivot: [-1.16, 0.26], elbow: -1.22, blade: 0.12 },
+  },
+  melee: {
+    // bat shouldered: elbow folded, fist up beside the shoulder. A bat is not
+    // sighted, so carry and aim are the same pose.
+    carry: { pivot: [-0.72, 0.5], elbow: -2.3, blade: 0.22 },
+    aim:   { pivot: [-0.72, 0.5], elbow: -2.3, blade: 0.22 },
+  },
+};
+
+// Scratch for the arm solver — the IK runs every frame for the support hand
+// while a two-handed weapon is up, so it allocates nothing.
+const _ikTarget = new THREE.Vector3(), _ikDir = new THREE.Vector3();
+const _ikPerp = new THREE.Vector3(), _ikPole = new THREE.Vector3(), _ikX = new THREE.Vector3();
+const _ikY = new THREE.Vector3(), _ikZ = new THREE.Vector3();
+const _ikM = new THREE.Matrix4();
+const clamp1 = (v) => (v < -1 ? -1 : v > 1 ? 1 : v);
+
+/**
+ * Analytic two-bone IK: solve `arm` (shoulder → elbow → hand) so the hand lands
+ * exactly on `target`, with the elbow bulging toward `pole`. Everything is in the
+ * pivot's PARENT space (the torso).
+ *
+ * The construction is closed form, not iterative, and it is exact: the forearm
+ * direction is derived from the target rather than from the angles, so the hand
+ * cannot wind up near the target — it is on it. That is what puts the support
+ * hand on a weapon's foregrip instead of somewhere beside it.
+ *
+ *   reach = |target − shoulder|, clamped into the chain's range
+ *   β = the elbow's interior angle   (law of cosines on a, b, reach)
+ *   α = how far the upper arm leaves the shoulder→target line, toward the pole
+ *
+ * Returns false if the pivot is degenerate (no length to solve).
+ */
+function solveArm(arm, target, pole) {
+  const S = arm.pivot.position, a = arm.upper, b = arm.fore;
+  const dx = target.x - S.x, dy = target.y - S.y, dz = target.z - S.z;
+  const raw = Math.hypot(dx, dy, dz);
+  if (raw < 1e-5) return false;
+  const ux = dx / raw, uy = dy / raw, uz = dz / raw;
+  const reach = Math.min(a + b - 0.01, Math.max(Math.abs(a - b) + 0.01, raw));
+  const tx = S.x + ux * reach, ty = S.y + uy * reach, tz = S.z + uz * reach;
+
+  const cosB = clamp1((a * a + b * b - reach * reach) / (2 * a * b));
+  const beta = Math.acos(cosB);
+  // elbow.rotation.x = β − π bends the forearm toward the pivot's +z
+  arm.elbow.rotation.set(beta - Math.PI, 0, 0);
+
+  const alpha = Math.acos(clamp1((a * a + reach * reach - b * b) / (2 * a * reach)));
+  // orthogonalise the pole hint against the shoulder→target line
+  _ikDir.set(ux, uy, uz);
+  _ikPerp.set(pole.x, pole.y, pole.z).addScaledVector(_ikDir, -pole.dot(_ikDir));
+  if (_ikPerp.lengthSq() < 1e-8) _ikPerp.set(-arm.side, -1, 0);   // degenerate: elbow down and out
+  _ikPerp.normalize();
+
+  const ca = Math.cos(alpha), sa = Math.sin(alpha);
+  const ex = ux * ca + _ikPerp.x * sa;
+  const ey = uy * ca + _ikPerp.y * sa;
+  const ez = uz * ca + _ikPerp.z * sa;
+  // the forearm's direction, read straight off the (clamped) target
+  const fx = (tx - S.x - ex * a) / b, fy = (ty - S.y - ey * a) / b, fz = (tz - S.z - ez * a) / b;
+  // basis: local −y runs down the upper arm, local +z is the side the forearm
+  // swings to. Z = (f + cosβ·e) / sinβ is the component of f across e.
+  _ikY.set(-ex, -ey, -ez);
+  const sb = Math.sin(beta);
+  _ikZ.set((fx + cosB * ex) / sb, (fy + cosB * ey) / sb, (fz + cosB * ez) / sb);
+  _ikX.crossVectors(_ikY, _ikZ);
+  _ikM.makeBasis(_ikX, _ikY, _ikZ);
+  arm.pivot.quaternion.setFromRotationMatrix(_ikM);
+  return true;
+}
+
 // --------------------------------------------------------------- the rig
 // Joint layout, all in metres on a ~1.8 m body that is scaled to fit at the end:
 //
@@ -555,8 +641,21 @@ class Hoodrat extends THREE.Object3D {
       pivot.add(elbow);
       add(elbow, cyl(0.042 * bulk, 0.036 * bulk, 0.24, 8), inked || skin, 0, -0.12, 0);
       add(elbow, sph(0.045), skin, 0, -0.25, 0);               // fist
-      this.arms.push({ pivot, elbow, side });
+      // ---- the hand socket -------------------------------------------------
+      // Where a weapon is attached (weapons_3d.js). It sits at the middle of
+      // the fist, because that is where a grip actually is — not at the wrist,
+      // and not at an offset from the actor's position. A bare Object3D, so it
+      // costs nothing, and mergeRigid (which only walks meshes) leaves it alone.
+      // `upper`/`fore` are the bone lengths the support-hand IK solves against.
+      const hand = new THREE.Object3D();
+      hand.position.set(0, -0.25, 0);
+      elbow.add(hand);
+      this.arms.push({ pivot, elbow, hand, side, upper: 0.26, fore: 0.25 });
     }
+    // Facing +z, the right-hand vector of a heading is -x (world.js), so arms[0]
+    // (side -1) is the character's RIGHT arm: the gun hand. arms[1] supports.
+    this.rightArm = this.arms.find((a) => a.side === -1);
+    this.leftArm = this.arms.find((a) => a.side === 1);
 
     // ---- legs ----------------------------------------------------------
     this.legs = [];
@@ -692,6 +791,11 @@ class Hoodrat extends THREE.Object3D {
     this.phase = rnd() * Math.PI * 2;
     this.finished = false;
     this.loop = true;
+    // Set by weapons_3d.js every frame while something is in the hands:
+    //   { kind: "pistol"|"long"|"melee", support: Vector3|null, aim: bool }
+    // `support` is the weapon's foregrip in WORLD space — the left hand is
+    // solved onto it. Null means "this weapon is carried one-handed".
+    this.weaponHold = null;
     this._yaw = opts.yaw != null ? opts.yaw : 0;
     this.rotation.y = this._yaw;
     this._last = new THREE.Vector3().copy(this.position);
@@ -752,6 +856,29 @@ class Hoodrat extends THREE.Object3D {
     }
     this._last.copy(this.position);
 
+    // The support-hand IK poses a shoulder with a quaternion (solveArm), while
+    // every clip drives arms with Euler angles. Clear the quaternion before the
+    // clip every frame, or a solve from a previous frame survives into one where
+    // nothing re-solves it — a two-handed weapon swapped for a pistol, or the
+    // weapon dropped entirely, would leave the off arm permanently warped.
+    for (const a of this.arms) a.pivot.quaternion.identity();
+
+    this._poseClip(dt);
+
+    // ---- what the character is holding ----------------------------------
+    // Runs AFTER the clip, never instead of it: walking, running and the dance
+    // clips still drive the legs, hips and torso, and only the arms are taken
+    // over so the weapon is held. This is the hook that makes a weapon part of
+    // the character instead of a prop parked beside it.
+    if (this.weaponHold) this.applyWeaponHold(dt);
+  }
+
+  /**
+   * Every animation clip, one branch per `this.anim` — unchanged. Split out of
+   * update() so the weapon hold can be layered on top of whatever pose the clip
+   * produced, including the clips that return early.
+   */
+  _poseClip(dt) {
     const A = this.arms, L = this.legs;
 
     if (this.anim === "death") {
@@ -893,6 +1020,83 @@ class Hoodrat extends THREE.Object3D {
     });
     this.torso.rotation.y = b * 0.045;
     this.position.y = this.baseY || 0;
+  }
+
+  /**
+   * The weapon-hold overlay. Called after every clip (see update()) whenever
+   * something is in the hands, so the character holds it in every state — idle,
+   * walking, running, aiming — without a second copy of the walk cycle for each
+   * weapon class.
+   *
+   * `this.weaponHold` is set by weapons_3d.js:
+   *   kind     "pistol" (one hand), "long" (two hands), "melee"
+   *   support  the weapon's foregrip in WORLD space, or null for one-handed
+   *
+   * The gun hand is posed by fixed numbers per kind — it is the anchor the
+   * weapon hangs off. The support hand is solved onto the foregrip, so it lands
+   * on the weapon whatever its length: a Tec-9 and a deer rifle hold differently
+   * because the weapons are different sizes, not because anything is hardcoded
+   * per weapon here.
+   */
+  applyWeaponHold(dt = 0) {
+    const h = this.weaponHold;
+    const right = this.rightArm, left = this.leftArm;
+    if (!h || !right || !left) return;
+
+    // Carry → aim is smoothed, so raising the weapon is a movement instead of a
+    // pose swap. Melee never aims: a bat is not sighted.
+    const want = h.aim && h.kind !== "melee" ? 1 : 0;
+    if (this._holdAim == null) this._holdAim = want;
+    this._holdAim += (want - this._holdAim) * Math.min(1, dt * 9);
+    const a = this._holdAim;
+
+    const pose = HOLD_POSES[h.kind] || HOLD_POSES.pistol;
+    const pitch = pose.carry.pivot[0] + (pose.aim.pivot[0] - pose.carry.pivot[0]) * a;
+    const spread = pose.carry.pivot[1] + (pose.aim.pivot[1] - pose.carry.pivot[1]) * a;
+    const elbow = pose.carry.elbow + (pose.aim.elbow - pose.carry.elbow) * a;
+    right.pivot.rotation.set(pitch, 0, right.side * spread);
+    right.elbow.rotation.x = elbow;
+
+    // A bladed stance: rotation.y positive swings the −x (right) side forward on
+    // a body that faces +z, so the gun shoulder comes round toward the target.
+    const blade = pose.carry.blade + (pose.aim.blade - pose.carry.blade) * a;
+    this.torso.rotation.y = blade;
+    // keep the head on the target rather than the weapon
+    this.head.rotation.y = -blade * 0.75;
+
+    // ---- the melee swing -------------------------------------------------
+    // A bat swing is an ARM animation, not a weapon animation: the bat is
+    // welded to the fist (weapons_3d.js), so driving the shoulder, elbow and
+    // torso is what swings it, and it cannot come loose halfway through no
+    // matter how fast the player turns.
+    //
+    // `attack` is the attack's progress, 0 → 1. Two overlapping lobes so it
+    // starts and ends at the shoulder with no pop: `windUp` cocks it back, then
+    // `strike` drives it forward and down. (sin at both ends is 0, so the pose
+    // is continuous with the idle shouldered pose that follows.)
+    if (h.attack > 0) {
+      const u = h.attack;
+      const windUp = Math.sin(Math.min(1, u / 0.28) * Math.PI);
+      const strike = u <= 0.28 ? 0 : Math.sin(((u - 0.28) / 0.72) * Math.PI);
+      right.pivot.rotation.x = pitch + 0.30 * windUp - 0.85 * strike;
+      right.pivot.rotation.z = right.side * (spread + 0.22 * windUp - 0.30 * strike);
+      right.elbow.rotation.x = elbow + 0.35 * windUp + 1.80 * strike;   // folds tighter, then extends through
+      const swung = blade - 0.30 * windUp + 0.55 * strike;              // the whole torso turns into it
+      this.torso.rotation.y = swung;
+      this.head.rotation.y = -swung * 0.75;
+    }
+
+    if (h.kind === "long" && h.support) {
+      // torso.worldToLocal needs the world matrices, which the caller refreshed
+      // after posing the gun arm and placing the weapon.
+      _ikTarget.copy(h.support);
+      this.torso.worldToLocal(_ikTarget);
+      solveArm(left, _ikTarget, _ikPole.set(left.side * 0.6, -1, -0.15));
+    } else {
+      // off hand: low and loose, or steadying nothing in particular
+      left.pivot.rotation.set(-0.5, 0, left.side * 0.3);
+      left.elbow.rotation.x = -1.05;
+    }
   }
 }
 

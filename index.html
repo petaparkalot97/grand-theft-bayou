@@ -39,11 +39,25 @@
   #hpFill { background: linear-gradient(90deg, #c0392b, #e74c3c); }
   #spFill { background: linear-gradient(90deg, #2e86c1, #5dade2); }
   .lbl { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; opacity: .75; font-family: Arial, sans-serif; }
-  #cash {
-    position: absolute; top: 14px; right: 16px; text-align: right;
-    font-size: 30px; color: #6fe07a; text-shadow: 0 2px 0 #14351a, 0 0 16px rgba(90,220,120,.35);
+  /* Top-right equipment cluster: money, wanted stars, and the weapon panel
+     (the panel itself is injected by weapons.js) all stack in flow here, so
+     nothing needs a hardcoded top:Npx guess about where the element above it
+     ends. That guessing is what let the weapon panel drift into the stars. */
+  #hudRight {
+    position: absolute;
+    top: calc(14px + env(safe-area-inset-top, 0px));
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    display: flex; flex-direction: column; align-items: flex-end;
+    gap: clamp(6px, 1vw, 10px);
+    max-width: min(46vw, 260px);
   }
-  #stars { position: absolute; top: 54px; right: 16px; font-size: 22px; letter-spacing: 3px; filter: drop-shadow(0 2px 2px #000); }
+  #cash {
+    text-align: right;
+    font-size: clamp(22px, 3.4vw, 30px); color: #6fe07a;
+    text-shadow: 0 2px 0 #14351a, 0 0 16px rgba(90,220,120,.35);
+  }
+  #stars { font-size: clamp(16px, 2.4vw, 22px); letter-spacing: 3px; filter: drop-shadow(0 2px 2px #000); }
+  #stars:empty { display: none; }
   #stars .off { opacity: .18; }
   #cans { font-size: 20px; font-weight: bold; }
   #cans small { font-size: 12px; opacity: .7; font-weight: normal; }
@@ -202,8 +216,11 @@
     <div class="lbl">Gas cans</div>
     <div id="cans">0 <small>/ 4</small></div>
   </div>
-  <div id="cash">$0</div>
-  <div id="stars"></div>
+  <div id="hudRight">
+    <div id="cash">$0</div>
+    <div id="stars"></div>
+    <!-- weapons.js injects #weaponHud here -->
+  </div>
   <div id="objective">Steal a ride. Scrounge 4 gas cans. Get to the truck and get out of Dixie Beaux.</div>
   <div id="vehIndic" hidden></div>
   <div id="gfxLabel">HIGH</div>
