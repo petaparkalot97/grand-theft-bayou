@@ -57,6 +57,93 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-074 — Daylight brightness (wet-road wiring bug), spawn-area torch scale, and removing the vestigial gas-can/escape-truck mode (human reports, 2026-09-22)
+
+**Status:** `REVIEW` (`node --check`ed; **not verified live** — no GPU/Chromium
+this session) · **Agent:** Claude · **Files:** `src/main.js`, `index.html`
+
+Human sent screenshots saying *"game is still VERY bright during day"*, then
+mid-turn: *"weird objects near Kesemes spawn point"* (screenshots of a tall thin
+gold object and a flame) and *"This truck near the gas can... the gas can
+objective is gone we need to remove them and the 'Rob gas cans' prompt."*
+
+**1. Daylight brightness — a real bug found while investigating, separate from
+the exposure/sun tuning TASK-069 already did.** `src/fx.js`'s `createWetRoads()`
+gives every asphalt surface a permanent reflective-puddle shader with a
+`uWetness` uniform that its own header comment says is meant to read
+`weather.wetness` ("0 dry … 1 soaked (road reflections, later)" — `weather.js`
+literally documents this as not-yet-wired). Nothing ever set it: it sat at its
+hardcoded construction default, **0.6 wetness, full (1.0) reflect strength,
+permanently** — so every road looked like a full-strength wet mirror in broad
+daylight under clear skies, reflecting the bright sky straight at the camera.
+That reads exactly like the blown-out look in the screenshots (glossy dark
+streets, bright streaks) independent of the sun/exposure numbers, which were
+already reasonable. Fixed with one line in `simulate()`:
+`wetRoads.uniforms.uWetness.value = weather.wetness;` — clear weather now
+reads 0.35 (down from the hardcoded 0.6), and it will properly go to 1.0 in
+actual rain/storms instead of always.
+**Not fully resolved — see What remains:** this doesn't rule out the daylight
+exposure/pale-surface clipping TASK-069 already flagged as separately real;
+both were likely stacking.
+
+**2. Torch sprites at the Chatham/Chatboro spawn ("weird objects").** Traced to
+`makeTorch()`'s three calls right at `SPAWN_Z` ("a few torches ... only right
+around the spawn so it reads 'bayou'"). `atlases.torch`'s sprite frames are
+10x68 px — aspect ~0.15, very narrow — and `makeTorch` gave it `worldHeight =
+3.0`, drawing a ~3m x 0.44m sliver: a giant thin golden rod, not a planted
+tiki torch. Changed to 1.7 (chest-to-head height). The separate flame glimpsed
+apart from it in the screenshots wasn't identified — possibly an unrelated
+prop; couldn't confirm without rendering the scene.
+
+**3. The gas-can/escape-truck free-roam objective — removed.** This was a
+prototype-era mechanic (collect 4 gas cans, drive an escape truck out of Dixie
+Beaux) that predates Act One's story campaign and was never connected to it —
+`state.cans` had exactly one write site (the pickup loop itself), so nothing
+in the campaign could ever complete it another way. The human found it
+non-functional (cans apparently unreachable in the current world, hence the
+"gas can objective is gone" report) and the parked escape truck reported as a
+misplaced leftover. Removed:
+   - the 5 `makeCan()` spawn calls, `makeCan`/`settleCans` themselves, and the
+     `cans` array
+   - the escape truck mesh, its cone marker, its blocker and its poolLight
+   - the "GAS CANS 0/4" HUD panel (`index.html` + `syncHUD()`)
+   - the "Jack a ride · rob gas cans" / "Get to the truck…" default objective
+     text → now a neutral "Free roam. Explore Dixie Beaux."
+   - the minimap's can/truck blips, `tryInteract()` (its only job was the
+     truck), the auto-win truck-proximity check, and `win()` itself (fully
+     orphaned once both call sites were gone)
+   - the gas-can/truck line from the WASTED (`lose()`) screen's flavor text
+   - `CAN_GOAL`/`CAN_REACH`/`CAN_REACH_VEHICLE`/`truck`/`truckMarker`/`truckPos`
+     and every reference to them, including in `window.__game` and the
+     static-batching `moving` set (`TRUCK_Z` stays — it's also the dashed
+     centre-line's southern extent, unrelated to the truck object)
+
+**Testing performed:** `node --check` on `src/main.js`; grepped for every
+remaining reference to each removed identifier to confirm nothing was left
+dangling (a first pass missed the `...cans`/`truckMarker` entries in the
+static-batcher's `moving` set and `window.__game`, which would have thrown a
+ReferenceError at boot — caught and fixed before finishing). **Not verified
+live** — no GPU/Chromium this session, so the wet-road brightness change, the
+new torch proportions, and the HUD/objective text are all unconfirmed in an
+actual browser.
+
+**What remains:**
+- The still-open TASK-069 finding (`daycycle.js`'s exposure curve clipping
+  pale surfaces at noon) — this session's wet-road fix is additive to that,
+  not a replacement for it. Worth a real-GPU look at daylight brightness again
+  after both fixes are in.
+- The striped red/white drum object the human's screenshot showed near a gas
+  station — not identified. Nothing matching a striped cylinder turned up
+  under `makeGasStation`, the junkyard/trailer-park `makeBarrel` (uses a
+  photographic texture, not procedural stripes), or a grep for barrel/drum/
+  hazard-stripe code. Needs either exact in-game coordinates or a live look to
+  chase further.
+- `win()`'s narrative ("left dixie beaux", the truck driving off) is gone with
+  its only trigger. If Act One is meant to have its own ending screen distinct
+  from BUSTED/WASTED, that's still an open question, not answered here.
+
+---
+
 ### TASK-073 — Vehicle destruction: catch fire, then explode, then a charred wreck that outlasts the player (human request, 2026-09-22)
 
 **Status:** `REVIEW` (`node --check`ed; **not verified live** — no GPU/Chromium
