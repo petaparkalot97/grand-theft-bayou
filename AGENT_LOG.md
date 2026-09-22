@@ -895,6 +895,28 @@ grid** instead: that went 4/4 to 0/0 for deputies and stayed 0 for cruisers.
 Clearance of exactly 0 is the correct resting state for a pushed-out mover, not
 a failure.
 
+### The Mississippi was drawn underneath the ground
+
+Playtest: there should be river water for the Grand Crescent riverboat to sit
+in. There was — `orlearouge.js` `riverfront()` has always built one — at
+**y = -0.25**, and `main.js`'s `buildGround()` lays a single plane across the
+whole 2400 m state at **y = 0**. The river was buried under the world floor and
+had never been visible once. The casino was moored on grass.
+
+**The convention it broke: every ground-level surface in this game stacks in
+small POSITIVE increments** — `GROUND_Y` in main.js runs dirtPad 0.012, lot
+0.014, gravel 0.016, apron 0.018, street 0.019, highway 0.020, and the causeway
+swamp in this same file is at 0.035. Anything at or below 0 disappears. The
+river is now at 0.03.
+
+**And a warning about widening it.** The first fix also took the river from 80 m
+to 160 m across, which looked much better and was wrong: `CITY.maxX` grew from
+136 to 520 in a recent merge and the expanded world now has blockers scattered
+out to z 470 across the whole x span, so a wider river floods real content.
+Reverted to the authored footprint — height only. **If the riverfront is ever
+reworked, that overlap has to be sorted out first:** there is already city
+paving, a hospital and foliage inside z 384–464, which is water.
+
 ### The Bravado chase dialogue was gated behind a skill check
 
 Playtest: "the dialogue in regard to the Green Bravado chase for Mally is

@@ -460,7 +460,20 @@ export function createOrleaRouge(ctx) {
       color: 0x0a1a22, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.2, name: "river water",
     });
     river.userData.gtbRealized = true;
-    plane(CITY.maxX - CITY.minX + 40, 80, river, (CITY.maxX + CITY.minX) / 2, -0.25, CITY.maxZ + 42);
+    // The Mississippi, and the only reason the riverboat is a riverboat.
+    //
+    // This was drawn at y = -0.25 — BELOW the world ground. main.js's
+    // buildGround() lays one plane across the whole 2400 m state at y = 0, so
+    // the river was buried under it and never visible at all: the Grand
+    // Crescent sat on grass. Everything else in the game stacks in small
+    // positive increments for exactly this reason (see GROUND_Y in main.js, and
+    // the causeway swamp above at 0.035).
+    //
+    // Height only — the footprint is left exactly as authored. Widening it was
+    // tempting and wrong: the expanded map now has blockers scattered out to
+    // z 470 across the whole x span, so a wider river floods real content. If
+    // the riverfront is ever reworked, that overlap needs sorting out first.
+    plane(CITY.maxX - CITY.minX + 40, 80, river, (CITY.maxX + CITY.minX) / 2, 0.03, CITY.maxZ + 42);
     // promenade railing, solid
     const rail = std("wrought iron railing", 0x1c1f22, { metalness: 0.6, roughness: 0.5 });
     mesh(new THREE.BoxGeometry(CITY.maxX - CITY.minX, 0.08, 0.08), rail, 0, 1.0, CITY.maxZ + 1.2, { cast: false });
