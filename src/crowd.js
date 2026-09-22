@@ -575,6 +575,22 @@ export function makeCrowd(spots, o = {}) {
   }
 
   /**
+   * Set the room off from somewhere other than the stage — the strip's own bit of
+   * street theatre (a winner at the machines, a scuffle on the door). Same `hype`
+   * a big move uses, so a cheer looks like a cheer whoever caused it, and the same
+   * exclusion rule: the people whose job it is not to stop are not stopped.
+   *
+   * `radius` is measured from the commotion, not from the room's centre — a cheer
+   * at the door is a cheer at the door, and the pit at the back keeps drinking.
+   */
+  function cheerAt(lx, lz, sec, radius = 9) {
+    for (const x of actors) {
+      if (x.act || x.script || x.live === false || WORKING.has(x.role)) continue;
+      if (Math.hypot(x.a.position.x - lx, x.a.position.z - lz) < radius) x.hype = sec;
+    }
+  }
+
+  /**
    * The strip's clock. Staff work all day; punters, dancers and the queue do
    * not. `dusk` keeps every other one of them, which is the difference between
    * an afternoon block and a Friday night without needing a second cast.
@@ -699,7 +715,7 @@ export function makeCrowd(spots, o = {}) {
   }
 
   return {
-    group, actors, meshes, tick, setShift,
+    group, actors, meshes, tick, setShift, cheerAt,
     // the show, for the district to expose (and for the QA to watch run)
     act, fans,
     // runtime arrivals: `claim()` brings one up at the kerb, `retire()` sends it
@@ -913,6 +929,19 @@ export function makePavement(spec) {
     }
   }
 
+  /**
+   * Set the frontage off — the pavement's half of the district's street theatre.
+   * Whoever is out on this block and can hear it stops walking and cheers, on the
+   * same `hype` timer the room uses, so the two halves of the strip react to the
+   * same event in the same way. Nobody inside a car, a building or a script joins in.
+   */
+  function cheer(sec = 2.6, radius = 16) {
+    for (const x of actors) {
+      if (x.live === false || x.state === INSIDE || x.state === GONE) continue;
+      if (Math.hypot(x.a.position.x - door.x, x.a.position.z - line.z) < radius) x.hype = sec;
+    }
+  }
+
   // Every leg any of them can walk, in local space — the audit samples these
   // against the venue's own collision, so "a walker went through a car" is a
   // failing check rather than a thing somebody notices on a drive past.
@@ -922,7 +951,216 @@ export function makePavement(spec) {
   ];
   for (const s of spots) routes.push({ what: "a stop", a: { x: s.x, z: line.z }, b: { x: s.x, z: s.z } });
 
-  return { group, actors, meshes, tick, setShift, line, door, routes };
+  return { group, actors, meshes, tick, setShift, cheer, line, door, routes };
+}
+
+// ---------------------------------------------------------------------------
+// The crossing: the one piece of the strip that is not a frontage. People going
+// *over* a road rather than along one, which is the difference between a district
+// you look at and a district you use.
+//
+// It is world-space (it belongs to the highway, not to any venue) and it feeds
+// itself back to traffic.js as wide obstacles — `{x, z, r}` — which is the whole
+// trick: a car does not "ease past" somebody in the carriageway after a few
+// seconds, it waits. The other half of the same bargain is that people stand on
+// the kerb first and cross one at a time, so a car is not stopped every fifteen
+// seconds by somebody stepping off mid-block.
+// ---------------------------------------------------------------------------
+
+/** Where a crosser is: on the kerb waiting, mid-crossing, or walking off it. */
+const CROSS_WAIT = 0, CROSS_GO = 1, CROSS_OFF = 2;
+
+/**
+ * Build a pedestrian crossing: people waiting on either kerb, crossing, and
+ * drifting off along the sidewalk to be replaced.
+ *
+ * @param {object} spec
+ *   seed     deterministic casting
+ *   count    how many people use this crossing in total
+ *   kerbA/B  { x, z } the two kerbs — the crossing runs A to B
+ *   roadHalf half the carriageway (from the crossing's centre), in metres
+ *   wide     how wide the crossing is, along the road
+ * @returns {{ group, actors, meshes, tick, setShift, obstacles, routes }}
+ *   `obstacles()` is what main.js hands to traffic.js: the ones actually in the
+ *   carriageway right now, as radius-bearing points (everybody else is parked
+ *   far outside the map, where `clearance()` skips them, so nothing is allocated
+ *   per frame and a person on the kerb is never mistaken for a person in the road).
+ */
+export function makeCrossing(spec) {
+  const rng = mulberry((spec.seed | 0) || 17);
+  const A = spec.kerbA, B = spec.kerbB;
+  const dx = B.x - A.x, dz = B.z - A.z;
+  const L = Math.hypot(dx, dz) || 1;
+  const fx = dx / L, fz = dz / L;              // along the crossing
+  const px = -fz, pz = fx;                     // across it: the sidewalk's direction
+  const roadHalf = spec.roadHalf ?? 5;
+  const wide = spec.wide ?? 3.2;
+  const mid = L / 2;                           // the middle of the carriageway
+  const count = spec.count ?? 8;
+  const group = new THREE.Group();
+  const actors = [];
+  let meshes = 0;
+
+  for (let i = 0; i < count; i++) {
+    // the same people as the strip's own pavement: mostly the door mix, with the
+    // odd dancer, because the crossing at a nightlife block is not all commuters
+    const a = rng() < 0.2 ? ROLES.dancer.make(rng, ROLES.dancer.h) : makeMixed(rng);
+    // `s` runs from behind kerb A (0) to behind kerb B (L); `u` is how far along
+    // the kerb they are, so the crossing is a corridor and not a single-file line
+    const from = rng() < 0.5 ? 0 : 1;
+    const north = rng() < 0.78;                 // most of a nightlife block is out at night
+    const rec = {
+      a, s: from ? L + 0.5 : -0.5, u: (rng() - 0.5) * wide, dir: from ? -1 : 1,
+      speed: 1.15 + rng() * 0.45, wait: rng() * 4.5, state: CROSS_WAIT, hidden: false,
+      night: north, dayOk: !north, live: true,
+    };
+    a.baseY = 0;
+    a.traverse((m) => {
+      if (!m.isMesh) return;
+      m.userData.noBatch = true;
+      m.userData.crowd = true;
+      meshes++;
+    });
+    group.add(a);
+    actors.push(rec);
+    sync(rec);
+    face(rec);
+    a.play("idle", { force: true, loop: true });
+    a.update(0.001);
+  }
+
+  function sync(x) {
+    x.a.position.set(A.x + fx * x.s + px * x.u, 0, A.z + fz * x.s + pz * x.u);
+  }
+
+  /** Face the way they are going (models face +z, as elsewhere in this file). */
+  function face(x) {
+    const tx = fx * x.dir, tz = fz * x.dir;
+    x.a._yaw = Math.atan2(tx, tz);
+    x.a.rotation.y = x.a._yaw;
+  }
+
+  /** Facing along the kerb instead — somebody walking off the crossing, not over it. */
+  function faceAlong(x) {
+    x.a._yaw = Math.atan2(px * x.dir, pz * x.dir);
+    x.a.rotation.y = x.a._yaw;
+  }
+
+  /** On the kerb, back from the carriageway by half a metre — waiting, not stepping off. */
+  const kerb = (dir) => (dir > 0 ? -0.5 : L + 0.5);
+  const far = (dir) => (dir > 0 ? L + 0.5 : -0.5);
+
+  function tick(dt) {
+    for (const x of actors) {
+      if (x.live === false) continue;
+      const a = x.a;
+
+      if (x.state === CROSS_OFF) {
+        if (x.hidden) {
+          // off the block; somebody else walks on later. Not a spawn: the same
+          // people come back, which is why the crossing never grows a crowd.
+          x.wait -= dt;
+          if (x.wait <= 0) {
+            x.hidden = false;
+            x.u = (Math.random() - 0.5) * wide;
+            x.dir = x.dir > 0 ? -1 : 1;
+            x.s = kerb(x.dir);
+            x.state = CROSS_WAIT;
+            x.wait = 1 + Math.random() * 5;
+            a.visible = x.live !== false;
+            sync(x);
+            face(x);
+            a.play("idle", { force: true, loop: true });
+          }
+          continue;
+        }
+        x.u += x.dir * x.speed * dt;
+        if (Math.abs(x.u) > wide * 0.5 + 6.5) {
+          x.hidden = true;
+          x.wait = 3 + Math.random() * 9;
+          a.visible = false;
+          continue;
+        }
+        sync(x);
+        faceAlong(x);
+        a.play("walk");
+        a.update(dt);
+        continue;
+      }
+
+      if (x.state === CROSS_GO) {
+        x.s += x.dir * x.speed * dt;
+        if (x.dir > 0 ? x.s >= L + 0.5 : x.s <= -0.5) {
+          x.s = far(x.dir);
+          x.state = CROSS_WAIT;
+          x.wait = 0.8 + Math.random() * 4;
+          a.play("idle", { loop: true });
+        } else {
+          a.play("walk");
+        }
+        sync(x);
+        face(x);
+        a.update(dt);
+        continue;
+      }
+
+      // waiting on the kerb. A few of them look at the road they are about to
+      // walk into; most just stand there, which is what waiting looks like.
+      x.wait -= dt;
+      if (x.wait <= 0) {
+        if (Math.random() < 0.78) {
+          x.state = CROSS_GO;
+          x.dir = x.s < mid ? 1 : -1;
+          x.s = kerb(x.dir);
+        } else {
+          x.state = CROSS_OFF;
+          x.dir = x.s < mid ? -1 : 1;
+        }
+      } else if (a.anim !== "idle") {
+        a.play("idle", { loop: true });
+      }
+      sync(x);
+      face(x);
+      a.update(dt);
+    }
+  }
+
+  /** Day: a few of them; night: all of them — the same shift the strip works. */
+  function setShift(mode) {
+    const day = mode === "day", dusk = mode === "dusk";
+    for (let i = 0; i < actors.length; i++) {
+      const x = actors[i];
+      const live = day ? x.dayOk : dusk ? x.dayOk || i % 2 === 0 : true;
+      x.live = live;
+      if (!x.hidden) x.a.visible = live;
+    }
+  }
+
+  // One obstacle object per person, built once. Somebody not in the carriageway
+  // is parked at 1e5 — the same trick traffic.js's `park()` uses — because a car
+  // must never brake for a pedestrian who is standing on the kerb.
+  const obst = actors.map(() => ({ x: 1e5, z: 1e5, r: 0.55 }));
+  function obstacles() {
+    for (let i = 0; i < actors.length; i++) {
+      const x = actors[i], o = obst[i];
+      if (x.state === CROSS_GO && x.live !== false && Math.abs(x.s - mid) < roadHalf) {
+        o.x = x.a.position.x;
+        o.z = x.a.position.z;
+      } else {
+        o.x = o.z = 1e5;
+      }
+    }
+    return obst;
+  }
+
+  // The corridor's two edges, in world space: a person crosses the whole width of
+  // this, so a bollard or a lamp inside it is a person walking through it.
+  const routes = [
+    { what: "the crossing", a: { x: A.x + px * -wide / 2, z: A.z + pz * -wide / 2 }, b: { x: B.x + px * -wide / 2, z: B.z + pz * -wide / 2 } },
+    { what: "the crossing", a: { x: A.x + px * wide / 2, z: A.z + pz * wide / 2 }, b: { x: B.x + px * wide / 2, z: B.z + pz * wide / 2 } },
+  ];
+
+  return { group, actors, meshes, tick, setShift, obstacles, routes, kerbA: A, kerbB: B, roadHalf, wide };
 }
 
 /**

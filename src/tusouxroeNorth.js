@@ -36,7 +36,7 @@ import { FIXTURES, PROPS, makeGeoCache, makeKit, instanced } from "./interiors.j
 // this turns them into actors — the room's staff pinned to the bar, the games
 // and the stage, the rest drawn from spawnzones.js's own door mix for the
 // strip. Nothing here is placed by hand, so a layout change moves its crowd.
-import { makeCrowd, makePavement, pickLane, spotFree } from "./crowd.js";
+import { makeCrowd, makePavement, makeCrossing, pickLane, scriptActor, spotFree } from "./crowd.js";
 
 // ---------------------------------------------------------------------------
 // THE CROWN STRIP — North Tusouxroe's casino and nightlife row.
@@ -457,6 +457,33 @@ export function createTusouxroeNorth(ctx) {
   const WEST_STREET_X = -110;
   const EAST_STREET_X = 110;
 
+  // ---- the strip's own traffic and its crossing ------------------------------
+  // US-167 is 10 m of carriageway down the middle of the map (main.js paves it),
+  // and North Ave 2 crosses it at z = -320, which is the strip's junction. The
+  // crossing sits on the north side of that junction, in the gap between the two
+  // north-terrace halls — the one piece of the block that is nobody's frontage.
+  const ROAD_HALF = 5;                                  // US-167, from its centre
+  const CROWN_CROSS_Z = CROWN_AVE_Z - (CROWN_HALF + 0.4);   // just clear of the avenue's kerb
+  const KERB_IN = 1.4;                                  // how far the crossing's kerbs sit off the road
+  let crownWalk = null;                                 // the crossing (crowd.js makeCrossing)
+
+  // The strip's lanes. Two of them are its own avenue (North Ave 2), which is what
+  // puts cars *outside the doors* rather than past the end of the block: those two
+  // carry `kerbside`, and `buildSet()` hangs the venues' drop-off stops on them
+  // once the venues exist — a stop is a door, and there are no doors yet here.
+  // Everything else is the district's approach (US-167) and the boulevard.
+  const crownLanes = [
+    { name: "northbound-ext", points: [[ROAD_X + 2.4, -136], [ROAD_X + 2.4, -400]], cruise: [14, 20] },
+    { name: "southbound-ext", points: [[ROAD_X - 2.4, -400], [ROAD_X - 2.4, -136]], cruise: [14, 20] },
+    { name: "blvd-eastbound", points: [[-180, BLVD_Z - 2.4], [180, BLVD_Z - 2.4]], cruise: [12, 18] },
+    { name: "blvd-westbound", points: [[180, BLVD_Z + 2.4], [-180, BLVD_Z + 2.4]], cruise: [12, 18] },
+    // the strip's own avenue: slower than the highway (it is a kerb-to-kerb street
+    // with cars pulling in and out of it), and the near lane of each direction is
+    // the one a car can put somebody down from
+    { name: "ave2-eastbound", points: [[-190, CROWN_AVE_Z - 2.4], [190, CROWN_AVE_Z - 2.4]], cruise: [9, 15], kerbside: -1 },
+    { name: "ave2-westbound", points: [[190, CROWN_AVE_Z + 2.4], [-190, CROWN_AVE_Z + 2.4]], cruise: [9, 15], kerbside: 1 },
+  ];
+
   // the named buildings' footprints: the radar draws them, and the filler grid keeps off them
   const LANDMARK_FOOTPRINTS = [
     { x0: -79, x1: -51, z0: BLVD_Z + 11, z1: BLVD_Z + 33 }, // Hospital
@@ -483,6 +510,44 @@ export function createTusouxroeNorth(ctx) {
   let crownPromptEl = null;             // its DOM chip, made once in buildCrownStrip()
   const WALL_DROP = 0.22;               // walls cut to this fraction while the player is inside
   const STATION_REACH = 3.4;            // how close counts as "at" a game, a bar, a stage
+
+  // ---- the odd bit of street theatre ----------------------------------------
+  // A cheer outside a door (somebody hit on the machines), or security walking
+  // somebody out. Deliberately rare, and deliberately *not* a second crowd: both
+  // happen to the people the district already has — the pavement's walkers, the
+  // door's own bouncer, and the two spares each frontage casts for exactly this.
+  // A block where something happens every ten seconds reads as a screensaver.
+  let crownEventT = 26;                 // seconds until the next one
+  let crownEventClock = 0;              // how long the strip has been running
+  const crownEventLog = [];             // the last dozen, for QA and for anyone watching
+  const CROWN_EVENT_KINDS = ["cheer", "bounce"];
+
+  /**
+   * Start one piece of street theatre, now: at `venueName`, or at a venue that is
+   * on screen, and of `kind`, or of a kind picked at random.
+   *
+   * @returns {{kind:string, venue:string, t:number}|null} null when it could not
+   *   happen (both spares already out, or nothing live to cheer)
+   */
+  function crownEvent(kind, venueName) {
+    const live = crownRecs.filter((r) => r.crowdOut.group.visible || (r.pave && r.pave.group.visible));
+    const rec = venueName
+      ? crownRecs.find((r) => r.v.name === venueName)
+      : (live.length ? live[(Math.random() * live.length) | 0] : null);
+    if (!rec) return null;
+    const k = kind || CROWN_EVENT_KINDS[(Math.random() * CROWN_EVENT_KINDS.length) | 0];
+    if (k === "cheer") {
+      // "somebody won": the frontage the door can see, and the door crew itself
+      if (rec.pave) rec.pave.cheer(3.0);
+      rec.crowdOut.cheerAt(0, rec.v.k.d / 2 + 3, 3.0, 12);
+    } else if (!rec.bounce()) {
+      return null;
+    }
+    const e = { kind: k, venue: rec.v.name, t: crownEventClock };
+    crownEventLog.push(e);
+    if (crownEventLog.length > 12) crownEventLog.shift();
+    return e;
+  }
 
   function addOccluder(x, z, w, d, h = 18) {
     occluders.push({
@@ -618,10 +683,10 @@ export function createTusouxroeNorth(ctx) {
       rh(G.box(gap + 6, 1.0, 0.3), M.emis("crown fascia " + v.id, v.theme.accent, 1.15), 0, head + 0.5, FZ + 4.1);
       rh(G.box(gap + 6.4, 0.4, 0.4), trimMat, 0, head - 0.15, FZ + 4.1);
       rec.sign.push(rh(G.box(W * 0.72, v.sign.h, 0.3),
-        crownSignMat(v.name, v.ink, { w: W * 0.72, h: v.sign.h }), 0, H + 2.1, FZ - 0.2));
+        crownSignMat(v.name, v.ink, { w: W * 0.72, h: v.sign.h }), 0, H - 2.6, FZ + 0.15));
       if (v.sign.sub) {
         const sw = W * 0.34;
-        rec.sign.push(rh(G.box(sw, 1.1, 0.22), crownSignMat(v.sign.sub, v.ink, { w: sw, h: 1.1 }), 0, H - 0.6, FZ + 0.05));
+        rec.sign.push(rh(G.box(sw, 1.1, 0.22), crownSignMat(v.sign.sub, v.ink, { w: sw, h: 1.1 }), 0, H - 5.0, FZ + 0.11));
       }
 
       // ---- interior: the floor, then the venue's own fixture list ----
@@ -769,7 +834,11 @@ export function createTusouxroeNorth(ctx) {
       g.add(actorIn);
       g.add(actorOut);
       rec.crowdIn = makeCrowd(inSpots, { count: cast.crowd ?? 10, seed: (v.x * 31 + v.cz * 7) | 0 });
-      rec.crowdOut = makeCrowd(outSpots, { count: outSpots.length, seed: (v.x * 17 + v.cz * 13 + 3) | 0, lane, minGap: 1.2 });
+      // `spares: 2` is what the two runtime errands below spend: an arrival out of
+      // a car, and somebody being walked out by the door. They are cast here and
+      // parked under the floor — a drop-off is an actor walking a route, not a
+      // person created in front of you, and neither errand ever grows the crowd.
+      rec.crowdOut = makeCrowd(outSpots, { count: outSpots.length, seed: (v.x * 17 + v.cz * 13 + 3) | 0, lane, minGap: 1.2, spares: 2 });
       actorIn.add(rec.crowdIn.group);
       actorOut.add(rec.crowdOut.group);
       for (const x of rec.crowdIn.actors) x.side = "inside";
@@ -791,6 +860,67 @@ export function createTusouxroeNorth(ctx) {
         spots: [],
       }) : null;
       if (rec.pave) actorOut.add(rec.pave.group);
+
+      // ---- the kerb: where a car stops and somebody gets out -----------------
+      // The forecourt's own outer edge — the strip's ground, a step in from the
+      // avenue's sidewalk and just inside the kerb line, on the doorway's axis so
+      // it is clear of the bollard row and the valet bays by construction. The
+      // spur below is the straight walk from there to the middle of the hall, on
+      // the same centreline the player walks in on, so a car setting somebody
+      // down uses the real entrance and the audit samples it like any other route.
+      rec.kerb = { x: 0, z: FZ + fore - 0.4 };
+      rec.dropRoutes = [
+        { what: "the kerb spur", a: { x: 0, z: rec.kerb.z }, b: { x: 0, z: FZ - 1.6 } },
+      ];
+
+      /**
+       * A car has pulled up outside and somebody got out.
+       *
+       * The spare was cast at build time and parked under the floor, so this is a
+       * real actor walking a real route — kerb, threshold, inside — and then
+       * retired. That is what makes it repeatable: an hour of drop-offs does not
+       * leave the street full of people who arrived in cars.
+       *
+       * @returns {boolean} false when both spares are already out on an errand
+       */
+      rec.dropOff = () => {
+        const s = rec.crowdOut.claim(rec.kerb.x, rec.kerb.z);
+        if (!s) return false;
+        scriptActor(s, [
+          { x: rec.kerb.x, z: rec.kerb.z, wait: 0.6, on: "idle" },   // out of the car
+          { x: 0, z: FZ + 1.2, wait: 0.25, on: "idle" },             // over the threshold
+          { x: 0, z: FZ - 1.6, wait: 0 },                            // in, and gone
+        ], () => rec.crowdOut.retire(s));
+        return true;
+      };
+
+      /**
+       * Security walking somebody out: the door's own bouncer escorts a spare to
+       * the kerb, stands over him while he goes, and walks back to his post.
+       *
+       * The bouncer is a *real* door actor — `scriptActor` owns him for the
+       * duration and hands him back to his beat when he is done — so the escort is
+       * the same man who was standing at the door a minute ago, not a second one
+       * produced for the occasion. Every leg runs up the doorway's own axis, which
+       * is the walk the player uses and the audit already clears.
+       */
+      rec.bounce = () => {
+        const b = rec.crowdOut.actors.find((x) => x.role === "bouncer" && !x.script);
+        const s = rec.crowdOut.claim(0, FZ + 2.0);
+        if (!b || !s) { if (s) rec.crowdOut.retire(s); return false; }
+        const k = rec.kerb.z - 1.2;
+        scriptActor(b, [
+          { x: 0, z: FZ + 2.5, wait: 0.3, on: "idle" },
+          { x: 0, z: k, wait: 2.4, on: "idle" },
+          { x: 0, z: FZ + 2.5, wait: 0.2, on: "idle" },
+          { x: b.home.x, z: b.home.z, wait: 0 },
+        ]);
+        scriptActor(s, [
+          { x: 0, z: k + 0.4, wait: 1.6, on: "idle" },
+          { x: 0, z: rec.kerb.z, wait: 0 },
+        ], () => rec.crowdOut.retire(s));
+        return true;
+      };
 
       pois.push({ x: v.x, z: v.entranceZ, r: 10, label: v.name });
       pois.push({ x: v.x, z: (v.facadeZ + v.entranceZ) / 2, r: 12 });
@@ -840,6 +970,56 @@ export function createTusouxroeNorth(ctx) {
     }
 
     for (const v of CROWN) buildVenue(v);
+
+    // ---- the avenue's kerbside stops: a car pulls in outside a venue and
+    //      somebody gets out. This is the only reason these two lanes carry
+    //      `stops` at all, and it is the whole of "cars dropping people off at the
+    //      doors": traffic.js brakes for the point like a red light, calls this
+    //      once while it sits there, and pulls away (the *caller* owns what
+    //      "somebody gets out here" means, which is why the venue does the work).
+    //      A stop is a door, so it can only be hung up here — the venues are the
+    //      line above this one.
+    for (const l of crownLanes) {
+      if (!l.kerbside) continue;
+      const ward = Math.sign(l.points[l.points.length - 1][0] - l.points[0][0]) || 1;
+      l.stops = crownRecs
+        .filter((r) => r.v.side === l.kerbside)
+        .map((r) => {
+          // a world point on this venue's kerb, thrown onto the lane: only its x
+          // survives the projection, and that is the point — the car stops outside
+          // the door, on the lane, wherever the lane happens to run
+          const p = crownToWorld(r.v, r.kerb.x, r.kerb.z + 2.0);
+          return { x: p.x, z: p.z, dwell: [3.2, 6.5], what: "drop-off", onStop: () => r.dropOff() };
+        })
+        // in the order this lane *drives* them, so a car meets the nearest door
+        // ahead of it first and never skips one (the lane runs the other way
+        // depending on which terrace it serves)
+        .sort((a, b) => (a.x - b.x) * ward);
+    }
+
+    // ---- the crossing: over US-167 at the strip's junction, in the gap between
+    //      the two north-terrace halls. The one piece of the block that belongs to
+    //      the street rather than to a venue: stripes on the carriageway, and
+    //      people using it. Its pedestrians go out to traffic.js as wide
+    //      obstacles (see `crownCrossers`), so a car waits for somebody in the
+    //      road instead of easing past them after a few seconds.
+    {
+      const g = new THREE.Group();
+      g.position.set(ROAD_X, 0, CROWN_CROSS_Z);
+      scene.add(g);
+      // bars along the kerb at 1.4 m pitch: the crossing reads as a crossing from
+      // a car, which is the only place it has to read from. 0.032 clears the
+      // highway's own surface (0.022) by a centimetre, so it cannot z-fight it.
+      for (let i = 0; i < 7; i++) addMesh(g, G.box(0.55, 0.02, 3.0), M.stripe, -ROAD_HALF + 0.7 + i * 1.4, 0.032, 0);
+      crownWalk = makeCrossing({
+        seed: 21, count: 8,
+        kerbA: { x: ROAD_X - (ROAD_HALF + KERB_IN), z: CROWN_CROSS_Z },
+        kerbB: { x: ROAD_X + (ROAD_HALF + KERB_IN), z: CROWN_CROSS_Z },
+        roadHalf: ROAD_HALF, wide: 3.0,
+      });
+      scene.add(crownWalk.group);
+      crownWalk.setShift(crownShift || "night");
+    }
   }
 
   function buildSet() {
@@ -1143,9 +1323,55 @@ export function createTusouxroeNorth(ctx) {
           live: p.live !== false, state: p.state, goal: p.target ? p.target.kind : null,
           lx: p.a.position.x, lz: p.a.position.z,
         })) : [],
-        routes: r.pave ? r.pave.routes : [],
+        // every route a walker or an errand can take on this frontage, in local
+        // space: the pavement's own legs, and the kerb spur a car's arrival uses
+        routes: r.pave ? [...r.pave.routes, ...(r.dropRoutes || [])] : [],
+        // where a car puts somebody down: the forecourt's own edge, on the
+        // doorway's axis, one step in from the avenue's sidewalk
+        kerb: r.kerb || null,
       }));
     },
+
+    /**
+     * QA: the crossing over US-167 — its kerbs, how wide the carriageway is, the
+     * corridor's two edges, and where every person using it is right now. World
+     * space, because this is the one piece of the strip that is not inside a
+     * venue's local frame.
+     */
+    get crownCrossing() {
+      if (!crownWalk) return null;
+      return {
+        kerbA: crownWalk.kerbA,
+        kerbB: crownWalk.kerbB,
+        roadHalf: crownWalk.roadHalf,
+        wide: crownWalk.wide,
+        routes: crownWalk.routes,
+        inRoad: crownWalk.obstacles().reduce((n, o) => n + (o.x < 1e4 ? 1 : 0), 0),
+        people: crownWalk.actors.map((x) => ({
+          live: x.live !== false, state: x.state, hidden: !!x.hidden,
+          x: x.a.position.x, z: x.a.position.z,
+        })),
+      };
+    },
+
+    /**
+     * The crossing's pedestrians, for traffic.js: only the ones in the carriageway
+     * right now, as radius-bearing obstacles. `main.js` hands this to
+     * `traffic.update` alongside the player and the other traffic, which is what
+     * makes a car wait for somebody in the road instead of driving through them.
+     * Reused array, reused objects — nothing here allocates per frame.
+     */
+    get crownCrossers() { return crownWalk ? crownWalk.obstacles() : []; },
+
+    /**
+     * QA: start a piece of street theatre now (`"cheer"`, `"bounce"`), at a named
+     * venue or wherever is on screen. The district runs this itself on a timer;
+     * exposed so a test can watch one happen rather than wait for it.
+     */
+    crownEvent,
+
+    /** QA: what has happened on the strip recently — kind, venue, and when. */
+    get crownEvents() { return crownEventLog.map((e) => ({ ...e })); },
 
     /**
      * QA: the cutaway's state, per venue. `roofVisible:false` and a `wallScale`
@@ -1224,6 +1450,7 @@ export function createTusouxroeNorth(ctx) {
           r.crowdOut.setShift(shift);
           if (r.pave) r.pave.setShift(shift);
         }
+        if (crownWalk) crownWalk.setShift(shift);
       }
 
       crownPrompt = null;
@@ -1271,6 +1498,25 @@ export function createTusouxroeNorth(ctx) {
           crownPrompt = { v, text: `${v.name} — ${v.blurb}` };
         }
       }
+      // the crossing: culled like everything else — the strip's own highway
+      // crossing is 40 m from the far halls, and a person crossing US-167 is not
+      // worth a tick from inside a casino
+      if (crownWalk) {
+        const away = Math.hypot(ROAD_X - playerPos.x, CROWN_CROSS_Z - playerPos.z);
+        crownWalk.group.visible = away < 110;
+        if (crownWalk.group.visible) crownWalk.tick(dt);
+      }
+
+      // ...and the odd bit of street theatre, on its own clock. Rarer by day: an
+      // afternoon block is staff and deliveries, and the things that happen on it
+      // are fewer and duller.
+      crownEventClock += dt;
+      crownEventT -= dt;
+      if (crownEventT <= 0) {
+        crownEventT = shift === "night" ? 20 + Math.random() * 30 : 55 + Math.random() * 70;
+        crownEvent(null, null);
+      }
+
       if (near) crownPrompt = near;
       if (crownPromptEl) {
         crownPromptEl.hidden = !crownPrompt;
@@ -1278,12 +1524,7 @@ export function createTusouxroeNorth(ctx) {
       }
     },
 
-    lanes: [
-      { name: "northbound-ext", points: [[ROAD_X + 2.4, -136], [ROAD_X + 2.4, -400]], cruise: [14, 20] },
-      { name: "southbound-ext", points: [[ROAD_X - 2.4, -400], [ROAD_X - 2.4, -136]], cruise: [14, 20] },
-      { name: "blvd-eastbound", points: [[-180, BLVD_Z - 2.4], [180, BLVD_Z - 2.4]], cruise: [12, 18] },
-      { name: "blvd-westbound", points: [[180, BLVD_Z + 2.4], [-180, BLVD_Z + 2.4]], cruise: [12, 18] },
-    ],
+    lanes: crownLanes,
     zoneAt(x, z) {
       if (x < BOUNDS.x0 || x > BOUNDS.x1 || z < BOUNDS.z0 || z > BOUNDS.z1) return null;
       // The Crown Strip first: "building" over a hall means nobody spawns inside a

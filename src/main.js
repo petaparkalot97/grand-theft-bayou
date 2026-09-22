@@ -1965,6 +1965,11 @@ function trafficObstacles() {
       _obstacles.push(v.obj.position);
     }
   }
+  // The Crown Strip's crossing (tusouxroeNorth.js): pedestrians *in the
+  // carriageway*, as radius-bearing points — traffic.js never eases past one of
+  // those, it waits. Everybody on the kerb is parked far outside the map and is
+  // skipped by the same test, so this costs an array walk and nothing else.
+  if (tusouxroeNorth) for (const p of tusouxroeNorth.crownCrossers) _obstacles.push(p);
   return _obstacles;
 }
 // ---------------------------------------------------------------- build the level
