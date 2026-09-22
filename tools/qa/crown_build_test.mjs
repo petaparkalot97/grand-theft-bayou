@@ -651,6 +651,145 @@ check("every venue has the interaction points its room promised",
     stray.length ? `${stray.length} stray blockers, e.g. (${stray[0].x.toFixed(0)}, ${stray[0].z.toFixed(0)})` : "every strip blocker is inside a hall or forecourt");
 }
 
+// ------------------------------------------------------------------ the people
+// A row of four empty buildings is a museum. The crowd is cast by crowd.js from
+// spots the fixtures proposed next to their own furniture (interiors.js `b.spot`)
+// and from frontage geometry the district derived, and this section checks the
+// things that actually go wrong with a crowd: somebody standing inside a bar, two
+// people in one spot, a valet inside a parked car, the whole room bunched into the
+// doorway, or 80 actors burning frames from the far side of the parish.
+//
+// The player is parked on the axis (see the cutaway section), so start from a
+// known place and drive the LOD explicitly.
+{
+  const crown = district.crownCrowd;
+  const total = crown.reduce((n, c) => n + c.inside + c.outside, 0);
+  const spread = crown.map((c) => `${c.venue} ${c.inside}+${c.outside}`).join(", ");
+
+  check("the strip is populated — every venue full, and not with four people",
+    crown.every((c) => c.inside + c.outside >= 12) && total >= 60, `${total} people on the block — ${spread}`);
+
+  // the staff the floor plan implies, per venue: a bar has a barman, a pit has a
+  // croupier, a stage has an act. Derived from the venue's own layout, so a new
+  // fixture that needs staffing is one line here rather than a hand-written spot.
+  const STAFF_OF = {
+    barBig: ["barkeep"], cardTable: ["dealer"], roulette: ["croupier"], cashier: ["clerk"],
+    djBooth: ["dj"], stage: ["performer", "gogo"], vipDeck: ["host"],
+  };
+  let missing = null;
+  for (const v of CROWN_STRIP.venues) {
+    const mine = crown.find((c) => c.venue === v.name);
+    const have = new Set(mine.people.filter((p) => p.side === "inside").map((p) => p.role));
+    for (const s of v.layout) {
+      const want = STAFF_OF[s.fixture];
+      if (want && !want.some((r) => have.has(r))) { missing = `${v.name}: nobody cast as ${want.join("/")} (${s.fixture})`; break; }
+    }
+    if (missing) break;
+  }
+  check("every room is staffed for what is in it", !missing, missing ||
+    CROWN_STRIP.venues.map((v) => `${v.name}: ${crown.find((c) => c.venue === v.name).people.filter((p) => p.side === "inside").length}`).join(" "));
+
+  // front of house: two on the door and two valets for every venue, a walkable
+  // forecourt lane for the strollers, and whatever the venue's own cast asked for
+  // (the club's dancers on the pavement, the lounge's smokers)
+  let crew = null;
+  for (const v of CROWN_STRIP.venues) {
+    const mine = crown.find((c) => c.venue === v.name);
+    const out = mine.people.filter((p) => p.side === "outside");
+    const n = (role) => out.filter((p) => p.role === role).length;
+    const cast = v.cast || {};
+    if (n("bouncer") !== 2) crew = `${v.name}: ${n("bouncer")} on the door, want 2`;
+    else if (n("valet") < 1) crew = `${v.name}: nobody valet-parking`;
+    else if (!mine.lane) crew = `${v.name}: no walkable lane across its own forecourt`;
+    else if (n("walker") !== 2) crew = `${v.name}: ${n("walker")} strollers, want 2`;
+    else if (cast.party && n("party") !== cast.party) crew = `${v.name}: ${n("party")} out front dancing, want ${cast.party}`;
+    else if (cast.smoker && n("smoker") !== cast.smoker) crew = `${v.name}: ${n("smoker")} on a smoke, want ${cast.smoker}`;
+    if (crew) break;
+  }
+  check("the front of every house is worked — door, valets, a cleared lane and its own act",
+    !crew, crew || CROWN_STRIP.venues.map((v) => {
+      const out = crown.find((c) => c.venue === v.name).people.filter((p) => p.side === "outside");
+      return `${v.name} ${out.length}(lane ${crown.find((c) => c.venue === v.name).lane ? "yes" : "NO"})`;
+    }).join(", "));
+
+  // --- where they actually stand -------------------------------------------
+  const toWorld = (v, lx, lz) => (v.rot === 0 ? { x: v.x + lx, z: v.cz + lz } : { x: v.x - lx, z: v.cz - lz });
+  let buried = null, overlapping = null, offFloor = null, inRoad = null, bunched = null;
+
+  for (const v of CROWN_STRIP.venues) {
+    const mine = crown.find((c) => c.venue === v.name);
+    const FZ = v.d / 2;
+    const people = mine.people.map((p) => ({ ...p, ...toWorld(v, p.lx, p.lz) }));
+
+    for (const p of people) {
+      // in their room, or on their own forecourt — never out on the avenue
+      const inHall = p.side === "inside" && Math.abs(p.lx) < v.w / 2 - 0.4 && Math.abs(p.lz) < FZ - 0.4;
+      const inFore = p.side === "outside" && p.lz > FZ && p.lz < FZ + v.k.fore + 0.2 && Math.abs(p.lx) < v.w / 2 + 5;
+      if (!inHall && !inFore) offFloor = `${v.name}: ${p.role} at local (${p.lx.toFixed(1)}, ${p.lz.toFixed(1)})`;
+      if (Math.abs(p.z - (-320)) < 5.5) inRoad = `${v.name}: ${p.role} is on North Ave 2`;
+
+      for (const b of blockers) {
+        const d = Math.hypot(b.x - p.x, b.z - p.z), gap = d - b.r;
+        // A stroller or a dancer takes steps, so its whole radius has to be clear;
+        // somebody standing at a stool only has to be out of the thing itself.
+        // A coarse circle for a 5 m sofa will always contain the people sitting on
+        // it, so the big ones are held to half their radius — a person planted in
+        // the middle of a bar or a parked car still fails.
+        const need = p.beat === "still" ? -0.5 * b.r : 0.55;
+        if (gap < need) buried = `${v.name}: ${p.role} (${p.beat}) ${gap.toFixed(2)} m from a ${b.r} m blocker`;
+      }
+    }
+    for (let i = 0; i < people.length && !overlapping; i++) {
+      for (let j = i + 1; j < people.length; j++) {
+        if (Math.hypot(people[i].lx - people[j].lx, people[i].lz - people[j].lz) < 0.45) {
+          overlapping = `${v.name}: ${people[i].role} and ${people[j].role} in the same spot`;
+          break;
+        }
+      }
+    }
+    // a room is a room, not a doorway: the crowd has to reach across it
+    const ins = people.filter((p) => p.side === "inside");
+    if (ins.length > 4) {
+      const span = Math.max(...ins.map((p) => p.lx)) - Math.min(...ins.map((p) => p.lx));
+      if (span < v.w * 0.3) bunched = `${v.name}: the room's ${ins.length} people span ${span.toFixed(1)} m of ${v.w}`;
+    }
+  }
+  check("nobody is standing inside the furniture", !buried, buried || `${total} people, all clear of ${blockers.length} blockers`);
+  check("nobody is standing in somebody else", !overlapping, overlapping || "closest pair in every room is 0.45 m apart or more");
+  check("everybody is on their own floor — in the room or on its own forecourt", !offFloor, offFloor || "none in a wall, a road or the next lot");
+  check("no patron is standing on North Ave 2", !inRoad, inRoad || "the crowd stays off the avenue");
+  check("the crowd fills the room instead of the doorway", !bunched, bunched || "every room's people span at least a third of it");
+
+  // --- the LOD, and the tick ------------------------------------------------
+  // Standing in a venue: both groups live. On the block: the pavement only.
+  // Away from it: neither, and nobody is simulated.
+  const v0 = CROWN_STRIP.venues[0];
+  const shownAt = (x, z) => { district.update(0.1, { x, y: 0, z }); return district.crownCrowd.find((c) => c.venue === v0.name).shown; };
+  const inRoom = shownAt(v0.x, v0.cz);
+  const onBlock = shownAt(v0.x, v0.cz + 40);
+  const away = shownAt(v0.x, v0.cz + 400);
+  check("the crowd is culled by distance, not drawn from anywhere on the map",
+    inRoom.inside && inRoom.outside && onBlock.outside && !onBlock.inside && !away.inside && !away.outside,
+    `in room ${inRoom.inside}/${inRoom.outside}, on the block ${onBlock.inside}/${onBlock.outside}, away ${away.inside}/${away.outside}`);
+
+  // an actor taking one step per tick, and a stalled one taking none
+  district.update(0.1, { x: v0.x, y: 0, z: v0.cz });
+  const before2 = district.crownCrowd.find((c) => c.venue === v0.name).people.map((p) => ({ p, lx: p.lx, lz: p.lz }));
+  let stride = 0, walked = 0;
+  for (let i = 0; i < 20; i++) district.update(0.1, { x: v0.x, y: 0, z: v0.cz });
+  const after2 = district.crownCrowd.find((c) => c.venue === v0.name).people;
+  for (let i = 0; i < before2.length; i++) {
+    const d = Math.hypot(after2[i].lx - before2[i].lx, after2[i].lz - before2[i].lz);
+    stride = Math.max(stride, d);
+    if (d > 0.05) walked++;
+  }
+  check("an actor crosses ground one step at a time, and none of them teleport",
+    stride < 3 && walked > 0, `${walked} of ${before2.length} moved in 2 s, furthest ${stride.toFixed(2)} m`);
+
+  const per = (total / CROWN_STRIP.venues.length).toFixed(1);
+  console.log(`         ${total} actors on the strip (${per} a venue) · ${crown[0].meshes} meshes in ${v0.name} alone`);
+}
+
 // ------------------------------------------------------------------ the sweep
 // merge.js merges static siblings by material and chunk. The moving meshes are
 // skipped per-mesh, which is what makes a walk-in interior compatible with
@@ -660,12 +799,13 @@ check("every venue has the interaction points its room promised",
   const b = sandbox.batchStatic(scene, { exclude: () => false, boundary: () => false });
   check("the batch sweep merged the strip's static scenery", b.removed > 0,
     `${b.meshes} meshes → ${b.meshes - b.removed} (${b.batches} batches, ${b.signatures} material signatures)`);
-  let after = 0;
-  const recount = (o) => { if (o.isMesh && o.userData.noBatch) after++; for (const c of o.children) recount(c); };
+  let after = 0;   // the cutaway's movers only — the actors are recounted below
+  const recount = (o) => { if (o.isMesh && o.userData.noBatch && !o.userData.crowd) after++; for (const c of o.children) recount(c); };
   for (const c of scene.children) recount(c);
   check("the sweep did not merge away a single moving mesh", after === before, `${before} before, ${after} after`);
+  const actorMeshes = district.crownCrowd.reduce((n, c) => n + c.meshes, 0);
   check("not one actor's mesh was merged into a static batch",
-    crowdMeshes.length === crowdActorMeshes && crowdMeshes.length > 400,
+    crowdMeshes.length === actorMeshes && crowdMeshes.length > 400,
     `${crowdMeshes.length} actor meshes survive the sweep`);
 
   const v = CROWN_STRIP.venues[0];

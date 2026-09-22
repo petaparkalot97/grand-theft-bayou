@@ -1067,6 +1067,7 @@ export function createTusouxroeNorth(ctx) {
         inside: r.crowdIn.actors.length,
         outside: r.crowdOut.actors.length,
         meshes: r.crowdIn.meshes + r.crowdOut.meshes,
+        shown: { inside: r.crowdIn.group.visible, outside: r.crowdOut.group.visible },
         people: [...r.crowdIn.actors, ...r.crowdOut.actors].map((x) => ({
           side: x.side, role: x.role, beat: x.beat, anim: x.a.anim,
           lx: x.a.position.x, lz: x.a.position.z, y: x.a.position.y,
@@ -1152,9 +1153,10 @@ export function createTusouxroeNorth(ctx) {
         // door (through which you can see it), and an actor that is not drawn is
         // not ticked. ~80 people live on this strip; a couple of dozen are ever
         // spending a frame.
-        const street = Math.hypot(playerPos.x - v.x, playerPos.z - v.cz) < 62;
+        const away = Math.hypot(playerPos.x - v.x, playerPos.z - v.cz);
+        const street = away < 62, atDoor = away < 26;
         r.crowdOut.group.visible = street;
-        r.crowdIn.group.visible = isIn || street;
+        r.crowdIn.group.visible = isIn || atDoor;
         if (street) r.crowdOut.tick(dt);
         if (r.crowdIn.group.visible) r.crowdIn.tick(dt);
 

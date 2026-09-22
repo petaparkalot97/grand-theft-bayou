@@ -245,8 +245,10 @@ export const FIXTURES = {
     b.lit(s.x, 2.5, s.z, 22, 9);
     b.block(s.x, s.z, 1.6);
     b.station(s.x, s.z + 1.9, "cards", "Blackjack — the dealer's in");
-    // the dealer behind the shoe, two of the three seats taken
-    b.spot(s.x, s.z - d / 2 - 0.8, { role: "dealer", face: 0 });
+    // the dealer behind the shoe, two of the three seats taken — and 0.4 m off
+    // the table, because a hall whose pit sits near the back wall has no room
+    // for a dealer standing a stride behind it (the audit caught exactly that)
+    b.spot(s.x, s.z - d / 2 - 0.4, { role: "dealer", face: 0 });
     for (const sx of [-1, 1]) b.spot(s.x + sx * (w / 3), s.z + d / 2 + 0.75, { face: Math.PI });
   },
 

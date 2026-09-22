@@ -4494,7 +4494,7 @@ function teleportPlayer(x, z, heading = 0) {
 
 // ---------------------------------------------------------------- boot
 async function boot() {
-  loadNote.textContent = "loading sprites…";
+  setLoadStage("loading sprites…", 30);
   const [rn, om, sh, to] = await Promise.all([
     loadAtlas("redneck"), loadAtlas("oldman"), loadAtlas("shroom"), loadAtlas("torch"),
   ]);
@@ -4513,20 +4513,20 @@ async function boot() {
   // work. It used to run at module top level, which froze the page on
   // "loading assets…" with no feedback and looked like the game had hung.
   // Staged here instead, with a paint between each step.
-  loadNote.textContent = "pouring the asphalt…";
+  setLoadStage("pouring the asphalt…", 42);
   await paint();
   buildAsphalt();
   parkTex = carParkTexture();
 
-  loadNote.textContent = "laying the bayou floor…";
+  setLoadStage("laying the bayou floor…", 52);
   await paint();
   buildGround();
 
-  loadNote.textContent = "planting the swamp…";
+  setLoadStage("planting the swamp…", 62);
   await paint();
   buildTrees();
 
-  loadNote.textContent = "building the parish…";
+  setLoadStage("building the parish…", 72);
   await paint();
   await buildLevel();
   alternate = createAlternateCampaign({
@@ -4563,14 +4563,14 @@ async function boot() {
   // before the sweep below, so the new poles get a proper steel surface
   for (const sp of litSpots) if (sp.fx !== false) lampFx.push(addLamp(scene, sp));
 
-  loadNote.textContent = "resurfacing the parish…";
+  setLoadStage("resurfacing the parish…", 84);
   await new Promise((r) => setTimeout(r, 0));   // let the loading text paint
   realize(scene, { shadows: false });
   wetRoads.collect(scene);
 
   // Merge everything that never moves, per material and 48 m chunk. Anything
   // that moves or animates is excluded by its top-level object.
-  loadNote.textContent = "batching the parish…";
+  setLoadStage("batching the parish…", 92);
   await paint();
   // Anything that moves, or that a set piece shows and hides, must stay out of the
   // batcher. The world districts used to be in here too — every composer cluster of
@@ -4681,7 +4681,7 @@ async function boot() {
     minimap.build({ roads, areas, water, buildings });
   }
   settleCans();                  // every blocker exists now: no can may sit inside one
-  loadNote.textContent = "ready.";
+  setLoadStage("ready.", 100);
   finishLoading();
   startBtn.disabled = false;
   freeBtn.disabled = false;
