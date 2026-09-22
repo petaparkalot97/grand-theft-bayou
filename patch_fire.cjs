@@ -1,37 +1,48 @@
 const fs = require('fs');
 let code = fs.readFileSync('src/main.js', 'utf8');
 
-const fireReplacement = `
-  for (const v of vehicles) {
-    if (v === state.veh) continue;
-    const dx = v.obj.position.x - playerPos.x, dz = v.obj.position.z - playerPos.z;
+code = code.replace(
+  /for \(const e of enemies\) \{/,
+  `for (const [id, rp] of remotePlayers.entries()) {
+    if (rp.userData.netTarget && rp.userData.netTarget.state === "DEAD") continue;
+    const dx = rp.position.x - playerPos.x, dz = rp.position.z - playerPos.z;
     const d = Math.hypot(dx, dz);
     if (d > gun.range || d < 1e-3) continue;
     const facing = (dx * _aim.x + dz * _aim.z) / d;
-    if (facing < 0.8) continue;
-    const score = d * 1.5 * (1.6 - facing);
-    if (score < bestScore) { bestScore = score; best = v; bestKind = "vehicle"; }
+    if (state.weapon === "sawnoff") {
+      if (facing > 0.82) hitTargets.push({ t: { id, rp }, kind: "player", d });
+    } else {
+      if (facing < 0.8) continue;
+      const score = d * 1.5 * (1.6 - facing);
+      if (score < bestScore) { bestScore = score; best = { id, rp }; bestKind = "player"; bestDist = d; }
+    }
   }
-  npcs.noise(playerPos.x, playerPos.z, 26);     // gunfire carries`;
+  for (const e of enemies) {`
+);
 
-code = code.replace('  npcs.noise(playerPos.x, playerPos.z, 26);     // gunfire carries', fireReplacement);
+code = code.replace(
+  /else if \(bestKind === "sheriff"\) target = best\.obj\.position\.clone\(\)\.setY\(1\.1\);/,
+  `else if (bestKind === "sheriff") target = best.obj.position.clone().setY(1.1);
+      else if (bestKind === "player") target = best.rp.position.clone().setY(1.1);`
+);
 
-const damageRegex = /  if \(bestKind === "enemy"\) \{[\s\S]*?if \(best\.hp <= 0\) \{ best\.dead = true; crime\(3\.5\); \}\s*\}/;
-
-const damageReplacement = `  if (bestKind === "enemy") {
-    best.hp -= gun.damage;
-    npcs.provoke(best);
-    if (best.type !== "hog") { best.spr.play("hurt", { loop: false, force: true }); best.t = 0; }
-    else best.spr.position.addScaledVector(best.spr.position.clone().sub(playerPos).setY(0).normalize(), 0.4);
-    if (best.hp <= 0) { killEnemy(best); if (best.type !== "hog") crime(1.2); }
-  } else if (bestKind === "sheriff") {
-    best.hp -= gun.damage;
-    if (best.hp <= 0) { best.dead = true; crime(3.5); explodeCar(best); }
-  } else if (bestKind === "vehicle") {
-    best.hp -= gun.damage;
-    if (best.hp <= 0) { best.dead = true; crime(1.5); explodeCar(best); }
-  }`;
-
-code = code.replace(damageRegex, damageReplacement);
+code = code.replace(
+  /for \(const hit of hitTargets\) \{\n\s*const \{ t, kind, d \} = hit;\n\s*\/\/ Shotgun damage falls off linearly to 0 at max range\n\s*const dmg = state\.weapon === "sawnoff" \? gun\.damage \* \(1 - d \/ gun\.range\) : gun\.damage;/,
+  `for (const hit of hitTargets) {
+    const { t, kind, d } = hit;
+    const dmg = state.weapon === "sawnoff" ? gun.damage * (1 - d / gun.range) : gun.damage;
+    if (multiplayerMode && multiplayer?.connected) {
+       if (kind === "player") {
+         multiplayer.send("DAMAGE", { id: t.id, amount: dmg });
+       } else if (kind === "enemy" && t.netId) {
+         multiplayer.send("DAMAGE", { id: t.netId, amount: dmg });
+       } else if (kind === "vehicle" && t.netId) {
+         multiplayer.send("DAMAGE", { id: t.netId, amount: dmg });
+       } else if (kind === "sheriff" && t.netId) {
+         multiplayer.send("DAMAGE", { id: t.netId, amount: dmg });
+       }
+       if (kind === "player") continue; // Server will handle player death
+    }`
+);
 
 fs.writeFileSync('src/main.js', code);

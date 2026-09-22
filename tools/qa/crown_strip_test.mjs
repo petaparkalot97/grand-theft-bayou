@@ -14,6 +14,7 @@
 // real-browser pass (see the task's "Testing performed" note).
 
 import { createTusouxroeNorth, CROWN_STRIP } from "../../src/tusouxroeNorth.js";
+import { FIXTURES as KIT, PROPS as KIT_PROPS } from "../../src/interiors.js";
 
 const BOUNDS = { x0: -240, x1: 240, z0: -440, z1: -134 };
 const ROAD_X = -6;
@@ -78,12 +79,11 @@ const district = createTusouxroeNorth({
 
 const V = CROWN_STRIP.venues;
 
-// The fixture and prop builders that `buildVenue()` is allowed to dispatch to.
-// Restated on purpose: a layout entry naming a fixture that does not exist would
-// otherwise be a silent hole in a floor plan.
-const FIXTURES = new Set(["partition", "slotBank", "gamingTable", "bar", "stage", "danceFloor",
-  "djBooth", "vip", "seating", "poolTable", "backRoom", "chandelier", "discoBall"]);
-const PROPS = new Set(["glove", "pig", "disco"]);
+// The fixture and prop builders `buildVenue()` is allowed to dispatch to, read
+// straight from the kit: a layout entry naming a fixture that does not exist is a
+// silent hole in a floor plan, so the check has to be against the real table.
+const FIXTURES = new Set(Object.keys(KIT));
+const PROPS = new Set(Object.keys(KIT_PROPS));
 // North Ave 2 (z = -320) to North Ave 3 (z = -380), minus both 6.1 m corridors.
 const DEPTH_BUDGET = 60 - 6.1 * 2;
 
@@ -110,6 +110,10 @@ check("every layout entry names a real fixture",
   V.flatMap((v) => v.layout.filter((s) => !FIXTURES.has(s.fixture)).map((s) => s.fixture)).join(", "));
 check("every special prop names a real prop builder",
   V.every((v) => (v.props || []).every((p) => PROPS.has(p))));
+// a floor plan that only ever names one kind of furniture is a room, not a venue
+check("the kit is actually in use, not a copy of it",
+  V.every((v) => new Set(v.layout.map((s) => s.fixture)).size >= 6),
+  V.map((v) => `${v.name}:${new Set(v.layout.map((s) => s.fixture)).size}`).join(" "));
 check("the merged venues kept a landmark prop",
   V.some((v) => (v.props || []).includes("glove")) && V.some((v) => (v.props || []).includes("pig")));
 check("every entrance is wide enough to walk through",

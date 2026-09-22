@@ -12,7 +12,7 @@ import { createSoundtrack } from "./music.js";
 import { createRadio } from "./radio.js";
 import { batchStatic } from "./merge.js";
 import { initAudio, createCarAudio, resumeAudio } from "./audio.js";
-import { initWeapons3D, updateWeapon3D, playFireAnim3D, notifyReload3D, getWeaponMuzzle } from "./weapons_3d.js";
+import { initWeapons3D, updateWeapon3D, playFireAnim3D, notifyReload3D, getWeaponMuzzle, RemoteWeaponRig } from "./weapons_3d.js";
 import { createNpcSystem } from "./npc.js";
 import { bumpLine, fightLine } from "./pedestrianChatter.js";
 import { pedestrianVoiceWho } from "./voiceCast.js";
@@ -164,6 +164,15 @@ const mpReady = document.getElementById("mpReady");
 const mpStart = document.getElementById("mpStart");
 const mpBack = document.getElementById("mpBack");
 const mpMessage = document.getElementById("mpMessage");
+
+const mpBrowserView = document.getElementById("mpBrowserView");
+const mpRefreshRooms = document.getElementById("mpRefreshRooms");
+const mpVisibility = document.getElementById("mpVisibility");
+const mpCreatePassword = document.getElementById("mpCreatePassword");
+const mpRoomList = document.getElementById("mpRoomList");
+const mpJoinPassword = document.getElementById("mpJoinPassword");
+const mpLobbyView = document.getElementById("mpLobbyView");
+const mpLeaveRoom = document.getElementById("mpLeaveRoom");
 
 // ---------------------------------------------------------------- main menu (GTA-style)
 // Start Game / Options / Exit Game, with Start Game opening onto the existing
@@ -1173,6 +1182,20 @@ function crime(amount) {
 // Gunfire is only a crime when somebody hears it: popping hogs out in the woods
 // doesn't bring the Sheriff, and a shot near people or a cruiser does.
 function shotWitnessed() {
+  for (const [id, rp] of remotePlayers.entries()) {
+    if (rp.userData.netTarget && rp.userData.netTarget.state === "DEAD") continue;
+    const dx = rp.position.x - playerPos.x, dz = rp.position.z - playerPos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > gun.range || d < 1e-3) continue;
+    const facing = (dx * _aim.x + dz * _aim.z) / d;
+    if (state.weapon === "sawnoff") {
+      if (facing > 0.82) hitTargets.push({ t: { id, rp }, kind: "player", d });
+    } else {
+      if (facing < 0.8) continue;
+      const score = d * 1.5 * (1.6 - facing);
+      if (score < bestScore) { bestScore = score; best = { id, rp }; bestKind = "player"; bestDist = d; }
+    }
+  }
   for (const e of enemies) {
     if (!e.dead && e.type !== "hog" && Math.hypot(e.spr.position.x - playerPos.x, e.spr.position.z - playerPos.z) < 35) return true;
   }
@@ -1271,7 +1294,7 @@ const hijacker = createHijacker({
   releaseFromTraffic: (v) => { if (traffic) traffic.releaseVehicle(v); },
   spawnDriver: (x, z) => { spawnEnemy(Math.random() < 0.55 ? "hoodrat" : "redneck", x, z); return enemies[enemies.length - 1]; },
   provoke: (e) => npcs.provoke(e),
-  enterVehicle: (v) => { state.veh = v; if (v) arsenal.enforceVehicle(); playerPos.copy(v.obj.position); player.visible = false; },
+  enterVehicle: (v) => { state.veh = v; if (v) { arsenal.enforceVehicle(); if (multiplayerMode && multiplayer?.connected && v.netId) { multiplayer.send("VEHICLE_ENTER", { id: v.netId }); } } playerPos.copy(v.obj.position); player.visible = false; },
   flashObjective,
   crime,
 });
@@ -1432,6 +1455,14 @@ addEventListener("keydown", (e) => {
 });
 
 function drawMultiplayerRoom(room) {
+  if (!room) {
+    if (mpBrowserView) mpBrowserView.hidden = false;
+    if (mpLobbyView) mpLobbyView.hidden = true;
+    if (multiplayer) multiplayer.fetchRooms();
+    return;
+  }
+  if (mpBrowserView) mpBrowserView.hidden = true;
+  if (mpLobbyView) mpLobbyView.hidden = false;
   if (!room) return;
   mpCode.textContent = room.code || "—";
   mpPlayers.replaceChildren(...room.players.map((p) => {
@@ -1442,11 +1473,61 @@ function drawMultiplayerRoom(room) {
   mpReady.disabled = !me?.character; mpReady.textContent = me?.ready ? "Unready" : "Ready";
   mpStart.disabled = multiplayer?.playerId !== room.hostId || room.players.some((p) => !p.character || !p.ready);
 }
+
+function drawMultiplayerRooms(rooms) {
+  if (!mpRoomList) return;
+  mpRoomList.innerHTML = "";
+  if (!rooms || rooms.length === 0) {
+    mpRoomList.innerHTML = "<div style='color: #888;'>No public rooms found. Create one!</div>";
+    return;
+  }
+  rooms.forEach(r => {
+    const d = document.createElement("div");
+    d.style.cssText = "display: flex; justify-content: space-between; padding: 4px; border-bottom: 1px solid #333;";
+    const name = document.createElement("span");
+    name.textContent = `${r.name} (${r.players}/${r.maxPlayers})`;
+    const btn = document.createElement("button");
+    btn.textContent = "Join";
+    btn.style.padding = "2px 8px";
+    btn.onclick = () => {
+      mpRoomInput.value = r.code;
+      multiplayer?.joinRoom(r.code, mpJoinPassword.value);
+    };
+    d.appendChild(name);
+    d.appendChild(btn);
+    mpRoomList.appendChild(d);
+  });
+}
+
 function openMultiplayer() {
   multiplayerMode = true; introPanel.hidden = true; characterSelect.hidden = true; multiplayerPanel.hidden = false;
-  if (!multiplayer) multiplayer = createMultiplayer({ onConnection: (status, ping) => { mpConnection.textContent = `SERVER · ${status}${ping ? ` · ${Math.round(ping)}ms` : ""}`; }, onRoom: (room) => { drawMultiplayerRoom(room); if (room.phase === "PLAYING" && beginGame && !state.running) { multiplayerPanel.hidden = true; beginGame(); prologue.skip(); flashObjective("Multiplayer bayou loaded · watch your six"); } }, onSnapshot: applyNetworkSnapshot, onError: (code) => { mpMessage.textContent = code.replaceAll("_", " "); } });
+  if (!multiplayer) multiplayer = createMultiplayer({ onConnection: (status, ping) => { mpConnection.textContent = `SERVER · ${status}${ping ? ` · ${Math.round(ping)}ms` : ""}`; }, onRooms: drawMultiplayerRooms, onDamage: (msg) => {
+      if (msg.id === multiplayer?.playerId) {
+         if (msg.health < state.hp) {
+           hurtFlash();
+           state.hp = msg.health;
+           syncHUD();
+           if (state.hp <= 0 && state.running && !state.over) wasted();
+         }
+      }
+    },
+    onRespawned: (msg) => {
+      state.hp = 100;
+      syncHUD();
+      player.position.set(msg.x, msg.y, msg.z);
+      playerPos.set(msg.x, msg.y, msg.z);
+      camCtl.reset();
+      camCtl.snap();
+      player.visible = true;
+      if (state.veh) {
+        state.veh = null;
+      }
+    },
+    onRoom: (room) => { drawMultiplayerRoom(room); if (room.phase === "PLAYING" && beginGame && !state.running) { multiplayerPanel.hidden = true; beginGame(); prologue.skip(); flashObjective("Multiplayer bayou loaded · watch your six"); } }, onSnapshot: applyNetworkSnapshot, onError: (code) => { mpMessage.textContent = code.replaceAll("_", " "); } });
   multiplayer.connect();
 }
+
+const networkEntities = new Map();
 function applyNetworkSnapshot(snapshot) {
   for (const data of snapshot.players || []) {
     if (data.id === multiplayer?.playerId) continue;
@@ -1454,15 +1535,109 @@ function applyNetworkSnapshot(snapshot) {
     if (!view) {
       view = createPlayerCharacter(data.character || "peta", { makePeta: () => makeCastMember(makeHoodrat, "keseme", { height: 1.74 }), makeHoodrat });
       view.position.set(data.x, data.y, data.z); scene.add(view); remotePlayers.set(data.id, view);
+      if (view.arms) {
+        view.userData.weaponRig = new RemoteWeaponRig(view);
+      }
     }
     view.userData.netTarget = {
       x: data.x, y: data.y, z: data.z, yaw: data.yaw || 0,
       state: data.state, vehicle: Boolean(data.vehicle),
+      weapon: data.weapon, aiming: Boolean(data.aiming), firing: Boolean(data.firing)
     };
   }
   const live = new Set((snapshot.players || []).map((p) => p.id));
   for (const [id, view] of remotePlayers) if (!live.has(id)) { scene.remove(view); remotePlayers.delete(id); }
+
+  const liveEntities = new Set();
+  for (const data of snapshot.entities || []) {
+    liveEntities.add(data.id);
+    let ent = networkEntities.get(data.id);
+    if (!ent) {
+      if (data.type === "vehicle") {
+        // Find existing vehicle or create dummy
+        const existing = vehicles.find(v => v.netId === data.id);
+        if (existing) {
+          ent = existing;
+        } else {
+          // If we are host, we shouldn't be receiving new entities we don't know about, except when joining
+          if (multiplayer?.playerId === multiplayer?.room?.hostId && !data.clientOwned) continue;
+          
+          ent = { netId: data.id, type: "vehicle", obj: new THREE.Group() };
+          scene.add(ent.obj);
+          vehicles.push(ent);
+          
+          // load visual
+          import("./vehicles.js").then(({ VEHICLE_DEFS }) => {
+            const defName = Object.keys(VEHICLE_DEFS).find(k => k === data.model) || "fallback";
+            const file = VEHICLE_DEFS[defName].file;
+            const tex = VEHICLE_DEFS[defName].texture;
+            // We can't easily call loadVehicle from here if it's not exported, wait, it's not exported from vehicles.js!
+            // It's in main.js. Let's just use it.
+          });
+          // Actually loadVehicle is defined in main.js, we can just call it
+          if (typeof loadVehicle === "function") {
+             const defName = data.model || "fallback";
+             // find file/tex from VEHICLE_DEFS in main.js? VEHICLE_DEFS is imported!
+             const def = VEHICLE_DEFS[defName] || VEHICLE_DEFS.fallback;
+             loadVehicle(def.file, def.texture || "blue.png").then(v => {
+               if (ent.obj) ent.obj.add(v.obj);
+             });
+          }
+        }
+      } else if (data.type === "npc") {
+         const existing = enemies.find(e => e.netId === data.id);
+         if (existing) ent = existing;
+         else {
+           if (multiplayer?.playerId === multiplayer?.room?.hostId) continue;
+           ent = makeHoodrat();
+           ent.netId = data.id;
+           scene.add(ent);
+           enemies.push(ent);
+         }
+      }
+      if (ent) networkEntities.set(data.id, ent);
+    }
+    
+    // Sync state
+    if (ent && multiplayer?.playerId !== multiplayer?.room?.hostId) { // Only sync if we are not host
+      if (data.type === "vehicle" && ent.owner !== multiplayer?.playerId) {
+         ent.obj.position.set(data.x, data.y, data.z);
+         if (data.yaw !== undefined) ent.heading = data.yaw;
+         if (data.yaw !== undefined && ent.obj.rotation) ent.obj.rotation.y = data.yaw;
+         ent.health = data.health;
+         if (data.destroyed && !ent.exploded) {
+            explodeCar(ent);
+         }
+         ent.owner = data.owner;
+      } else if (data.type === "npc") {
+         ent.position.set(data.x, data.y, data.z);
+         if (data.yaw !== undefined) ent._yaw = data.yaw;
+         ent.health = data.health;
+         if (data.anim) ent.play(data.anim, { loop: true });
+         if (data.dead && !ent.dead) {
+            ent.dead = true;
+            ent.play("death", { loop: false, force: true });
+         }
+      }
+    }
+  }
+
+  for (const [id, ent] of networkEntities) {
+    if (!liveEntities.has(id)) {
+       if (ent.type === "vehicle") {
+         scene.remove(ent.obj);
+         const idx = vehicles.indexOf(ent);
+         if (idx >= 0) vehicles.splice(idx, 1);
+       } else if (ent.type === "npc" || ent.isEnemy) {
+         scene.remove(ent);
+         const idx = enemies.indexOf(ent);
+         if (idx >= 0) enemies.splice(idx, 1);
+       }
+       networkEntities.delete(id);
+    }
+  }
 }
+
 
 function explodeCar(v) {
   if (v.exploded) return;
@@ -1513,17 +1688,28 @@ function updateRemotePlayers(dt) {
     view.position.lerp(_remoteTarget.set(target.x, target.y, target.z), Math.min(1, dt * 12));
     view._yaw = target.yaw;
     if (view.play && view.userData.netLastState !== target.state) {
-      view.play(target.state === "IDLE" ? "idle" : "walk");
+      if (target.state === "DEAD") {
+        view.play("death", { loop: false, force: true });
+      } else {
+        view.play(target.state === "IDLE" ? "idle" : "walk");
+      }
       view.userData.netLastState = target.state;
     }
     // play() only selects a clip; the character's update() advances its gait.
     // Omitting this left remote players permanently frozen in their idle pose.
     if (view.update && view.visible) view.update(dt);
+    if (view.userData.weaponRig && view.visible) {
+      const aimDir = new THREE.Vector3(Math.sin(target.yaw), 0, Math.cos(target.yaw));
+      view.userData.weaponRig.update(aimDir, target.weapon, dt, target.aiming, target.firing);
+    }
   }
 }
 multiplayerBtn.addEventListener("click", openMultiplayer);
-mpCreate.addEventListener("click", () => multiplayer?.createRoom());
-mpJoin.addEventListener("click", () => multiplayer?.joinRoom(mpRoomInput.value));
+mpCreate.addEventListener("click", () => multiplayer?.createRoom({ visibility: mpVisibility.value, password: mpCreatePassword.value }));
+mpJoin.addEventListener("click", () => multiplayer?.joinRoom(mpRoomInput.value, mpJoinPassword.value));
+if (mpRefreshRooms) mpRefreshRooms.addEventListener("click", () => multiplayer?.fetchRooms());
+if (mpLeaveRoom) mpLeaveRoom.addEventListener("click", () => multiplayer?.leave());
+
 mpPick.addEventListener("click", () => { multiplayerPanel.hidden = true; openCharacterSelect("multiplayer"); });
 mpReady.addEventListener("click", () => { const me = multiplayer?.room?.players.find((p) => p.id === multiplayer.playerId); multiplayer?.ready(!me?.ready); });
 mpStart.addEventListener("click", () => multiplayer?.startGame());
@@ -1970,12 +2156,13 @@ async function buildLevel() {
     },
     setObjective: setStoryObjective,
     enterVehicle: (v) => {
-      state.veh = v; if (v) arsenal.enforceVehicle();
-      playerPos.copy(v.obj.position);
-      player.visible = false;
-    },
+        state.veh = v; if (v) { arsenal.enforceVehicle(); if (multiplayerMode && multiplayer?.connected && v.netId) { multiplayer.send("VEHICLE_ENTER", { id: v.netId }); } }
+        playerPos.copy(v.obj.position);
+        player.visible = false;
+      },
     exitVehicle: () => {
-      if (!state.veh) return;
+        if (!state.veh) return;
+        if (multiplayerMode && multiplayer?.connected) { multiplayer.send("VEHICLE_EXIT"); }
       state.veh.speed = 0;
       state.veh = null;
       player.visible = true;
@@ -2002,7 +2189,8 @@ async function buildLevel() {
     addLitSpot: (spot) => litSpots.push(spot),
     setObjective: setStoryObjective,
     exitVehicle: () => {
-      if (!state.veh) return;
+        if (!state.veh) return;
+        if (multiplayerMode && multiplayer?.connected) { multiplayer.send("VEHICLE_EXIT"); }
       state.veh.speed = 0;
       state.veh = null;
       player.visible = true;
@@ -2109,7 +2297,8 @@ async function buildLevel() {
     setObjective: setStoryObjective,
     setCameraYaw: (yaw) => camCtl.addYaw(yaw - camCtl.yaw),
     exitVehicle: () => {
-      if (!state.veh) return;
+        if (!state.veh) return;
+        if (multiplayerMode && multiplayer?.connected) { multiplayer.send("VEHICLE_EXIT"); }
       state.veh.speed = 0;
       state.veh = null;
       player.visible = true;
@@ -2248,7 +2437,8 @@ async function buildLevel() {
     getMapCanvas: () => minimap.baseCanvas,
     returnTo: { x: 120, z: 372, heading: Math.PI },          // up the ladder by the storm drain
     exitVehicle: () => {
-      if (!state.veh) return;
+        if (!state.veh) return;
+        if (multiplayerMode && multiplayer?.connected) { multiplayer.send("VEHICLE_EXIT"); }
       state.veh.speed = 0;
       state.veh = null;
       player.visible = true;
@@ -3062,6 +3252,7 @@ function fire() {
       let target;
       if (bestKind === "enemy") target = best.spr.position.clone().setY(best.type === "hog" ? 0.8 : 1.1);
       else if (bestKind === "sheriff") target = best.obj.position.clone().setY(1.1);
+      else if (bestKind === "player") target = best.rp.position.clone().setY(1.1);
       else target = origin.clone().addScaledVector(_aim, 24);
       spawnTracer(origin, target);
     }
@@ -3072,8 +3263,19 @@ function fire() {
 
   for (const hit of hitTargets) {
     const { t, kind, d } = hit;
-    // Shotgun damage falls off linearly to 0 at max range
     const dmg = state.weapon === "sawnoff" ? gun.damage * (1 - d / gun.range) : gun.damage;
+    if (multiplayerMode && multiplayer?.connected) {
+       if (kind === "player") {
+         multiplayer.send("DAMAGE", { id: t.id, amount: dmg });
+       } else if (kind === "enemy" && t.netId) {
+         multiplayer.send("DAMAGE", { id: t.netId, amount: dmg });
+       } else if (kind === "vehicle" && t.netId) {
+         multiplayer.send("DAMAGE", { id: t.netId, amount: dmg });
+       } else if (kind === "sheriff" && t.netId) {
+         multiplayer.send("DAMAGE", { id: t.netId, amount: dmg });
+       }
+       if (kind === "player") continue; // Server will handle player death
+    }
     if (kind === "enemy") {
       t.hp -= dmg;
       const freshFight = t.state !== "hostile" && t.state !== "flee";
@@ -3302,8 +3504,11 @@ function tick() {
           sprint: input.isDown("sprint"), crouch: input.isDown("crouch"), jump: input.isDown("jump"),
           x: netAt.x, y: netAt.y, z: netAt.z,
           yaw: state.veh ? state.veh.heading : (player?._yaw || 0),
-          state: state.veh ? "VEHICLE" : (player?.anim === "walk" ? "RUN" : "IDLE"),
+          state: state.veh ? "VEHICLE" : (player?.anim || "IDLE"),
           vehicle: !!state.veh,
+          weapon: state.weapon || null,
+          aiming: input.isDown("aim"),
+          firing: input.isDown("fire") || input.isDown("fireAlt"),
         });
       }
     }
@@ -3801,6 +4006,9 @@ function nearestVehicle(pos, maxD) {
 function enterExitVehicle() {
   if (!state.running || state.cinematic || hijacker.active) return;
   if (state.veh) {
+    if (multiplayerMode && multiplayer?.connected) {
+      multiplayer.send("VEHICLE_EXIT");
+    }
     // step out
     const v = state.veh;
     state.veh = null;

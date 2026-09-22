@@ -185,9 +185,10 @@ const strip = (file) => `"use strict";\n` + fs.readFileSync(path.join(SRC, file)
   .replace(/export /g, "")
   .replace(/import[\s\S]*?from\s*['"].*?['"];/g, "");
 
-// neonsign.js first: tusouxroeNorth.js's `import` line for it is stripped by
-// `strip()`, and its `export function`s become sandbox globals when it loads.
-for (const f of ["neonsign.js", "merge.js", "composer.js", "tusouxroeNorth.js"]) {
+// neonsign.js and interiors.js first: tusouxroeNorth.js's `import` lines for them
+// are stripped by `strip()`, and their `export function`s become sandbox globals
+// when they load. So the kit is exercised for real here, not stubbed.
+for (const f of ["neonsign.js", "interiors.js", "merge.js", "composer.js", "tusouxroeNorth.js"]) {
   try { vm.runInContext(strip(f), sandbox, { filename: f }); }
   catch (e) { console.error(`load ${f}: ${e.stack || e}`); process.exit(1); }
 }
@@ -278,6 +279,67 @@ check("the radar has a badge per venue door",
   && district.blips().every((b) => b.kind === "casino" || b.kind === "club"),
   district.blips().map((b) => b.kind).join(", "));
 check("interact() is a no-op away from a door", district.interact() === false);
+// What each interior promised the brief: the casino floor its games, the lounge
+// its bar, pool and stage, the club its booth and stage, the show room its stage.
+const REQUIRED = {
+  "BAYOU GOLD": ["slots", "roulette", "cards", "cashier", "bar", "vault", "vip"],
+  "BILLY JEANS": ["bar", "pool", "stage"],
+  "DISCO GATORS": ["dj", "stage", "bar", "vip"],
+  "HAPPY HOGS": ["stage", "bar"],
+};
+const kindsOf = (name) => new Set(district.crownStations.filter((s) => s.venue === name).map((s) => s.kind));
+const missing = CROWN_STRIP.venues.flatMap((v) =>
+  (REQUIRED[v.name] || []).filter((k) => !kindsOf(v.name).has(k)).map((k) => `${v.name}:${k}`));
+check("every venue has the interaction points its room promised",
+  missing.length === 0 && Object.keys(REQUIRED).length === CROWN_STRIP.venues.length,
+  `${district.crownStations.length} points — ` + CROWN_STRIP.venues.map((v) => `${v.name}:${kindsOf(v.name).size}`).join(" "));
+
+// ------------------------------------------------------------------ lanes
+// A furniture layout is only right if you can walk between the furniture. Grid
+// the hall at 0.5 m, mark every cell a walker of radius 0.45 m cannot stand in,
+// flood-fill from the doorway, and prove every interaction point can be reached
+// — that is the "player must never get trapped inside furniture" rule, executed.
+{
+  const CELL = 0.5, PAD = 0.45;
+  let ok = true, why = "";
+  for (const v of CROWN_STRIP.venues) {
+    const nx = Math.ceil(v.k.w / CELL), nz = Math.ceil(v.k.d / CELL);
+    const seen = new Uint8Array(nx * nz);
+    const cellX = (i) => v.hall.x0 + (i + 0.5) * CELL;
+    const cellZ = (j) => v.hall.z0 + (j + 0.5) * CELL;
+    const blockedAt = (x, z) => blockers.some((b) => Math.hypot(b.x - x, b.z - z) < b.r + PAD);
+    // the doorway: inside the threshold, on the hall's centre line
+    const door = v.rot === 0 ? { x: v.x, z: v.cz + v.d / 2 - 1.2 } : { x: v.x, z: v.cz - v.d / 2 + 1.2 };
+    const si = Math.floor((door.x - v.hall.x0) / CELL), sj = Math.floor((door.z - v.hall.z0) / CELL);
+    if (si < 0 || sj < 0 || si >= nx || sj >= nz || blockedAt(door.x, door.z)) {
+      ok = false; why = `${v.name}: the doorway itself is not standable`; break;
+    }
+    const q = [sj * nx + si]; seen[q[0]] = 1;
+    for (let head = 0; head < q.length; head++) {
+      const c = q[head], i = c % nx, j = (c - i) / nx;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const i2 = i + di, j2 = j + dj;
+        if (i2 < 0 || j2 < 0 || i2 >= nx || j2 >= nz) continue;
+        const c2 = j2 * nx + i2;
+        if (seen[c2] || blockedAt(cellX(i2), cellZ(j2))) continue;
+        seen[c2] = 1; q.push(c2);
+      }
+    }
+    // every interaction point is standable-from: a reached cell within 1.5 m
+    const here = district.crownStations.filter((s) => s.venue === v.name);
+    const unreachable = here.filter((s) => {
+      for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+        if (seen[j * nx + i] && Math.hypot(cellX(i) - s.x, cellZ(j) - s.z) <= 1.5) return false;
+      }
+      return true;
+    });
+    if (unreachable.length) {
+      ok = false; why = `${v.name}: ${unreachable.length} of ${here.length} unreachable — ` + unreachable.slice(0, 4).map((s) => `${s.kind}@(${s.x.toFixed(0)},${s.z.toFixed(0)})`).join(" ");
+      break;
+    }
+  }
+  check("every game, bar, cage and stage can be walked up to from the door", ok, ok ? "flood-filled at 0.5 m per venue" : why);
+}
 
 // ------------------------------------------------------------------ the cutaway
 // The strip's interiors are the nightlife.js technique: inside, the roof group
