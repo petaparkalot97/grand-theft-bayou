@@ -1083,6 +1083,7 @@ const wrecks = [];      // exploded vehicles left standing — see updateWrecks
 let sheriffSpawnCd = 0;   // stagger cruiser call-outs — see updateSheriffs
 let footSpawnCd = 0;      // stagger deputy call-outs — see updateSheriffs
 const cashEl = document.getElementById("cash");
+const clockEl = document.getElementById("clock");
 const starsEl = document.getElementById("stars");
 const vehIndic = document.getElementById("vehIndic");
 const music = document.getElementById("music");
@@ -1627,13 +1628,11 @@ function startVehicleFire(v) {
   smokeMat.userData.gtbRealized = true;
   const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), smokeMat);
   smoke.position.y = 1.0;
-  const light = new THREE.PointLight(0xff5a1e, 5, 9, 2);
-  light.position.y = 0.55;
   const group = new THREE.Group();
-  group.add(flame, smoke, light);
+  group.add(flame, smoke);
   group.position.set(0, 0.85, 0);          // above the hood, in the car's own local space
   v.obj.add(group);
-  v.fireFx = { group, flame, smoke, light, phase: Math.random() * 9 };
+  v.fireFx = { group, flame, smoke, phase: Math.random() * 9 };
 }
 function stopVehicleFire(v) {
   if (!v.fireFx) return;
@@ -1641,15 +1640,22 @@ function stopVehicleFire(v) {
   v.fireFx = null;
   v.onFire = false;
 }
+let litFires = 0;
 function updateVehicleFire(v, dt) {
   const f = v.fireFx;
   if (!f) return;
   f.phase += dt * (7 + Math.sin(f.phase * 0.3) * 2);
   const flick = 0.75 + Math.sin(f.phase) * 0.25;
-  f.light.intensity = (v.exploded ? 2.2 : 5) * flick;
   f.flame.scale.setScalar((v.exploded ? 0.55 : 0.85) + Math.sin(f.phase * 1.3) * 0.15);
+
+  if (litFires < fireLights.length) {
+    const l = fireLights[litFires++];
+    l.position.copy(v.obj.position).setY(v.obj.position.y + 1.4);
+    l.intensity = (v.exploded ? 2.2 : 5) * flick;
+  }
 }
 function updateVehicleFires(dt) {
+  litFires = 0;
   for (const v of vehicles) if (v.fireFx && !v.exploded) updateVehicleFire(v, dt);
 }
 /** Charred wrecks left standing after an explosion; they clear once the
@@ -1666,6 +1672,7 @@ function updateWrecks(dt) {
       wrecks.splice(i, 1);
     }
   }
+  for (; litFires < fireLights.length; litFires++) fireLights[litFires].intensity = 0;
 }
 
 function explodeCar(v) {
@@ -1686,11 +1693,11 @@ function explodeCar(v) {
     }
   });
 
-  // Spawn explosion effect
-  const ex = new AnimatedSprite(atlases.muzzle, 8.0);
+  // Spawn explosion effect (using torch since muzzle is missing)
+  const ex = new AnimatedSprite(atlases.torch, 8.0);
   ex.position.copy(v.obj.position).setY(1.5);
   scene.add(ex);
-  ex.play("flash", { fps: 12, loop: false });
+  ex.play("burn", { fps: 12, loop: false });
   setTimeout(() => scene.remove(ex), 500);
   wreckLight.position.copy(v.obj.position).setY(1.5);
   wreckLight.intensity = 30;
@@ -3389,7 +3396,8 @@ function fire() {
 const muzzleLight = new THREE.PointLight(0xffd070, 0, 12, 2);
 const wreckLight = new THREE.PointLight(0xff6a1e, 0, 16, 2);
 const beaconLights = [new THREE.PointLight(0x3366ff, 0, 18, 2), new THREE.PointLight(0xff2233, 0, 18, 2)];
-scene.add(muzzleLight, wreckLight, ...beaconLights);
+const fireLights = Array(4).fill(0).map(() => new THREE.PointLight(0xff5a1e, 0, 9, 2));
+scene.add(muzzleLight, wreckLight, ...beaconLights, ...fireLights);
 function muzzleFlash(from) {
   muzzleLight.position.copy(from);
   muzzleLight.intensity = 30;
@@ -3417,6 +3425,7 @@ function syncHUD() {
   hpFill.style.width = Math.max(0, state.hp) + "%";
   spFill.style.width = Math.max(0, state.sp) + "%";
   cashEl.textContent = "$" + state.cash.toLocaleString();
+  if (clockEl) clockEl.textContent = worldTime.label();
   let s = "";
   if (copsActive()) for (let i = 0; i < 6; i++) s += `<span class="${i < state.wanted ? "on" : "off"}">★</span>`;
   starsEl.innerHTML = s;

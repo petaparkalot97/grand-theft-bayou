@@ -56,6 +56,12 @@
     font-size: clamp(22px, 3.4vw, 30px); color: #6fe07a;
     text-shadow: 0 2px 0 #14351a, 0 0 16px rgba(90,220,120,.35);
   }
+  #clock {
+    text-align: right;
+    font-size: clamp(18px, 2.8vw, 24px); color: #e0e0e0;
+    text-shadow: 0 2px 0 #111, 0 0 16px rgba(200,200,200,.35);
+    font-weight: bold;
+  }
   #stars { font-size: clamp(16px, 2.4vw, 22px); letter-spacing: 3px; filter: drop-shadow(0 2px 2px #000); }
   #stars:empty { display: none; }
   #stars .off { opacity: .18; }
@@ -74,10 +80,10 @@
     letter-spacing: .05em;
   }
   #objective {
-    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    position: absolute; bottom: 30px; right: 30px;
     background: rgba(6,10,8,.6); border: 1px solid rgba(160,190,150,.25);
-    border-radius: 8px; padding: 8px 16px; font-size: 13px; text-align: center;
-    white-space: nowrap; font-family: Arial, sans-serif; max-width: 92vw; overflow: hidden;
+    border-radius: 8px; padding: 8px 16px; font-size: 13px; text-align: right;
+    font-family: Arial, sans-serif; max-width: 92vw;
   }
 
   #overlay {
@@ -382,6 +388,7 @@
   </div>
   <div id="hudRight">
     <div id="cash">$0</div>
+    <div id="clock">00:00</div>
     <div id="stars"></div>
     <!-- weapons.js injects #weaponHud here -->
   </div>
