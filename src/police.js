@@ -177,7 +177,7 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted, 
 
     const rec = {
       type: "deputy",
-      T: { label: "Deputy", speed: 4.8, aggro: 28, melee: 1.9, dmg: 8, atkGap: 0.9 },
+      T: { label: "Deputy", speed: 4.3, aggro: 28, melee: 1.9, dmg: 6, atkGap: 1.1 },
       spr,
       hp: 24,
       atkCd: 0,
@@ -267,8 +267,8 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted, 
         // before they reach arrest range. They fire slowly and only when the
         // player is not hidden inside a vehicle.
         if (!env.driving && dist < 38 && dist > 5 && c.shootCd <= 0 && shootPlayer) {
-          c.shootCd = 1.35 + Math.random() * 0.45;
-          shootPlayer(p, 3.5, "deputy");
+          c.shootCd = 1.6 + Math.random() * 0.6;
+          shootPlayer(p, 3, "deputy");
         }
       }
     }
@@ -324,8 +324,8 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted, 
       o.userData.beacon.blue.visible = !on;
       h.shootCd -= dt;
       if (h.shootCd <= 0 && shootPlayer && d < 58) {
-        h.shootCd = 1.1 + Math.random() * 0.7;
-        shootPlayer(o.position, 5.5, "helicopter");
+        h.shootCd = 1.4 + Math.random() * 0.8;
+        shootPlayer(o.position, 4.5, "helicopter");
       }
     }
   }

@@ -76,6 +76,10 @@ export default async function run(page) {
     const b = document.getElementById("freeBtn");
     return b && !b.disabled;
   }, null, { timeout: 240000 });
+  // The menu nests now: root -> "Start Game" -> Story / Free Roam / Multiplayer,
+  // so #freeBtn is zero-size until its submenu is open.
+  await page.click('[data-menu="start"]');
+  await page.waitForTimeout(300);
   await page.click("#freeBtn");
   await skipCutscene(page);
   await page.waitForTimeout(2000);

@@ -3,10 +3,17 @@
 // wiring (TASK-040).
 //
 // Verifies:
-//   A. weapons_3d.js — the view-model builds every weapon id the game's
-//      arsenal can hold (bat / pistol / tec9 / sawnoff / deerRifle), unknown
-//      ids fall back to the pistol proxy, the pivot hides while driving /
-//      in a cutscene, and the fire animations play and settle.
+//   A. weapons_3d.js — the module contract around attachment: boot puts nothing
+//      in the scene, an absent actor is a safe no-op (menu / between states),
+//      every weapon the game can hold has a rig, and the muzzle only exists for
+//      a weapon that is actually held.
+//
+//      This section used to assert the old VIEW MODEL: one pivot added to the
+//      scene, moved around the player's world position, holstered by writing
+//      `position.y` and a rotation onto it. That design is exactly what made a
+//      weapon read as an image parked next to the character, so it is gone.
+//      The geometry — grip in the fist, muzzle down the aim, support hand on the
+//      foregrip — is measured in weapon_hold_test.mjs against a real rig.
 //   B. audio.js — car audio is lazy and gesture-safe: createCarAudio before
 //      initAudio returns a usable no-op object, audio only builds for the
 //      active car, deactivating it stops and tears down, destroy() cleans up,
@@ -29,49 +36,57 @@ function assert(cond, msg) {
 function section(name) { console.log(`\n--- ${name} ---`); }
 
 const { initAudio, createCarAudio, resumeAudio } = await import("../../src/audio.js");
-const { initWeapons3D, updateWeapon3D, playFireAnim3D } = await import("../../src/weapons_3d.js");
+const { initWeapons3D, updateWeapon3D, getWeaponMuzzle, playFireAnim3D, notifyReload3D, weaponRigState, WEAPON_RIGS } = await import("../../src/weapons_3d.js");
+const { WEAPONS } = await import("../../src/weapons.js");
 const { collisionResponse, stepArcadeVehicle } = await import("../../src/vehicles.js");
 
 // ===========================================================================
-section("A. weapons_3d — ids, fallback, gating");
+section("A. weapons_3d — attachment contract");
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(52, 16 / 9, 0.3, 420);
 initWeapons3D(scene);                    // loader fails offline: the procedural fallback stays
-const pivot = scene.children.find(o => o.isGroup && o.type === "Group");
-assert(!!pivot, "weapon pivot added to the scene");
-assert(pivot.visible === false, "pivot hidden until the first on-foot update");
+assert(scene.children.length === 0,
+  "initWeapons3D adds nothing to the scene (weapons hang off the character, not the world)");
 
 const pos = new THREE.Vector3(0, 0, 0);
-const aim = new THREE.Vector3(0, 0, -1);
-// on foot, aiming: each arsenal id shows a model without throwing
-for (const id of ["bat", "pistol", "tec9", "sawnoff", "deerRifle"]) {
-  updateWeapon3D(pos, aim, id, 1 / 60, true);
-  assert(pivot.visible === true && pivot.children.length === 1 && pivot.children[0].name === id,
-    `weapon "${id}" builds and attaches`);
+const aim = new THREE.Vector3(0, 0, 1);
+// Between states there is no actor. That has to be a no-op, for every id, on
+// every frame — it is the menu, the cutscene and the load path all at once.
+for (const id of Object.keys(WEAPONS)) {
+  updateWeapon3D(null, pos, aim, id, 1 / 60, true);
+  updateWeapon3D(undefined, pos, aim, id, 1 / 60, false);
 }
-// unknown id → pistol proxy (model still attaches, named with the id)
-updateWeapon3D(pos, aim, "minigun", 1 / 60, true);
-assert(pivot.children.length === 1, "unknown weapon id still attaches a model (pistol proxy)");
-// holstered
-updateWeapon3D(pos, aim, "bat", 1 / 60, false);
-assert(pivot.children[0].position.y < 0 && Math.abs(pivot.children[0].rotation.x + Math.PI / 2) < 1e-6,
-  "not aiming: weapon lowered to the hip");
-// hidden while driving / cutscene: visible flag drops (model may stay parented)
-updateWeapon3D(pos, aim, "bat", 1 / 60, true, true);
-assert(pivot.visible === false, "hidden=driving/cinematic hides the pivot");
-updateWeapon3D(null, aim, "bat", 1 / 60, true, false);
-assert(pivot.visible === false, "null playerPos (between states) hides instead of throwing");
-// back on foot: visible again
-updateWeapon3D(pos, aim, "bat", 1 / 60, true, false);
-assert(pivot.visible === true, "back on foot: pivot visible again");
+assert(weaponRigState().attached === false, "no actor (menu / between states) is a safe no-op");
+assert(getWeaponMuzzle(new THREE.Vector3()) === null, "no muzzle while nothing is held");
+// an object that is not a character (no hand socket) must also be refused, not
+// half-attached to
+const notAnActor = new THREE.Group();
+updateWeapon3D(notAnActor, pos, aim, "pistol", 1 / 60, true);
+assert(weaponRigState().attached === false, "an object with no hand socket is refused");
+// the fire/reload hooks are safe with nothing attached (a queued input can land
+// in the same frame a weapon is dropped)
+playFireAnim3D("pistol", false);
+playFireAnim3D("bat", true);
+notifyReload3D("pistol", 1.1);
+notifyReload3D("bat", 1);
+assert(true, "fire / reload hooks do not throw with nothing held");
 
-// fire anims run and settle (no per-frame throw, no NaNs)
-playFireAnim3D(true);
-for (let i = 0; i < 40; i++) updateWeapon3D(pos, aim, "bat", 1 / 60, true);
-assert(Number.isFinite(pivot.children[0].rotation.y), "melee swing plays 40 frames, stays finite");
-playFireAnim3D(false);
-for (let i = 0; i < 40; i++) updateWeapon3D(pos, aim, "pistol", 1 / 60, true);
-assert(Number.isFinite(pivot.children[0].rotation.x), "gun recoil plays 40 frames, stays finite");
+// Every weapon the arsenal can hold needs a rig entry, or it silently falls
+// back to the pistol — carried like a 9mm, which is how a new weapon ends up
+// looking wrong instead of failing.
+for (const id of Object.keys(WEAPONS)) {
+  assert(!!WEAPON_RIGS[id], `weapon "${id}" has a rig entry (hold pose, grip, muzzle)`);
+}
+assert(Object.keys(WEAPON_RIGS).length >= Object.keys(WEAPONS).length,
+  "no rig entry exists for a weapon the game cannot hold");
+for (const [id, def] of Object.entries(WEAPON_RIGS)) {
+  assert(Array.isArray(def.muzzleOffset) && def.muzzleOffset.length === 3 && def.muzzleOffset.some((v) => v !== 0),
+    `[${id}] has a real muzzle offset (effects start at the barrel)`);
+  assert(def.handOffset.length === 3 && def.rotationOffset.length === 3,
+    `[${id}] carries its attachment config (hand / rotation offsets)`);
+  assert(["pistol", "long", "melee"].includes(def.hold),
+    `[${id}] names a hold pose the character rig implements`);
+}
 
 // ===========================================================================
 section("B. audio — lazy, gesture-safe, gated to the player's car");

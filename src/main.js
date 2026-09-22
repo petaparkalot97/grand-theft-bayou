@@ -12,7 +12,7 @@ import { createSoundtrack } from "./music.js";
 import { createRadio } from "./radio.js";
 import { batchStatic } from "./merge.js";
 import { initAudio, createCarAudio, resumeAudio } from "./audio.js";
-import { initWeapons3D, updateWeapon3D, playFireAnim3D } from "./weapons_3d.js";
+import { initWeapons3D, updateWeapon3D, playFireAnim3D, notifyReload3D, getWeaponMuzzle, RemoteWeaponRig } from "./weapons_3d.js";
 import { createNpcSystem } from "./npc.js";
 import { bumpLine, fightLine } from "./pedestrianChatter.js";
 import { pedestrianVoiceWho } from "./voiceCast.js";
@@ -68,13 +68,10 @@ import { createStateWorld, STATE_BOUNDS } from "./stateWorld.js";
 const WORLD = 136;           // half-width of the map (x), and its northern extent
 // State-Wide GTA San Andreas scale map bounds (~5 km x 5 km)
 const MAP = { minX: STATE_BOUNDS.minX, maxX: STATE_BOUNDS.maxX, minZ: STATE_BOUNDS.minZ, maxZ: STATE_BOUNDS.maxZ };
-const CAN_GOAL = 4;
-const CAN_REACH = 2.4;          // on foot, measured flat (x/z): the can bobs half a metre off the ground
-const CAN_REACH_VEHICLE = 3.4;  // in a car: drive through one to grab it
 const ROAD_X = -6;           // the highway runs N/S along this line
 const ROAD_HALF = 5;         // half road width
 const LOT_X = 24;            // how far off the centre line a lot's building sits
-const TRUCK_Z = -116;
+const TRUCK_Z = -116;        // south end of the dashed centre line; also where the (now-removed) escape truck used to sit
 const SPAWN_Z = 130;         // bottom of the map
 const SIGN_Z = 126;          // Louisiana sign, just north (in front) of the spawn
 
@@ -134,11 +131,14 @@ function inKeepout(x, z) {
 
 const overlay = document.getElementById("overlay");
 const loadNote = document.getElementById("loadNote");
+const loadPct = document.getElementById("loadPct");
+const loadBarFill = document.getElementById("loadBarFill");
+const loadHud = document.getElementById("loadHud");
 const startBtn = document.getElementById("startBtn");
 const freeBtn = document.getElementById("freeBtn");
+const loadScreen = document.getElementById("loadScreen");
 const hpFill = document.getElementById("hpFill");
 const spFill = document.getElementById("spFill");
-const cansEl = document.getElementById("cans");
 const objEl = document.getElementById("objective");
 const crosshair = document.getElementById("crosshair");
 const introPanel = document.getElementById("introPanel");
@@ -164,6 +164,88 @@ const mpReady = document.getElementById("mpReady");
 const mpStart = document.getElementById("mpStart");
 const mpBack = document.getElementById("mpBack");
 const mpMessage = document.getElementById("mpMessage");
+
+const mpBrowserView = document.getElementById("mpBrowserView");
+const mpRefreshRooms = document.getElementById("mpRefreshRooms");
+const mpVisibility = document.getElementById("mpVisibility");
+const mpCreatePassword = document.getElementById("mpCreatePassword");
+const mpRoomList = document.getElementById("mpRoomList");
+const mpJoinPassword = document.getElementById("mpJoinPassword");
+const mpLobbyView = document.getElementById("mpLobbyView");
+const mpLeaveRoom = document.getElementById("mpLeaveRoom");
+
+// ---------------------------------------------------------------- main menu (GTA-style)
+// Start Game / Options / Exit Game, with Start Game opening onto the existing
+// Story/Free Roam/Multiplayer row (startBtn/freeBtn/multiplayerBtn keep their
+// ids so all the launch wiring further down needs no changes). Pure UI state —
+// nothing here depends on assets being loaded yet.
+const menuPanels = {
+  root: document.getElementById("menuRoot"),
+  start: document.getElementById("menuStartSub"),
+  options: document.getElementById("menuOptionsPanel"),
+  exit: document.getElementById("menuExitPanel"),
+};
+const gfxChoices = document.getElementById("gfxChoices");
+const musicVolumeInput = document.getElementById("musicVolume");
+const muteToggleBtn = document.getElementById("muteToggle");
+const exitYesBtn = document.getElementById("exitYes");
+
+function showMenuPanel(name) {
+  for (const [key, el] of Object.entries(menuPanels)) el.hidden = key !== name;
+  if (name === "options") syncGfxChoices();
+  const first = menuPanels[name].querySelector(".menu-item:not(:disabled)");
+  if (first) first.focus();
+}
+for (const [name, panel] of Object.entries(menuPanels)) {
+  panel.addEventListener("click", (e) => {
+    const menuBtn = e.target.closest("[data-menu]");
+    if (menuBtn) return showMenuPanel(menuBtn.dataset.menu);
+    const backBtn = e.target.closest("[data-back]");
+    if (backBtn) return showMenuPanel(backBtn.dataset.back || "root");
+  });
+  panel.addEventListener("mouseover", (e) => {
+    const item = e.target.closest(".menu-item");
+    if (item && !item.disabled) item.focus();
+  });
+}
+// Arrow-key / Escape navigation, console-menu style. Left alone while a range
+// input (music volume) has focus, so its own native left/right handling isn't
+// fought over.
+document.addEventListener("keydown", (e) => {
+  if (introPanel.hidden || !characterSelect.hidden || !multiplayerPanel.hidden) return;
+  const active = document.activeElement;
+  if (active && active.tagName === "INPUT") return;
+  const openPanel = Object.values(menuPanels).find((el) => !el.hidden);
+  if (!openPanel) return;
+  const items = [...openPanel.querySelectorAll(".menu-item:not(:disabled)")];
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const i = items.indexOf(active);
+    const next = e.key === "ArrowDown" ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+    items[Math.max(0, next)]?.focus();
+  } else if (e.key === "Escape" && openPanel !== menuPanels.root) {
+    showMenuPanel("root");
+  }
+});
+exitYesBtn.addEventListener("click", () => {
+  window.close();
+  setTimeout(() => {
+    menuPanels.exit.innerHTML =
+      '<div class="menu-confirm">Thanks for playing.</div>' +
+      '<div class="menu-confirm-sub">Browsers won’t let a page close its own tab — you can close it now.</div>';
+  }, 250);
+});
+function syncGfxChoices() {
+  for (const b of gfxChoices.querySelectorAll("[data-tier]")) b.classList.toggle("active", b.dataset.tier === GFX.tier);
+}
+for (const b of gfxChoices.querySelectorAll("[data-tier]")) {
+  b.addEventListener("click", () => {
+    GFX.adaptive = false;
+    GFX.tier = b.dataset.tier;
+    applyTier();
+    syncGfxChoices();
+  });
+}
 
 // ---------------------------------------------------------------- renderer / scene
 GFX.tier = autoTier();
@@ -423,6 +505,8 @@ let lampPower = 1;
 let lampsLit = true;
 const lampFx = [];
 let poolTimer = 0;
+// Soft ceiling for a pooled light's near-field brightness — see updateLightPool.
+const POOL_LIGHT_CAP = 30;
 function updateLightPool(dt, focus) {
   poolTimer -= dt;
   if (poolTimer > 0 || !litSpots.length) return;
@@ -443,7 +527,18 @@ function updateLightPool(dt, focus) {
     // fade the outermost lights in rather than popping them on
     // Street lamps are accent lighting, not a second sun. Keep authored
     // interior/fire lights at full strength, but soften pooled lamp spill.
-    l.intensity = sp.power * THREE.MathUtils.smoothstep(90 * 90 - sp.d, 0, 30 * 30) * (sp.fx === false ? 1 : lampPower * 0.72);
+    // Every `power` here feeds a real, physically-decaying PointLight (decay 2,
+    // set in initLightPool) with no minimum-distance floor, so a light placed a
+    // couple of metres from its own prop (a sign, a torch, a bonfire — exactly
+    // where most of these sit) blows that prop's surface to solid white and
+    // bloom smears it across the frame; the sun itself never exceeds ~3.2
+    // (daycycle.js), so a `power` of 16-170 is catastrophic up close no matter
+    // how reasonable it looks from across the street. Soft-cap with a knee
+    // (POOL_LIGHT_CAP) instead of a hard clamp: small fixtures barely move,
+    // the worst offenders (klan bonfires, casino fronts) get pulled way down,
+    // and every light keeps its authored ranking relative to the others.
+    const nearFieldSafePower = POOL_LIGHT_CAP * sp.power / (POOL_LIGHT_CAP + sp.power);
+    l.intensity = nearFieldSafePower * THREE.MathUtils.smoothstep(90 * 90 - sp.d, 0, 30 * 30) * (sp.fx === false ? 1 : lampPower * 0.72);
   }
 }
 
@@ -774,57 +869,6 @@ function makeFence(x1, z1, x2, z2) {
   scene.add(m);
 }
 
-// ---------------------------------------------------------------- gas cans
-const cans = [];
-function makeCan(x, z) {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(0.6, 0.75, 0.32),
-    new THREE.MeshStandardMaterial({ color: 0xe23a1e, roughness: 0.5, emissive: 0xd23010, emissiveIntensity: 0.9 })
-  );
-  body.castShadow = true;
-  const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3),
-    new THREE.MeshStandardMaterial({ color: 0x333333 }));
-  spout.position.set(0.22, 0.5, 0); spout.rotation.z = 0.5;
-  g.add(body, spout);
-  // a faint glow column, so a can reads from across a lot and not just on the radar
-  const beamMat = new THREE.MeshBasicMaterial({
-    color: 0xff7a2a, transparent: true, opacity: 0.13, depthWrite: false,
-    blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-  });
-  beamMat.userData.gtbRealized = true;
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 7, 12, 1, true), beamMat);
-  beam.position.y = 3.5 - 0.55;
-  g.add(beam);
-  g.position.set(x, 0.55, z);
-  g.userData = { taken: false, baseY: 0.55 };
-  scene.add(g);
-  cans.push(g);
-}
-
-/**
- * Keep every can reachable. A can whose spot ended up inside something's
- * collision (a building added or swapped later, a parked car) moves to the
- * nearest clear ground around it. Runs once, when every blocker exists.
- */
-function settleCans() {
-  const clear = (x, z) => blockers.every((b) => Math.hypot(b.x - x, b.z - z) > b.r + 0.9);
-  for (const c of cans) {
-    const { x, z } = c.position;
-    if (clear(x, z)) continue;
-    search: for (let r = 1; r <= 10; r += 0.75) {
-      for (let a = 0; a < 16; a++) {
-        const nx = x + Math.cos((a / 16) * Math.PI * 2) * r, nz = z + Math.sin((a / 16) * Math.PI * 2) * r;
-        if (!clear(nx, nz)) continue;
-        c.position.x = nx;
-        c.position.z = nz;
-        console.info(`[cans] a can at (${x.toFixed(1)}, ${z.toFixed(1)}) was inside collision; moved to (${nx.toFixed(1)}, ${nz.toFixed(1)})`);
-        break search;
-      }
-    }
-  }
-}
-
 // ---------------------------------------------------------------- Popeyes (everywhere)
 function signTexture() {
   const c = document.createElement("canvas");
@@ -1016,7 +1060,7 @@ function spawnTracer(from, to) {
 // ---------------------------------------------------------------- game state
 const state = {
   running: false, over: false,
-  hp: 100, sp: 100, cans: 0, cash: 0,
+  hp: 100, sp: 100, cash: 0,
   fireCd: 0, hurtCd: 0, dusk: 0, prostituteTrips: 0,
   selectedCharacter: "keseme", campaign: "main",   // Keseme Nadia, the story's protagonist, is the default pick
   veh: null,          // vehicle the player is driving, or null (on foot)
@@ -1033,6 +1077,9 @@ const state = {
 const vehicles = [];   // every drivable car
 let lastVehAudio = null;   // the previous frame's state.veh.audio, so exiting a car tears its sound down
 const sheriffs = [];   // active police units
+const wrecks = [];      // exploded vehicles left standing — see updateWrecks
+let sheriffSpawnCd = 0;   // stagger cruiser call-outs — see updateSheriffs
+let footSpawnCd = 0;      // stagger deputy call-outs — see updateSheriffs
 const cashEl = document.getElementById("cash");
 const starsEl = document.getElementById("stars");
 const vehIndic = document.getElementById("vehIndic");
@@ -1058,7 +1105,23 @@ if (radioBtn) radioBtn.onclick = () => toggleRadio();
 function toggleMute() {
   music.muted = !music.muted;
   document.getElementById("mute").textContent = music.muted ? "♪̶" : "♪";
+  syncMuteToggle();
 }
+// The main-menu Options panel's own volume/mute controls (set before the game
+// starts, or from Options mid-session). The two music.volume = musicVolume
+// assignments elsewhere (starting the soundtrack fresh) read this instead of
+// a literal, so a choice made in Options survives into the game.
+let musicVolume = 0.55;
+function syncMuteToggle() {
+  muteToggleBtn.textContent = music.muted ? "Off" : "On";
+  muteToggleBtn.classList.toggle("off", music.muted);
+}
+musicVolumeInput.addEventListener("input", () => {
+  musicVolume = Number(musicVolumeInput.value) / 100;
+  music.volume = musicVolume;
+});
+muteToggleBtn.addEventListener("click", () => toggleMute());
+syncMuteToggle();
 
 function registerVehicle(obj, r = 1.8, opts = {}) {
   if (!obj) return null;
@@ -1086,6 +1149,20 @@ function crime(amount) {
 // Gunfire is only a crime when somebody hears it: popping hogs out in the woods
 // doesn't bring the Sheriff, and a shot near people or a cruiser does.
 function shotWitnessed() {
+  for (const [id, rp] of remotePlayers.entries()) {
+    if (rp.userData.netTarget && rp.userData.netTarget.state === "DEAD") continue;
+    const dx = rp.position.x - playerPos.x, dz = rp.position.z - playerPos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > gun.range || d < 1e-3) continue;
+    const facing = (dx * _aim.x + dz * _aim.z) / d;
+    if (state.weapon === "sawnoff") {
+      if (facing > 0.82) hitTargets.push({ t: { id, rp }, kind: "player", d });
+    } else {
+      if (facing < 0.8) continue;
+      const score = d * 1.5 * (1.6 - facing);
+      if (score < bestScore) { bestScore = score; best = { id, rp }; bestKind = "player"; bestDist = d; }
+    }
+  }
   for (const e of enemies) {
     if (!e.dead && e.type !== "hog" && Math.hypot(e.spr.position.x - playerPos.x, e.spr.position.z - playerPos.z) < 35) return true;
   }
@@ -1106,7 +1183,7 @@ const mapEditor = createMapEditor({
   removeLitSpot: (spot) => { const i = litSpots.indexOf(spot); if (i >= 0) litSpots.splice(i, 1); },
 });
 
-input.onPress("interact", () => { if (services.interact() || nightlife.interact() || casinos.interact() || (orlea && orlea.interact()) || (newton && newton.interact())) return; enterExitVehicle(); tryInteract(); });
+input.onPress("interact", () => { if (services.interact() || nightlife.interact() || casinos.interact() || (orlea && orlea.interact()) || (newton && newton.interact())) return; enterExitVehicle(); });
 input.onPress("mute", () => toggleMute());
 input.onPress("nextTrack", () => soundtrackReady.then((s) => s.next()));
 // [ / ] step the graphics tier down / up; once you touch it, the auto
@@ -1159,7 +1236,10 @@ const compass = createCompass();
 // GTA-style radar (minimap.js): the base map is built once the level exists
 const minimap = createMinimap({ MAP });
 // the player's weapon slot (weapons.js) and what NPCs drop (loot.js)
-const arsenal = createArsenal({ state, flashObjective });
+// onReload is the one seam between the weapon slot and how it is presented:
+// weapons.js says "this reload started and it takes this long" and weapons_3d.js
+// turns that into the dip-and-return. Neither has to know about the other.
+const arsenal = createArsenal({ state, flashObjective, onReload: notifyReload3D });
   initWeapons3D(scene);
 const kills = { hog: 0, redneck: 0, hoodrat: 0, prostitute: 0 };
 const EMOJI = { hog: "🐗", redneck: "🧢", hoodrat: "🎧", prostitute: "💋" };
@@ -1181,7 +1261,7 @@ const hijacker = createHijacker({
   releaseFromTraffic: (v) => { if (traffic) traffic.releaseVehicle(v); },
   spawnDriver: (x, z) => { spawnEnemy(Math.random() < 0.55 ? "hoodrat" : "redneck", x, z); return enemies[enemies.length - 1]; },
   provoke: (e) => npcs.provoke(e),
-  enterVehicle: (v) => { state.veh = v; if (v) arsenal.enforceVehicle(); playerPos.copy(v.obj.position); player.visible = false; },
+  enterVehicle: (v) => { state.veh = v; if (v) { arsenal.enforceVehicle(); if (multiplayerMode && multiplayer?.connected && v.netId) { multiplayer.send("VEHICLE_ENTER", { id: v.netId }); } } playerPos.copy(v.obj.position); player.visible = false; },
   flashObjective,
   crime,
 });
@@ -1193,15 +1273,9 @@ function minimapBlips() {
   }
   const wp = (blueLight && blueLight.waypoint) || (actOne && actOne.waypoint) || (greedoCampaign && greedoCampaign.waypoint) || (syncCampaign && syncCampaign.waypoint) || (prologue && prologue.waypoint);
   if (wp) _blips.push({ kind: "waypoint", x: wp.x, z: wp.z });
-  if (!storyObjective) {
-    // free roam: the escape plan (the cans, then the truck)
-    if (state.cans >= CAN_GOAL) _blips.push({ kind: "waypoint", x: truckPos.x, z: truckPos.z });
-    else for (const c of cans) if (!c.userData.taken) _blips.push({ kind: "can", x: c.position.x, z: c.position.z });
-  }
   for (const b of services.blips()) _blips.push(b);
   for (const b of nightlife.blips()) _blips.push(b);
   for (const b of casinos.blips()) _blips.push(b);
-  _blips.push({ kind: "truck", x: truckPos.x, z: truckPos.z });
   for (const s of sheriffs) if (!s.dead) _blips.push({ kind: "cop", x: s.obj.position.x, z: s.obj.position.z });
   for (const e of enemies) if (!e.dead && e.state === "hostile") _blips.push({ kind: "hostile", x: e.spr.position.x, z: e.spr.position.z });
   return _blips;
@@ -1220,6 +1294,7 @@ const services = createServices({
   scene, state, playerPos, arsenal, flashObjective, addBlocker,
   get cine() { return cine; },
   syncHUD: () => syncHUD(),
+  stopVehicleFire: (v) => stopVehicleFire(v),
   clearWanted: () => {
     state.heat = 0;
     state.wanted = 0;
@@ -1316,7 +1391,7 @@ function confirmCharacter() {
   if (cfg.campaign === "sync") { prologue.skip(); syncCampaign.start(); return; }
   if (pendingLaunch === "story") prologue.start();
   else {
-    prologue.skip(); music.volume = 0.55; soundtrackReady.then((s) => s.play());
+    prologue.skip(); music.volume = musicVolume; soundtrackReady.then((s) => s.play());
     flashObjective("Click the game to look around with the mouse · Esc releases it");
     // Free Roam: every gun, no reload grind (human request, 2026-09-20).
     // weapons.js checks this flag itself so it survives weapon switches and
@@ -1342,6 +1417,14 @@ addEventListener("keydown", (e) => {
 });
 
 function drawMultiplayerRoom(room) {
+  if (!room) {
+    if (mpBrowserView) mpBrowserView.hidden = false;
+    if (mpLobbyView) mpLobbyView.hidden = true;
+    if (multiplayer) multiplayer.fetchRooms();
+    return;
+  }
+  if (mpBrowserView) mpBrowserView.hidden = true;
+  if (mpLobbyView) mpLobbyView.hidden = false;
   if (!room) return;
   mpCode.textContent = room.code || "—";
   mpPlayers.replaceChildren(...room.players.map((p) => {
@@ -1352,11 +1435,61 @@ function drawMultiplayerRoom(room) {
   mpReady.disabled = !me?.character; mpReady.textContent = me?.ready ? "Unready" : "Ready";
   mpStart.disabled = multiplayer?.playerId !== room.hostId || room.players.some((p) => !p.character || !p.ready);
 }
+
+function drawMultiplayerRooms(rooms) {
+  if (!mpRoomList) return;
+  mpRoomList.innerHTML = "";
+  if (!rooms || rooms.length === 0) {
+    mpRoomList.innerHTML = "<div style='color: #888;'>No public rooms found. Create one!</div>";
+    return;
+  }
+  rooms.forEach(r => {
+    const d = document.createElement("div");
+    d.style.cssText = "display: flex; justify-content: space-between; padding: 4px; border-bottom: 1px solid #333;";
+    const name = document.createElement("span");
+    name.textContent = `${r.name} (${r.players}/${r.maxPlayers})`;
+    const btn = document.createElement("button");
+    btn.textContent = "Join";
+    btn.style.padding = "2px 8px";
+    btn.onclick = () => {
+      mpRoomInput.value = r.code;
+      multiplayer?.joinRoom(r.code, mpJoinPassword.value);
+    };
+    d.appendChild(name);
+    d.appendChild(btn);
+    mpRoomList.appendChild(d);
+  });
+}
+
 function openMultiplayer() {
   multiplayerMode = true; introPanel.hidden = true; characterSelect.hidden = true; multiplayerPanel.hidden = false;
-  if (!multiplayer) multiplayer = createMultiplayer({ onConnection: (status, ping) => { mpConnection.textContent = `SERVER · ${status}${ping ? ` · ${Math.round(ping)}ms` : ""}`; }, onRoom: (room) => { drawMultiplayerRoom(room); if (room.phase === "PLAYING" && beginGame && !state.running) { multiplayerPanel.hidden = true; beginGame(); prologue.skip(); flashObjective("Multiplayer bayou loaded · watch your six"); } }, onSnapshot: applyNetworkSnapshot, onError: (code) => { mpMessage.textContent = code.replaceAll("_", " "); } });
+  if (!multiplayer) multiplayer = createMultiplayer({ onConnection: (status, ping) => { mpConnection.textContent = `SERVER · ${status}${ping ? ` · ${Math.round(ping)}ms` : ""}`; }, onRooms: drawMultiplayerRooms, onDamage: (msg) => {
+      if (msg.id === multiplayer?.playerId) {
+         if (msg.health < state.hp) {
+           hurtFlash();
+           state.hp = msg.health;
+           syncHUD();
+           if (state.hp <= 0 && state.running && !state.over) wasted();
+         }
+      }
+    },
+    onRespawned: (msg) => {
+      state.hp = 100;
+      syncHUD();
+      player.position.set(msg.x, msg.y, msg.z);
+      playerPos.set(msg.x, msg.y, msg.z);
+      camCtl.reset();
+      camCtl.snap();
+      player.visible = true;
+      if (state.veh) {
+        state.veh = null;
+      }
+    },
+    onRoom: (room) => { drawMultiplayerRoom(room); if (room.phase === "PLAYING" && beginGame && !state.running) { multiplayerPanel.hidden = true; beginGame(); prologue.skip(); flashObjective("Multiplayer bayou loaded · watch your six"); } }, onSnapshot: applyNetworkSnapshot, onError: (code) => { mpMessage.textContent = code.replaceAll("_", " "); } });
   multiplayer.connect();
 }
+
+const networkEntities = new Map();
 function applyNetworkSnapshot(snapshot) {
   for (const data of snapshot.players || []) {
     if (data.id === multiplayer?.playerId) continue;
@@ -1364,28 +1497,188 @@ function applyNetworkSnapshot(snapshot) {
     if (!view) {
       view = createPlayerCharacter(data.character || "peta", { makePeta: () => makeCastMember(makeHoodrat, "keseme", { height: 1.74 }), makeHoodrat });
       view.position.set(data.x, data.y, data.z); scene.add(view); remotePlayers.set(data.id, view);
+      if (view.arms) {
+        view.userData.weaponRig = new RemoteWeaponRig(view);
+      }
     }
     view.userData.netTarget = {
       x: data.x, y: data.y, z: data.z, yaw: data.yaw || 0,
       state: data.state, vehicle: Boolean(data.vehicle),
+      weapon: data.weapon, aiming: Boolean(data.aiming), firing: Boolean(data.firing)
     };
   }
   const live = new Set((snapshot.players || []).map((p) => p.id));
   for (const [id, view] of remotePlayers) if (!live.has(id)) { scene.remove(view); remotePlayers.delete(id); }
+
+  const liveEntities = new Set();
+  for (const data of snapshot.entities || []) {
+    liveEntities.add(data.id);
+    let ent = networkEntities.get(data.id);
+    if (!ent) {
+      if (data.type === "vehicle") {
+        // Find existing vehicle or create dummy
+        const existing = vehicles.find(v => v.netId === data.id);
+        if (existing) {
+          ent = existing;
+        } else {
+          // If we are host, we shouldn't be receiving new entities we don't know about, except when joining
+          if (multiplayer?.playerId === multiplayer?.room?.hostId && !data.clientOwned) continue;
+          
+          ent = { netId: data.id, type: "vehicle", obj: new THREE.Group() };
+          scene.add(ent.obj);
+          vehicles.push(ent);
+          
+          // load visual
+          import("./vehicles.js").then(({ VEHICLE_DEFS }) => {
+            const defName = Object.keys(VEHICLE_DEFS).find(k => k === data.model) || "fallback";
+            const file = VEHICLE_DEFS[defName].file;
+            const tex = VEHICLE_DEFS[defName].texture;
+            // We can't easily call loadVehicle from here if it's not exported, wait, it's not exported from vehicles.js!
+            // It's in main.js. Let's just use it.
+          });
+          // Actually loadVehicle is defined in main.js, we can just call it
+          if (typeof loadVehicle === "function") {
+             const defName = data.model || "fallback";
+             // find file/tex from VEHICLE_DEFS in main.js? VEHICLE_DEFS is imported!
+             const def = VEHICLE_DEFS[defName] || VEHICLE_DEFS.fallback;
+             loadVehicle(def.file, def.texture || "blue.png").then(v => {
+               if (ent.obj) ent.obj.add(v.obj);
+             });
+          }
+        }
+      } else if (data.type === "npc") {
+         const existing = enemies.find(e => e.netId === data.id);
+         if (existing) ent = existing;
+         else {
+           if (multiplayer?.playerId === multiplayer?.room?.hostId) continue;
+           ent = spawnEnemy("hoodrat", data.x || 0, data.z || 0);
+           ent.netId = data.id;
+           ent.type = "npc"; // tag for the cleanup loop below
+         }
+      }
+      if (ent) networkEntities.set(data.id, ent);
+    }
+    
+    // Sync state
+    if (ent && multiplayer?.playerId !== multiplayer?.room?.hostId) { // Only sync if we are not host
+      if (data.type === "vehicle" && ent.owner !== multiplayer?.playerId) {
+         ent.obj.position.set(data.x, data.y, data.z);
+         if (data.yaw !== undefined) ent.heading = data.yaw;
+         if (data.yaw !== undefined && ent.obj.rotation) ent.obj.rotation.y = data.yaw;
+         ent.health = data.health;
+         if (data.destroyed && !ent.exploded) {
+            explodeCar(ent);
+         }
+         ent.owner = data.owner;
+      } else if (data.type === "npc") {
+         if (ent.spr) {
+           ent.spr.position.set(data.x, data.y, data.z);
+           if (data.yaw !== undefined) {
+             if (ent.spr.rotation) ent.spr.rotation.y = data.yaw;
+             ent._yaw = data.yaw;
+           }
+           if (data.anim && ent.spr.play) ent.spr.play(data.anim, { loop: true });
+         }
+         ent.hp = data.health;
+         if (data.dead && !ent.dead) {
+            ent.dead = true;
+            if (ent.spr && ent.spr.play) ent.spr.play("death", { loop: false, force: true });
+         }
+      }
+    }
+  }
+
+  for (const [id, ent] of networkEntities) {
+    if (!liveEntities.has(id)) {
+       if (ent.type === "vehicle") {
+         scene.remove(ent.obj);
+         const idx = vehicles.indexOf(ent);
+         if (idx >= 0) vehicles.splice(idx, 1);
+       } else if (ent.type === "npc" || ent.isEnemy) {
+         if (ent.spr) scene.remove(ent.spr);
+         else scene.remove(ent);
+         const idx = enemies.indexOf(ent);
+         if (idx >= 0) enemies.splice(idx, 1);
+       }
+       networkEntities.delete(id);
+    }
+  }
+}
+
+
+// A beat-up car smokes and licks with flame before it dies, rather than going
+// from "fine" straight to "gone." One small rig (cone flame + smoke puff +
+// flickering light) parented to the car so it rides along while still driving
+// or rolling to a stop.
+const VEHICLE_FIRE_HP_FRAC = 0.3;   // catch fire once this much health is left
+const WRECK_DESPAWN_DIST = 75;      // m: how far the player has to move off before a wreck clears
+function startVehicleFire(v) {
+  // No `!v.exploded` guard: explodeCar deliberately restarts this rig as the
+  // wreck's smoulder once the car is already flagged exploded.
+  if (v.onFire || !v.obj) return;
+  v.onFire = true;
+  const flameMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff6a1e).multiplyScalar(2.6) });
+  flameMat.userData.gtbRealized = true;
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.85, 7), flameMat);
+  flame.position.y = 0.4;
+  const smokeMat = new THREE.MeshBasicMaterial({ color: 0x161513, transparent: true, opacity: 0.45, depthWrite: false });
+  smokeMat.userData.gtbRealized = true;
+  const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), smokeMat);
+  smoke.position.y = 1.0;
+  const light = new THREE.PointLight(0xff5a1e, 5, 9, 2);
+  light.position.y = 0.55;
+  const group = new THREE.Group();
+  group.add(flame, smoke, light);
+  group.position.set(0, 0.85, 0);          // above the hood, in the car's own local space
+  v.obj.add(group);
+  v.fireFx = { group, flame, smoke, light, phase: Math.random() * 9 };
+}
+function stopVehicleFire(v) {
+  if (!v.fireFx) return;
+  v.obj.remove(v.fireFx.group);
+  v.fireFx = null;
+  v.onFire = false;
+}
+function updateVehicleFire(v, dt) {
+  const f = v.fireFx;
+  if (!f) return;
+  f.phase += dt * (7 + Math.sin(f.phase * 0.3) * 2);
+  const flick = 0.75 + Math.sin(f.phase) * 0.25;
+  f.light.intensity = (v.exploded ? 2.2 : 5) * flick;
+  f.flame.scale.setScalar((v.exploded ? 0.55 : 0.85) + Math.sin(f.phase * 1.3) * 0.15);
+}
+function updateVehicleFires(dt) {
+  for (const v of vehicles) if (v.fireFx && !v.exploded) updateVehicleFire(v, dt);
+}
+/** Charred wrecks left standing after an explosion; they clear once the
+ * player has moved well away rather than on a fixed timer. */
+function updateWrecks(dt) {
+  const at = state.veh ? state.veh.obj.position : playerPos;
+  for (let i = wrecks.length - 1; i >= 0; i--) {
+    const v = wrecks[i];
+    updateVehicleFire(v, dt);
+    const d = Math.hypot(at.x - v.obj.position.x, at.z - v.obj.position.z);
+    if (d > WRECK_DESPAWN_DIST) {
+      stopVehicleFire(v);
+      scene.remove(v.obj);
+      wrecks.splice(i, 1);
+    }
+  }
 }
 
 function explodeCar(v) {
   if (v.exploded) return;
   v.exploded = true;
+  v.dead = true;
   v.speed = 0;
   if (v.audio) v.audio.destroy();
-  
-  // Turn it black
+
+  // Turn it black — the charred wreck left behind, not just a paused car.
   v.obj.traverse(o => {
     if (o.isMesh && o.material) {
       if (Array.isArray(o.material)) {
-        o.material.forEach(m => m.color.setHex(0x111111));
-      } else {
+        o.material.forEach(m => m.color && m.color.setHex(0x111111));
+      } else if (o.material.color) {
         o.material.color.setHex(0x111111);
       }
     }
@@ -1397,8 +1690,15 @@ function explodeCar(v) {
   scene.add(ex);
   ex.play("flash", { fps: 12, loop: false });
   setTimeout(() => scene.remove(ex), 500);
+  wreckLight.position.copy(v.obj.position).setY(1.5);
+  wreckLight.intensity = 30;
+  setTimeout(() => { if (wreckLight.intensity === 30) wreckLight.intensity = 0; }, 1400);
 
-  // Play sound if possible
+  // The pre-death flame becomes the wreck's smoulder: same rig, calmer, and it
+  // stays lit (updateWrecks) until the carcass itself despawns.
+  stopVehicleFire(v);
+  startVehicleFire(v);
+
   // Kick occupants out
   if (v.seats) {
     for (const seat of v.seats) {
@@ -1411,6 +1711,22 @@ function explodeCar(v) {
       }
     }
   }
+
+  // No longer driveable, in the way, or chasing anyone — but v.obj stays in
+  // the scene as a wreck (see wrecks / updateWrecks) instead of vanishing.
+  if (v.blocker) {
+    const bi = blockers.indexOf(v.blocker);
+    if (bi >= 0) blockers.splice(bi, 1);
+    blockerGrid.remove(v.blocker);
+  }
+  const vi = vehicles.indexOf(v);
+  if (vi >= 0) vehicles.splice(vi, 1);
+  const si = sheriffs.indexOf(v);
+  if (si >= 0) sheriffs.splice(si, 1);
+  if (v.sheriff) { state.cash += 250; crime(0.6); flashObjective("Cruiser wrecked. +$250"); syncHUD(); }
+  if (state.veh === v) state.veh = null;
+
+  wrecks.push(v);
 }
 
 function updateRemotePlayers(dt) {
@@ -1423,17 +1739,28 @@ function updateRemotePlayers(dt) {
     view.position.lerp(_remoteTarget.set(target.x, target.y, target.z), Math.min(1, dt * 12));
     view._yaw = target.yaw;
     if (view.play && view.userData.netLastState !== target.state) {
-      view.play(target.state === "IDLE" ? "idle" : "walk");
+      if (target.state === "DEAD") {
+        view.play("death", { loop: false, force: true });
+      } else {
+        view.play(target.state === "IDLE" ? "idle" : "walk");
+      }
       view.userData.netLastState = target.state;
     }
     // play() only selects a clip; the character's update() advances its gait.
     // Omitting this left remote players permanently frozen in their idle pose.
     if (view.update && view.visible) view.update(dt);
+    if (view.userData.weaponRig && view.visible) {
+      const aimDir = new THREE.Vector3(Math.sin(target.yaw), 0, Math.cos(target.yaw));
+      view.userData.weaponRig.update(aimDir, target.weapon, dt, target.aiming, target.firing);
+    }
   }
 }
 multiplayerBtn.addEventListener("click", openMultiplayer);
-mpCreate.addEventListener("click", () => multiplayer?.createRoom());
-mpJoin.addEventListener("click", () => multiplayer?.joinRoom(mpRoomInput.value));
+mpCreate.addEventListener("click", () => multiplayer?.createRoom({ visibility: mpVisibility.value, password: mpCreatePassword.value }));
+mpJoin.addEventListener("click", () => multiplayer?.joinRoom(mpRoomInput.value, mpJoinPassword.value));
+if (mpRefreshRooms) mpRefreshRooms.addEventListener("click", () => multiplayer?.fetchRooms());
+if (mpLeaveRoom) mpLeaveRoom.addEventListener("click", () => multiplayer?.leave());
+
 mpPick.addEventListener("click", () => { multiplayerPanel.hidden = true; openCharacterSelect("multiplayer"); });
 mpReady.addEventListener("click", () => { const me = multiplayer?.room?.players.find((p) => p.id === multiplayer.playerId); multiplayer?.ready(!me?.ready); });
 mpStart.addEventListener("click", () => multiplayer?.startGame());
@@ -1635,8 +1962,6 @@ function spawnEnemy(typeName, x, z, spot = null) {
   return rec;
 }
 
-// ---------------------------------------------------------------- truck (escape)
-let truck, truckMarker;
 let traffic = null;   // ambient cars (traffic.js), created once the car models load
 
 // Things a traffic car should stop for, gathered into one reused array.
@@ -1646,6 +1971,9 @@ function trafficObstacles() {
   _obstacles.push(playerPos);
   if (traffic) for (const c of traffic.cars) if (c.active) _obstacles.push(c.obj.position);
   for (const s of sheriffs) if (!s.dead) _obstacles.push(s.obj.position);
+  for (const c of police.footCops) {
+    if (!c.dead && Math.abs(c.spr.position.x - ROAD_X) < ROAD_HALF + 3) _obstacles.push(c.spr.position);
+  }
   for (const e of enemies) {
     if (!e.dead && Math.abs(e.spr.position.x - ROAD_X) < ROAD_HALF + 3) _obstacles.push(e.spr.position);
   }
@@ -1654,10 +1982,13 @@ function trafficObstacles() {
       _obstacles.push(v.obj.position);
     }
   }
+  // The Crown Strip's crossing (tusouxroeNorth.js): pedestrians *in the
+  // carriageway*, as radius-bearing points — traffic.js never eases past one of
+  // those, it waits. Everybody on the kerb is parked far outside the map and is
+  // skipped by the same test, so this costs an array walk and nothing else.
+  if (tusouxroeNorth) for (const p of tusouxroeNorth.crownCrossers) _obstacles.push(p);
   return _obstacles;
 }
-const truckPos = new THREE.Vector3(-6, 0, TRUCK_Z);
-
 // ---------------------------------------------------------------- build the level
 async function buildLevel() {
   // ---- Route 9: one long asphalt highway, swamp in the south, city in the north
@@ -1683,7 +2014,7 @@ async function buildLevel() {
     scene.add(dash);
   }
 
-  loadNote.textContent = "loading the kit…";
+  setLoadStage("loading the kit…", 8);
   const [wall, doorway, windowW, roofC, lamp, stop] = await Promise.all([
     loadKit("Wall/wall_01.gltf"), loadKit("Wall/Doorway/wall_doorway_01.gltf"),
     loadKit("Wall/Window/wall_window_01.gltf"), loadKit("Roof/Concrete/roof_concrete_01.gltf"),
@@ -1823,7 +2154,7 @@ async function buildLevel() {
   makeWaterTower(52, -92, "TUSOUXROE", ["CITY LIMITS"]);
 
   // ================= VEHICLES =================
-  loadNote.textContent = "towing in the cars…";
+  setLoadStage("towing in the cars…", 18);
   const [carR, carB, van, pickup, truckMesh, doclorean, beetle, landy, carY, tristar, toyoyo] = await Promise.all([
     loadVehicle("Car_1_R.fbx", "Car_1_R_128x128_Color.png"),
     loadVehicle("Car_1_B.fbx", "Car_1_B_128x128_Color.png"),
@@ -1880,18 +2211,19 @@ async function buildLevel() {
     },
     setObjective: setStoryObjective,
     enterVehicle: (v) => {
-      state.veh = v; if (v) arsenal.enforceVehicle();
-      playerPos.copy(v.obj.position);
-      player.visible = false;
-    },
+        state.veh = v; if (v) { arsenal.enforceVehicle(); if (multiplayerMode && multiplayer?.connected && v.netId) { multiplayer.send("VEHICLE_ENTER", { id: v.netId }); } }
+        playerPos.copy(v.obj.position);
+        player.visible = false;
+      },
     exitVehicle: () => {
-      if (!state.veh) return;
+        if (!state.veh) return;
+        if (multiplayerMode && multiplayer?.connected) { multiplayer.send("VEHICLE_EXIT"); }
       state.veh.speed = 0;
       state.veh = null;
       player.visible = true;
     },
     startMusic: () => {
-      music.volume = 0.55;
+      music.volume = musicVolume;
       soundtrackReady.then((s) => s.play());
     },
     setPopulation: (on) => { populationOn = on; },
@@ -1912,7 +2244,8 @@ async function buildLevel() {
     addLitSpot: (spot) => litSpots.push(spot),
     setObjective: setStoryObjective,
     exitVehicle: () => {
-      if (!state.veh) return;
+        if (!state.veh) return;
+        if (multiplayerMode && multiplayer?.connected) { multiplayer.send("VEHICLE_EXIT"); }
       state.veh.speed = 0;
       state.veh = null;
       player.visible = true;
@@ -2019,7 +2352,8 @@ async function buildLevel() {
     setObjective: setStoryObjective,
     setCameraYaw: (yaw) => camCtl.addYaw(yaw - camCtl.yaw),
     exitVehicle: () => {
-      if (!state.veh) return;
+        if (!state.veh) return;
+        if (multiplayerMode && multiplayer?.connected) { multiplayer.send("VEHICLE_EXIT"); }
       state.veh.speed = 0;
       state.veh = null;
       player.visible = true;
@@ -2109,6 +2443,9 @@ async function buildLevel() {
     roadMaterial: () => asphalt.material(1, { envMapIntensity: 0.9 }),
     addLitSpot: (spot) => litSpots.push(spot),
     placeGlbLandmark, loadGLB,
+    // the strip's crowd works a shift off this (crowd.js setShift): staff hold
+    // the venues all day, the nightlife turns up after dark
+    worldTime,
   });
   tusouxroeNorth.buildSet();
   NPC_POIS.push(...tusouxroeNorth.pois);
@@ -2158,7 +2495,8 @@ async function buildLevel() {
     getMapCanvas: () => minimap.baseCanvas,
     returnTo: { x: 120, z: 372, heading: Math.PI },          // up the ladder by the storm drain
     exitVehicle: () => {
-      if (!state.veh) return;
+        if (!state.veh) return;
+        if (multiplayerMode && multiplayer?.connected) { multiplayer.send("VEHICLE_EXIT"); }
       state.veh.speed = 0;
       state.veh = null;
       player.visible = true;
@@ -2217,24 +2555,13 @@ async function buildLevel() {
                    // measured ~2.4k draw calls, still under the ~4.5k driving budget guardrail
   });
 
-  // ---- the escape truck ----
-  truck = truckMesh || fallbackCar(null);
-  truck.position.copy(truckPos);
-  truck.rotation.y = Math.PI / 2;
-  scene.add(truck);
-  addBlocker(truckPos.x, truckPos.z, 2.4);
-  truckMarker = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.6, 4),
-    new THREE.MeshBasicMaterial({ color: 0x7ee87e }));
-  truckMarker.position.set(truckPos.x, 5.5, truckPos.z);
-  scene.add(truckMarker);
-  poolLight(0x7ee87e, 26, 34, truckPos.x, 4, truckPos.z);
-
-  // ================= PICKUPS ================= (spread down the highway)
-  makeCan(...landmarkPos(1, 100), true);        // at the 6twelve pumps
-  makeCan(-16, 41, true);                       // out front of the storefront lot (z 52), clear of its walls
-  makeCan(30, 66, true);                        // by a shack
-  makeCan(3, -50, true);                        // out front of the storefront lot (z -34), by the road: (11, -42) ended up inside that building's collision
-  makeCan(ROAD_X - 2, -100, true);              // near the truck
+  // The "collect 4 gas cans, drive the escape truck out of Dixie Beaux" free-roam
+  // objective predates Act One's story campaign and was never wired to it (nothing
+  // outside the pickup loop below ever set state.cans). It's gone per a human
+  // report: no cans were actually reachable in the current world, the "Jack a ride
+  // rob gas cans: 0/4" objective was stuck showing forever, and the parked escape
+  // truck itself was reported as an oddly-placed leftover. win()/tryInteract's
+  // truck check and the gas-can HUD panel were removed with it.
 
   const be = ROAD_X + ROAD_HALF + 8;
   for (const [bx, bz] of [[be, 96], [-be, 62], [be, 30], [-be, 0], [be, -28],
@@ -2838,22 +3165,13 @@ function placeParked(obj, x, z, rot) {
   return registerVehicle(obj, 1.9, { hp: 34 });
 }
 
-// ---------------------------------------------------------------- interactions
-function tryInteract() {
-  if (!state.running) return;
-  // near truck?
-  if (playerPos.distanceTo(truckPos) < 4.5) {
-    if (state.cans >= CAN_GOAL) return win();
-    flashObjective(`The tank is dry — need ${CAN_GOAL - state.cans} more can(s).`);
-  }
-}
-
 // ---------------------------------------------------------------- combat
 // Distinct gunfire per weapon (human report: "the guns should have sounds,
 // different sounds"). Procedural, via cinema.js's sfx() — see there for the
 // actual noise/filter shaping of each kind.
 const WEAPON_SFX = { pistol: "pistolShot", tec9: "tec9Shot", sawnoff: "shotgun", deerRifle: "rifleShot" };
 const _tmpV = new THREE.Vector3();
+const _muzzleV = new THREE.Vector3();
 function fire() {
   if (state.fireCd > 0 || state.over || state.cinematic) return;
   // Weapon away: left click is inert. Checked before the aim prompt below so
@@ -2890,16 +3208,37 @@ function fire() {
   }
   state.fireCd = gun.cooldown;
   if (shotWitnessed()) crime(0.12);
+  // Shots come out of the BARREL, not the player's navel. weapons_3d.js exposes
+  // the muzzle node in world space; the chest-height point is only the fallback
+  // for the frames before a freshly-swapped weapon's model is up, and while
+  // driving (the rig is hidden and the car is the view).
   const origin = _tmpV.copy(playerPos).setY(state.veh ? 1.4 : 1.2);
+  if (!state.veh && getWeaponMuzzle(_muzzleV)) origin.copy(_muzzleV);
+
+  const _ray = new THREE.Raycaster();
+  const _crosshairNDC = new THREE.Vector2(0, 0);
+  const _aim3D = new THREE.Vector3();
+
+  const isAiming = input.isDown("aim") || state.veh;
+  if (isAiming) {
+    _ray.setFromCamera(_crosshairNDC, camera);
+    const target3D = _ray.ray.at(1000, new THREE.Vector3());
+    _aim3D.subVectors(target3D, origin).normalize();
+    _aim.copy(_aim3D);
+    _aim.y = 0;
+    _aim.normalize();
+  } else {
+    _aim.set(Math.sin(player._yaw), 0, Math.cos(player._yaw));
+    _aim3D.copy(_aim);
+  }
 
   if (!state.veh) { 
     attackTimer = 0.42; 
     player.play(gun.melee ? (state.weapon === "bat" ? "swing_bat" : "attack") : "shoot", { fps: 12, loop: false, force: true }); 
-    if (!gun.melee) player._yaw = camCtl.heading;
+    if (!gun.melee && isAiming) player._yaw = camCtl.heading;
     playFireAnim3D(state.weapon, gun.melee); 
   }
 
-  camCtl.forward(_aim);
   let best = null, bestScore = Infinity, bestKind = null, bestDist = 0;
   let hitTargets = [];
 
@@ -2917,6 +3256,20 @@ function fire() {
       if (hostile && facing < -0.2 && d > 6) continue;
       const score = d * (hostile ? 0.6 : 1) * (1.6 - facing);
       if (score < bestScore) { bestScore = score; best = e; bestKind = "enemy"; bestDist = d; }
+    }
+  }
+  for (const c of police.footCops) {
+    if (c.dead) continue;
+    const dx = c.spr.position.x - playerPos.x, dz = c.spr.position.z - playerPos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > gun.range || d < 1e-3) continue;
+    const facing = (dx * _aim.x + dz * _aim.z) / d;
+    if (state.weapon === "sawnoff") {
+      if (facing > 0.82) hitTargets.push({ t: c, kind: "footCop", d });
+    } else {
+      if (facing < -0.2 && d > 6) continue;
+      const score = d * 0.6 * (1.6 - facing);
+      if (score < bestScore) { bestScore = score; best = c; bestKind = "footCop"; bestDist = d; }
     }
   }
   for (const s of sheriffs) {
@@ -2956,25 +3309,37 @@ function fire() {
   if (!gun.melee) {
     if (state.weapon === "sawnoff") {
       for (let i = 0; i < 6; i++) {
-        const spreadAim = _aim.clone().add(new THREE.Vector3((Math.random() - 0.5)*0.3, (Math.random() - 0.5)*0.1, (Math.random() - 0.5)*0.3)).normalize();
+        const spreadAim = _aim3D.clone().add(new THREE.Vector3((Math.random() - 0.5)*0.3, (Math.random() - 0.5)*0.1, (Math.random() - 0.5)*0.3)).normalize();
         spawnTracer(origin, origin.clone().addScaledVector(spreadAim, gun.range));
       }
     } else {
       let target;
       if (bestKind === "enemy") target = best.spr.position.clone().setY(best.type === "hog" ? 0.8 : 1.1);
       else if (bestKind === "sheriff") target = best.obj.position.clone().setY(1.1);
-      else target = origin.clone().addScaledVector(_aim, 24);
+      else if (bestKind === "player") target = best.rp.position.clone().setY(1.1);
+      else target = origin.clone().addScaledVector(_aim3D, 24);
       spawnTracer(origin, target);
     }
-    muzzleFlash(origin, origin.clone().addScaledVector(_aim, 2));
+    muzzleFlash(origin, origin.clone().addScaledVector(_aim3D, 2));
     cine.sfx(WEAPON_SFX[state.weapon] || "pistolShot");
   }
   arsenal.consume();
 
   for (const hit of hitTargets) {
     const { t, kind, d } = hit;
-    // Shotgun damage falls off linearly to 0 at max range
     const dmg = state.weapon === "sawnoff" ? gun.damage * (1 - d / gun.range) : gun.damage;
+    if (multiplayerMode && multiplayer?.connected) {
+       if (kind === "player") {
+         multiplayer.send("DAMAGE", { id: t.id, amount: dmg });
+       } else if (kind === "enemy" && t.netId) {
+         multiplayer.send("DAMAGE", { id: t.netId, amount: dmg });
+       } else if (kind === "vehicle" && t.netId) {
+         multiplayer.send("DAMAGE", { id: t.netId, amount: dmg });
+       } else if (kind === "sheriff" && t.netId) {
+         multiplayer.send("DAMAGE", { id: t.netId, amount: dmg });
+       }
+       if (kind === "player") continue; // Server will handle player death
+    }
     if (kind === "enemy") {
       t.hp -= dmg;
       const freshFight = t.state !== "hostile" && t.state !== "flee";
@@ -2983,6 +3348,20 @@ function fire() {
       else t.spr.position.addScaledVector(t.spr.position.clone().sub(playerPos).setY(0).normalize(), 0.4);
       if (t.hp <= 0) { killEnemy(t); if (t.type !== "hog") crime(1.2); }
       else if (freshFight) speakPedestrian(t, fightLine(t.type, t.T.label, t.mood));
+    } else if (kind === "footCop") {
+      t.hp -= dmg;
+      if (t.spr.play) { t.spr.play("hurt", { loop: false, force: true }); t.t = 0; }
+      if (t.hp <= 0) { 
+        // Custom kill logic since killEnemy accesses t.T.label which footCops lack
+        t.dead = true; 
+        t.state = "dead";
+        if (t.spr.play) t.spr.play("death", { fps: 9, loop: false, force: true });
+        loot.dropFor(t);
+        crime(2.0); // Killing a cop is a serious crime
+        flashObjective(`Deputy down.  ${EMOJI.hog} ${kills.hog}   ${EMOJI.redneck} ${kills.redneck}   ${EMOJI.hoodrat} ${kills.hoodrat}`);
+      } else {
+        crime(0.4); // Shooting a cop
+      }
     } else if (kind === "sheriff") {
       crime(0.4);
       damageVehicle(t, dmg * 2);
@@ -3025,7 +3404,6 @@ function killEnemy(e, { turf = false } = {}) {
 function syncHUD() {
   hpFill.style.width = Math.max(0, state.hp) + "%";
   spFill.style.width = Math.max(0, state.sp) + "%";
-  cansEl.innerHTML = `${state.cans} <small>/ ${CAN_GOAL}</small>`;
   cashEl.textContent = "$" + state.cash.toLocaleString();
   let s = "";
   if (copsActive()) for (let i = 0; i < 6; i++) s += `<span class="${i < state.wanted ? "on" : "off"}">★</span>`;
@@ -3066,18 +3444,10 @@ function scoreLine() {
     ${EMOJI.redneck}${kills.redneck} ${EMOJI.hoodrat}${kills.hoodrat}
     &nbsp;·&nbsp; ${state.wanted}★ at the line`;
 }
-function win() {
-  endScreen("left dixie beaux",
-    `The truck catches on the third try and you point it north, out of Dixie Beaux,
-     as the sun comes up over the cypress. Somebody still owes somebody money, and
-     somebody still has the ledger — but that's a sequel problem.<br><br>${scoreLine()}`,
-    "Run it back");
-}
 function lose() {
   if (storyFail && storyFail("wasted")) return;   // a mission may respawn you instead
   endScreen('<span style="color:#b8202a;font-style:italic">WASTED</span>',
-    `The swamp took you back. ${state.cans}/${CAN_GOAL} gas cans, and the truck's
-     still sitting up past the city line with the keys in it.<br><br>${scoreLine()}`,
+    `The swamp took you back.<br><br>${scoreLine()}`,
     "Respawn");
 }
 function busted() {
@@ -3206,8 +3576,11 @@ function tick() {
           sprint: input.isDown("sprint"), crouch: input.isDown("crouch"), jump: input.isDown("jump"),
           x: netAt.x, y: netAt.y, z: netAt.z,
           yaw: state.veh ? state.veh.heading : (player?._yaw || 0),
-          state: state.veh ? "VEHICLE" : (player?.anim === "walk" ? "RUN" : "IDLE"),
+          state: state.veh ? "VEHICLE" : (player?.anim || "IDLE"),
           vehicle: !!state.veh,
+          weapon: state.weapon || null,
+          aiming: input.isDown("aim"),
+          firing: input.isDown("fire") || input.isDown("fireAlt"),
         });
       }
     }
@@ -3215,7 +3588,9 @@ function tick() {
     if (!cine.hasCamera && mapEditor.active) {
       mapEditor.updateCamera(dt);
     } else if (!cine.hasCamera) {
-      camCtl.setAiming(input.isDown("aim") && (!state.veh || state.weapon === "pistol" || state.weapon === "tec9"));
+      const isAimingCamera = input.isDown("aim") && (!state.veh || state.weapon === "pistol" || state.weapon === "tec9");
+      camCtl.setAiming(isAimingCamera);
+      crosshair.style.display = isAimingCamera && !arsenal.current.melee ? "block" : "none";
       camCtl.update(dt, playerPos, state.veh, blockerGrid, playerMoveHeading);
       if (state.veh && state.veh.jolt > 0) {
         const j = state.veh.jolt;
@@ -3223,11 +3598,23 @@ function tick() {
         camera.position.y += (Math.random() - 0.5) * 0.35 * j;
       }
     }
-    // View-model weapon: runs from the tick, not just on foot, so switching to
-    // the bat / a gun is instant. Hidden while driving (the car is the view) and
-    // during cutscenes — without the gate its last pose froze in the world.
-    updateWeapon3D(playerPos, _camFwd, state.weapon, dt, input.isDown("aim"),
-      state.cinematic || !!state.veh || state.holstered);
+    // The held weapon: parented to the character's hand, so this has to run
+    // after the player's own update (the pose and the hand's world matrix have
+    // to be current) and it takes the ACTOR, not a screen position. Hidden while
+    // driving (the car is the view) and during cutscenes — without the gate its
+    // last pose froze in the world — and while holstered (X).
+    const shooting = input.isDown("attack") && !arsenal.current.melee;
+    updateWeapon3D(player, playerPos, _camFwd, state.weapon, dt, input.isDown("aim"),
+      state.cinematic || (!!state.veh && !input.isDown("aim")) || state.holstered, shooting);
+
+    // Automatic fire: holding the trigger keeps firing at the weapon's own rate.
+    // fire() gates on state.fireCd (= 60/rpm), so this cannot outrun the
+    // configured rate, cannot spawn a second firing loop, and cannot fire at all
+    // once the button is released — input.isDown("attack") goes false on mouseup.
+    // Only "auto" weapons repeat; a semi-auto (and the bat) still needs a fresh
+    // press per shot, and melee still needs its cooldown between swings.
+    // A holstered weapon never gets here: fire() refuses on state.holstered.
+    if (!state.cinematic && !state.paused && arsenal.auto && input.isDown("attack")) fire();
     compass.update(camCtl.heading);
     minimap.visible = !(nolantis && nolantis.inside);
     minimap.update({
@@ -3263,15 +3650,6 @@ function tick() {
     pos.needsUpdate = true;
   }
 
-  for (const c of cans) {
-    if (c.userData.taken) continue;
-    c.rotation.y += dt * 1.4;
-    c.position.y = c.userData.baseY + Math.sin(time * 2 + c.position.x) * 0.12;
-  }
-  if (truckMarker) {
-    truckMarker.rotation.y += dt * 2;
-    truckMarker.position.y = 5.2 + Math.sin(time * 3) * 0.25;
-  }
   for (const s of shrooms) s.update(dt, camera);
   for (const t of torches) t.update(dt, camera);
   updateLightPool(dt, camera.position);
@@ -3348,6 +3726,13 @@ function simulate(dt) {
   hemi.color.setHex(sky.hemiSky);
   hemi.groundColor.setHex(sky.hemiGround);
   hemi.intensity = sky.hemiIntensity * f;
+  // wetRoads (fx.js) was built expecting this and never got it: uWetness sat at
+  // its hardcoded construction-time default (0.6, full reflect strength) no
+  // matter the weather, so every road looked like a full-strength wet mirror in
+  // broad daylight, clear skies included — reflecting the bright sky straight
+  // at the camera. That's a real, separate contributor to "still very bright
+  // during the day" beyond the sun/exposure tuning in daycycle.js.
+  wetRoads.uniforms.uWetness.value = weather.wetness;
   scene.fog.color.setHex(sky.fogColor);
   scene.fog.density = sky.fogDensity * weather.fogMultiplier;
   MIST.y = sky.mist * weather.mistMultiplier;
@@ -3382,6 +3767,9 @@ function simulate(dt) {
   if (state.veh) drivingUpdate(dt);
   else onFootUpdate(dt);
 
+  updateVehicleFires(dt);
+  updateWrecks(dt);
+
   // Car audio: the player's car only — the traffic pool never builds or plays.
   // Every exit path (walking out, hijacked, crashed) just clears state.veh, so
   // tear the *previous* car's audio down here instead of at each exit site.
@@ -3410,29 +3798,13 @@ function simulate(dt) {
     // the rest of the run, so a chase could only end by wrecking every cruiser.
     police.updateSearchAndEvasion(dt, playerPos, sheriffSees(dt), state);
     if (state.crimeCd <= 0) state.heat = Math.max(0, state.heat - dt * (state.veh ? 0.3 : 0.16));
-    const w = state.heat <= 0.1 ? 0 : Math.min(6, Math.max(1, Math.floor(state.heat / 1.4)));
+    const w = starsForHeat(state.heat);
     if (w !== state.wanted) {
       if (w === 0) { police.clearPursuit(); flashObjective("You lost them."); }
       state.wanted = w;
       syncHUD();
     }
     updateSheriffs(dt);
-  }
-
-  // ---- cans ----
-  for (const c of cans) {
-    if (c.userData.taken) continue;
-    const at = state.veh ? state.veh.obj.position : playerPos;
-    const reach = state.veh ? CAN_REACH_VEHICLE : CAN_REACH;
-    if (Math.hypot(at.x - c.position.x, at.z - c.position.z) < reach) {
-      c.userData.taken = true;
-      c.visible = false;
-      state.cans = Math.min(CAN_GOAL, state.cans + 1);
-      syncHUD();
-      flashObjective(state.cans >= CAN_GOAL
-        ? "Tank's full — get to the truck on the road!"
-        : `Gas can! ${state.cans}/${CAN_GOAL}. Keep looking.`);
-    }
   }
 
   // ---- Popeyes buckets (health) ----
@@ -3451,9 +3823,6 @@ function simulate(dt) {
 
   // ---- loot on the ground ----
   loot.update(dt);
-
-  // ---- truck proximity / auto win ----
-  if (state.cans >= CAN_GOAL && playerPos.distanceTo(truckPos) < 4.2) win();
 
   // ---- enemies ----
   const a0 = performance.now();
@@ -3486,9 +3855,7 @@ function setStoryObjective(text) {
 function defaultObjective() {
   if (storyObjective) return storyObjective;
   if (copsActive() && state.wanted >= 1) return "Lose the Sheriff.";
-  return state.cans >= CAN_GOAL
-    ? "Get to the truck past the Tusouxroe city limits."
-    : `Jack a ride · rob gas cans: ${state.cans}/${CAN_GOAL}`;
+  return "Free roam. Explore Dixie Beaux.";
 }
 
 function hitPlayer(dmg) {
@@ -3639,6 +4006,7 @@ function drivingUpdate(dt) {
     v.hp -= v.impact * 1.5;
     v.impact = 0;
     if (v.hp <= 0 && !v.exploded) { crime(0.5); explodeCar(v); }
+    else if (v.hp / (v.hpMax || 40) < VEHICLE_FIRE_HP_FRAC) startVehicleFire(v);
   }
   if (v.jolt > 0) {
     v.jolt = Math.max(0, v.jolt - dt * 3.2);
@@ -3658,6 +4026,24 @@ function drivingUpdate(dt) {
         e.spr.position.addScaledVector(_fwd, 1.2);
         v.speed *= 0.82;
         if (e.hp <= 0) { killEnemy(e); if (e.type !== "hog") crime(1.1); }
+      }
+    }
+    for (const c of police.footCops) {
+      if (c.dead) continue;
+      if (c.spr.position.distanceTo(next) < 2.4) {
+        c.hp -= 5;
+        c.spr.position.addScaledVector(_fwd, 1.2);
+        v.speed *= 0.82;
+        if (c.hp <= 0) {
+          c.dead = true; 
+          c.state = "dead";
+          if (c.spr.play) c.spr.play("death", { fps: 9, loop: false, force: true });
+          loot.dropFor(c);
+          crime(2.0); // Killing a cop
+          flashObjective(`Deputy down.  ${EMOJI.hog} ${kills.hog}   ${EMOJI.redneck} ${kills.redneck}   ${EMOJI.hoodrat} ${kills.hoodrat}`);
+        } else {
+          crime(0.4);
+        }
       }
     }
   }
@@ -3695,6 +4081,9 @@ function nearestVehicle(pos, maxD) {
 function enterExitVehicle() {
   if (!state.running || state.cinematic || hijacker.active) return;
   if (state.veh) {
+    if (multiplayerMode && multiplayer?.connected) {
+      multiplayer.send("VEHICLE_EXIT");
+    }
     // step out
     const v = state.veh;
     state.veh = null;
@@ -3733,6 +4122,14 @@ function policeShoot(origin, damage, source = "police") {
   spawnTracer(from, to);
   muzzleFlash(from, to);
   cine.sfx("pistolShot");
+  // Shared by every cruiser, deputy and the helicopter — this was a guaranteed
+  // hit on every cooldown tick, at any range up to each shooter's own cap
+  // (45m/38m/58m). With several of them converging that stacked into lethal
+  // DPS almost instantly. Real suppressive fire from a moving car or a running
+  // deputy misses plenty; scale that in by range instead of a certain hit.
+  const dist = from.distanceTo(to);
+  const missChance = THREE.MathUtils.clamp(0.28 + dist / 65, 0.28, 0.8);
+  if (Math.random() < missChance) return;
   if (state.veh) damageVehicle(state.veh, damage * 0.8);
   else hitPlayer(damage);
   if (source === "helicopter") flashObjective("POLICE HELICOPTER: incoming fire!");
@@ -3791,11 +4188,31 @@ function spawnSheriff() {
 // exactly as it did after the twelfth kill.
 // Stars go the GTA ways: get out of sight and stay hidden until they give up
 // (police.js), or drive into a Pay 'n' Spray (services.js).
-const WANTED_HEAT = 1.4;              // one star (see the stars formula in simulate)
+const WANTED_HEAT = 1.4;              // one star (see WANTED_THRESHOLDS below)
+const CRUISER_FOOT_STANDOFF = 9;      // m: how close a cruiser will get to a pedestrian before holding off
+// Heat needed to reach 1..6 stars. Was a flat `heat / 1.4`, so six stars — the
+// max police response, cruisers + a full foot squad + a helicopter — cost the
+// same per star as the first one: about seven kills (crime() ~1.1-1.2 each) and
+// you were maxed out. Escalating instead: the first couple of stars stay just
+// as easy to earn (that responsiveness was a deliberate earlier fix), but
+// climbing to the top costs a full rampage's worth of heat, not a scuffle's.
+const WANTED_THRESHOLDS = [0, 1.4, 3.2, 5.8, 9.2, 13.8, 20];
+function starsForHeat(heat) {
+  if (heat <= 0.1) return 0;
+  let stars = 0;
+  for (let i = 1; i < WANTED_THRESHOLDS.length; i++) {
+    if (heat >= WANTED_THRESHOLDS[i]) stars = i;
+  }
+  return Math.max(1, stars);
+}
 function copsActive() { return state.forceCops || !!state.copsCalled; }
 function checkHeatUp() {
   if (state.copsCalled || state.heat < WANTED_HEAT) return;
   state.copsCalled = true;
+  // Give dispatch a beat before anyone turns out, rather than a cruiser
+  // appearing on the same frame the first star lights up.
+  footSpawnCd = Math.max(footSpawnCd, 1.5);
+  sheriffSpawnCd = Math.max(sheriffSpawnCd, 3);
   flashObjective("★ WANTED. Sheriff Mercer's on the way. Lose him: get out of sight and stay hidden, or drive into a Pay 'n' Spray.");
   syncHUD();
 }
@@ -3869,10 +4286,22 @@ function retireSheriff(v) {
   if (si >= 0) sheriffs.splice(si, 1);
 }
 function updateSheriffs(dt) {
-  const want = state.wanted > 0 ? Math.min(6, state.wanted) : 0;
-  if (state.wanted > 0 && sheriffs.filter((s) => !s.dead).length < want && sheriffProto) spawnSheriff();
-  const footWant = Math.min(8, Math.max(0, state.wanted - 1));
-  while (police.footCops.filter((c) => !c.dead).length < footWant) {
+  // One star is a beat cop's business, not a car chase: only foot deputies
+  // turn out. Cruisers wait for two stars and up, same as the helicopter
+  // waits for three (HELI_MIN_STARS) — the response escalates in kind, not
+  // just in number.
+  const want = state.wanted >= 2 ? Math.min(6, state.wanted - 1) : 0;
+  const footWant = state.wanted >= 1 ? Math.min(8, state.wanted + 1) : 0;
+
+  // Dispatch staggers who it sends, instead of the whole shift arriving on
+  // the same frame the star count ticks over.
+  sheriffSpawnCd = Math.max(0, sheriffSpawnCd - dt);
+  if (sheriffSpawnCd <= 0 && sheriffs.filter((s) => !s.dead).length < want && sheriffProto) {
+    spawnSheriff();
+    sheriffSpawnCd = 3.5 + Math.random() * 2;
+  }
+  footSpawnCd = Math.max(0, footSpawnCd - dt);
+  if (footSpawnCd <= 0 && police.footCops.filter((c) => !c.dead).length < footWant) {
     // Same unchecked-ring bug the cruisers had: a random bearing with no test
     // for what is there drops deputies INSIDE buildings, and a foot cop that
     // starts in a wall spends its life being pushed out of one. Find clear
@@ -3887,7 +4316,7 @@ function updateSheriffs(dt) {
       police.spawnFootCop(x, z);
       placed = true;
     }
-    if (!placed) break;
+    footSpawnCd = placed ? 2.5 + Math.random() * 1.5 : 0.4;
   }
 
   // Where they drive: you while they can see you, the last place they saw you
@@ -3934,8 +4363,13 @@ function updateSheriffs(dt) {
       while (dh > Math.PI) dh -= Math.PI * 2;
       while (dh < -Math.PI) dh += Math.PI * 2;
       s.heading += THREE.MathUtils.clamp(dh, -2.4 * dt, 2.4 * dt);
-      // a searching cruiser cruises; only one that can see you floors it
-      const spd = d < 6 ? 8 : searching ? 12 : 22;
+      // A cruiser chasing a car drives to catch and PIT it. Chasing a
+      // pedestrian, it holds a standoff instead of closing the last few
+      // metres — nobody has a blocker to stop a car walking through them, so
+      // without this it just drove straight over you. Deputies (on foot,
+      // police.js) make the actual arrest.
+      const holdingOff = !state.veh && gone < CRUISER_FOOT_STANDOFF;
+      const spd = holdingOff ? 0 : d < 6 ? 7 : searching ? 11 : 18;
       s.speed = THREE.MathUtils.lerp(s.speed, spd, dt * 1.5);
     } else {
       s.speed = THREE.MathUtils.lerp(s.speed, 0, dt * 1.2);
@@ -3953,15 +4387,19 @@ function updateSheriffs(dt) {
     s.obj.rotation.y = s.heading;
 
     s.shootCd = Math.max(0, (s.shootCd || 0) - dt);
-    if (!standDown && gone < 45 && gone > 7 && s.shootCd <= 0 && sheriffSees(0)) {
-      s.shootCd = 1.15 + Math.random() * 0.55;
-      policeShoot(s.obj.position, 4.5, "cruiser");
+    // Cruisers don't fire on a pedestrian at all — a car shooting at someone
+    // on foot read as far more aggressive than the arrest it's supposed to
+    // be; deputies (police.js) carry that job when you're not in a vehicle.
+    if (!standDown && state.veh && gone < 45 && gone > 7 && s.shootCd <= 0 && sheriffSees(0)) {
+      s.shootCd = 1.4 + Math.random() * 0.6;
+      policeShoot(s.obj.position, 3.5, "cruiser");
     }
-    if (!standDown && gone < 4) {
+    // Close contact is a PIT/ram — only meaningful car-to-car. On foot the
+    // standoff above keeps the cruiser back; the deputy melee (footOnTop)
+    // is what actually busts you.
+    if (!standDown && state.veh && gone < 4) {
       onTop = true;
-      // Close contact is an arrest attempt, not an opaque damage loop.
-      if (!state.veh) hitPlayer(dt * 3.5);
-      else state.veh.speed *= (1 - dt * 1.5);       // ram / pit
+      state.veh.speed *= (1 - dt * 1.5);
     }
   }
   for (; lit < beaconLights.length; lit++) beaconLights[lit].intensity = 0;
@@ -3975,23 +4413,9 @@ function updateSheriffs(dt) {
 
 function damageVehicle(v, amount) {
   v.hp -= amount;
-  if (v.hp <= 0) {
-    v.dead = true;
-    // burn + remove after a beat
-    wreckLight.position.copy(v.obj.position).setY(1.5);
-    wreckLight.intensity = 30;
-    setTimeout(() => { wreckLight.intensity = 0; scene.remove(v.obj); }, 1400);
-    const bi = blockers.indexOf(v.blocker);
-    if (bi >= 0) blockers.splice(bi, 1);
-    blockerGrid.remove(v.blocker);
-    // it used to stay in `vehicles`, so F could "enter" the invisible wreck
-    const vi = vehicles.indexOf(v);
-    if (vi >= 0) vehicles.splice(vi, 1);
-    const si = sheriffs.indexOf(v);
-    if (si >= 0) sheriffs.splice(si, 1);
-    if (v.sheriff) { state.cash += 250; crime(0.6); flashObjective("Cruiser wrecked. +$250"); syncHUD(); }
-    if (state.veh === v) state.veh = null;
-  }
+  if (v.exploded) return;
+  if (v.hp <= 0) { explodeCar(v); return; }
+  if (v.hp / (v.hpMax || 40) < VEHICLE_FIRE_HP_FRAC) startVehicleFire(v);
 }
 
 function updateEnemy(e, dt) {
@@ -4042,7 +4466,7 @@ function teleportPlayer(x, z, heading = 0) {
 
 // ---------------------------------------------------------------- boot
 async function boot() {
-  loadNote.textContent = "loading sprites…";
+  setLoadStage("loading sprites…", 30);
   const [rn, om, sh, to] = await Promise.all([
     loadAtlas("redneck"), loadAtlas("oldman"), loadAtlas("shroom"), loadAtlas("torch"),
   ]);
@@ -4061,20 +4485,20 @@ async function boot() {
   // work. It used to run at module top level, which froze the page on
   // "loading assets…" with no feedback and looked like the game had hung.
   // Staged here instead, with a paint between each step.
-  loadNote.textContent = "pouring the asphalt…";
+  setLoadStage("pouring the asphalt…", 42);
   await paint();
   buildAsphalt();
   parkTex = carParkTexture();
 
-  loadNote.textContent = "laying the bayou floor…";
+  setLoadStage("laying the bayou floor…", 52);
   await paint();
   buildGround();
 
-  loadNote.textContent = "planting the swamp…";
+  setLoadStage("planting the swamp…", 62);
   await paint();
   buildTrees();
 
-  loadNote.textContent = "building the parish…";
+  setLoadStage("building the parish…", 72);
   await paint();
   await buildLevel();
   alternate = createAlternateCampaign({
@@ -4111,14 +4535,14 @@ async function boot() {
   // before the sweep below, so the new poles get a proper steel surface
   for (const sp of litSpots) if (sp.fx !== false) lampFx.push(addLamp(scene, sp));
 
-  loadNote.textContent = "resurfacing the parish…";
+  setLoadStage("resurfacing the parish…", 84);
   await new Promise((r) => setTimeout(r, 0));   // let the loading text paint
   realize(scene, { shadows: false });
   wetRoads.collect(scene);
 
   // Merge everything that never moves, per material and 48 m chunk. Anything
   // that moves or animates is excluded by its top-level object.
-  loadNote.textContent = "batching the parish…";
+  setLoadStage("batching the parish…", 92);
   await paint();
   // Anything that moves, or that a set piece shows and hides, must stay out of the
   // batcher. The world districts used to be in here too — every composer cluster of
@@ -4127,12 +4551,10 @@ async function boot() {
   // strip). batchStatic merges siblings into their own parent now, so a cluster still
   // hides itself with everything it owns, and it can be batched safely (TASK-011).
   // Anything that moves, or that a set piece shows and hides, stays out of the
-  // batcher entirely. `...cans` matters: a gas can hides itself when you pick it up
-  // (`c.visible = false`), and a can merged into a static batch cannot do that — it
-  // would sit there, collected but still standing.
+  // batcher entirely.
   const moving = new Set([
-    player, truckMarker, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
-    ...cans, ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
+    player, ...vehicles.map((v) => v.obj), ...enemies.map((e) => e.spr),
+    ...buckets, ...waterPatches, ...shrooms, ...torches, ...peds,
     ...services.props, ...nightlife.props,      // garage doors, markers, club cutaways: they move
     ...casinos.props,                           // casino roof/sign cutaways, wall scale, the roulette table and the slots all animate in casinos.update()
     ...(orlea ? orlea.props : []),              // Marie Laveau's ghost, drifting the cemetery alleys
@@ -4172,18 +4594,18 @@ async function boot() {
   camera.lookAt(playerPos);
   syncHUD();
 
-  window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
+  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
     get policeHelicopters() { return police.helicopters; },
-    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; }, CAN_REACH, CAN_REACH_VEHICLE,
+    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; },
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
       playerPos.set(x, 0, z);
       player.position.set(x, 0, z);
       player.visible = true;
       if (player._last) player._last.copy(player.position);
-    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, klan, radio,
+    }, cine, blockers, blockerGrid, renderer, perf, input, spawnZones, klan, radio,
     get radioOff() { return radioOff; },
     get newton() { return newton; }, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
     get playerMoveHeading() { return playerMoveHeading; },
@@ -4229,13 +4651,17 @@ async function boot() {
     if (stateWorld) { const m = stateWorld.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water||[])); }
     minimap.build({ roads, areas, water, buildings });
   }
-  settleCans();                  // every blocker exists now: no can may sit inside one
-  loadNote.textContent = "ready.";
+  setLoadStage("ready.", 100);
+  finishLoading();
   startBtn.disabled = false;
   freeBtn.disabled = false;
+  // Gated the same as Story/Free Roam: applyTier() (called by the Options
+  // graphics buttons) touches `composer`, which doesn't exist until the
+  // top-level `await createComposer(...)` above resolves.
+  for (const b of gfxChoices.querySelectorAll("[data-tier]")) b.disabled = false;
   const begin = () => {
     overlay.classList.add("hidden");
-    crosshair.style.display = "block";
+    crosshair.style.display = "none";
     state.running = true;
     clock.start();
   };
@@ -4244,12 +4670,48 @@ async function boot() {
   freeBtn.onclick = () => { pendingLaunch = "free"; selectionIndex = characterIds.indexOf("keseme"); confirmCharacter(); };
 }
 
+// Loading screen: while boot() is loading assets, the menu (logo, Start/
+// Options/Exit — all of #introPanel, hidden by default in index.html) stays
+// off-screen entirely and this cycles mood art full-bleed instead, so there's
+// nothing half-clickable to notice is disabled. The slideshow itself keeps
+// alternating forever, through the ready state too — finishLoading() only
+// reveals the menu and retires the numeric readout (#loadHud), since a
+// percentage stuck at 100% means nothing once you're just looking at art.
+let loadScreenTimer = null;
+function startLoadScreen() {
+  if (!loadScreen) return;
+  const slides = loadScreen.querySelectorAll(".slide");
+  if (!slides.length) return;
+  let i = 0;
+  slides[0].classList.add("on");
+  loadScreenTimer = setInterval(() => {
+    slides[i].classList.remove("on");
+    i = (i + 1) % slides.length;
+    slides[i].classList.add("on");
+  }, 4200);
+}
+// Drives #loadHud's neon readout — text plus a segmented percentage bar,
+// standing in for the plain "loading assets…" label the boot stages used to
+// write straight to loadNote.
+function setLoadStage(text, pct) {
+  loadNote.textContent = text;
+  if (loadPct) loadPct.textContent = Math.round(pct) + "%";
+  if (loadBarFill) loadBarFill.style.width = Math.round(pct) + "%";
+}
+function finishLoading() {
+  introPanel.hidden = false;
+  if (loadHud) loadHud.hidden = true;
+}
+startLoadScreen();
+
 startBtn.disabled = true;
 freeBtn.disabled = true;
+for (const b of gfxChoices.querySelectorAll("[data-tier]")) b.disabled = true;
 tick();
 boot().catch((err) => {
   console.error(err);
   loadNote.textContent = "load error: " + err.message;
+  finishLoading();
 });
 
 let carHornAudioCtx = null;

@@ -244,6 +244,7 @@ export function createServices(ctx) {
     s.door.scale.y = 0.02; s.doorF = 0.02;
     state.cash -= PRICES.spray;
     if (v.hpMax) v.hp = v.hpMax;
+    ctx.stopVehicleFire(v);
     repaint(v);
     if (wanted) ctx.clearWanted();
     ctx.syncHUD();

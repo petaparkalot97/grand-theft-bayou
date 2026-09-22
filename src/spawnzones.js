@@ -8,6 +8,7 @@
 //   town         Tusouxroe (north)          people; no hogs
 //   commercial   the US-167 strip frontage  people; no hogs
 //   residential  trailer park, junkyard     mostly rednecks; no hogs
+//   entertainment the Crown Strip           casino/nightclub patrons and staff; no hogs
 //   rural        Bayou Noir, cane fields    rednecks, the odd hog along the fields
 //   forest       the pines                  an occasional hog, the odd redneck
 //   highway      any carriageway            nobody stands on the highway
@@ -37,7 +38,13 @@ export const ZONE_MIX = Object.freeze({
   // New Zones
   industrial: { dockworker: 0.6, mechanic: 0.2, thug: 0.1, prostitute: 0.1 },
   corporate: { suit: 0.8, tourist: 0.1, hoodrat: 0.1 },
-  resort: { tourist: 0.6, suit: 0.2, redneck: 0.1, prostitute: 0.1 }
+  resort: { tourist: 0.6, suit: 0.2, redneck: 0.1, prostitute: 0.1 },
+  // The Crown Strip (tusouxroeNorth.js): five casinos and nine bars and clubs
+  // down North Ave 2, so the crowd is whoever a casino row draws — patrons in
+  // jackets, tourists off the highway, escorts working the doors, and street
+  // crews. Still civilian until provoked, exactly like OrleaRouge's blocks.
+  entertainment: { tuxedo: 0.2, tourist: 0.16, hoodrat: 0.16, highendescort: 0.12, prostitute: 0.12,
+                   gayman: 0.08, lesbian: 0.08, suit: 0.08 }
 });
 export const HOG_CAP = 4;
 
@@ -60,7 +67,8 @@ export const WANDER = Object.freeze({
   // New Zones
   industrial:   { r: 0.6,  speed: 1.0 },
   corporate:    { r: 0.4,  speed: 1.3 },
-  resort:       { r: 0.8,  speed: 0.8 }
+  resort:       { r: 0.8,  speed: 0.8 },
+  entertainment:{ r: 0.5,  speed: 1.2 }        // the Strip: short trips between doors
 });
 const DEFAULT_WANDER = { r: 1, speed: 1 };
 

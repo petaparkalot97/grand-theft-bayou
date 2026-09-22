@@ -79,7 +79,7 @@ export function skyState(hour) {
   const lightColor = mixHex(mixHex(MOON_LIGHT, DAWN_LIGHT, ramp(elevation, -7, 3)), DAY_LIGHT, day);
   // Keep the day/night key below the PBR probe and local lights; the previous
   // range made pale walls and roads clip, especially around OrleaRouge lamps.
-  const lightIntensity = lerp(1.35, 3.2, day) * lerp(1, 0.55, night);
+  const lightIntensity = lerp(1.35, 1.8, day) * lerp(1, 0.55, night);
   return {
     elevation, azimuth, day, golden, night,
     lightColor,
@@ -90,7 +90,7 @@ export function skyState(hour) {
     hemiIntensity: lerp(0.62, 0.62, day),
     // the probe is dark at night, so it gets turned up to keep an ambient term;
     // in daylight it is already bright and 1.0 is plenty
-    envIntensity: lerp(0.65, 1.5, night),
+    envIntensity: lerp(0.65, 1.0, night),
     bgIntensity: lerp(0.72, 0.62, night),
     fogColor: mixHex(mixHex(NIGHT_FOG, DAY_FOG, day), GOLDEN_FOG, golden * 0.75),
     fogDensity: lerp(0.0011, 0.0032, night),

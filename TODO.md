@@ -57,6 +57,371 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 
 # 🔒 ACTIVE TASKS
 
+### TASK-074 — Daylight brightness (wet-road wiring bug), spawn-area torch scale, and removing the vestigial gas-can/escape-truck mode (human reports, 2026-09-22)
+
+**Status:** `REVIEW` (`node --check`ed; **not verified live** — no GPU/Chromium
+this session) · **Agent:** Claude · **Files:** `src/main.js`, `index.html`
+
+Human sent screenshots saying *"game is still VERY bright during day"*, then
+mid-turn: *"weird objects near Kesemes spawn point"* (screenshots of a tall thin
+gold object and a flame) and *"This truck near the gas can... the gas can
+objective is gone we need to remove them and the 'Rob gas cans' prompt."*
+
+**1. Daylight brightness — a real bug found while investigating, separate from
+the exposure/sun tuning TASK-069 already did.** `src/fx.js`'s `createWetRoads()`
+gives every asphalt surface a permanent reflective-puddle shader with a
+`uWetness` uniform that its own header comment says is meant to read
+`weather.wetness` ("0 dry … 1 soaked (road reflections, later)" — `weather.js`
+literally documents this as not-yet-wired). Nothing ever set it: it sat at its
+hardcoded construction default, **0.6 wetness, full (1.0) reflect strength,
+permanently** — so every road looked like a full-strength wet mirror in broad
+daylight under clear skies, reflecting the bright sky straight at the camera.
+That reads exactly like the blown-out look in the screenshots (glossy dark
+streets, bright streaks) independent of the sun/exposure numbers, which were
+already reasonable. Fixed with one line in `simulate()`:
+`wetRoads.uniforms.uWetness.value = weather.wetness;` — clear weather now
+reads 0.35 (down from the hardcoded 0.6), and it will properly go to 1.0 in
+actual rain/storms instead of always.
+**Not fully resolved — see What remains:** this doesn't rule out the daylight
+exposure/pale-surface clipping TASK-069 already flagged as separately real;
+both were likely stacking.
+
+**2. Torch sprites at the Chatham/Chatboro spawn ("weird objects").** Traced to
+`makeTorch()`'s three calls right at `SPAWN_Z` ("a few torches ... only right
+around the spawn so it reads 'bayou'"). `atlases.torch`'s sprite frames are
+10x68 px — aspect ~0.15, very narrow — and `makeTorch` gave it `worldHeight =
+3.0`, drawing a ~3m x 0.44m sliver: a giant thin golden rod, not a planted
+tiki torch. Changed to 1.7 (chest-to-head height). The separate flame glimpsed
+apart from it in the screenshots wasn't identified — possibly an unrelated
+prop; couldn't confirm without rendering the scene.
+
+**3. The gas-can/escape-truck free-roam objective — removed.** This was a
+prototype-era mechanic (collect 4 gas cans, drive an escape truck out of Dixie
+Beaux) that predates Act One's story campaign and was never connected to it —
+`state.cans` had exactly one write site (the pickup loop itself), so nothing
+in the campaign could ever complete it another way. The human found it
+non-functional (cans apparently unreachable in the current world, hence the
+"gas can objective is gone" report) and the parked escape truck reported as a
+misplaced leftover. Removed:
+   - the 5 `makeCan()` spawn calls, `makeCan`/`settleCans` themselves, and the
+     `cans` array
+   - the escape truck mesh, its cone marker, its blocker and its poolLight
+   - the "GAS CANS 0/4" HUD panel (`index.html` + `syncHUD()`)
+   - the "Jack a ride · rob gas cans" / "Get to the truck…" default objective
+     text → now a neutral "Free roam. Explore Dixie Beaux."
+   - the minimap's can/truck blips, `tryInteract()` (its only job was the
+     truck), the auto-win truck-proximity check, and `win()` itself (fully
+     orphaned once both call sites were gone)
+   - the gas-can/truck line from the WASTED (`lose()`) screen's flavor text
+   - `CAN_GOAL`/`CAN_REACH`/`CAN_REACH_VEHICLE`/`truck`/`truckMarker`/`truckPos`
+     and every reference to them, including in `window.__game` and the
+     static-batching `moving` set (`TRUCK_Z` stays — it's also the dashed
+     centre-line's southern extent, unrelated to the truck object)
+
+**Testing performed:** `node --check` on `src/main.js`; grepped for every
+remaining reference to each removed identifier to confirm nothing was left
+dangling (a first pass missed the `...cans`/`truckMarker` entries in the
+static-batcher's `moving` set and `window.__game`, which would have thrown a
+ReferenceError at boot — caught and fixed before finishing). **Not verified
+live** — no GPU/Chromium this session, so the wet-road brightness change, the
+new torch proportions, and the HUD/objective text are all unconfirmed in an
+actual browser.
+
+**What remains:**
+- The still-open TASK-069 finding (`daycycle.js`'s exposure curve clipping
+  pale surfaces at noon) — this session's wet-road fix is additive to that,
+  not a replacement for it. Worth a real-GPU look at daylight brightness again
+  after both fixes are in.
+- The striped red/white drum object the human's screenshot showed near a gas
+  station — not identified. Nothing matching a striped cylinder turned up
+  under `makeGasStation`, the junkyard/trailer-park `makeBarrel` (uses a
+  photographic texture, not procedural stripes), or a grep for barrel/drum/
+  hazard-stripe code. Needs either exact in-game coordinates or a live look to
+  chase further.
+- `win()`'s narrative ("left dixie beaux", the truck driving off) is gone with
+  its only trigger. If Act One is meant to have its own ending screen distinct
+  from BUSTED/WASTED, that's still an open question, not answered here.
+
+---
+
+### TASK-073 — Vehicle destruction: catch fire, then explode, then a charred wreck that outlasts the player (human request, 2026-09-22)
+
+**Status:** `REVIEW` (`node --check`ed; **not verified live** — no GPU/Chromium
+this session) · **Agent:** Claude · **Files:** `src/main.js`, `src/services.js`
+
+Human's own words: *"instead of exploding the cars just vanish leaving with
+them nothing. they need to first catch fire when on low health and then when
+its about to die it should explode leaving with it a charred carcus that
+vanishes only after the player has left that area."*
+
+**What was wrong:** the game actually had two different, inconsistent
+destruction paths and neither did what was asked.
+1. `damageVehicle()` (bullets, ramming, `policeShoot` on the player's own car)
+   — the path most kills go through — flashed one light and, 1.4 s later,
+   `scene.remove(v.obj)`. No fire, no explosion visual beyond a point light,
+   and the car was simply gone. This is the "vanish" the human saw.
+2. `explodeCar()` (crash-impact damage only, `v.impact` in `drivingUpdate`)
+   already blackened the car and played a flash sprite, but never removed it
+   — a permanent, immortal wreck with no fire stage before death and no
+   despawn at all — a different bug (a leak) that nobody had reported yet.
+
+**What changed:** the two paths are now one lifecycle, and `damageVehicle`
+defers to `explodeCar` instead of duplicating it.
+1. **Catch fire under ~30% hp** (`VEHICLE_FIRE_HP_FRAC`, checked in both
+   `damageVehicle` and the crash-impact branch of `drivingUpdate`):
+   `startVehicleFire(v)` parents a small rig — a cone flame, a smoke puff, a
+   flickering `PointLight` — to the car so it rides along while still moving.
+2. **Explode at 0 hp**: `explodeCar(v)` now also strips the vehicle out of
+   `vehicles`/`sheriffs`/`blockers`/`blockerGrid` (so it's inert — can't be
+   entered, driven, or collided with) but leaves `v.obj` in the scene instead
+   of removing it, and restarts the fire rig dimmer/slower as a smoulder.
+3. **The wreck persists** in a new `wrecks` array; `updateWrecks()` (called
+   every frame from `simulate`) only removes it once the player (on foot or
+   in a car) is more than `WRECK_DESPAWN_DIST` (75 m) away — not on a timer.
+4. **Repair fix caught in passing**: the Pay 'n' Spray (`services.js`) reset
+   `v.hp` on repair but never cleared a fire that had started before the
+   player drove in — a freshly-painted car would drive off still smoking. Now
+   calls the newly-exposed `ctx.stopVehicleFire(v)`.
+5. Guarded for the one caller that doesn't look like a normal registered
+   vehicle: the multiplayer networked-car sync path (`explodeCar(ent)` off a
+   `DESTROYED` event) — `ent` has no `.blocker`/`.seats`/`.audio`/`.hpMax`, all
+   now optionally-chained/defaulted rather than assumed present.
+
+**Side effect, noted rather than hidden:** crashing a Sheriff cruiser into
+something now also pays the $250 / `crime(0.6)` bounty that previously only
+triggered when a cruiser was shot to death — unifying the two paths through
+one `explodeCar` made that reward apply uniformly. Previously that was an
+inconsistency (crash-killing a cruiser paid nothing), not a deliberate choice,
+so this reads as a fix rather than a scope change.
+
+**Testing performed:** `node --check` on both files (clean). Traced the logic
+by hand: `startVehicleFire` no longer no-ops on an already-exploded car (an
+early version of this fix had it check `!v.exploded`, which meant
+`explodeCar`'s own call to restart the rig as a smoulder silently did
+nothing — caught before committing). **Not verified live** — same recurring
+gap this session: no GPU/Chromium available, so the fire rig's visual
+placement/scale on a real car mesh, the explosion timing, and the 75 m
+despawn distance are all unconfirmed in play.
+
+**What remains:** an actual playtest — does the fire rig sit right on
+different vehicle shapes/scales (it's positioned in the car's local space,
+not measured against its bounding box the way `police.js`'s cruiser livery
+is), does 75 m feel like "left the area," and whether the wreck should also
+block the player's path (it currently doesn't — no blocker — so you can walk
+or drive straight through a charred carcass).
+
+---
+
+### TASK-072 — Loading-screen slideshow behind the main menu (human request + images, 2026-09-22)
+
+**Status:** `COMPLETE` · **Agent:** Claude · **Files:** `index.html`, `src/main.js`, `assets/ui/loading/`
+
+Human's own words: *"certain menu options are inaccessible while the game
+loads.. can you have a loading screen that cycles these images till the game
+loads and menu is entirely usable?"* — paired with 5 mood-art files dropped at
+the repo root (jfif) plus a Popeyes ad poster shared inline. This wasn't a bug
+(Story/Free Roam/graphics-tier buttons are deliberately disabled — see
+`startBtn.disabled`/`freeBtn.disabled` in `main.js` — until `boot()`'s asset
+loading finishes; Options/Exit always worked), just a bare "loading assets…"
+label with a static cover-art background while that finishes.
+
+**What changed:**
+- Copied the human's 5 `.jfif` files + `POPEYES2.png` into `assets/ui/loading/`
+  as `.jpg`/`.png` (the dev server's `serve.mjs` and Cloudflare Pages both
+  need a real image extension to serve the correct `Content-Type` — `.jfif`
+  isn't in either's type map, though the bytes are valid JPEG).
+- `index.html`: new `#loadScreen` layer, first child of `#overlay`, with one
+  `.slide` div per image (CSS `background-image`). Positioned at `z-index:
+  -1` so it paints above `#overlay`'s own `cover.png` background but below
+  the existing darkening scrim (`#overlay::before`) and menu text — see the
+  comment on the rule for why that z-index has to be numeric and declared
+  after the `#overlay > *` rule to win the cascade.
+- `src/main.js`: `startLoadScreen()`/`stopLoadScreen()` cross-fade through
+  the slides every 4.2s from page load; `stopLoadScreen()` is called both
+  where `loadNote.textContent = "ready."` already fires (successful boot)
+  and in the `boot().catch(...)` error path, fading `#loadScreen` out to
+  reveal the static cover art once the menu is fully usable either way.
+- Verified live in Chrome (not just read): confirmed the slideshow renders
+  and cycles during load, and that `startBtn.disabled`/`freeBtn.disabled`
+  both flip to `false` at the same moment `#loadScreen` gets its `.done`
+  class (computed `opacity: 0`).
+
+**Revision (2026-09-22, same session, human follow-up + screenshot):** first
+pass left the whole menu (logo + Start/Options/Exit) visible on top of the
+slides the entire time, and the slides used `background-size: cover`, which
+crops/zooms — human wanted the full, uncropped image and nothing
+menu-shaped clickable until the game is actually ready. Changed:
+- `.slide` now uses `background-size: contain` (letterboxed against
+  `#loadScreen`'s own dark fill, not `cover`) — confirmed via computed style
+  (`contain`/`no-repeat`/centered/no transform) and a forced-state screenshot
+  showing a full uncropped poster with dark bars, no crop.
+- `#introPanel` (the whole menu — logo, Start Game/Options/Exit Game, footer)
+  now starts `hidden` in `index.html` and only gets unhidden by
+  `finishLoading()` (renamed from `stopLoadScreen()`, same call sites: the
+  `loadNote = "ready."` line and `boot().catch()`), so *nothing* menu-shaped
+  is on screen — not even Options/Exit — until loading is actually done.
+  Confirmed via JS immediately after navigation, before `window.__game`
+  exists: `introPanel.hidden === true` and a slide already cycling.
+
+**Redesign (2026-09-22, same session, several rapid human follow-ups + a lot
+of screenshots):** the human wanted portrait images grouped 3-up instead of
+pillarboxed alone, cover.png/og3.png gone from the menu entirely, the
+slideshow alternating permanently (loading *and* ready state, not fading to
+a static image), the big full-screen darkening scrim gone ("remove the
+shadow shit... so we can see the images clearly"), the menu centered, and
+the whole thing reading as "an oldschool SNES game" — plus a real bug: a
+mid-edit save left two `loadNote.textContent = ...` calls converted to a
+`setLoadStage()` that didn't exist yet, so `boot()` threw immediately
+("load error: setLoadStage is not defined") — a genuinely broken build for
+however long that was live. Also implemented the earlier-requested retro
+neon `LOADING: [%]` readout in the same pass (human: *"during loading
+screen please put a neon retro arcade looking LOADING: [progress meter %]
+... We want the overall aesthetic of this game to be retro"*).
+
+**What changed (`index.html`, `src/main.js`):**
+- Fixed the crash: defined `setLoadStage(text, pct)` (sets `loadNote`, plus
+  `#loadPct`/`#loadBarFill` width) and finished converting every boot-stage
+  label to call it, at hand-picked percentages (8→92, `ready.`→100).
+- Added the neon readout markup: `#loadHud` (`LOADING` in cyan / `NN%` in
+  magenta over a segmented cyan→magenta LED-style bar), now inside its own
+  SNES-style bordered panel — plain text on top of a busy loading image was
+  unreadable, same fix as the menu box below.
+- `assets/ui/loading/` gained `hillbilly-heroin.jpg` (human-provided). Split
+  `#loadScreen`'s 7 images into landscape solo slides (neon-bayou,
+  happy-hogs) and two `.slide.group` triptychs of flexed `.pane`s for the 5
+  portraits (hillbilly-heroin + riverboat-night + aesthetic; popeyes-ad +
+  porch-hangout) — each pane still `background-size: contain`, just sharing
+  a row instead of one pillarboxed image alone.
+- `#overlay` no longer references `cover.png` (`background: #05070a` only)
+  and `#overlay::before`'s full-screen darkening gradient is gone outright.
+  `startLoadScreen()`'s interval is never cleared any more — the slideshow
+  now runs forever, through the ready state too; `finishLoading()` only
+  reveals `#introPanel` and hides `#loadHud` (a frozen 100% readout means
+  nothing once you're just looking at art).
+- `#introPanel` re-centered (`align-items/text-align: center`), and
+  `.menu-list`/`.menu-panel` (and `#loadHud`, same treatment) got a chunky
+  cyan-bordered, semi-transparent dark panel — the actual fix for "menu
+  items are unreadable over a busy image," replacing the old full-screen
+  scrim with a local backing only where text sits. Wordmark/kicker/tagline
+  and the menu-item cursor dash/hover glow shifted from the old amber GTA
+  palette to cyan/magenta neon to match.
+- `.gitignore`: added `/*.mp4` and untracked a stray `Can_you_make_this_
+  into_a_gif_t.mp4` the human flagged mid-session (human: *"tHERES A MP4
+  FILE IN THE REPO PUT INTO GIT IGNORE"*) — file kept on disk, just out of
+  git.
+
+**Verified live in Chrome, not just read:** confirmed `boot()` completes
+with zero console errors after the crash fix; confirmed via
+`getBoundingClientRect`/computed-style that `#loadScreen`/`.slide.group`/
+`.pane` are genuinely full-viewport with correct `contain` sizing (no real
+cropping) — screenshots taken through the browser-automation tool show the
+lower portion of tall images as black, but `window.innerWidth/innerHeight`
+in that tab exceeds its own `outerWidth/outerHeight`, which is only
+possible with a virtualized/oversized viewport the tool's screenshot buffer
+doesn't fully cover. **That's the automation tool's background-tab
+rendering, not the page** — resizing the window and forcing focus didn't
+change it. Flagged to the human as needing their own confirmation (does a
+real, foregrounded browser window show the same cutoff, or only
+screenshots?) since I can't rule out something on their end without that.
+
+---
+
+### TASK-071 — Police overhaul: on-foot chases, escalation by star, less overpowered (human request, 2026-09-22)
+
+**Status:** `REVIEW` (logic changed and `node --check`ed; **not yet verified in a
+running browser** — no GPU/Chromium available this session) · **Agent:** Claude
+**Files:** `src/main.js` (`updateSheriffs`, `checkHeatUp`), `src/police.js`
+(deputy stats, deputy/heli fire rate)
+
+Human's report: *"the way they drive at the player is not very realistic... they
+tend to not make a discretion as to whether the user is inside a vehicle or on
+foot. When on foot, they shouldn't try to just ram the user off the road or run
+the user over. The time in which they spawn should be a bit slower and they
+should be a bit less overpowered."* Mid-turn follow-up: *"one star wanted level
+should only make on foot officers chase."*
+
+**What was wrong (`src/main.js`'s `updateSheriffs`):**
+1. A cruiser steered straight at the player's exact live position at up to
+   22 m/s whether the player was on foot or driving, only easing to 8 m/s
+   inside 6 m. The player has no blocker in `blockerGrid`, so nothing stopped
+   the car closing the last few metres onto a pedestrian — it read exactly
+   like an attempt to run them over, even though the underlying "arrest" tick
+   (`hitPlayer(dt * 3.5)`) was gentle.
+2. Cruisers spawned with **no cooldown** — the whole wanted-level quota of up
+   to 6 could appear in a single frame the moment heat crossed the threshold.
+   Same for foot deputies (an unbounded `while` loop).
+3. `want`/`footWant` were backwards from what a first star should look like:
+   1 star spawned **1 cruiser and 0 foot deputies**.
+
+**What changed:**
+1. **Star-gated response type.** `want = wanted >= 2 ? min(6, wanted-1) : 0`,
+   `footWant = wanted >= 1 ? min(8, wanted+1) : 0`. One star now turns out
+   foot deputies only — no cruiser at all — mirroring the helicopter already
+   waiting for 3 stars (`HELI_MIN_STARS`). Cruisers, gunfire from cruisers, and
+   the cruiser ram/PIT are now all gated on `state.veh` and 2+ stars.
+2. **On-foot standoff.** New `CRUISER_FOOT_STANDOFF = 9`m: a cruiser chasing a
+   pedestrian eases its speed to 0 once within that range instead of closing
+   to point-blank. It no longer fires at a pedestrian at all and the ram/PIT
+   branch is now `state.veh`-only. Deputies (`police.js`, walking pace, melee
+   range 1.9 m) are the only ones who make contact with a player on foot —
+   that was already true for the actual arrest countdown, just not for how
+   close the car itself got.
+3. **Staggered dispatch.** `sheriffSpawnCd` / `footSpawnCd` cooldowns
+   (~3.5–5.5 s between cruisers, ~2.5–4 s between deputies, plus an initial
+   1.5–3 s beat when the first star lights up in `checkHeatUp`) replace the
+   old spawn-everything-this-frame loops.
+4. **Toned down:** cruiser chase top speed 22→18 m/s; cruiser gunfire
+   4.5 dmg/1.15–1.7 s → 3.5 dmg/1.4–2.0 s; deputy melee 8 dmg/0.9 s gap → 6
+   dmg/1.1 s gap, speed 4.8→4.3; deputy gunfire 3.5 dmg/1.35–1.8 s →
+   3 dmg/1.6–2.2 s; helicopter gunfire 5.5 dmg/1.1–1.8 s → 4.5 dmg/1.4–2.2 s.
+
+**Testing performed:** `node --check` on both files (clean). Hand-checked the
+new `want`/`footWant` formula against every star value 0–6. **Not verified
+live** — `tools/qa/police_test.mjs` fails before and after this change on an
+unrelated pre-existing headless-stub gap (`src/merge.js`'s `mergeInto` expects
+`geo.index`/`geo.attributes` the stub's `Hoodrat`/`makeDeputy` build doesn't
+supply — confirmed by reproducing the same failure on a clean `git stash` of
+this session's changes). No browser/GPU available this session to confirm the
+standoff distance, escalation feel, or damage balance in play.
+
+**What remains:** an actual playtest — does 9 m read as a natural "car pulls
+up" distance, does the 1-star foot-only response feel right, and does the
+overall damage nerf land where the human wants it (this pass used moderate,
+reversible numbers, not a full rebalance pass).
+
+**Addendum (same day, human follow-up):** *"its way too easy to reach wanted
+level 6. similarly, its way too easy to die when like getting fired at or
+chased by police. They are overpowered."* Two more root causes found, both in
+`src/main.js`:
+
+1. **Six stars cost the same per star as one.** `state.wanted` came straight
+   from `Math.floor(state.heat / 1.4)` — a flat rate, so climbing from 5 to 6
+   stars cost exactly as much crime as 0 to 1. ~7 kills (`crime()` is
+   ~1.1–1.2 per kill) maxed out the entire response — cruisers, a full foot
+   squad, and the helicopter. Replaced with `WANTED_THRESHOLDS =
+   [0, 1.4, 3.2, 5.8, 9.2, 13.8, 20]` and a `starsForHeat()` lookup: the first
+   two stars are barely changed (1.4, 3.2 vs. 1.4, 2.8 before — that
+   responsiveness was intentional, see above), but 6 stars now needs heat 20,
+   not 8.4 — roughly 17 kills' worth, a real rampage instead of a scuffle.
+2. **Every police shot was a guaranteed hit.** `policeShoot()` — the one
+   function shared by cruiser, deputy *and* helicopter fire — applied full
+   damage on every cooldown tick with no miss chance at all, at any range up
+   to each shooter's own cap (45 m cruiser / 38 m deputy / 58 m heli). With
+   several converging that was easily 15-20+ guaranteed DPS. Added a
+   range-scaled miss chance: `clamp(0.28 + dist/65, 0.28, 0.8)` — roughly a
+   72% hit chance point-blank, down to a 20% hit chance at max range. Tracers
+   and muzzle flash still fire on a miss, so it still reads as being shot at,
+   it just doesn't reliably connect from 40 m away anymore.
+
+**Testing performed:** `node --check` on `src/main.js` (clean). Hand-verified
+the new threshold table against heat 0–20+ and the miss-chance formula at 0,
+20, 38, 45 and 58 m. **Not verified live** — same no-GPU limitation as above;
+this needs an actual chase to confirm 6 stars feels like the top of an
+escalation rather than either trivial or unreachable, and that the miss
+chance makes gunfights survivable without making cops feel toothless.
+
+---
+
 > **Task-ID collision, 2026-09-20 (second one — see the next note down for the
 > first):** this session and the one merged in below it both wrote new tasks
 > under TASK-053 through TASK-056 for unrelated work, independently, at the
@@ -77,6 +442,398 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 > TASK-055 (Frenchmen Street) already has a working walk-in-interior
 > technique worth reusing rather than inventing a second one — see the note
 > added there too.
+
+### TASK-070 — The Crown Strip: casinos and bars/nightclubs north of Chatboro (human request, 2026-09-22)
+
+**Status:** `REVIEW` · **Agent:** Freebuff
+**Files / subsystem:**
+- `src/tusouxroeNorth.js`          (edit — the row itself, plus `CROWN_STRIP`)
+- `src/spawnzones.js`              (edit — the `entertainment` zone mix + wander profile)
+- `src/pauseMenu.js`               (edit — pins and the district label)
+- `src/interiors.js`                   (new — shared interior kit: fixtures, props, caches)
+- `src/neonsign.js`                    (new — shared measured-text neon sign helper)
+- `src/nightlife.js`                   (edit — club name boards now fitted via `neonsign.js`)
+- `src/casinos.js`                     (edit — casino fascias now fitted via `neonsign.js`)
+- `tools/qa/crown_strip_test.mjs`       (new — plain-node layout/zone audit)
+- `tools/qa/crown_build_test.mjs`        (new — vm-sandboxed build execution audit)
+- `tools/qa/neonsign_test.mjs`             (new — measured-fit sign audit)
+
+**Dependencies:** none. Reads on TASK-041 (COMPLETE — the composer owns the road
+surfaces here, so the strip adds no road planes).
+
+**Context:** the human asked to *"populate the area north of Chatboro with lots of
+casinos and bars / nightclubs."* North of Chatboro is Tusouxroe (`world.js`:
+NORTH = −Z). It has two halves: the US-167 strip (z 60 … −116, built from
+`main.js`'s `LANDMARKS` table — orchestrator-owned) and **North Tusouxroe**
+(z −136 … −440, `src/tusouxroeNorth.js`). The human chose North Tusouxroe, so
+nothing locked was touched. Casinos and clubs already existed, but only in
+OrleaRouge (`src/casinos.js`, `src/nightlife.js`); Tusouxroe had none.
+
+**Goal:** give the district the entertainment row a casino town should have —
+**five casinos and nine bars and clubs** down North Ave 2, either side of US-167,
+with a gateway arch on the highway. **Dressed exteriors**, per the human's call:
+the interiors are a follow-up.
+
+**Acceptance criteria:**
+- 14 venues, 5 casinos and 9 bars/clubs, fronting North Ave 2 on both sides.
+- Each: lit facade, roof sign (blade sign too on the narrow fronts), forecourt
+  with painted bays and parked cars at the casinos, queue barrier across the
+  door, collision, a camera occluder, a crowd POI and a minimap footprint.
+- A lit, furnished interior visible through the doorway (carpet, machine bank,
+  bar, chandelier) and a blocked door — "dressed, not open for trade yet".
+- New `entertainment` spawn zone so the row has a crowd of its own.
+- No venue, forecourt or arch pillar on a street or on a named landmark.
+- No new console errors; nothing that moves.
+
+**Out of scope:** enterable floors with counters, gambling and robbery (TASK-059);
+the US-167 strip above Chatboro (orchestrator-owned `main.js`);
+`src/stateWorld.js`; anything in OrleaRouge.
+
+**Integration notes (for Claude):** **none needed** — the strip is wired by
+existing plumbing. `tusouxroeNorth.buildSet()` builds it; `pois` reaches
+`NPC_POIS`, `occluders` reaches `losBoxes`, `minimap` reaches the map, and
+`zoneAt` is already the `extraZone` for `spawnzones.js`. The one thing worth a
+look is `loadDsCar`: it is **not** passed to this district's ctx, so
+`placeParkedCar` no-ops here — which is why the strip builds its parked cars
+from primitives instead. Passing it would make the three existing calls at
+`BLVD_Z` real and give the strip model cars.
+
+**Testing performed:**
+- `node tools/qa/crown_strip_test.mjs` — **18/18**. Covers: unique names, 5/5/4
+  casino/club/bar split, no two venues sharing a slot, no hall/forecourt overlap
+  between venues, none crossing any of the seven composed streets, none on a
+  named landmark, all halls inside bounds, every forecourt ending exactly on the
+  avenue kerb, the gate pillars clear of the carriageway, and `zoneAt` returning
+  `building` inside a hall / `entertainment` on a forecourt and the avenue /
+  `null` outside the district.
+- `node tools/qa/crown_build_test.mjs` — **all checks pass**. This one *executes* the
+  district: it runs the real `composer.js` and the real `tusouxroeNorth.js` in a
+  `vm` sandbox with a stub three.js (the `test.cjs` technique) and calls the real
+  `buildSet()`. Measured: **buildSet runs to completion; 592 Crown Strip meshes;
+  14/14 venues put a sign up; no NaN transforms; 504 blockers; 34 occluders;
+  31 POIs; 68 lit spots; 35 minimap footprints.** Material breakdown: `crown
+  hall` 86, `crown gold` 86, `crown tyre` 80, `crown hall deep` 57, `crown slot
+  bank` 57, `crown glass` 48, `crown trim` 29, 25 sign faces, `crown lot stripe`
+  25, then 20 and under. Of the 592, **25 carry a unique sign material and cannot
+  merge with anything**; the other 567 share 15 mergeable materials.
+- `node --experimental-detect-module --check` on all five files: clean.
+- `node tools/qa/neonsign_test.mjs` — **18/18**. Unit-tests the fit loop (shrinks
+  a long name, never grows a short one, bounded when a context reports nothing,
+  safe when there is no context), asserts the canvas aspect equals the sign
+  face's to 3 decimals for casino/club/bar/gateway/blade faces, and — with a
+  proportional Arial-Black-like metric and a fake canvas that records every
+  draw — asserts **every glyph run is drawn inside the border rectangle that was
+  stroked** for all 14 Crown names' roof signs, the blade signs, the gateway and
+  the OrleaRouge club/casino names. Short Crown names keep ≥52% cap height; the
+  smallest name (THE BRASS ALLIGATOR, width-bound) is 30%.
+- **Not verified: anything a GPU does.** No browser is installed here, so draw
+  calls, frame time, the night look and screenshots still need a real-browser
+  pass. The 592-mesh / 25-unbatchable-numbers above are geometry counts, not
+  draw calls.
+
+**Two real bugs the audit caught, and one left alone:**
+1. `CROWN_RECT` (the district rect `zoneAt` and the pine pass use) was derived
+   from the forecourts only, so the far terrace's halls fell outside it and
+   classified as `forest`/`industrial`. Now the union of halls and forecourts.
+2. The avenue lamps were a 26 m grid, which dropped poles **inside Willowbrook
+   School**. Now one pole on the kerb outside each venue's own forecourt.
+3. **Willowbrook School (x −144…−120) and Meadow Apartments (x 120…136) are both
+   placed at z = −320 — i.e. standing across North Ave 2.** Pre-existing, not
+   introduced here; the strip's west terrace simply splits around the school
+   (Moonlight Casino and The Velvet Magnolia sit at x = −176 instead of −144).
+   Fixing it means moving two landmarks and `newton.js`'s yard with the school,
+   so it is logged rather than done under this task. See `AGENT_LOG.md`.
+
+**Known issues / what remains:**
+- **No interiors you can walk into.** That is the brief, not an omission: the
+  doorway is lit and furnished and the follow-up installs the floor plan inside
+  the shell (nightlife.js's technique — lift the roof, drop the walls).
+  `CROWN_STRIP.venues[]` carries each `hall`, `fore` and `facadeZ` for exactly
+  that, and the district also exposes it as `__game.tusouxroeNorth.crown`.
+- No gambling, no clerks, no drinks, no robbery — all TASK-059.
+- No peds *staffing* the places (valets, doormen); only ambience crowd.
+- ~~Venue names clipped/truncated~~ — **fixed** (TASK-070 cont.): the sign font was
+  sized by a `text.length` rule with no `measureText()`, and the 4:1 texture was
+  smeared across 4.8:1–17:1 faces. `src/neonsign.js` now measures and fits the
+  text, and builds each canvas at its face's own ratio. Crown, club and casino
+  signs all use it; `main.js`'s `makeNeonSign` is left alone.
+- **TASK-070 redesign (2026-09-22, later): four mega-venues, walk-in.** The row is
+  no longer fourteen dressed exteriors. `CROWN_VENUES` is now four data-driven
+  mega-venues — **BAYOU GOLD** (Pelican Crown Casino + Bayou Gold), **BILLY JEANS**
+  (Gator's Fortune + Honeysuckle, with a very large white performance glove on the
+  facade), **DISCO GATORS** (The Brass Alligator + Midnight Special: roof mirror
+  ball, balls along the canopy, neon piers, purple/pink/teal) and **HAPPY HOGS**
+  (Le Bon Temps + The Honeydripper: a pig's head over the door) — each with one
+  entrance, one main sign, one continuous roof, and a 1,200–1,700 m² interior you
+  can walk into (doorways 8–10 m, aisles left clear).
+- **Refactor, not four more functions:** `buildVenue()` is one builder driven by a
+  venue's own `w/d/h/fore/door/cars`, `theme` palette, `sign`, `interior`, `props`
+  and a `layout` list, dispatched through the shared kit's `FIXTURES` table
+  (25 builders — runner, slotBank, roulette, cardTable, cashier, vault, barBig,
+  booths, lounge, poolTable, stage, stagefront, podiums, speakers, danceFloor, djBooth,
+  columns, vipDeck, privateRoom, dressingRoom, chandelier, discoBall, neonBrand,
+  decorWall, rail, desk)
+  and `PROPS` (glove, pig, disco). A fifth venue is a new entry in `CROWN_VENUES`,
+  not new code; a fifth *furniture type* is one function in `src/interiors.js`.
+  `v.k` keeps the hall-spec shape the layout audit and `zoneAt()` already read.
+- **The furniture is a module, not a copy (2026-09-22, later still):** each venue has
+  a real, playable floor plan — BAYOU GOLD runs a carpet spine from the door to a
+  vault door with four slot banks either side of it, a two-wheel roulette pit, a
+  blackjack row, a cashier's cage, a VIP deck and a long bar; BILLY JEANS is a long
+  bar, booths, two pool tables and a stage with PA stacks, a dressing room and an
+  office behind; DISCO GATORS is a lit dance deck with a rail, a DJ booth and
+  screens, two bars, a VIP deck and a live stage; HAPPY HOGS is a poled stage, a
+  rail, audience booths, two bars and a private room. Nothing in a venue is
+  hard-coded: `CROWN_VENUES[].layout` is the plan. Per-venue palettes, all fixtures
+  and both exterior props live in `src/interiors.js`, which imports only three and
+  takes its geometry/material caches from the district — so slot machines, chairs,
+  bottles and mirror balls are memoised geometry plus one `InstancedMesh` per group,
+  not hundreds of meshes (4 slot banks in BAYOU GOLD are **8 draw primitives**).
+- **Interaction points, not a new framework:** fixtures call `b.station()`, which
+  records a world point on the venue record. Standing inside, the nearest point
+  within 3.4 m takes over the existing prompt chip and F flashes its line —
+  "Slots — $10 a spin", the cage, the bar, the vault, the DJ, VIP. 24 points across
+  the four venues, exposed as `crownStations` for QA. Gambling itself is still
+  TASK-059; this is where it hooks in.
+- **Interiors are nightlife.js's cutaway**, at four times the footprint: inside, the
+  roof group (slab, door header, canopy, fascia, name sign) hides and the outer walls
+  scale to 0.22 from a floor pivot. Interior light is baked into `litSpots` at build
+  time — nothing is created or hidden per frame (AGENT_PROTOCOL §6).
+- **Collision:** the perimeter ring skips the doorway; the valet row is split either
+  side of it (the new audit caught cars parked across the entrance); door posts stop
+  a car but not a person. The audit also proves no blocker from the old fourteen
+  venues survives anywhere in the strip.
+- **Batching:** venue groups stay in the scene and only the 56 cutaway-moved meshes
+  carry `userData.noBatch` (merge.js honours it per mesh), so the parish sweep still
+  merges the furnished interiors and the street furniture — measured **808 district
+  meshes → 124 in 76 batches**, 112 material signatures, with all 56 moving meshes
+  surviving and the cutaway still opening afterwards. The polish pass costs **+16
+  batches and +28 signatures** over the interiors-only figure (704 → 92, 84), all of
+  it instanced street furniture sharing materials across the four venues. 115 pooled
+  lit spots, all `fx:false` (baked at build time; nothing created or hidden per
+  frame); 621 blockers.
+- **Visual polish pass (2026-09-22, latest): the frontage is a street, and it is wet.**
+  Nine new venue-agnostic fixtures in `src/interiors.js` (awning, neonArrow,
+  securityLight, streetSign, bollardRow, planter, bin, queue, spill), all instanced
+  where repeated, dispatched from a new per-venue `apron` list — the same dispatcher
+  the interior `layout` uses, with local z past `FZ` meaning "out on the pavement"
+  (BAYOU GOLD 11 pieces, the rest 12). Back of house reuses `landmarks.js`'s
+  `placeStreetClutter` (dumpster, pallets, drums, hydrant, bench) on a concrete pad
+  behind each hall rather than a second set of bins — 4 pockets, at world x −94, −94,
+  94, 92.
+- **The polish pass added zero real lights.** `main.js` pools **eight** `PointLight`s
+  for the whole map, so outdoor readability is emissive geometry only: the entrance
+  spill decal, awning underglow and stripes, arrows, lamp-head + lamp-spill quads,
+  bollard bands and queue rings. Measured: **113 lit spots before that pass, 113
+  after** — asserted, because "a PointLight for every sign" is one line away.
+  (115 today: the lounge's pit and the podiums' row each own one.)
+- **Wet asphalt, and the neon in it.** The forecourts are now the highway's own
+  `surface("asphalt")` material at the mirror plane's height (`fx.js` PLANE_Y 0.03),
+  sized to exactly the forecourt rect the audit checks, so `wetRoads.collect(scene)`
+  patches them and the existing wet shader + planar mirror picks them up. Lit shapes
+  register through the new `b.neon(mesh)` and go on `MIRROR_LAYER` via fx.js's
+  `reflect` — **32 meshes, every one either a sign face or emissive** (asserted), so
+  the mirror pass stays a pass over bright things and not a second render of four
+  56 m buildings. `neonSignMaterial` is now memoised on its options, so a venue's
+  roof sign and its door sign share one texture and one batch instead of two.
+- **Camera:** verified rather than changed. `camera.js` pulls the lens in when the
+  head-to-camera ray crosses an occluder box, *except* when the head is already
+  inside one (`rayBox` returns null for an origin inside) — which is exactly why the
+  four enterable halls, each with a single 56 × 30 occluder box, do not collapse the
+  camera to 3 m at the door. Now asserted at 5 standing positions × 12 headings per
+  venue.
+- **Found and fixed by the new checks** (each is a bullet because the check is the
+  deliverable): security lamps mounted 0.6 m *behind* the facade, inside the wall;
+  BAYOU GOLD's and BILLY JEANS' service pockets on the wrong side of the local→world
+  flip, which put a dumpster between the hall and US-167 while still passing every
+  road-clearance test; a queue post 2 cm inside a car body; and a bin jammed against
+  a bollard. `crown_strip_test.mjs` grew from 29 to **40** checks, `crown_build_test`
+  from 26 to **31**.
+- **"Interior lighting comes on when you enter" is the light pool, not a switch.**
+  `main.js` runs exactly **8** real `PointLight`s and hands them to the 8 nearest
+  spots at 4 Hz, so the requirement is a claim about *which* spots are nearest from
+  inside. Measured and asserted per venue at five points each: **5–6 of the 8** are
+  that hall's own interior spots (the rest is the doorway spill, which is correct).
+  Adding a light to a fixture therefore *helps* indoors and changes nothing on the
+  street — that is why `runner`, every booth and every column pair own a spot.
+- **New QA:** `crown_build_test.mjs` executes the build in a vm sandbox with the
+  real kit and drive-in sign fitter loaded: the cutaway (roof down/up, walls
+  dropped/raised, `insideVenue`), the walkable doorway, the no-stale-collision check,
+  the promised interaction points, a  real `batchStatic` run — a **flood fill at
+  0.5 m per venue** that proves every game, bar, cage and stage can be walked up to
+  from the door (this is what caught the BILLY JEANS pool table sealed behind its
+  lounge), the **8-light pool** indoors, which name face lifts with the roof, the
+  mirror-layer policy, the light budget, and the camera. **31/31**.
+  `crown_strip_test.mjs` is **40/40** (four venues, data completeness, fixture/prop
+  names against the real kit, door width, floor area, the depth budget between North
+  Ave 2 and 3, no surviving old signage, the frontage being outside the halls and out
+  of the doorway lane, and 79 ground pieces clear of each other and of the valet bays).
+
+**Integration notes (for Claude) — two one-liners in `main.js`; neither is required
+for the buildings, the interiors or the cutaway to work:**
+- the F key: add `|| tusouxroeNorth.interact()` to the `input.onPress("interact", …)`
+  chain (line ~1196), after `casinos.interact()`. `interact()` returns `false`
+  anywhere but a venue door, so it is safe in that chain.
+- **for TASK-059, not now:** the gaming stations are the hook, but real betting needs
+  `state` and `syncHUD` in this district's ctx (line ~2386) — `casinos.js`'s
+  `gamble()` is the rule to mirror (38%, $10 slots / $25 roulette). Gambling and
+  robbery are TASK-059; nothing here spends or awards cash.
+- the radar: `for (const b of tusouxroeNorth.blips()) _blips.push(b);` beside the
+  `nightlife.blips()` / `casinos.blips()` lines (line ~1292). `blips()` returns
+  `{ kind: "casino"|"club", x, z }` and `minimap.js` already has both badges. Without
+  it the four doors have no badge (POIs and the map footprint already work).
+
+- **THE PEOPLE (2026-09-22, latest): the strip is inhabited, and it works a shift.**
+  `src/crowd.js` (new) is the casting sheet and the beat engine; **`src/interiors.js`
+  fixtures propose the people** next to their own furniture (`b.spot` — a punter on
+  every other stool facing the machine, a croupier behind each wheel, a dealer behind
+  each shoe, a teller behind the cage, a barman between the counter and his shelf, a
+  DJ on the riser behind the console, the act on the stage, high rollers on the VIP
+  deck, guests in the private rooms and the dressing room, drinkers on the bar
+  stools, a dancer grid on the dance floor, guests between every pair of queue
+  posts), so a floor plan that moves a bar moves its barman with it. Nothing about
+  the crowd is hand-placed.
+- **Who they are is spawnzones.js's business, not a second casting call:** the
+  unhinted spots are drawn from `ZONE_MIX.entertainment` — the same weights that
+  already decide who walks the strip when the player is not looking (tuxedo, tourist,
+  hoodrat, high-end escort, prostitute, gay man, lesbian, suit), at the same heights
+  main.js's `ENEMY_TYPES` uses. Staff parts are pinned by the fixture that owns that
+  part of the room; everything else is a patron.
+- **96 people on the strip** (BAYOU GOLD 12+6, BILLY JEANS 16+12, DISCO GATORS
+  14+12, HAPPY HOGS 14+10 posed, plus 6 pavement walkers each) at **~12–16 meshes
+  each**, and the audit checks (a) every room staffed for what is *in* it — derived
+  from the venue's own `layout` through one `STAFF_OF` table, so a new fixture that
+  needs staffing is one line — (b) two on every door and two valets, (c) a walkable
+  lane across every frontage, (d) nobody posed inside another person, (e) nobody
+  buried in the venue's own collision (walking actors need their whole radius clear,
+  standers only need to be out of the thing itself, because a 5 m sofa's blocker
+  circle will always contain the people sitting on it), (f) nobody on North Ave 2 or
+  off their own floor, (g) the room's crowd spans at least a third of the room
+  instead of bunching in the doorway.
+- **Day/night is a shift, not a second cast.** `main.js` now passes `worldTime` into
+  this district (**the one live-game wiring this pass needed**); `crowd.js`
+  `setShift()` keeps the staff (barkeep, dealer, croupier, clerk, host, DJ, the act,
+  bouncers, valets, smokers) on all day, brings every other nightlifer back at dusk
+  and all of them at night. Measured from the middle of North Ave 2: **21 actors at
+  11:00, 35 at 18:00, 52 at 23:00** — asserted, so an afternoon Crown Strip is a
+  staffed street rather than an abandoned one.
+- **The pavement walks, stops, goes in, comes back out.** `crowd.js` `makePavement()`
+  gives each frontage 6 people with a small state machine (walk → dwell → inside →
+  gone → walk back on from the far end), travelling in parties of 1–3 rather than as
+  solitaries. **There is no pathfinding, and none is needed:** a venue's pavement is
+  one verified-clear lane with a spur to its door — the same centreline the player
+  walks in on. `pickLane()` walks *outwards from the door axis* at each candidate z
+  and takes the widest run of clear pavement, which is why a frontage jammed with a
+  valet row and a rope still has a lane (BILLY JEANS' is narrower and further out);
+  the queue rope and the guests at it are registered through a new `b.soft()` that
+  stops a walker's lane without becoming collision for the player.
+- **The routes are the test.** Every leg a walker can take (the lane, the door spur)
+  is sampled every 0.25 m against all 621 blockers and against the avenue. This is
+  the "NPCs walking through buildings" check, and it earned its keep immediately:
+  moving BILLY JEANS' queue line 1.5 m out (done to keep the lane off it) put the
+  queue's people inside a bollard, which the *other* new check caught within a run.
+- **Cost, measured:** 88 posed + 24 pavement actors, and they are culled in two
+  tiers — the forecourt crew while you are within 62 m of the hall, the pavement
+  while within 40 m, the room while you are in it or at its door — with hidden
+  groups neither drawn nor ticked. From the middle of North Ave 2 that is **52
+  actors / ~780 meshes**, asserted under 60 so a "just one more" cannot creep. Every
+  actor mesh carries `userData.noBatch` (+ `userData.crowd`, so the audit can tell
+  them from the cutaway's 56 movers): **1,324 actor meshes, 0 merged into a static
+  batch** by a real `batchStatic` run — a batched actor is an actor that can never
+  dance again.
+- **New QA:** `crown_build_test.mjs` grew a crowd section and now loads
+  `spawnzones.js` + `crowd.js` + `characters.js` in its sandbox, so it measures the
+  actors it actually builds. It runs 90 s of the pavement state machine to prove
+  people reach a door, go in and come back out; it runs the block through 11:00,
+  18:00 and 23:00; it watches **three full routines of the act** from inside the
+  lounge (every beat visited, the moonwalk's backward travel, his deck bounds, the
+  pit cheering and settling, and the room being culled while he keeps not
+  performing); and it checks a single tick never moves anybody more than 0.35 m.
+  The vm stub needed real `Quaternion.identity`, `MathUtils.clamp`, `Vector3.sub/
+  addScaledVector/lerp` and a traversing `updateMatrixWorld` — all gaps in the stub,
+  not in the game.
+
+- **BILLY JEANS IS ON, and he moonwalks (2026-09-22, latest).** The lounge's stage
+  now carries `star: "BILLY JEANS"`, and the pit in front of it is a fixture
+  (`stagefront`) that only proposes *people*. Three pieces:
+  - **`src/characters.js`** — six stage clips in `danceClip` (`showboat` the pose,
+    `moonwalk`, `spin`, `footwork`, `lean`, `cheer` for the room) and `makeStar`: the
+    same rig as everybody else in a black fedora (the `fedora` headwear that already
+    existed for this silhouette), a dark sequin jacket, white low-tops because every
+    step he does is a foot step, and **the one white performance glove on the right
+    hand** (`opts.glove`) — the hand the mic is in, and the hand the giant glove over
+    the lounge door is a portrait of. No new geometry, textures, skinning or mixer.
+  - **`src/crowd.js`** — `ACT_SCRIPT`, the routine as data: pose, mic, side-to-side,
+    signature pose, spin, footwork, **moonwalk**, freeze, crowd call (the brief's nine
+    beats, in its order). `makeAct` drives it: `side`/`back`/`fwd` move his feet while
+    the clip holds the pose, `spin` turns him whole revolutions, and three beats
+    (`signature`, `moonwalk`, `freeze`) are `big` — the pit cheers for `cheer`
+    seconds. **The moonwalk works because the yaw is re-applied after the actor's own
+    update**: the rig turns an actor to face its travel, so without the lock the
+    glide clip reads as a man walking backwards. Measured: **2.40 m of backward
+    travel per moonwalk, facing held to 0.0000 rad.**
+  - **The show cannot leave the stage.** The stage fixture hands over the deck as a
+    rect (`bounds`) and `tick` clamps every step to it, so no beat — including a
+    re-timed one — can walk him off a 6 m riser into the bar. Asserted over three
+    full routines.
+  - **The pit reacts, and stops reacting.** Six `fan` spots in front of the stage
+    (`hype: true`) cheer on a big move and go back to their own dance when it ends;
+    the rest of the room joins in from within 7 m, except the people whose job it is
+    not to (`WORKING`: barman, dealer, DJ, the go-go girls flanking him). Measured
+    over 56 s: **6 cheering at once, ~40% of samples mid-show, 60% with the pit back
+    on its own feet** — asserted both ways, because a crowd that is always cheering
+    is not reacting to anything.
+  - **Cost:** the lounge is 16 on the floor (from 10) — the act, two go-go dancers,
+    the barman, six in the pit, and a working bar behind them. The act only ticks
+    when the room is drawn (the same LOD the rest of the crowd lives by), asserted
+    by standing on North Ave 2 and watching his routine clock not move.
+- **HAPPY HOGS IS ITS OWN VENUE (2026-09-22, latest).** The house is hogs — the same
+  animal as the sign over the door, on the *people* rig:
+  - **`characters.js`** — `makeHog()` (`variant: "dancer" | "barman"`) plus one
+    `opts.hog` block in the constructor: a dropped muzzle over the (already
+    lower-face) human jaw, the flat snout disc with two nostrils, floppy ears rooted
+    inside the skull and flopped out and forward, small tusks, and a curl. The body
+    is the hog's own hide handed in as `skin`, so no part of the rig needed a branch
+    — only that block and two `!opts.hog` guards where hair and headwear would have
+    grown through the muzzle. **16 meshes**, against a patron's 14.
+  - **Four new clips** for the bar shift: `pour` (the bottle tips over the glass on
+    the elbow's roll), `polish` (both hands on the counter in a slow circle), `serve`
+    (the drink goes across on the flat of the hand and comes back) and `barlean`
+    (elbows down, chin on the fist, eyes on the room).
+  - **`crowd.js`** — two roles (`hogdancer`, `hogkeep`) and the fifth beat, `work`:
+    a pose timer of the actor's own on top of the movement, cycling pour → polish →
+    serve → lean → idle with a step between them. The step is *along the bar* —
+    `patrol: "z"` from the fixture, because a random disc of a barman's berth would
+    have him through the bottles on one side and the drinkers on the other — and his
+    facing is re-applied after the step, so he serves the room rather than the aisle.
+    Measured: **all four work poses inside 30 s, 1.3 m of counter walked.**
+  - **`interiors.js`** — a `podiums` fixture (instanced risers with a lit rim, one
+    dancer each, one pooled light for the row) and two one-word hooks: `keep` on
+    `barBig` and `who` on `stage`, so "this bar is kept by a hog" is a value in
+    `CROWN_VENUES`, not a second builder. `barBig` also hands over `patrol` for the
+    work beat. HAPPY HOGS is therefore `who: "hogdancer"`, `keep: "hogkeep"`, one
+    `podiums` row — the venue's identity is three tokens of data.
+  - **The audit grew two rules, both earned** (see the entries in `AGENT_LOG.md`):
+    an actor standing *above* floor level (a deck, a podium, the VIP riser) is not on
+    the plane the collision circles describe; and a `work` actor is treated as being
+    *at* a station rather than walking, because a 12 m counter's collision is one row
+    of 0.85 m circles — wider than the counter — so the person in the 1 m aisle behind
+    it is inside that margin. A barman dropped *into* the bar still fails. Six new
+    checks: no other venue has a hog, the shift cycles, the dancers stay on their
+    risers (0.00 m of wander), and the stage hogs stay on the deck.
+- **Remaining:**
+- **Traffic and crossings** (`traffic.js` lanes + a crosswalk at US-167) and
+  **ambient events** (a cheer, a stumble, security walking somebody out) — the beat
+  engine has room for both, but neither is in yet.
+- **Audio per venue** (`audio.js`) and the **post-processing/exposure audit** the
+  brief asks for before any new lighting: the Crown Strip's own pass added no lights
+  and no bloom, so what would change tonight is main.js's global tone mapping, which
+  is orchestrator-owned and should be measured, not guessed.
+- Paid interactions (gambling, drinks, a dance) remain TASK-059. The camera occluder
+  is still one box per venue, so a real-browser pass should check the camera inside a
+  15 m hall.
+
+---
 
 ### TASK-065 — St. Louis No. 1: the OrleaRouge cemetery rebuilt above ground, + the ghost of Marie Laveau (human request, 2026-09-20)
 
@@ -870,6 +1627,25 @@ aim-not-fire cash-ticks-up, wanted level rising) is still unbuilt.
 pooled traffic model, with visible riders using the shared `ride` pose and
 bike-sized collision radii. Added a parked push bike with pedal momentum:
 Space supplies power and releasing it lets the bike coast and slow.
+
+**Bug fix (2026-09-22, human report + screenshots):** pooled traffic bike/
+scooter riders were standing bolt upright on the seat instead of using the
+`ride` pose — `traffic.js`'s `buildCar()` called `rider.play("ride")` but
+never called `rider.update()` afterward, and `update()` is what actually
+computes the seated pose (hips dropped, knees bent, torso leaned); nothing
+else in the pooled-rider path calls it, so the rider was stuck in the rig's
+raw standing constructor pose the whole time it was pooled. Also, jacking a
+pooled bike (`hijack.js`) left the original rider mesh permanently glued to
+the vehicle as a child object — `traffic.js`'s `release()` dropped the car
+from the pool but never detached `car.rider`, so after a jack you'd see the
+player correctly seated *and* a standing "ghost" of the original rider stuck
+behind them for the rest of the vehicle's life (this is what the screenshots
+show). Fixed both in `src/traffic.js`: bake the ride pose once at creation
+(`rider.update(0)`, plus `rideHip`/`rideLean` matching `main.js`'s player
+values) and remove `car.rider` from the vehicle in `release()` (hijack.js
+already spawns/ejects a separate real NPC to represent whoever got jacked, so
+the old rider mesh has nothing left to do). `node tools/qa/traffic_test.mjs`
+still passes.
 
 **Files (expected):** `src/vehicles.js`
 (`VEHICLE_DEFS`, arcade model tuning), `src/traffic.js` or `src/npc.js`
@@ -3681,7 +4457,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | Claude | TASK-009; orchestration, review, `main.js` integration | `src/actone.js`, `src/ledgerboard.js`, `src/cinema.js`, `src/prologue.js`, `src/main.js`, `tools/qa/actone.mjs` | Active |
 | Codex | — (suggested: TASK-011, then TASK-012) | — | Available |
 | Antigravity | TASK-038 (TASK-020 & TASK-035 in REVIEW) | `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Active |
-| Freebuff | TASK-040 (REVIEW — Claude wiring review pending); TASK-018 (REVIEW) | `tools/characters.html`, `src/audio.js`, `src/weapons_3d.js` | Active |
+| Freebuff | TASK-070 (REVIEW — the Crown Strip); TASK-040 (REVIEW — Claude wiring review pending); TASK-018 (REVIEW) | `src/tusouxroeNorth.js`, `src/spawnzones.js`, `src/pauseMenu.js`, `tools/characters.html`, `src/audio.js`, `src/weapons_3d.js` | Active |
 
 > Update this table whenever ownership changes.
 
@@ -3725,7 +4501,19 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/npc.js` | — | TASK-066 (temperament only) | Available |
 | `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
 | `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |
-| `src/stateWorld.js`, `src/tusouxroeNorth.js` | Antigravity (unclaimed — see AGENT_LOG) | State-wide expansion | Unclaimed, fixes by Freebuff and Claude (TASK-041) applied |
+| `src/stateWorld.js` | Antigravity (unclaimed — see AGENT_LOG) | State-wide expansion | Unclaimed, fixes by Freebuff and Claude (TASK-041) applied |
+| `src/tusouxroeNorth.js` | Freebuff | TASK-070 (REVIEW) — the Crown Strip | Locked by TASK-070; releases with it |
+| `src/spawnzones.js` | Freebuff | TASK-070 (REVIEW) — `entertainment` zone only | Locked by TASK-070; releases with it |
+| `src/pauseMenu.js` | Freebuff | TASK-070 (REVIEW) — pins + district label | Locked by TASK-070; releases with it |
+| `tools/qa/crown_strip_test.mjs` (new) | Freebuff | TASK-070 | Locked by TASK-070 |
+| `tools/qa/crown_build_test.mjs` (new) | Freebuff | TASK-070 | Locked by TASK-070 |
+| `src/neonsign.js` (new) | Freebuff | TASK-070 (cont.) — shared sign helper, adopt freely | Locked by TASK-070 |
+| `src/nightlife.js` | Freebuff | TASK-070 (cont.) — club name boards only | Locked by TASK-070 |
+| `src/casinos.js` | Freebuff | TASK-070 (cont.) — casino fascia only | Locked by TASK-070 |
+| `tools/qa/neonsign_test.mjs` (new) | Freebuff | TASK-070 (cont.) | Locked by TASK-070 |
+| `src/interiors.js` (new) | Freebuff | TASK-070 (cont.) — the interior kit; adopt freely | Locked by TASK-070 |
+| `src/crowd.js` (new) | Freebuff | TASK-070 (cont.) — the casting sheet, the beats, the pavement; adopt freely | Locked by TASK-070 |
+| `src/characters.js` | Freebuff | TASK-070 (cont.) — stage clips (`moonwalk`, `showboat`, `spin`, `footwork`, `lean`, `cheer`) + `makeStar` only; adopt freely | Locked by TASK-070 |
 | `src/composer.js` | Claude | TASK-041 (REVIEW) — road options | Available |
 | `tools/qa/roads.mjs` (new), `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs` | Claude | TASK-041 | Available |
 | `tools/qa/traffic_test.mjs` | Freebuff | TASK-039 | Locked |

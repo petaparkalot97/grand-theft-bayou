@@ -274,6 +274,110 @@ function add(parent, geometry, material, x, y, z) {
   return m;
 }
 
+// The hold, per weapon class, carried and aimed. `hand` is where the GUN HAND
+// goes, as an offset from the gun shoulder pivot in torso space — and nothing
+// else in the game places a weapon, because the weapon hangs off that hand
+// (weapons_3d.js). Two consequences worth stating, since they are the whole
+// reason this is a target and not a pair of joint angles:
+//
+//   * the support hand is solved onto the weapon's actual foregrip, so it works
+//     for any weapon length without a new entry here;
+//   * because BOTH hands are placed from the same two numbers, a gun whose
+//     foregrip is out of reach of the support shoulder is a measurable error at
+//     build time rather than something that "looks a bit off" in the browser.
+//     (tools/qa/weapon_hold_test.mjs measures exactly that.)
+//
+// Earlier this was hand-tuned `pivot`/`elbow` angles instead, and they put the
+// gun hand 0.43 m out in front of the body — further than the support arm can
+// reach, so the off hand floated about 0.4 m short of the foregrip on every
+// two-handed weapon. Reaching across is what puts the gun near the centreline.
+//
+// `blade` turns the torso onto the target, and `pole` is where the elbow bulges
+// (down and out, the way an arm actually holds a gun).
+const HOLD_POSES = {
+  pistol: {
+    carry: { hand: [0.10, -0.24, 0.14], pole: [-0.7, -1, -0.2] },
+    aim:   { hand: [0.20, -0.10, 0.30], pole: [-0.7, -1, -0.2] },
+    blade: { carry: 0.20, aim: 0.10 },
+  },
+  long: {
+    carry: { hand: [0.22, -0.20, 0.16], pole: [-0.8, -1, -0.1] },
+    aim:   { hand: [0.24, -0.10, 0.22], pole: [-0.8, -1, -0.1] },
+    blade: { carry: 0.34, aim: 0.18 },
+  },
+  melee: {
+    // Bat cocked over the shoulder: elbow folded, fist just in front of and
+    // beside the shoulder at shoulder height. The bat's own angle is set by
+    // weapons_3d.js (`orient: "melee"`), so a bat is never sighted and never
+    // tracks the camera — this only says where the fist is.
+    carry: { hand: [0.10, 0.02, 0.10], pole: [-0.9, -1, 0.35] },
+    aim:   { hand: [0.10, 0.02, 0.10], pole: [-0.9, -1, 0.35] },
+    blade: { carry: 0.22, aim: 0.22 },
+  },
+};
+
+// Scratch for the arm solver — the IK runs every frame for the support hand
+// while a two-handed weapon is up, so it allocates nothing.
+const _ikTarget = new THREE.Vector3(), _ikDir = new THREE.Vector3();
+const _ikPerp = new THREE.Vector3(), _ikPole = new THREE.Vector3(), _ikX = new THREE.Vector3();
+const _ikY = new THREE.Vector3(), _ikZ = new THREE.Vector3();
+const _ikM = new THREE.Matrix4();
+const clamp1 = (v) => (v < -1 ? -1 : v > 1 ? 1 : v);
+
+/**
+ * Analytic two-bone IK: solve `arm` (shoulder → elbow → hand) so the hand lands
+ * exactly on `target`, with the elbow bulging toward `pole`. Everything is in the
+ * pivot's PARENT space (the torso).
+ *
+ * The construction is closed form, not iterative, and it is exact: the forearm
+ * direction is derived from the target rather than from the angles, so the hand
+ * cannot wind up near the target — it is on it. That is what puts the support
+ * hand on a weapon's foregrip instead of somewhere beside it.
+ *
+ *   reach = |target − shoulder|, clamped into the chain's range
+ *   β = the elbow's interior angle   (law of cosines on a, b, reach)
+ *   α = how far the upper arm leaves the shoulder→target line, toward the pole
+ *
+ * Returns false if the pivot is degenerate (no length to solve).
+ */
+function solveArm(arm, target, pole) {
+  const S = arm.pivot.position, a = arm.upper, b = arm.fore;
+  const dx = target.x - S.x, dy = target.y - S.y, dz = target.z - S.z;
+  const raw = Math.hypot(dx, dy, dz);
+  if (raw < 1e-5) return false;
+  const ux = dx / raw, uy = dy / raw, uz = dz / raw;
+  const reach = Math.min(a + b - 0.01, Math.max(Math.abs(a - b) + 0.01, raw));
+  const tx = S.x + ux * reach, ty = S.y + uy * reach, tz = S.z + uz * reach;
+
+  const cosB = clamp1((a * a + b * b - reach * reach) / (2 * a * b));
+  const beta = Math.acos(cosB);
+  // elbow.rotation.x = β − π bends the forearm toward the pivot's +z
+  arm.elbow.rotation.set(beta - Math.PI, 0, 0);
+
+  const alpha = Math.acos(clamp1((a * a + reach * reach - b * b) / (2 * a * reach)));
+  // orthogonalise the pole hint against the shoulder→target line
+  _ikDir.set(ux, uy, uz);
+  _ikPerp.set(pole.x, pole.y, pole.z).addScaledVector(_ikDir, -pole.dot(_ikDir));
+  if (_ikPerp.lengthSq() < 1e-8) _ikPerp.set(-arm.side, -1, 0);   // degenerate: elbow down and out
+  _ikPerp.normalize();
+
+  const ca = Math.cos(alpha), sa = Math.sin(alpha);
+  const ex = ux * ca + _ikPerp.x * sa;
+  const ey = uy * ca + _ikPerp.y * sa;
+  const ez = uz * ca + _ikPerp.z * sa;
+  // the forearm's direction, read straight off the (clamped) target
+  const fx = (tx - S.x - ex * a) / b, fy = (ty - S.y - ey * a) / b, fz = (tz - S.z - ez * a) / b;
+  // basis: local −y runs down the upper arm, local +z is the side the forearm
+  // swings to. Z = (f + cosβ·e) / sinβ is the component of f across e.
+  _ikY.set(-ex, -ey, -ez);
+  const sb = Math.sin(beta);
+  _ikZ.set((fx + cosB * ex) / sb, (fy + cosB * ey) / sb, (fz + cosB * ez) / sb);
+  _ikX.crossVectors(_ikY, _ikZ);
+  _ikM.makeBasis(_ikX, _ikY, _ikZ);
+  arm.pivot.quaternion.setFromRotationMatrix(_ikM);
+  return true;
+}
+
 // --------------------------------------------------------------- the rig
 // Joint layout, all in metres on a ~1.8 m body that is scaled to fit at the end:
 //
@@ -390,6 +494,12 @@ class Hoodrat extends THREE.Object3D {
 
     // ---- head ----------------------------------------------------------
     const neck = add(torso, cyl(0.055, 0.06, 0.1, 8), skin, 0, 0.58, 0);
+    // NOTE: `head` is not one of mergeRigid's joints (see the list at the end of
+    // this constructor), so every mesh added under it is baked into the torso's
+    // mesh and the clips' `r.head.rotation` lines are authoring intent rather than
+    // motion — a head-turn does not survive the merge. It costs nothing and it is
+    // load-bearing documentation: anything that *must* read in a pose (a scan of
+    // the room, a chin-up showboat) has to be carried by the torso or the arms.
     const head = new THREE.Object3D();
     head.position.y = 0.66;
     torso.add(head);
@@ -410,7 +520,10 @@ class Hoodrat extends THREE.Object3D {
       brow.rotation.z = side * -0.12;
     }
 
-    if (female) {
+    // A hog wears no hair and no headwear: the head below is built off this same
+    // skull, and a hairstyle underneath a snout would be a hairline sticking out
+    // of a muzzle (see the `opts.hog` block after the hats).
+    if (female && !opts.hog) {
       if (headwear === "band") {
         // tied headband, tails to one side
         const hb = add(head, cyl(0.121, 0.121, 0.075, 14), band, 0, 0.12, 0);
@@ -504,7 +617,7 @@ class Hoodrat extends THREE.Object3D {
           tail.rotation.z = side * 0.18;
           tail.rotation.x = -0.22;
         }
-      } else {
+      } else if (!opts.hog) {
         // close-cropped hair
         crown(hairMat, 0.119);
       }
@@ -525,6 +638,69 @@ class Hoodrat extends THREE.Object3D {
         const badgeGold = mat("metal", 0xd4af37);
         add(head, box(0.028, 0.032, 0.012), badgeGold, 0, 0.165, 0.138);
       }
+    }
+
+    if (headwear === "fedora") {
+      // a narrow-brimmed felt hat, snapped down over one eye — the stage act's,
+      // not the sheriff's (that is `"hat"`, a full 360° campaign brim), so the
+      // silhouette is different at a glance from across the room
+      const felt = mat("leather", crew.hat != null ? crew.hat : 0x1a1a1c);
+      const brim = add(head, cyl(0.185, 0.185, 0.014, 20), felt, 0, 0.122, 0);
+      brim.scale.z = 1.1;
+      brim.rotation.x = -0.16;
+      add(head, cyl(0.1, 0.112, 0.14, 16), felt, 0, 0.19, -0.012);
+      add(head, cyl(0.116, 0.116, 0.03, 16), mat("leather", 0x0b0b0d), 0, 0.14, -0.012);
+      const pinch = add(head, box(0.055, 0.02, 0.07), felt, 0, 0.26, -0.012);
+      pinch.rotation.x = 0.22;
+    }
+
+    if (opts.hog) {
+      // ---- the hog (HAPPY HOGS' house: its dancers and its barman) ----------
+      // Anthropomorphic, on the *people rig* — so a hog dances on a podium,
+      // cheers, walks and works a bar with the same clips and the same beats as
+      // everybody else on the strip, and costs the same to draw. What makes it a
+      // hog is the head, built here over the human skull:
+      //
+      //   * a dropped muzzle that swallows the jaw and chin (which are already at
+      //     z 0.095, so there is nothing to hide) and hangs a little below them,
+      //   * the snout disc on its end, with two nostrils, which is the shape that
+      //     reads as a pig from the front, and the front is where the audience is,
+      //   * two floppy ears flopped forward and outward, tapering wider than the
+      //     skull the way a hog's do, and
+      //   * a pair of small tusks, because HAPPY HOGS is a *show* bar.
+      //
+      // The body is the skin material the caller passed (`makeHog` hands the hog's
+      // own hide colour in as `skin`), so no part of the rig needed a branch —
+      // only this block, and the two `!opts.hog` guards above.
+      const snoutMat = mat("hog snout", opts.snoutColor != null ? opts.snoutColor : 0xd98a86);
+      const earMat = mat("hog ear", opts.earColor != null ? opts.earColor : 0xc47f78);
+      const innerEar = mat("hog ear inner", 0xe9a9a4);
+      const ivory = mat("hog tusk", 0xf2ead6);
+      const nostril = mat("hog nostril", 0x6b403f);
+      const muzzle = add(head, box(0.115, 0.105, 0.15), snoutMat, 0, -0.02, 0.145);
+      muzzle.rotation.x = -0.06;
+      const disc = add(head, cyl(0.056, 0.028, 14), snoutMat, 0, -0.012, 0.222);
+      disc.rotation.x = Math.PI / 2;         // the flat snout, facing the room
+      for (const side of [-1, 1]) add(head, sph(0.016, 6, 5), nostril, side * 0.026, -0.008, 0.234);
+      for (const side of [-1, 1]) {
+        // the ear: rooted *inside* the skull (its inner end is buried at x 0.07,
+        // where the skull is still 0.11 wide) and flopped out and forward, so a
+        // hog reads as a hog from the side as well as the front
+        const ear = add(head, box(0.03, 0.13, 0.085), earMat, side * 0.112, 0.138, -0.015);
+        ear.rotation.z = side * -0.6;
+        ear.rotation.x = -0.28;
+        ear.scale.set(1, 1, 1.15);
+        // the pink inside of it, parallel to the plate and just outboard
+        const inner = add(head, box(0.024, 0.088, 0.052), innerEar, side * 0.126, 0.134, -0.015);
+        inner.rotation.z = side * -0.6;
+        inner.rotation.x = -0.28;
+        const tusk = add(head, box(0.02, 0.06, 0.02), ivory, side * 0.048, -0.055, 0.226);
+        tusk.rotation.x = -0.3;
+        tusk.rotation.z = side * 0.22;
+      }
+      // ...and the curl, off the back of the hips
+      const tail = add(hips, torus(0.045, 0.012, 5, 10), snoutMat, 0, 0.0, -0.15);
+      tail.rotation.y = Math.PI / 2;
     }
 
     if (headwear === "cap") {
@@ -554,9 +730,28 @@ class Hoodrat extends THREE.Object3D {
       elbow.position.y = -0.26;
       pivot.add(elbow);
       add(elbow, cyl(0.042 * bulk, 0.036 * bulk, 0.24, 8), inked || skin, 0, -0.12, 0);
-      add(elbow, sph(0.045), skin, 0, -0.25, 0);               // fist
-      this.arms.push({ pivot, elbow, side });
+      // `opts.glove` puts the white one on the RIGHT hand (side -1) — the gun
+      // hand, which is the hand an act holds the mic in, and the hand the
+      // Crown Strip's stage prop is about (makeStar, below). A material swap on
+      // the fist itself, so nothing about the rig or the IK changes.
+      const glove = opts.glove && side === -1 ? mat("leather", opts.gloveColor != null ? opts.gloveColor : 0xf4f7ff) : null;
+      add(elbow, sph(0.045), glove || skin, 0, -0.25, 0);      // fist
+      if (glove) add(elbow, cyl(0.05, 0.05, 0.05, 8), glove, 0, -0.2, 0);   // cuff
+      // ---- the hand socket -------------------------------------------------
+      // Where a weapon is attached (weapons_3d.js). It sits at the middle of
+      // the fist, because that is where a grip actually is — not at the wrist,
+      // and not at an offset from the actor's position. A bare Object3D, so it
+      // costs nothing, and mergeRigid (which only walks meshes) leaves it alone.
+      // `upper`/`fore` are the bone lengths the support-hand IK solves against.
+      const hand = new THREE.Object3D();
+      hand.position.set(0, -0.25, 0);
+      elbow.add(hand);
+      this.arms.push({ pivot, elbow, hand, side, upper: 0.26, fore: 0.25 });
     }
+    // Facing +z, the right-hand vector of a heading is -x (world.js), so arms[0]
+    // (side -1) is the character's RIGHT arm: the gun hand. arms[1] supports.
+    this.rightArm = this.arms.find((a) => a.side === -1);
+    this.leftArm = this.arms.find((a) => a.side === 1);
 
     // ---- legs ----------------------------------------------------------
     this.legs = [];
@@ -692,6 +887,11 @@ class Hoodrat extends THREE.Object3D {
     this.phase = rnd() * Math.PI * 2;
     this.finished = false;
     this.loop = true;
+    // Set by weapons_3d.js every frame while something is in the hands:
+    //   { kind: "pistol"|"long"|"melee", support: Vector3|null, aim: bool }
+    // `support` is the weapon's foregrip in WORLD space — the left hand is
+    // solved onto it. Null means "this weapon is carried one-handed".
+    this.weaponHold = null;
     this._yaw = opts.yaw != null ? opts.yaw : 0;
     this.rotation.y = this._yaw;
     this._last = new THREE.Vector3().copy(this.position);
@@ -752,6 +952,29 @@ class Hoodrat extends THREE.Object3D {
     }
     this._last.copy(this.position);
 
+    // The support-hand IK poses a shoulder with a quaternion (solveArm), while
+    // every clip drives arms with Euler angles. Clear the quaternion before the
+    // clip every frame, or a solve from a previous frame survives into one where
+    // nothing re-solves it — a two-handed weapon swapped for a pistol, or the
+    // weapon dropped entirely, would leave the off arm permanently warped.
+    for (const a of this.arms) a.pivot.quaternion.identity();
+
+    this._poseClip(dt);
+
+    // ---- what the character is holding ----------------------------------
+    // Runs AFTER the clip, never instead of it: walking, running and the dance
+    // clips still drive the legs, hips and torso, and only the arms are taken
+    // over so the weapon is held. This is the hook that makes a weapon part of
+    // the character instead of a prop parked beside it.
+    if (this.weaponHold) this.applyWeaponHold(dt);
+  }
+
+  /**
+   * Every animation clip, one branch per `this.anim` — unchanged. Split out of
+   * update() so the weapon hold can be layered on top of whatever pose the clip
+   * produced, including the clips that return early.
+   */
+  _poseClip(dt) {
     const A = this.arms, L = this.legs;
 
     if (this.anim === "death") {
@@ -825,7 +1048,12 @@ class Hoodrat extends THREE.Object3D {
 
     this.torso.rotation.x = 0;
 
-    if (this.anim === "twerk" || this.anim === "grind" || this.anim === "dance" || this.anim === "sit" || this.anim === "kiss" || this.anim === "ride") {
+    if (this.anim === "twerk" || this.anim === "grind" || this.anim === "dance" || this.anim === "sit"
+      || this.anim === "kiss" || this.anim === "ride" || this.anim === "moonwalk"
+      || this.anim === "showboat" || this.anim === "cheer" || this.anim === "spin"
+      || this.anim === "footwork" || this.anim === "lean"
+      || this.anim === "pour" || this.anim === "polish" || this.anim === "serve"
+      || this.anim === "barlean") {
       this.position.y = this.baseY || 0;
       danceClip(this, dt);
       return;
@@ -894,6 +1122,88 @@ class Hoodrat extends THREE.Object3D {
     this.torso.rotation.y = b * 0.045;
     this.position.y = this.baseY || 0;
   }
+
+  /**
+   * The weapon-hold overlay. Called after every clip (see update()) whenever
+   * something is in the hands, so the character holds it in every state — idle,
+   * walking, running, aiming — without a second copy of the walk cycle for each
+   * weapon class.
+   *
+   * `this.weaponHold` is set by weapons_3d.js:
+   *   kind     "pistol" (one hand), "long" (two hands), "melee"
+   *   support  the weapon's foregrip in WORLD space, or null for one-handed
+   *
+   * The gun hand is posed by fixed numbers per kind — it is the anchor the
+   * weapon hangs off. The support hand is solved onto the foregrip, so it lands
+   * on the weapon whatever its length: a Tec-9 and a deer rifle hold differently
+   * because the weapons are different sizes, not because anything is hardcoded
+   * per weapon here.
+   */
+  applyWeaponHold(dt = 0) {
+    const h = this.weaponHold;
+    const right = this.rightArm, left = this.leftArm;
+    if (!h || !right || !left) return;
+
+    // Carry → aim is smoothed, so raising the weapon is a movement instead of a
+    // pose swap. Melee never aims: a bat is not sighted.
+    const want = h.aim && h.kind !== "melee" ? 1 : 0;
+    if (this._holdAim == null) this._holdAim = want;
+    this._holdAim += (want - this._holdAim) * Math.min(1, dt * 9);
+    const a = this._holdAim;
+
+    const pose = HOLD_POSES[h.kind] || HOLD_POSES.pistol;
+    const carry = pose.carry, aim = pose.aim;
+    let hx = carry.hand[0] + (aim.hand[0] - carry.hand[0]) * a;
+    let hy = carry.hand[1] + (aim.hand[1] - carry.hand[1]) * a;
+    let hz = carry.hand[2] + (aim.hand[2] - carry.hand[2]) * a;
+    let blade = pose.blade.carry + (pose.blade.aim - pose.blade.carry) * a;
+
+    // ---- the melee swing -------------------------------------------------
+    // A bat swing is an ARM animation, not a weapon animation: the bat is
+    // welded to the fist (weapons_3d.js), so driving the arm is what swings it,
+    // and it cannot come loose halfway through no matter how fast the player
+    // turns. This moves the FIST — the bat's own angle is swept in
+    // weapons_3d.js, so the two together read as one swing.
+    //
+    // `attack` is the attack's progress, 0 → 1, shaped as two overlapping lobes
+    // so the pose starts and ends at the shoulder with no pop: `windUp` cocks
+    // it back, then `strike` drives it forward and down. (sin is 0 at both ends
+    // of each lobe, so this is continuous with the idle hold that follows.)
+    if (h.attack > 0) {
+      const u = h.attack;
+      const windUp = Math.sin(Math.min(1, u / 0.28) * Math.PI);
+      const strike = u <= 0.28 ? 0 : Math.sin(((u - 0.28) / 0.72) * Math.PI);
+      hx += -0.04 * windUp + 0.14 * strike;
+      hy += 0.04 * windUp - 0.12 * strike;
+      hz += -0.08 * windUp + 0.24 * strike;
+      blade += -0.30 * windUp + 0.60 * strike;          // the whole torso turns into it
+    }
+
+    // A bladed stance: rotation.y positive swings the −x (right) side forward on
+    // a body that faces +z, so the gun shoulder comes round toward the target.
+    this.torso.rotation.y = blade;
+    // keep the head on the target rather than the weapon
+    this.head.rotation.y = -blade * 0.75;
+
+    // The gun arm itself is SOLVED onto that hand target rather than posed by
+    // angles: the weapon is attached to this hand, so putting the hand where the
+    // pose says is the same thing as putting the weapon where it should be.
+    const P = right.pivot.position;
+    _ikTarget.set(P.x + hx, P.y + hy, P.z + hz);
+    solveArm(right, _ikTarget, _ikPole.set(carry.pole[0], carry.pole[1], carry.pole[2]));
+
+    if (h.kind === "long" && h.support) {
+      // torso.worldToLocal needs the world matrices, which the caller refreshed
+      // after posing the gun arm and placing the weapon.
+      _ikTarget.copy(h.support);
+      this.torso.worldToLocal(_ikTarget);
+      solveArm(left, _ikTarget, _ikPole.set(left.side * 0.6, -1, -0.15));
+    } else {
+      // off hand: low and loose, or steadying nothing in particular
+      left.pivot.rotation.set(-0.5, 0, left.side * 0.3);
+      left.elbow.rotation.x = -1.05;
+    }
+  }
 }
 
 // --------------------------------------------------------------- club clips
@@ -914,6 +1224,182 @@ function squat(r, th, h) {
 }
 function danceClip(r, dt) {
   const A = r.arms, t = r.time;
+  if (r.anim === "moonwalk") {
+    // THE GLIDE (BILLY JEANS, the Crown Strip's act). The whole trick is that
+    // the feet do not step: both stay flat on the floor while the body slides
+    // *backwards*, the lead leg straight and skating, the trailing leg dragged
+    // with the toe pointed. crowd.js moves the actor; this holds the pose, so it
+    // reads as a moonwalk and not as walking backwards.
+    const p = t * Math.PI * 2 * 1.15 + r.phase;
+    squat(r, 0.06, 0);
+    r.hips.rotation.z = 0;
+    r.torso.rotation.set(0.15, Math.sin(p) * 0.16, 0);      // weight back, chest up
+    r.head.rotation.set(-0.08, Math.sin(p * 0.5) * 0.28, 0);
+    const kick = Math.sin(p) * 0.13;
+    r.legs[0].pivot.rotation.x = -0.5 + kick;               // lead leg out in front
+    r.legs[0].knee.rotation.x = 0.06;
+    r.legs[0].foot.rotation.x = 0.42;                       // flat: it is sliding
+    r.legs[1].pivot.rotation.x = 0.34 - kick;               // trailing leg dragged back
+    r.legs[1].knee.rotation.x = 0.42;
+    r.legs[1].foot.rotation.x = -0.6;                       // toe pointed down
+    r.arms[0].pivot.rotation.set(-2.15, 0, 0.42);           // gloved hand at the mic
+    r.arms[0].elbow.rotation.x = -1.35;
+    r.arms[1].pivot.rotation.set(-0.4 + Math.sin(p) * 0.22, 0, 0.32);
+    r.arms[1].elbow.rotation.x = -0.55;
+    return;
+  }
+  if (r.anim === "showboat") {
+    // the stage pose (makeStar): gloved hand up at the mouth, free hand out,
+    // hips cocked, one heel up, chin up and working the crowd. Held — this is
+    // the pose the act freezes in, and the one the crowd cheers at.
+    const p = t * 1.15 + r.phase;
+    r.hips.position.y = 0.92;
+    r.hips.rotation.set(0, 0, 0.07);
+    r.torso.rotation.set(0.02, Math.sin(p) * 0.22, -0.05);
+    r.head.rotation.set(-0.14, Math.sin(p * 0.7) * 0.32, 0);
+    r.legs[0].pivot.rotation.x = -0.05; r.legs[0].knee.rotation.x = 0.05; r.legs[0].foot.rotation.x = 0;
+    r.legs[1].pivot.rotation.x = -0.2; r.legs[1].knee.rotation.x = 0.3; r.legs[1].foot.rotation.x = -0.34;
+    r.arms[0].pivot.rotation.set(-2.55, 0, 0.5);
+    r.arms[0].elbow.rotation.x = -1.3;
+    r.arms[1].pivot.rotation.set(-0.5, 0, 0.55);
+    r.arms[1].elbow.rotation.x = -0.7;
+    return;
+  }
+  if (r.anim === "spin") {
+    // the pirouette: weight on one foot, the other crossed behind it, arms out
+    // level, chin up. The TURN is the act's (crowd.js drives `_yaw` through whole
+    // revolutions); this is only the body that goes round.
+    const p = t * 1.5;
+    r.hips.position.y = 0.92 + Math.sin(p * 2) * 0.012;
+    r.hips.rotation.z = 0;
+    r.torso.rotation.set(0, 0, 0);
+    r.head.rotation.set(-0.12, 0, 0.08);
+    r.legs[0].pivot.rotation.x = -0.06; r.legs[0].knee.rotation.x = 0.2; r.legs[0].foot.rotation.x = -0.18;
+    r.legs[1].pivot.rotation.x = 0.2; r.legs[1].knee.rotation.x = 0.62; r.legs[1].foot.rotation.x = -0.5;
+    r.arms.forEach((a, i) => {
+      a.pivot.rotation.set(-0.2, 0, a.side * (1.28 - i * 0.34));
+      a.elbow.rotation.x = -0.12 - i * 0.1;
+    });
+    return;
+  }
+  if (r.anim === "footwork") {
+    // the staccato: both feet doing small quick work under him, ~3.2 a second,
+    // knees soft, weight low, hands tucked in and counter-swinging. Fast enough
+    // that the eye reads it as a dance step rather than a walk.
+    const p = t * Math.PI * 2 * 3.2 + r.phase;
+    const s = Math.sin(p);
+    squat(r, 0.3, 0.1);
+    r.torso.rotation.set(0.3, s * 0.22, 0);
+    r.head.rotation.set(-0.1, -s * 0.24, 0);
+    r.legs[0].pivot.rotation.x = -0.3 - s * 0.42;
+    r.legs[0].knee.rotation.x = 0.6 + Math.max(0, -s) * 0.55;
+    r.legs[0].foot.rotation.x = -0.22 + Math.max(0, -s) * 0.5;
+    r.legs[1].pivot.rotation.x = -0.3 + s * 0.42;
+    r.legs[1].knee.rotation.x = 0.6 + Math.max(0, s) * 0.55;
+    r.legs[1].foot.rotation.x = -0.22 + Math.max(0, s) * 0.5;
+    r.arms.forEach((a, i) => {
+      const d = i ? -s : s;
+      a.pivot.rotation.set(-0.85 + d * 0.3, 0, a.side * 0.34);
+      a.elbow.rotation.x = -1.15 - Math.max(0, d) * 0.35;
+    });
+    return;
+  }
+  if (r.anim === "lean") {
+    // THE LEAN: heels down, pelvis driven out past the toes, chest 40° past
+    // vertical and the head turned up at the crowd — the pose that made the
+    // sequin jacket famous. Legs counter-rotate by exactly the pelvis angle
+    // (the convention `squat` documents) so the feet stay under the body and
+    // only the body goes over: an anti-gravity lean, not a stumble.
+    const p = t * 1.4;
+    r.hips.position.y = 0.9;
+    r.hips.rotation.x = 0.42;
+    for (const l of r.legs) { l.pivot.rotation.x = -0.42; l.knee.rotation.x = 0.1; l.foot.rotation.x = 0.42; }
+    r.torso.rotation.set(0.34, 0, 0);
+    r.head.rotation.set(-0.5, 0, 0.1);
+    r.arms[1].pivot.rotation.set(-1.15, 0, r.arms[1].side * 1.18 + Math.sin(p) * 0.06);
+    r.arms[1].elbow.rotation.x = 0.06;
+    r.arms[0].pivot.rotation.set(-2.3, 0, r.arms[0].side * 0.32);       // gloved hand on the hat
+    r.arms[0].elbow.rotation.x = -1.55;
+    return;
+  }
+  if (r.anim === "pour") {
+    // the bottle in the gun hand, the glass under it: the pouring wrist is the
+    // elbow's roll, so the bottle tips over the glass and comes back up
+    const p = t * 1.15 + r.phase;
+    r.hips.position.y = 0.92;
+    r.hips.rotation.set(0, 0, 0);
+    r.torso.rotation.set(0.12, 0.24, 0);
+    r.head.rotation.set(0.16, -0.18, 0);      // watching the glass, not the room
+    r.legs[0].pivot.rotation.x = -0.05; r.legs[0].knee.rotation.x = 0.08; r.legs[0].foot.rotation.x = 0;
+    r.legs[1].pivot.rotation.x = 0.05; r.legs[1].knee.rotation.x = 0.12; r.legs[1].foot.rotation.x = 0;
+    r.arms[0].pivot.rotation.set(-1.15, 0, r.arms[0].side * 0.3);
+    r.arms[0].elbow.rotation.set(-1.25, 0, -0.45 - Math.sin(p) * 0.3);
+    r.arms[1].pivot.rotation.set(-0.95, 0, r.arms[1].side * 0.42);
+    r.arms[1].elbow.rotation.set(-1.35, 0, Math.sin(p) * 0.12);
+    return;
+  }
+  if (r.anim === "polish") {
+    // the glass and the cloth: both hands on the bar top in a small circle
+    const p = t * 2.6 + r.phase;
+    r.hips.position.y = 0.92;
+    r.hips.rotation.set(0, 0, 0);
+    r.torso.rotation.set(0.16, 0, 0);
+    r.head.rotation.set(-0.24, Math.sin(p * 0.5) * 0.2, 0);
+    r.legs[0].pivot.rotation.x = 0; r.legs[0].knee.rotation.x = 0.06; r.legs[0].foot.rotation.x = 0;
+    r.legs[1].pivot.rotation.x = 0; r.legs[1].knee.rotation.x = 0.06; r.legs[1].foot.rotation.x = 0;
+    r.arms.forEach((a, i) => {
+      a.pivot.rotation.set(-1.0 + Math.sin(p + i * 2.1) * 0.07, 0, a.side * 0.3 + Math.cos(p + i * 2.1) * 0.05);
+      a.elbow.rotation.set(-1.3, 0, 0);
+    });
+    return;
+  }
+  if (r.anim === "serve") {
+    // the drink goes across the counter, on the flat of the hand, and comes back
+    const p = Math.max(0, Math.sin(t * 1.1)) * 0.55;
+    r.hips.position.y = 0.92;
+    r.hips.rotation.set(0, 0, 0);
+    r.torso.rotation.set(0.08, 0.14, 0);
+    r.head.rotation.set(-0.06, -0.1, 0);
+    r.legs[0].pivot.rotation.x = 0; r.legs[0].knee.rotation.x = 0.06; r.legs[0].foot.rotation.x = 0;
+    r.legs[1].pivot.rotation.x = 0; r.legs[1].knee.rotation.x = 0.06; r.legs[1].foot.rotation.x = 0;
+    r.arms[0].pivot.rotation.set(-1.05 - p * 0.5, 0, r.arms[0].side * 0.22);
+    r.arms[0].elbow.rotation.set(-0.85 + p * 0.6, 0, 0);
+    r.arms[1].pivot.rotation.set(-0.6, 0, r.arms[1].side * 0.34);
+    r.arms[1].elbow.rotation.set(-1.15, 0, 0);
+    return;
+  }
+  if (r.anim === "barlean") {
+    // elbows on the counter, chin on the fist, eyes on the room — the pose every
+    // bar in the world has somebody in, and the break between two drinks
+    const p = t * 0.7 + r.phase;
+    r.hips.position.y = 0.92;
+    r.hips.rotation.set(0, 0, 0);
+    // the slow scan of the room is the *torso*'s: the head is not a merge joint,
+    // so it cannot turn on its own (see the note at `this.head`)
+    r.torso.rotation.set(0.26, Math.sin(p) * 0.34, 0);
+    r.head.rotation.set(-0.1, Math.sin(p) * 0.42, 0.06);
+    r.legs[0].pivot.rotation.x = -0.12; r.legs[0].knee.rotation.x = 0.3; r.legs[0].foot.rotation.x = -0.18;
+    r.legs[1].pivot.rotation.x = 0.1; r.legs[1].knee.rotation.x = 0.14; r.legs[1].foot.rotation.x = 0;
+    r.arms[0].pivot.rotation.set(-1.35, 0, r.arms[0].side * 0.34);
+    r.arms[0].elbow.rotation.set(-1.5, 0, 0);
+    r.arms[1].pivot.rotation.set(-0.95, 0, r.arms[1].side * 0.5);
+    r.arms[1].elbow.rotation.set(-1.6, 0, 0);
+    return;
+  }
+  if (r.anim === "cheer") {
+    // the crowd, when the act lands a move: both arms up, bouncing on the beat
+    const p = t * Math.PI * 2 * 1.7 + r.phase;
+    const up = Math.abs(Math.sin(p));
+    squat(r, 0.1 + up * 0.1, 0);
+    r.torso.rotation.set(0, Math.sin(p * 0.5) * 0.2, 0);
+    r.head.rotation.set(-0.24, 0, 0);
+    r.arms.forEach((a) => {
+      a.pivot.rotation.set(-2.7 + up * 0.25, 0, a.side * 0.4);
+      a.elbow.rotation.x = -0.22;
+    });
+    r.position.y = (r.baseY || 0) + up * 0.045;
+    return;
+  }
   if (r.anim === "twerk") {
     // NOLA bounce: a low squat, hands on the knees, the hips popping ~3.6 times a
     // second (pelvis tilting back and forth) with a little bounce on every pop
@@ -1240,6 +1726,115 @@ export function makeDancer(opts = {}) {
     curly: rng() < 0.5,
     beard: false,
     crew: { cloth: top === "rainbow" ? 0xff2e93 : top, accent: top === "rainbow" ? 0xff2e93 : top, chain: 0xd4af37, shoe: bottom, legging: bottom, maleShoe: "low" },
+    ...opts,
+  });
+}
+
+/** The hogs of HAPPY HOGS: hide and snout tones, in pairs. */
+const HOG_HIDES = [
+  [0xe8a49c, 0xd98a86], [0xd9948a, 0xc47f78], [0xf2bdb0, 0xdc9a94], [0xc98a80, 0xb06f6b],
+];
+
+/**
+ * A HAPPY HOGS hog — the house's own staff, on the *people* rig.
+ *
+ * That is the whole point of building it here rather than as a mesh like the
+ * boars out in the woods (`main.js`'s `buildHog` is the quadruped you shoot, and
+ * it is a different animal): a hog on this rig dances on a podium, walks, leans on
+ * a bar and gets batched by the same sweep as everybody else, and needs no clip
+ * the crowd kit does not already run. What makes it a hog is the hide worn as
+ * skin, the muzzle, the snout disc, the floppy ears, the tusks and the curl — one
+ * block in the constructor (`opts.hog`), no new rig, no new materials.
+ *
+ * Two variants, because the venue needs both: `"dancer"` (the default) wears a
+ * sequined top and does the podiums, and `"barman"` wears a dark vest and works
+ * the counter all night (crowd.js's `work` beat cycles pour → polish → serve →
+ * lean, so he is never a statue behind the bar).
+ *
+ * @param {object} opts
+ * @param {"dancer"|"barman"} opts.variant
+ * @param {"m"|"f"} opts.sex      dancers are either, the barman is a boar
+ */
+export function makeHog(opts = {}) {
+  const rng = mulberry(opts.seed != null ? opts.seed : (Math.random() * 1e9) | 0);
+  const barman = opts.variant === "barman";
+  const tag = (h) => { h.userData.hog = true; return h; };
+  const [hide, snout] = opts.hide ? [opts.hide, opts.snout ?? opts.hide] : pickOf(rng, HOG_HIDES);
+  const female = opts.sex === "f";
+  const top = opts.top != null ? opts.top
+    : barman ? 0x1d1a20
+      : pickOf(rng, [0xff2e93, 0xffd23a, 0x2ee6d6, 0x9b27b0, 0xf4f1ea]);
+  const trim = barman ? 0x2b2730 : top;
+  return tag(new Hoodrat({
+    sex: female ? "f" : "m",
+    seed: (opts.seed != null ? opts.seed : (rng() * 1e9) | 0),
+    yaw: opts.yaw,
+    height: opts.height ?? (barman ? 1.86 : 1.78),
+    hog: true,
+    skin: hide,
+    hogColor: hide,
+    snoutColor: snout,
+    earColor: snout,
+    headwear: "none",
+    beard: false,
+    top,
+    denim: barman ? 0x141216 : trim,
+    hair: 0x16100d,
+    shoe: barman ? "low" : "high",
+    // a hog has a snout where a chain would hang, so the neckline stays bare and
+    // the palette does the talking: sequins for the podiums, a dark vest and a
+    // pale cuff for the bar
+    crew: {
+      cloth: trim,
+      accent: 0xf4f1e8,
+      chain: barman ? 0xcfd3da : 0xd4af37,
+      belt: barman ? 0x141414 : trim,
+      legging: barman ? 0x141216 : trim,
+      shoe: barman ? 0x0b0b0d : trim,
+      maleShoe: barman ? "low" : "high",
+    },
+    ...opts,
+  }));
+}
+
+/** A random hog — the crowd kit's factory for the `mix`-style roles. */
+export function randomHog(rng = Math.random, height, opts = {}) {
+  return makeHog({ ...opts, seed: (rng() * 1e9) | 0, height });
+}
+
+/**
+ * BILLY JEANS — the Crown Strip's act (crowd.js's `star` role, on the lounge's
+ * stage). The rig is everybody else's, because he has to stand in the same room
+ * as the crowd he plays to: what makes him a *named* performer is the palette
+ * and the props, all of which already existed for this silhouette —
+ *
+ *   * the black fedora snapped down over one eye (`fedora`, whose comment says
+ *     it is the stage act's rather than the sheriff's campaign `hat`),
+ *   * the one white performance glove, on the RIGHT hand (side -1, `opts.glove`)
+ *     — the gun hand, which is the hand the mic is in, and the hand the giant
+ *     glove over the lounge's door is a portrait of,
+ *   * all-white low-tops (`shoe: "low"`), because every step he does is a foot
+ *     step and the feet have to be legible from the back of a dark room.
+ *
+ * No new geometry, no textures, no skinning and no mixer: the six stage clips he
+ * performs are poses in `danceClip` (moonwalk, showboat, spin, footwork, lean,
+ * cheer), driven by crowd.js's script. That is what keeps a named character
+ * affordable on a strip that already has a hundred people on it.
+ */
+export function makeStar(opts = {}) {
+  return new Hoodrat({
+    sex: "m",
+    seed: opts.seed != null ? opts.seed : 77,
+    yaw: opts.yaw != null ? opts.yaw : 0,
+    height: opts.height ?? 1.84,
+    headwear: "fedora",
+    glove: true,
+    shoe: "low",
+    top: 0x14141c,                     // the sequined jacket, dark until a light hits it
+    denim: 0x0f0f14,                   // and the trousers, with the cuff showing
+    hair: 0x16100d,
+    beard: false,
+    crew: { cloth: 0x0e0e14, accent: 0xf4f7ff, chain: 0xd4af37, shoe: 0x0b0b0d, belt: 0x141414, hat: 0x121216, maleShoe: "low" },
     ...opts,
   });
 }

@@ -72,6 +72,19 @@ const server = http.createServer((req, res) => {
   const p = url.pathname;
 
   if (p === "/health") { sendJson(res, 200, { ok: true, rooms: rooms.size }); return; }
+  
+  if (p === "/rooms" && req.method === "GET") {
+    cors(res);
+    const list = [...rooms.values()].filter(r => r.visibility === "PUBLIC").map(r => ({
+      code: r.code,
+      name: r.name || r.code,
+      players: r.players.size,
+      maxPlayers: require("./protocol.js").MAX_PLAYERS,
+      phase: r.phase
+    }));
+    sendJson(res, 200, { rooms: list });
+    return;
+  }
 
   if ((p === "/editor/save" || p === "/editor/load" || p === "/editor/slots" || p === "/editor/delete-slot" || p === "/editor/ai" || p === "/editor/ai-duplicate") && req.method === "OPTIONS") {
     cors(res); res.writeHead(204); res.end(); return;
@@ -162,11 +175,16 @@ wss.on("connection", (ws) => {
     if (msg.type === "PING") return send(ws, "PONG", { at: msg.at });
     if (msg.type === "CREATE_ROOM") {
       if (record) return fail(ws, "ALREADY_IN_ROOM");
-      const room = new Room(createRoomCode(rooms)); rooms.set(room.code, room); const player = room.add(ws); attach(ws, room, player); console.log(`[ROOM] Created ${room.code}`); return;
+      const room = new Room(createRoomCode(rooms));
+      room.visibility = msg.visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC";
+      room.password = msg.password || "";
+      room.name = room.code;
+      rooms.set(room.code, room); const player = room.add(ws); attach(ws, room, player); console.log(`[ROOM] Created ${room.code}`); return;
     }
     if (msg.type === "JOIN_ROOM") {
       if (record) return fail(ws, "ALREADY_IN_ROOM");
       const room = rooms.get(String(msg.code || "").trim().toUpperCase()); if (!room) return fail(ws, "ROOM_NOT_FOUND");
+      if (room.visibility === "PRIVATE" && room.password !== msg.password) return fail(ws, "INVALID_PASSWORD");
       if (room.phase !== "LOBBY") return fail(ws, "GAME_ALREADY_STARTED"); if (room.players.size >= MAX_PLAYERS) return fail(ws, "ROOM_FULL");
       return attach(ws, room, room.add(ws));
     }
@@ -176,6 +194,15 @@ wss.on("connection", (ws) => {
     else if (msg.type === "READY") { const error = room.setReady(player, msg.ready); if (error) fail(ws, error.error); }
     else if (msg.type === "START_GAME") { const error = room.start(player); if (error) fail(ws, error.error); }
     else if (msg.type === "INPUT") room.input(player, msg.input || {});
+    else if (msg.type === "DIED") room.die(player);
+    else if (msg.type === "RESPAWN") room.respawn(player);
+    else if (msg.type === "ENTITY_SPAWN") room.spawnEntity(player, msg.entity);
+    else if (msg.type === "ENTITY_UPDATE") room.updateEntity(player, msg.entity);
+    else if (msg.type === "ENTITY_BATCH_UPDATE") room.updateEntityBatch(player, msg.updates);
+    else if (msg.type === "ENTITY_REMOVE") room.removeEntity(player, msg.id);
+    else if (msg.type === "VEHICLE_ENTER") room.enterVehicle(player, msg.id);
+    else if (msg.type === "VEHICLE_EXIT") room.exitVehicle(player);
+    else if (msg.type === "DAMAGE") room.damageEntity(player, msg);
     else if (msg.type === "LEAVE_ROOM") { leave(ws); ws.close(); }
     else fail(ws, "UNKNOWN_MESSAGE");
   });

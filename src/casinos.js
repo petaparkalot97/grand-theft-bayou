@@ -7,6 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import * as THREE from "three";
+import { neonSignMaterial, aspectOf } from "./neonsign.js";
 
 const W = 15, D = 13, H = 4.8;
 const CASINO_DEFS = [
@@ -82,7 +83,14 @@ export function createCasinos(ctx) {
     c.roof.add(roof, header);
     g.add(c.roof);
 
-    const sign = new THREE.Mesh(new THREE.BoxGeometry(W - 1, 1.7, 0.22), ctx.makeNeonSign(def.name, def.ink, "#080b12"));
+    // the fascia is (W - 1) x 1.7 m, so the texture is built at that ratio and
+    // the name is measured to fit — see neonsign.js. `ctx.makeNeonSign` (main.js)
+    // is left alone for the other users of it.
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(W - 1, 1.7, 0.22), neonSignMaterial({
+      text: def.name, ink: def.ink, bg: "#080b12", aspect: aspectOf(W - 1, 1.7),
+      name: "casino neon sign", emissive: 0xff6644, emissiveIntensity: 0.9,
+      font: "Trebuchet MS, Arial Black, sans-serif", weight: 700, border: 0.06, lineWidth: 14,
+    }));
     sign.position.set(0, H + 1.15, D / 2 + 0.2);
     g.add(sign); c.sign = sign;
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.4, D - 0.4), mat("casino carpet", 0x25122d, { roughness: 0.92 }));
@@ -150,7 +158,7 @@ export function createCasinos(ctx) {
       if (isIn) inside = c;
       c.roof.visible = !isIn;
       c.sign.visible = !isIn;
-      c.walls.forEach((w) => { w.scale.y += ((isIn ? 0.2 : 1) - w.scale.y) * Math.min(1, dt * 8); });
+      c.walls.forEach((w) => { w.scale.y = 1; });
       if (d < 70) {
         c.table.rotation.y += dt * 0.12;
         c.slots.forEach((s, i) => { const mesh = c.g.children.find((x) => x.position.x === s.x && x.position.z === s.z); if (mesh) mesh.position.y = 0.88 + Math.sin(performance.now() * 0.004 + i) * 0.015; });

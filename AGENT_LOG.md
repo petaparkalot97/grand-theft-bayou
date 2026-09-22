@@ -44,6 +44,10 @@ I have implemented items 2 and 5 of TASK-053:
 5. **OrleaRouge Outskirts**:
    - Filled out the empty edge blocks of OrleaRouge (specifically the deep south edge, the southwest corner below the clubs, and the northeast slice above downtown).
    - Added an `outskirts()` generator function to `orlearouge.js` that places run-down warehouses with pallets/barrels, cheap motels with neon vacancy signs, and rows of pitched-roof shotgun houses to make the edges feel populated.
+6. **State-Wide Wilderness Bands**:
+   - Filled the massive empty cross connecting the four corner regions in `stateWorld.js` with wilderness features.
+   - Added `buildWildernessBands()` to dynamically generate and cull thousands of pine trees using instanced meshes.
+   - Sprinkled abandoned bayou stilt huts with local swamp water patches and added dark green minimap shading for the new forest regions.
   ### Impact
   Why another agent needs to know.
   
@@ -59,8 +63,713 @@ I have implemented items 2 and 5 of TASK-053:
   
   # 🧠 DISCOVERIES
   
-  ## 2026-09-21 — Antigravity
-  **Type:** HANDOFF · **Task:** TASK-062 Dev mode AI duplicate variation
+## 2026-09-22 — Claude
+
+**Type:** DISCOVERY · **Task:** TASK-060 — "NPC bikes and scooters... stand on the seat upright" (human report, screenshots)
+
+### Finding
+Two bugs in `src/traffic.js`'s pooled bike/scooter riders (TASK-060), both
+visible in the human's screenshots of a moving traffic scooter:
+
+1. **Riders never get posed.** `buildCar()` creates the rider and calls
+   `rider.play("ride")`, but `play()` only sets `this.anim` — the actual
+   seated pose (`characters.js`'s `danceClip()`: hips dropped to `rideHip`,
+   knees bent, torso leaned to `rideLean`) is computed inside `update(dt)`,
+   which nothing ever calls for a pooled rider (unlike the player's own bike,
+   where `main.js`'s `drivingUpdate()` calls `player.update(dt, camera)` every
+   frame). The rider is stuck in the rig's raw constructor pose — standing,
+   `hips.position.y = 0.92`, straight legs — for its whole time pooled. Also
+   `rideHip`/`rideLean` were never set on the rider at all, only on the
+   player.
+2. **Jacking a pooled bike doesn't remove the old rider mesh.** The rider is
+   added as a child of the vehicle's `obj` (so it rides along for free without
+   its own NPC slot — intentional, per the existing comment). But
+   `release()` (called by `hijack.js` via `releaseFromTraffic`) only dropped
+   the car from the pool array; it never called `obj.remove(rider)`. Since
+   `hijack.js` already spawns a separate, real NPC to eject and drag clear of
+   the vehicle (`ctx.spawnDriver`, generic for every vehicle type), a jacked
+   bike ended up with three bodies: the newly spawned ejected NPC, the
+   player now correctly seated, and the *original* rider mesh — bug (1)'s
+   standing pose — permanently glued to the seat behind the player, since
+   nothing ever detached it. That's exactly the "I toss a sprite off the
+   scooter and sit down, but their sprite remains fixed to the scooter still
+   standing" the human described.
+
+### Impact
+Any bike/scooter in the pooled traffic population reads as broken — a rider
+floating/standing above the seat instead of astride it — and jacking one
+leaves a permanent visual ghost on that vehicle for the rest of its life
+(until it despawns and the pool rebuilds a new one via `buildCar()`).
+
+### Action
+Fixed both in `src/traffic.js`:
+- `buildCar()` now sets `rider.rideHip` / `rider.rideLean` (mirroring
+  `main.js`'s player values — `scooter` 0.05, `pushbike` 0.16, else 0.3) and
+  calls `rider.update(0)` once right after `play("ride")` to bake the seated
+  pose immediately. (The ride pose has no time-dependent motion, so one bake
+  holds for the vehicle's whole pooled lifetime — no per-frame update call
+  needed.)
+- `release(car)` now does `car.obj.remove(car.rider); car.rider = null;`
+  before dropping the car from the pool, so a jacked/wrecked bike loses its
+  rider mesh cleanly.
+- `node tools/qa/traffic_test.mjs` still passes (11/11); `tools/qa/hijack.mjs`
+  needs the browser-automation harness to run and wasn't exercised this
+  session — worth a live playtest pass to confirm the jacked-bike visual.
+
+### Finding
+Human reported two things that looked separate but traced to the same class
+of bug: overexposed bloom, and plain (non-textured) surfaces reading as solid
+white. Reproduced live on the deployed build via Claude in Chrome.
+
+The vehicle-headlight half (`SpotLight.intensity = 420` in `createHeadlights`,
+`src/fx.js` — 5-14x every other light in the scene) was independently found
+and fixed the same day by a parallel local session (`420 * level` →
+`45 * level`); that part is already in this history.
+
+The second half, not yet covered: **decorative point lights at close range.**
+`poolLight()`-created fixtures (roadside signs, torches, casino/klan fires —
+always-on, `fx: false`, see the comment above `updateLightPool`) are real
+`PointLight`s with `decay: 2` and no minimum-distance floor. Their `power`
+values (16 for the "Welcome to Dixie Beaux" sign, up to 120 for a Klan
+bonfire) are tuned for how they read from a distance, but most sit 1-3 m from
+their own prop — a sign panel, a torch pole. At that range `power /
+distance²` dwarfs the sun (peaks ~3.2, `daycycle.js`): confirmed live, the
+welcome sign's own support post — plain `MeshStandardMaterial`, no texture at
+all — read as solid white at point-blank range, and zeroing that one light's
+intensity in the console visibly softened it (before the pool's 4 Hz refresh
+put it back). Every `poolLight` call site across the codebase (`main.js`,
+`actone.js`, `bluelight.js`, `casinos.js`, `cemetery.js`, `klan.js`,
+`newton.js`, `nightlife.js`, `nolantis.js`, `orlearouge.js`,
+`welcomeback.js`) shares this risk, not just the one reproduced.
+
+### Impact
+Anyone adding a new `poolLight` fixture close to its own geometry will hit
+this again unless the near-field cap below stays in place. `addLitSpot`
+street lamps (already fade with `lampPower` in daylight) go through the same
+pool and pick up the same cap — nothing else about their day/night behaviour
+changed.
+
+### Action
+`src/main.js`: `updateLightPool` now runs every pooled light's `power`
+through a soft-knee compression (`POOL_LIGHT_CAP = 30`,
+`cap * power / (cap + power)`) before it becomes `l.intensity`. Small
+fixtures barely move (16 → ~10.4); the worst offenders get pulled down hard
+(120 → 24) without a hard clamp, so everything keeps its authored ranking
+relative to everything else. Not independently re-verified live past the
+initial repro — this environment's egress blocks the CDN three.js/jsDelivr
+imports the game loads at runtime, so headless Playwright here can't boot the
+game. Reasoned from live-measured intensities; wants a real-GPU look before
+calling it fully closed.
+
+## 2026-09-22 — Freebuff
+
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — HAPPY HOGS: the staff are the sign on the door
+
+### Finding — the hog is a *person* with a muzzle, and that is cheaper than an asset
+
+There is already a hog in this repo and it is a different animal: `main.js`'s
+`buildHog()` is the quadruped boar you shoot in the woods — boxes, tusks, four legs,
+no rig. The house at HAPPY HOGS needs the other thing: something that can dance on a
+0.6 m podium and work a counter for an hour. So `makeHog` is built on the actor rig
+(`Hoodrat`) and the hog is one block in its constructor (`opts.hog`): a muzzle dropped
+over the jaw, the flat snout disc with two nostrils, floppy ears rooted inside the
+skull and flopped out and forward, tusks, a curl. The body is the hide colour handed
+in as `skin`, so nothing else in the rig needed a branch — only two `!opts.hog` guards
+where hair and headwear would otherwise grow through a muzzle. **16 meshes against a
+patron's 14**, dancing with the clips the crowd kit already runs, and batched by the
+same sweep. Recording the distinction explicitly because "there is already a
+buildHog" is the reason this looked like a solved problem and was not.
+
+### Finding — "works the bar" is a beat, and the beat needs an axis
+
+A barman with an idle clip is a statue in an apron, so `work` is now the fifth beat:
+a pose timer of the actor's own on top of the movement, cycling pour → polish →
+serve → lean → idle with a step between each. Two things about it are not obvious.
+The step is confined to an **axis** (`patrol`, which the bar fixture hands over)
+because a barman's berth is not a disc — it is 1.5 m of counter with a wall of bottles
+behind it and drinkers in front, so random points in a circle put him through one or
+into the other. And his **facing is re-applied after the step**, because the rig turns
+an actor to face its travel: walking two metres along the bar is enough to leave him
+facing down the bar, mid-pour, with his back to the room. Measured inside HAPPY HOGS:
+all four work poses within 30 s, 1.3 m of counter walked, and never more than 1.6 m
+from his station.
+
+### WARNING — the head does not move, and every clip in the file pretends it does
+
+Found while checking why a hog's parts could not be introspected: `mergeRigid(this, [hips,
+torso, ...arms, ...legs])` does **not** list the head as a joint, so every mesh added
+under `this.head` is baked into the torso's mesh and `this.head.children` is empty on a
+finished actor. Which means the `r.head.rotation.set(...)` line in every pose in this
+file — and in the six stage clips and four bar clips added this pass — is authoring
+intent with no motion behind it: a head-turn cannot survive the merge. Not fixed here,
+because "make the head a joint" is one word that adds a mesh group per actor per
+material across ~1,400 actor meshes and needs measuring, not guessing. What is fixed is
+the two things that matter: a note at `this.head` so the next person does not spend an
+hour choreographing a neck that is welded shut, and the poses that had to *read* moved
+to the torso (the barman's slow scan of the room now turns his shoulders, not his
+face).
+
+### WARNING — the floor-plane audit was wrong in two places, and both were load-bearing
+
+Podiums broke the collision check the moment they existed: a person standing on a
+riser is *inside* the riser's collision circle by construction, so the audit called
+every dancer in the venue buried in the furniture. The rule the circles actually
+describe is a **floor plane**, so an actor above it (y > 0.3: a stage deck, a podium,
+the VIP riser) is now exempt, and their footing is checked as what it really is — a
+podium dancer must stay within her own shuffle radius of her riser (measured: 0.00 m
+of wander), a stage dancer inside the deck's own rect.
+
+The second is subtler. The audit demands 0.55 m of clearance from any blocker for an
+actor that moves, which is right for a walker in open floor — but a 12 m bar counter
+is registered as one row of 0.85 m circles, i.e. *wider than the counter*, so the
+barman standing in the 1 m aisle behind it is inside that margin by arithmetic and
+correct by geometry. A `work` actor is therefore held to the same rule as somebody
+standing at a station (out of the object itself, half its coarse circle tolerated),
+while the barman dropped *into* the bar still fails. Both changes are loosening a
+check, which is worth saying out loud: they loosen it for a reason that is a fact
+about the world rather than a preference, and the thing each one was protecting
+(a person inside furniture) still fails as before.
+
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — BILLY JEANS is on: a named act, a scripted routine, and a pit that reacts
+
+### Finding — a moonwalk is a yaw lock, not a clip
+
+The clip was the easy half: `danceClip` now has six stage poses, and the glide is
+both feet flat on the floor, the lead leg straight and skating, the trailing toe
+pointed. The half that makes it read is in `crowd.js`. Every actor in this game turns
+itself to face its own travel — `characters.js`'s `update()` measures the ground it
+covered and lerps `_yaw` toward it — so an actor moved backwards while playing a glide
+pose is a man *walking backwards*, and the better the clip the more convincing the
+wrong thing is. So `makeAct` re-applies the stage's facing AFTER `a.update(dt)`, every
+frame, for every beat except the spin (which is the one beat where the turn is the
+move). Measured over three routines: **2.40 m of backward travel per moonwalk with the
+facing held to 0.0000 rad**. Nothing about the rig changed; the ordering did.
+
+### Finding — a scripted actor needs a box, or it is a bug generator
+
+A pose-driven NPC wanders a radius and cannot leave its room. A *scripted* one walks
+wherever the script says, and a six-metre riser in a 30 m hall is a short walk to the
+bar. So the stage fixture hands over its deck as a rectangle (`b.spot(…, { bounds })`)
+and `tick` clamps every step to it — sideways drift, the backward glide and the walk
+back up to the front all live inside it. A beat with too much speed in it now stalls at
+the edge instead of stepping off, and the check runs three full routines asserting he
+never leaves the rect and never sinks below the deck's rise.
+
+### Finding — the crowd reaction is a timer, and 40% of the time is the ceiling
+
+The pit is a fixture (`stagefront`) that proposes people only: six `fan` spots in front
+of the stage, `hype: true`, each one asking the builder (`b.free`) whether a column has
+claimed that patch first. A `big` beat calls `hype()`, which sets a `cheer` timer on the
+pit and on anybody else within 7 m — bar a `WORKING` set (barman, dealer, croupier, DJ,
+the go-go girls flanking him), because the room is still open. Two decisions worth
+recording: **only three of the nine beats are `big`** (signature, moonwalk, freeze — the
+spin at 4.5 rpm is spectacular and unsurprising, and marking it too would leave the pit
+in the air for half the show), and **the cheer is per-beat data** (`cheer: 3.2` on the
+moonwalk, which is 3.0 s long), so a reaction covers its move instead of expiring in the
+middle of it. Measured over 56 s: 6 cheering at once, ~40% of samples mid-show, 60%
+with the pit back on its own feet — asserted in both directions, because a crowd that is
+always cheering is not reacting to anything.
+
+### WARNING — a spot hook that was documented and ignored
+
+`b.spot`'s interface comment has promised `{ anim }` since the kit was written, and
+`makeCrowd` was silently reading `role.anim` instead — so a fixture asking for a dancing
+front row got an idle one and nothing reported it. Now honoured (spot over role over
+`idle`), along with `name` (which names a performer) and `bounds`. Small, but it is the
+kind of gap that gets debugged twice: once as "the crowd looks wrong", once when
+somebody re-reads the comment and believes it.
+
+### Gotcha — the QA snapshot is not the QA
+
+The crowd section of `crown_build_test` takes `const crown = district.crownCrowd` once
+and works from it (positions, roles, beats — all static facts). Reading *live* state
+from that snapshot is silently wrong: my new block sampled the act's beat from it and
+got "spin" 560 times while the act had cycled three routines behind it, and reported "he
+never moonwalked" and a pit pinned mid-cheer. The district re-reads on every frame
+(`district.crownCrowd.find(...)`) now, and the "he is culled with his room" check — which
+had also been comparing a stale `t` to itself and passing vacuously — is real.
+
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — the strip is inhabited: the crowd kit, the pavement, the shift
+
+### Finding — the fixtures were the only thing that knew where a person could stand
+
+The venues already knew where every bar, stool, wheel, shoe, pole and machine is, and
+`b.station()` was already recording where the *player* walks up to. So a person is the
+same kind of fact: each fixture now proposes the people beside its own geometry
+(`b.spot`), and `src/crowd.js` casts them. That is why there is no list of coordinates
+anywhere for the crowd — 88 people come out of the floor plans, and moving a bar moves
+its barman. It also means the *role* hint ("this is a croupier") stays the fixture's
+business while "who walks in off the avenue" stays `spawnzones.js`'s: unhinted spots
+draw from `ZONE_MIX.entertainment`, the table that already decides the strip's crowd
+when the player is not looking.
+
+### WARNING — a batched actor is an actor that can never move again
+
+Every crowd mesh carries `userData.noBatch` (and `userData.crowd`, so the audit can
+tell the 1,324 actor meshes from the cutaway's 56 movers instead of lumping them).
+merge.js skips `noBatch` per mesh, so this is the same mechanism the roof and walls
+already use; a missing flag would bake a dancer into a chunk of scenery, and nothing
+would report it. The build test now runs a real `batchStatic` and asserts **0 of the
+actor meshes were merged**.
+
+### Finding — the *routes* are the test, not the walkers
+
+There is no pathfinding here, and there does not need to be: a frontage's pavement is
+one verified-clear lane (and a spur to the door, which is the same centreline the
+player walks in on). But the lane has to *earn* that: `pickLane` walks outwards from
+the door axis at each candidate z and takes the widest clear run, because a fixed
+width fails on a frontage with a valet row and a queue on it. BILLY JEANS' lane is
+therefore narrower and further out than the other three, decided by geometry rather
+than by a number somebody typed. And every leg is then sampled every 0.25 m against
+all 618 blockers and against the avenue — which is the "NPCs walking through
+buildings" check, and it fired twice during this pass: once when moving the queue line
+out put the queue's *people* inside a bollard, and once when the walkers' rest
+positions landed on top of the queue's.
+
+### Finding — "alive" means the shift changes, and that is a behaviour, not a filter
+
+`main.js` did not pass `worldTime` in this district's ctx. It does now (one token),
+and `crowd.js` `setShift()` keeps the staff — barman, dealer, croupier, teller, host,
+DJ, the act, bouncers, valets, smokers — working all day, halves the night crowd at
+dusk and runs all of it at night. Measured from the middle of North Ave 2: **21
+actors at 11:00, 35 at 18:00, 52 at 23:00**. The same geometry, three different
+streets, and the check fails if an afternoon Crown Strip becomes as busy as a Friday
+night.
+
+### Finding — the vm stub was missing real three.js, not just features
+
+Running an actor headlessly needed `Quaternion.identity` (characters.js clears the
+support-arm quaternion every frame before the clip), `MathUtils.clamp` (the walk
+clip scales its stride by ground speed), `Vector3.sub/addScaledVector/lerp`, and an
+`updateMatrixWorld` that walks children (merge.js's `mergeRigid` bakes a character's
+rigid parts). All of these are gaps in the *stub*: the same code has always been fine
+against the real library. Recorded because "the test needs a better stub" is the kind
+of work that looks like churn and is not.
+
+### What the brief still wants, and where it belongs
+
+BILLY JEANS as a performer needed a `moonwalk`/glide clip — `characters.js`'s
+`danceClip` was the extension point and had no such clip. **Done in the entry above**
+(the clip, the scripted routine, the pit that reacts), and HAPPY HOGS' hog dancers and
+hog barman are **done in the entry above too** (`makeHog` on the actor rig, the
+podiums, the `work` beat) — that one needed a hog *character*, which is why it was
+`characters.js` work and not more crowd code. Traffic, crossings, ambient events,
+per-venue audio, and the exposure/tone-mapping audit the brief asks for before new
+lighting are all still open — and that last one is orchestrator-owned (main.js), so it
+should be measured rather than guessed.
+
+
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — visual polish: the frontage, the wet road, the camera
+
+### Finding — `reflect` is exported, and that is the whole wet-neon story
+
+`traffic.js` already imports `reflect` from `fx.js` for head/tail lights, so any
+module can put its own meshes on `MIRROR_LAYER` — no `main.js` change, no
+`wetRoads` in the district's ctx. The mirror camera renders **that layer only**, so
+the rule is: the lit shapes, never the buildings. The strip registers them through a
+new `b.neon(mesh)` (awnings and arrow backing plates get none), and the QA asserts
+every reflected mesh is either a sign face or has a non-black `emissive` — 32 of
+them, for four venues. A venue group is never reflected wholesale: that would be a
+complete second render of four 56 m halls, in the cheapest place to make the
+mistake.
+
+The forecourts were dry because they were a plain `M.lot` box. They are now the
+highway's own `surface("asphalt")` at `PLANE_Y` (0.03), and `wetRoads.collect(scene)`
+finds them on its own — one surface generator call shared by all four aprons, since
+`surface()` derives three 1024 maps per call. Their size is the *forecourt rect the
+audit already checks* (`W + 10`), not a round number, so paving cannot overhang a
+kerb by a metre.
+
+### WARNING — the light pool is eight, so outdoor polish can only be emissive
+
+`initLightPool(8)`: eight real `PointLight`s for the entire map, given to the 8
+nearest spots at 4 Hz. An outdoor light near a facade is therefore not "a bit more
+glow" — it takes a slot from a slot machine indoors, and the interiors' new QA check
+(≥5 of the 8 nearest spots inside the hall) would fail. So the whole street pass is
+emissive geometry: spill decals, awning underglow, band and rope emissives, lamp
+heads. Measured **113 lit spots before and after**, asserted with a ceiling so the
+next person cannot quietly add "just one" per awning.
+
+### Finding — the enterable halls and the camera occluder agree, by luck of `rayBox`
+
+`camera.js` pulls the lens in when the head-to-camera ray crosses an occluder box,
+but `rayBox` returns **null when the origin is already inside** the box — which is
+the only reason a 56 × 30 occluder around a walk-in interior does not collapse the
+camera to 3 m the moment the player steps through the door. Nothing in the strip's
+code says so; it is a property of a single box that contains the whole room. It is
+now asserted (5 positions × 12 headings × 4 venues) because the failure mode is
+invisible until someone splits an occluder or moves one.
+
+### Finding — four real clipping bugs, all caught by new checks, none visible in a screenshot review
+
+1. **Security lamps buried in the wall.** Mounted at local z = FZ − 0.6, i.e. 0.6 m
+   *behind* a facade whose inner face is at FZ − 0.5. The lamp head was inside the
+   building. New rule: every `apron` piece must have `|z| > d/2`.
+2. **Two service pockets on the wrong side of the local→world flip.** `crownToWorld`
+   mirrors x when `rot` is π, so BAYOU GOLD and BILLY JEANS landed at world x −26
+   (between the hall and US-167) instead of −94. Every existing test passed: they were
+   clear of every road, inside the district, outside the halls. New rule: a pocket must
+   be on its venue's own side of US-167 and ≥20 m clear of it.
+3. **A queue post 2 cm inside a car body** — 5 posts at x 4.2…13.8, z 20 against bays
+   at z 18.4 (body to 20.55).
+4. **A bin jammed against a bollard** (0.94 m apart, radii 0.4 + 0.7).
+
+3 and 4 came from a new anti-overlap pass over the 79 ground-level frontage pieces
+(circle/circle against each other, circle/rect against the valet bays that
+`buildVenue` lays out). Hand-checking this is how you ship a planter in a car.
+
+### Finding — a sign is a pure function of its options, so it should be memoised
+
+`neonSignMaterial` built a fresh canvas texture and material per call. The casino
+marquee puts the same name on the roof AND beside the door, so that pair paid twice
+and could never batch together (merge.js buckets by material signature; the mirror
+pass counts them one by one). Now memoised on the full option set *including* `name`,
+because the QA reads a sign's identity out of the material name.
+
+### NOT covered, and honestly so
+
+The brief's final QA is a browser pass: F3 frame times for exterior day / exterior
+night / inside each venue / driving the length of the strip, z-fighting, missing
+textures, the night look, and whether the neon wash reads as `au natural` or as white
+fog. No browser is installed in this environment, so none of that was run. What *is*
+measured here: 808 meshes → 124 in 76 batches at 112 material signatures, 618
+blockers, 113 pooled lights, 32 mirrored meshes, 79 frontage pieces with no overlap,
+and the camera never pulling in indoors.
+
+
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — the Crown Strip's interiors become a module
+
+### Finding — the venue is data, so the furniture had to stop being the district's
+
+The four mega-venues were driven by a `layout` list, but the 13 builders that list
+named lived *inside* `buildCrownStrip()`, in `tusouxroeNorth.js`. That is the wrong
+seam: a slot bank, a bar back, a dressing table or a mirror ball is the same builder
+wherever it stands, and the district was 300 lines read only by a dedicated
+subsystem. They now live in **`src/interiors.js`** — `FIXTURES` (24), `PROPS` (3),
+plus `makeGeoCache()` / `makeKit()` / `instanced()`. It imports only `three`, and
+takes everything else through the `b` context, so it cannot see a scene, a venue or a
+palette it was not handed.
+
+`crownGeo()` and `crownMat()` in the district are now three lines each — they *are*
+the kit's caches plus the street-only pieces (stone, lot, stripe, tyre, car paint).
+One implementation, not two.
+
+### WARNING — the QA sandbox flattens modules into one scope
+
+`tools/qa/crown_build_test.mjs` loads sources with `vm.runInContext` after stripping
+`import`/`export`, so every module's top-level names share one lexical scope. This
+module and `merge.js` both declared a module-scope `_m` (a scratch `Matrix4`):
+`SyntaxError: Identifier '_m' has already been declared`, thrown when *merge.js*
+loaded, pointing at a file that was not the problem. Interiors.js's scratch set is
+now `_mOne/_qOne/_vOne/_sOne/_eOne` with a comment saying why. Any new module in this
+repo's sandbox should assume it shares that scope — and `FIXTURES`/`PROPS` must be
+imported under their real names (no `as` aliases) or the sandbox needs a shim.
+
+### Finding — a material's `name` is free; do not use it for anything but identity
+
+Kit builders ask for materials venue-agnostically (`b.m("slot body", …)`). The
+district prefixes them (`crown slot body`), so every strip material is still
+recognisable in the batch dump and `merge.js`'s material signature — which does
+**not** include `name` — still merges two halls' identical slot bodies into one
+batch. Prefixing with the venue id instead would have been the tempting mistake:
+it would silently quadruple the material count (84 signatures today).
+
+### Finding — the flood fill caught a table nobody could reach
+
+`crown_build_test.mjs` now grids each hall at 0.5 m, marks every cell a walker of
+radius 0.45 m cannot stand in, flood-fills from the doorway, and requires every
+interaction point to have a reached cell within 1.5 m. It failed on the second
+BILLY JEANS pool table: its blocker (r = 1.8) and the lounge sofa's (r = 1.6) left a
+**negative** gap, sealing the pocket the player would stand in. The lounge moved to
+the far side of the entrance. A layout is not correct because it looks correct.
+
+### Finding — the existing prompt chip is the interaction system
+
+The district only had a door line. Rather than invent a second one, fixtures call
+`b.station(lx, lz, kind, label)`; the venue record keeps world points, and `update()`
+lets the nearest one within 3.4 m take over `crownPrompt` (which became `{v, text}`).
+`interact()` flashes that line through the same objective channel. 24 points: slots,
+roulette, blackjack, cage, vault, bars, pool, stage, DJ, VIP. No new input handling,
+no new UI, and TASK-059 can hang gambling off `crownStations`.
+
+### Finding — "interior lighting comes on" is really a claim about the light pool
+
+There is no interior light switch to flip, and AGENT_PROTOCOL §6 forbids creating or
+hiding lights per frame anyway. `main.js` builds **8** real `PointLight`s
+(`initLightPool(8)`) and gives them to the 8 nearest spots at 4 Hz, so walking into
+a casino lights it *iff* its own spots are the nearest ones. That is testable, so the
+QA now does it: five probe points per hall, take the 8 nearest of the strip's **113**
+lit spots, and require at least 5 to be inside that hall. Measured **5–6/8**; the
+remainder is the doorway spill, which is correct. Corollary worth knowing: adding a
+spot to a fixture only ever helps indoors and never competes on the street, because
+the street's own lamps are nearer when you are out there — which is why `runner`,
+`booths` and `columns` each gained one.
+
+### Finding — a venue has *two* faces with its own name, and only one should lift
+
+`neonBrand` puts the venue's name on the interior back wall, so
+`crown sign: BAYOU GOLD` matches **two** meshes: the roof sign and the interior
+brand. The first version of the QA counted them and failed on "2 name faces, want
+1". It was the test that was wrong. The property that matters is which one survives
+the cutaway: exactly one face must be hidden by the lifted roof group, and the
+interior brand must still be visible from the floor. That is what it checks now —
+and it is a real regression guard, since moving the brand out of the venue group (or
+putting the roof sign in `g` instead of `roof`) would leave a name hanging in
+the air over an open room.
+
+### INTERFACE — the kit's `b` context (for `interiors.js` authors)
+
+`b.v`, `b.g`, `b.W/b.D/b.H/b.FZ` (the hall, in metres), `b.G`/`b.M` (shared caches),
+`b.add(geo, mat, x, y, z, opt)`, `b.inst(geo, mat, list, opt)`,
+`b.m`/`b.e`/`b.gl(name, color[, extra])`, `b.sign(text, ink, {x,y,z,w,h[,ry]})`,
+`b.block(lx, lz, r)` (collision, local space → the district's `addBlocker`),
+`b.lit(lx, y, lz, power, range)` (a pooled spot, `fx:false`), and
+`b.station(lx, lz, kind, label)`. All positions are **local to the hall**; only `b`
+knows world space. Anything a fixture wants that is not in that list is a kit change,
+not a fixture reaching around it.
+
+QA-only surface added: `crownStations` — every interaction point in world space.
+
+
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — the Crown Strip becomes four mega-venues
+
+### Finding — a row of fourteen becomes four, and the builder becomes data
+
+The human asked for the strip to be four merged venues with walk-in interiors, not
+four more hand-written functions. `CROWN_VENUES` in `src/tusouxroeNorth.js` is now
+four entries — BAYOU GOLD (Pelican Crown Casino + Bayou Gold), BILLY JEANS (Gator's
+Fortune + Honeysuckle), DISCO GATORS (The Brass Alligator + Midnight Special) and
+HAPPY HOGS (Le Bon Temps + The Honeydripper) — each carrying its own dimensions,
+palette, sign, interior theme, exterior props and a `layout` list. One `buildVenue()`
+walks that data through a `FIXTURES` table (partition, slotBank, gamingTable, bar,
+stage, danceFloor, djBooth, vip, seating, poolTable, backRoom, chandelier,
+discoBall) and a `PROPS` table (glove, pig, disco). A fifth venue is a new entry,
+not new code.
+
+`CROWN_KINDS` is gone; `v.k` survives as the hall spec (`w/d/h/fore/door/cars`) so
+the layout audit and `zoneAt()` read the shape they always read.
+
+### WARNING — `fore` meant two things, and the derived one won
+
+The venue definitions carry `fore: 14` (a depth in metres). The `CROWN` mapping
+spreads `...v` and then sets `fore:` to the forecourt **rect**, so later key wins:
+`v.fore` became an object. `FZ + v.fore / 2` was `NaN`, and 40 meshes landed at
+`z = NaN`. It only showed because `crown_build_test.mjs` asserts every transform is
+finite. `buildVenue()` now reads `v.k.fore` / `v.k.cars` and says why in a comment.
+Do not "tidy" that back.
+
+### Finding — the batch sweep and a cutaway can coexist, per mesh
+
+The strip used to be added straight to the scene so `batchStatic` could merge it.
+Interiors that lift a roof and scale walls seem to rule that out — but merge.js has
+had the escape hatch since TASK-011: `o.userData.noBatch` skips one mesh. So the
+venue groups stay normal scene roots, and only the meshes the cutaway moves (the
+roof group's 7 and the outer walls' 7, 56 per district) are marked. Executed in the
+QA sandbox against the real `merge.js`: **738 meshes → 76 in 50 batches, 74 material
+signatures, and all 56 moving meshes still present**, with the cutaway still opening
+afterwards.
+
+This is the pattern to copy for any future animated world geometry: mark the mover,
+not the district. `tusouxroeNorth.props` is empty and main.js's `moving`/
+`cullGroups` entries for it are no-ops — do not "fix" that by pushing venue groups
+in, which would un-batch every interior in the strip.
+
+### Finding — the audit caught a car park across the front door
+
+With the door now a real opening, the valet row was still parked on the centre line
+of the forecourt: the audit walks a collider down the doorway's centre line and
+found a 2.6 m car blocker at 2.98 m, closer than `r + body`. The row is now split
+either side of an `gap/2 + 2.4` aisle. The same check proves **no blocker from the
+old fourteen venues survives** — every blocker inside `CROWN_STRIP.rect` belongs to
+one of the four halls or their forecourts (or the gateway arch).
+
+### Finding — depth is the tight axis, not width
+
+North Ave 2 (z = -320) to North Ave 3 (z = -380) leaves ~47.8 m after both 6.1 m
+corridors. The old casino was already 34 m of it. So the mega-venues grow **along
+the avenue** (48–56 m wide) and stay 38–44 m deep; the audit asserts the budget, not
+just "no overlap".
+
+### INTERFACE — `tusouxroeNorth` and the Crown Strip
+
+Unchanged and still wired by existing plumbing: `pois` → `NPC_POIS`, `occluders` →
+`losBoxes`, `minimap` → the map, `zoneAt` → `spawnzones.js`'s `extraZone`.
+New, and needing two `main.js` one-liners (recorded on TASK-070):
+- `interact()` — returns `false` anywhere but a venue door, so it is safe in the
+  `input.onPress("interact", …)` chain.
+- `blips()` — `{ kind: "casino"|"club", x, z }` per door, for the radar loop.
+QA-only surface: `insideVenue` (name or null) and `crownDebug` (per-venue
+`{ inside, roofVisible, wallScale }`), which is what lets the headless test assert
+the cutaway without a browser.
+
+The roof-lift + wall-drop itself is nightlife.js's, at four times the footprint;
+interior light is baked into `litSpots` at build time, so no light is created,
+hidden or toggled per frame (AGENT_PROTOCOL §6).
+
+---
+
+## 2026-09-22 — Freebuff
+
+**Type:** DISCOVERY · **Task:** TASK-070 (cont.) — the Crown Strip's sign rendering
+
+### Finding — the clipping bug was two bugs, and neither was the font size
+
+The human reported venue names clipped/truncated on the Crown Strip. Measuring it
+out, `crownSignTexture()` in `tusouxroeNorth.js` (and `signTexture()` in
+`nightlife.js`, and `makeNeonSign()` in `main.js`) had two independent faults:
+
+1. **No measurement.** The font size came from a rule of thumb
+   (`text.length > 15 ? 100 : 124`). At 100 px in a 1024 px canvas, Arial Black's
+   ~0.62 em advance puts "PELICAN CROWN CASINO" (20 glyphs) at ~1240 px of ink —
+   past the 996 px border, so the ends were cut off. Nothing called
+   `measureText()`.
+2. **Aspect mismatch.** The texture was always 1024x256 (4:1), but the sign faces
+   are not: a casino fascia is 24 x 2.9 m (**8.3:1**) and a club roof sign is
+   13 x 2.1 m (6.2:1). So the face smeared the texture horizontally — the name
+   read as distorted as well as clipped. Only the blade signs happened to match
+   (1.15 x 4.6 m = 1:4, and their canvas was 256x1024).
+
+### Action — one shared helper, `src/neonsign.js`
+
+New module, used by `tusouxroeNorth.js` (Crown Strip roof/blade/gateway signs),
+`nightlife.js` (club name boards) and `casinos.js` (casino fascias).
+`makeNeonSign()` in `main.js` is untouched — it is orchestrator-owned, and its
+other users (orlearouge.js, TONY'S PIZZA) are not the Crown Strip.
+
+- `neonSignTexture({ text, ink, aspect, vertical, ... })` builds the canvas at the
+  **face's own ratio** (fixed resolution on the minor axis, capped at 4096, ratio
+  preserved when it caps), so the texture is never stretched.
+- `fitFontSize(measure, text, { maxWidth, maxSize })` starts at the largest size
+  the height allows and **shrinks only** — never grows — until `measureText()`
+  reports the string inside the safe area. The loop is bounded and floors at
+  `minFontSize`, so a stub context that reports nothing cannot spin.
+- The safe area is `max(padding, border inset + line width)`, so ink can never
+  touch the stroked border. `aspectOf(a, b)` gives a box face's ratio either way.
+- Blade signs stay `vertical` and fit both the widest glyph and the stacked
+  block height; the dark-bg / neon-ink / glow / border style is unchanged.
+
+### Surprise — the height ceiling, not the width, sets short-name size
+
+`maxSize = innerH / 0.82` (not `/0.75`): the em box is taller than the cap height,
+so dividing by 0.75 let uppercase ink graze the border on the wide 17:1 gateway.
+The QA audit caught it. Verified numbers from
+`tools/qa/neonsign_test.mjs`, using a proportional Arial-Black-like metric and
+asserting every glyph run is drawn inside the border that was stroked:
+
+- **THE BRASS ALLIGATOR** (a 10 x 2.1 m bar fascia, 20 glyphs): 102 px → cap
+  height 30% of the sign. It is width-bound; no layout makes 20 glyphs large on a
+  4.8:1 board, and it is no longer cut off. Wrapping was checked and does not
+  help (the height budget then binds at ~99 px).
+- Short names stay large: 4 balls (≤10 glyphs) at **61%** cap height or better;
+  "BAYOU GOLD" keeps the full 256 px ceiling at 72%.
+- Texture aspect now matches the face to 3 decimals: casino 2119x256 (8.277),
+  club 1585x256 (6.191), bar 1219x256 (4.762), gateway 4096x239 (17.138),
+  blade 256x1024 (0.250).
+
+### WARNING — `test_buildset.mjs` was already red, and why
+
+It fails on `THREE.LoadingManager is not a constructor` in `landmarks.js`
+(`loadFBX`), from `makeDecorativeFence`/`placeOfficeClutter`. `landmarks.js`,
+`composer.js` and `test_buildset.mjs` are unmodified by this task: the stub
+`node_modules/three` has no `LoadingManager` and no `addons/`, so
+`test_buildset.mjs` and `dressing_test.mjs` cannot load the real kit in plain
+node. Pre-existing, not this change. `crown_build_test.mjs` uses its own stub
+precisely to avoid it.
+
+---
+
+## 2026-09-22 — Freebuff
+
+**Type:** DISCOVERY · **Task:** TASK-070 (the Crown Strip — casinos and bars/nightclubs north of Chatboro)
+
+### Finding — what was built, and the contract for it
+
+`tusouxroeNorth.js` now builds **the Crown Strip**: 14 venues (5 casinos, 5 clubs,
+4 bars) fronting **North Ave 2** (z = −320) either side of US-167, plus a lit
+gateway arch over the highway at z = −310 facing south. The human's brief was
+`Exteriors now, interiors later`, so every venue is a dressed, lit facade with a
+furnished interior visible through an open doorway (carpet, machine bank, bar,
+chandelier) and a **queue barrier across the door** — dressed, not open for trade.
+
+**The interface the follow-up needs** (TASK-059, walk-in interiors):
+
+- `CROWN_STRIP` is exported from `src/tusouxroeNorth.js` and also reachable as
+  `__game.tusouxroeNorth.crown`. `venues[]` carries per venue: `name`, `kind`,
+  `side` (−1 far terrace / +1 near), `x`, `cz`, `facadeZ` (the wall the door is
+  cut into), `rot` (0 or π), `entranceZ`, and the two rects — `hall` (the shell
+  to put a floor plan inside) and `fore` (its forecourt). `k` is the kind spec
+  (`w`, `d`, `h`, `fore`, `cars`, `door`).
+- `zoneAt` returns **`"building"`** over a hall and **`"entertainment"`** over a
+  forecourt or the avenue. "building" deliberately has no `ZONE_MIX` entry, which
+  is how the composer already says *nobody spawns inside walls*.
+- `spawnzones.js` gained `ZONE_MIX.entertainment` (tuxedo, tourist, hoodrat,
+  highendescort, prostitute, gayman, lesbian, suit — all existing kinds) and
+  `WANDER.entertainment`. Nothing else in that file changed.
+
+### Finding — building it *outside* a composer cluster was deliberate, and why
+
+main.js's batch sweep has `tusouxroeNorth.props` in **both** `moving` and
+`cullGroups`. `batchStatic` skips an excluded root's whole subtree, so every
+composer cluster in this district — and in West Parish, Lafourchette and the
+state map — is currently drawing one mesh at a time. The comment right above
+`moving` says those districts were **removed** from it (TASK-011) and that a
+cluster "can be batched safely", so the two lines disagree with each other; one
+of them is a leftover. **Not touched, because `main.js` is the orchestrator's.**
+
+Confirmed by reading `merge.js`: `for (const root of scene.children) { if
+(!root.visible || exclude(root)) continue; ... }`. So the Crown Strip adds its
+meshes **straight to the scene and never to `props`**, exactly like the filler
+buildings and the hand-built landmarks in the same file, which lets the sweep
+merge it per material and 48 m chunk and keeps it frustum-cullable. A cluster
+would have been all 592 with no batching at all. Whoever owns `main.js`: if those
+district props are meant to be batchable, the `moving` lines are the bug.
+
+### Finding — two existing landmarks stand across North Ave 2 (pre-existing)
+
+With the strip now fronting that avenue it became visible:
+
+- **Willowbrook School** — `LANDMARK_FOOTPRINTS` says x −144…−120, z −329…−311,
+  and it is *placed* at (−132, −320): its footprint straddles the avenue's whole
+  corridor (z −324.5…−315.5).
+- **Meadow Apartments** — placed at (128, −320), footprint x 120…136, z −326…−314:
+  same problem.
+
+Both predate this task. The strip routes around them (its west terrace hits
+x = −176 for the two venues that would otherwise sit on the school), and
+`tools/qa/crown_strip_test.mjs` asserts it. Fixing them properly means moving two
+landmarks **and** `newton.js`'s yard, which is pinned to the school at
+(−123, −309) — a change that belongs with whoever owns this district.
+
+### Finding — `placeParkedCar` is dead in this district
+
+`placeParkedCar` (`landmarks.js`) returns immediately when `ctx.loadDsCar` is
+missing. `main.js` passes `loadDsCar` to East Bank and West Parish but **not** to
+`tusouxroeNorth`, so the district's three existing calls (in the Market and
+Hospital lots at `BLVD_Z`) have never placed a car. The Crown Strip therefore
+builds its 20 parked cars from primitives. Passing `loadDsCar` through would fix
+both.
+
+### Action
+
+TASK-070 is `REVIEW` with no integration step required — the strip rides
+existing plumbing (`pois` → `NPC_POIS`, `occluders` → `losBoxes`, `minimap`,
+`zoneAt` → `extraZone`). Nothing locked was edited.
+
+Two plain-node audits ship with it. `tools/qa/crown_strip_test.mjs` (18/18) checks the
+layout numbers. `tools/qa/crown_build_test.mjs` **executes the district**: it strips
+the imports and runs the real `composer.js` and real `tusouxroeNorth.js` in a
+`vm` sandbox against a stub three.js (the `test.cjs` technique), then calls the
+real `buildSet()`. Measured off that run: builds clean; **592 meshes** for the
+strip; 14/14 venues sign themselves; no NaN transforms; 504 blockers, 34
+occluders, 31 POIs, 68 lit spots, 35 minimap footprints. **25 of the 592 meshes
+carry a unique sign material and can never merge**; the other 567 share 15
+materials. Counts, not draw calls — no browser here, so the night look and the
+frame cost still need a real-GPU pass (TASK-010).
+
+---
+
+## 2026-09-21 — Antigravity
+**Type:** HANDOFF · **Task:** TASK-062 Dev mode AI duplicate variation
   
   ### Finding
   Implemented TASK-062 as requested. Integrated an "AI Clone" action into the Map Editor's Select mode HUD. It passes the current selection (including world objects if selected via drag-box) and the natural-language prompt from the `aiInput` field to a new `/editor/ai-duplicate` route. The LLM translates this chunk (shifting it so it doesn't overlap) and varies it based on the prompt while preserving layout.

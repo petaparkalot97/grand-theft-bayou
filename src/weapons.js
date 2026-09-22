@@ -9,12 +9,13 @@
 // a second inventory.
 // ---------------------------------------------------------------------------
 
-export const WEAPONS = Object.freeze({
-  bat:       { id: "bat",       name: "Baseball Bat", rarity: "starter",  damage: 3,   cooldown: 0.55, vehicleCooldown: 0.55, range: 2.2, clip: Infinity, melee: true },
-  pistol:    { id: "pistol",    name: "9mm",        rarity: "common",   damage: 2,   cooldown: 0.42, vehicleCooldown: 0.3,  range: 30,  clip: 12, maxReserve: 72 },
-  tec9:      { id: "tec9",      name: "Tec-9",      rarity: "common",   damage: 1.5, cooldown: 0.13, vehicleCooldown: 0.13, range: 24,  clip: 32, maxReserve: 128 },
-  sawnoff:   { id: "sawnoff",   name: "Sawed-off",  rarity: "uncommon", damage: 6,   cooldown: 0.95, vehicleCooldown: 0.95, range: 13,  clip: 8,  maxReserve: 32 },
-  deerRifle: { id: "deerRifle", name: "Deer rifle", rarity: "rare",     damage: 9,   cooldown: 1.15, vehicleCooldown: 1.15, range: 55,  clip: 5,  maxReserve: 20 },
+export const WEAPONS = Object.freeze({  // `rpm` is the source of truth for the fire interval (cooldown = 60/rpm) and
+  // `fireMode` decides whether holding the trigger keeps firing: only "auto"
+  // repeats. `hold` is which arm pose the character uses (weapons_3d.js):
+  // one-handed, two-handed or shouldered. Every weapon in the game — dropped,
+  // bought, spawned — goes through this table, so a new one cannot end up
+  // carried like a prop.
+  bat:       { id: "bat",       name: "Baseball Bat", rarity: "starter",  damage: 3,   rpm: 109, cooldown: 60 / 109, vehicleCooldown: 60 / 109, range: 2.2, clip: Infinity, melee: true, type: "melee", hold: "melee", twoHanded: false, fireMode: "single", reloadTime: 0 },  pistol:    { id: "pistol",    name: "9mm",        rarity: "common",   damage: 2,   rpm: 143, cooldown: 60 / 143, vehicleCooldown: 60 / 200, range: 30,  clip: 12, maxReserve: 72, type: "pistol",  hold: "pistol", twoHanded: false, fireMode: "single", reloadTime: 1.1 },  tec9:      { id: "tec9",      name: "Tec-9",      rarity: "common",   damage: 1.5, rpm: 460, cooldown: 60 / 460, vehicleCooldown: 60 / 460, range: 24,  clip: 32, maxReserve: 128, type: "smg", hold: "long", twoHanded: true, fireMode: "auto", reloadTime: 1.6 },  sawnoff:   { id: "sawnoff",   name: "Sawed-off",  rarity: "uncommon", damage: 6,   rpm: 63, cooldown: 60 / 63, vehicleCooldown: 60 / 63, range: 13,  clip: 8,  maxReserve: 32, type: "shotgun", hold: "long", twoHanded: true, fireMode: "single", reloadTime: 2.4 },  deerRifle: { id: "deerRifle", name: "Deer rifle", rarity: "rare",     damage: 9,   rpm: 52, cooldown: 60 / 52, vehicleCooldown: 60 / 52, range: 55,  clip: 5,  maxReserve: 20, type: "rifle", hold: "long", twoHanded: true, fireMode: "single", reloadTime: 2.8 },
 });
 
 export const RARITY = Object.freeze({
@@ -29,7 +30,7 @@ export const RARITY = Object.freeze({
  * @param {object} o.state          the game state (state.weapon / state.ammo live here)
  * @param {Function} o.flashObjective
  */
-export function createArsenal({ state, flashObjective }) {
+export function createArsenal({ state, flashObjective, onReload }) {
   if (!WEAPONS[state.weapon]) state.weapon = "bat";
   // Diagnostic starting loadout (human request, 2026-09-17): every character
   // starts owning every gun — one clip's worth of reserve each, not full
@@ -41,13 +42,47 @@ export function createArsenal({ state, flashObjective }) {
   }
   if (state.ammo == null) state.ammo = WEAPONS[state.weapon].clip;
 
+  // Lives inside #hudRight (below the cash readout) so it stacks in normal
+  // flow with the rest of the top-right cluster instead of a hardcoded
+  // top:Npx guess — that guess is what used to let this panel drift up and
+  // overlap the wanted stars. Falls back to <body> if #hudRight is missing
+  // (e.g. a stripped-down test page) so the HUD never silently disappears.
   const hud = document.createElement("div");
   hud.id = "weaponHud";
-  hud.style.cssText = "position:fixed;top:85px;right:16px;z-index:20;pointer-events:none;" +
-    "display:flex;flex-direction:column;align-items:flex-end;gap:4px;transition:opacity .4s";
-  document.body.appendChild(hud);
+  hud.style.cssText = "pointer-events:none;transition:opacity .4s";
+  (document.getElementById("hudRight") || document.body).appendChild(hud);
   const css = document.createElement("style");
-  css.textContent = "body.letterbox #weaponHud { opacity: 0; }";
+  css.textContent = `
+    body.letterbox #weaponHud { opacity: 0; }
+    #weaponHud .wpn-panel {
+      display: flex; flex-direction: column; align-items: center;
+      gap: clamp(4px, .6vw, 8px);
+      padding: clamp(8px, 1.2vw, 14px);
+      background: rgba(6, 10, 8, 0.55);
+      border: 1px solid rgba(160, 190, 150, 0.28);
+      border-radius: 12px;
+      backdrop-filter: blur(2px);
+      box-shadow: 0 4px 18px rgba(0,0,0,.35);
+    }
+    #weaponHud .wpn-name {
+      font: 700 clamp(10px, 1.1vw, 12px)/1 Arial, sans-serif;
+      letter-spacing: .08em; text-transform: uppercase; opacity: .8;
+      max-width: clamp(90px, 12vw, 160px); text-align: center;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #weaponHud .wpn-icon {
+      width: clamp(88px, 10vw, 152px); height: clamp(88px, 10vw, 152px);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #weaponHud .wpn-icon img {
+      width: 100%; height: 100%; object-fit: contain;
+      filter: drop-shadow(0 2px 3px rgba(0,0,0,.6));
+    }
+    #weaponHud .wpn-state {
+      font: 900 clamp(15px, 1.8vw, 20px)/1 'Arial Black', sans-serif;
+      text-shadow: 0 2px 2px #000, 0 0 4px #000;
+    }
+  `;
   document.head.appendChild(css);
 
   // No baseball bat icon exists anywhere in assets/ (checked the whole tree) —
@@ -72,6 +107,14 @@ export function createArsenal({ state, flashObjective }) {
     deerRifle: "WEAPON_ASSAULTRIFLE.png"
   };
 
+  // The weapon icon PNGs (assets/ui/weapons/*.png) each already bake in their
+  // own opaque white rounded-square card — they aren't bare silhouettes on
+  // transparent backgrounds. The old markup wrapped that card in a second,
+  // separate black rounded box, so the HUD showed two overlapping
+  // "container" shapes (the black box, and the white card floating inside
+  // it) — that's the stray grey/black layer behind the icon. Fix is to stop
+  // adding a background behind the icon at all: the single .wpn-panel below
+  // is the only container, and the icon's own card sits directly on it.
   function render() {
     const w = WEAPONS[state.weapon] || WEAPONS.bat;
     // Holstered (main.js, X): dim the icon right down so the HUD reads as
@@ -80,16 +123,19 @@ export function createArsenal({ state, flashObjective }) {
     hud.title = state.holstered ? "Weapon away — X to draw" : "";
     const iconName = ICONS[w.id] || BAT_ICON;
     const iconSrc = iconName.startsWith("data:") ? iconName : `./assets/ui/weapons/${iconName}`;
-    const imgHtml = `<div style="background: rgba(0,0,0,0.6); border: 2px solid #000; border-radius: 12px; padding: 4px; display: flex; align-items: center; justify-content: center; width: 64px; height: 64px;"><img src="${iconSrc}" style="width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(2px 2px 0px #000) drop-shadow(-1px -1px 0px #000);"></div>`;
     const tint = RARITY[w.rarity] ? "#" + RARITY[w.rarity].color.toString(16).padStart(6, "0") : "#f4f1ea";
-    
-    if (w.melee) {
-      hud.innerHTML = `${imgHtml}`;
-    } else {
-      const clip = Number.isFinite(state.ammo) ? state.ammo : "∞";
-      const res = state.reserve && state.reserve[w.id] != null ? state.reserve[w.id] : 0;
-      hud.innerHTML = `${imgHtml}<div style="font:900 18px/1 'Arial Black',sans-serif;color:${tint};text-shadow:0 2px 2px #000, 0 0 4px #000;">${clip}-${res}</div>`;
-    }
+
+    // Infinite/undefined ammo must never render as "Infinity" or "-Infinity"
+    // (free-roam gives Infinity reserve; a fresh slot can be null/undefined).
+    const fmt = (n) => Number.isFinite(n) ? n : (n > 0 ? "∞" : "0");
+    const state_ = w.melee ? "MELEE" : `${fmt(state.ammo)} <span style="opacity:.6;font-weight:700">/ ${fmt(state.reserve && state.reserve[w.id])}</span>`;
+
+    hud.innerHTML = `
+      <div class="wpn-panel">
+        <div class="wpn-name">${w.name}</div>
+        <div class="wpn-icon"><img src="${iconSrc}" alt="${w.name}"></div>
+        <div class="wpn-state" style="color:${tint}">${state_}</div>
+      </div>`;
   }
   render();
 
@@ -107,6 +153,10 @@ export function createArsenal({ state, flashObjective }) {
     state.reserve[w.id] -= take;
     state.ammo += take;
     flashObjective(`Reloaded ${w.name} (+${take})`);
+    // Presentation hook (main.js → weapons_3d.js): the weapon dips and comes
+    // back up for exactly this weapon's reloadTime. A callback rather than an
+    // import, so the gameplay table stays free of anything that renders.
+    if (onReload) onReload(w.id, w.reloadTime);
     render();
     return true;
   }
@@ -125,12 +175,14 @@ export function createArsenal({ state, flashObjective }) {
     WEAPONS,
     get current() { return WEAPONS[state.weapon] || WEAPONS.bat; },
     get ammo() { return state.ammo; },
-    get reserve() { return state.reserve; },
-    /** The numbers fire() uses. */
+    get reserve() { return state.reserve; },    /** The numbers fire() uses. `fireMode`/`rpm` come along so the trigger loop
+     *  can ask the weapon rather than hardcoding which guns are automatic. */
     stats(inVehicle) {
       const w = WEAPONS[state.weapon] || WEAPONS.bat;
-      return { damage: w.damage, range: w.range, cooldown: inVehicle ? w.vehicleCooldown : w.cooldown, melee: !!w.melee, name: w.name };
+      return { damage: w.damage, range: w.range, cooldown: inVehicle ? w.vehicleCooldown : w.cooldown, melee: !!w.melee, name: w.name, fireMode: w.fireMode || "single", rpm: w.rpm || Math.round(60 / w.cooldown), hold: w.hold || (w.melee ? "melee" : "pistol"), twoHanded: !!w.twoHanded, reloadTime: w.reloadTime || 0 };
     },
+    /** True when holding the trigger should keep firing (Tec-9 and friends). */
+    get auto() { const w = WEAPONS[state.weapon] || WEAPONS.bat; return w.fireMode === "auto"; },
     /** One round spent; bat never runs out. */
     consume() {
       const w = WEAPONS[state.weapon];

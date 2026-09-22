@@ -5,6 +5,112 @@ const SPAWNS = [[-6, 130], [-2, 130], [2, 130], [6, 130]];
 function codePart() { return Math.random().toString(36).slice(2, 6).toUpperCase(); }
 
 export class Room {
+
+  spawnEntity(player, entity) {
+    if (this.hostId !== player.id && !entity.clientOwned) return;
+    if (!this.entities) this.entities = new Map();
+    this.entities.set(entity.id, entity);
+    this.broadcast("ENTITY_SPAWN", { entity });
+  }
+
+  updateEntityBatch(player, updates) {
+    if (!this.entities) return;
+    for (const update of updates) {
+      const entity = this.entities.get(update.id);
+      if (!entity) continue;
+      if (this.hostId !== player.id && entity.owner !== player.id) continue;
+      Object.assign(entity, update);
+    }
+  }
+  updateEntity(player, update) {
+    if (!this.entities) return;
+    const entity = this.entities.get(update.id);
+    if (!entity) return;
+    // Only host or owner can update
+    if (this.hostId !== player.id && entity.owner !== player.id) return;
+    Object.assign(entity, update);
+    // Let it be sent in snapshot
+  }
+
+  removeEntity(player, id) {
+    if (this.hostId !== player.id) return;
+    if (!this.entities) return;
+    this.entities.delete(id);
+    this.broadcast("ENTITY_REMOVE", { id });
+  }
+
+  enterVehicle(player, id) {
+    if (!this.entities) return;
+    const entity = this.entities.get(id);
+    if (!entity || entity.type !== "vehicle" || entity.destroyed) return;
+    if (entity.owner && entity.owner !== player.id) return; // occupied
+    entity.owner = player.id;
+    player.vehicleId = id;
+    this.broadcast("VEHICLE_ENTER", { playerId: player.id, vehicleId: id });
+    this.broadcastRoom();
+  }
+
+  exitVehicle(player) {
+    if (!player.vehicleId) return;
+    if (!this.entities) return;
+    const entity = this.entities.get(player.vehicleId);
+    if (entity && entity.owner === player.id) {
+      entity.owner = null;
+    }
+    const vehicleId = player.vehicleId;
+    player.vehicleId = null;
+    this.broadcast("VEHICLE_EXIT", { playerId: player.id, vehicleId });
+    this.broadcastRoom();
+  }
+
+  damageEntity(player, payload) {
+    const { id, amount } = payload;
+    if (id.startsWith("player_")) {
+      const target = this.players.get(id);
+      if (target && target.health > 0) {
+        target.health -= amount;
+        if (target.health <= 0) {
+          this.die(target);
+        } else {
+          this.broadcast("DAMAGE", { id, health: target.health });
+        }
+      }
+      return;
+    }
+    if (!this.entities) return;
+    const entity = this.entities.get(id);
+    if (!entity) return;
+    entity.health = (entity.health || 100) - amount;
+    if (entity.health <= 0 && !entity.dead) {
+      entity.dead = true;
+      if (entity.type === "npc") {
+        this.broadcast("ENTITY_DIED", { id });
+      } else if (entity.type === "vehicle") {
+        entity.destroyed = true;
+        this.broadcast("ENTITY_DIED", { id });
+      }
+    } else {
+      this.broadcast("DAMAGE", { id, health: entity.health });
+    }
+  }
+
+  die(player) {
+    if (player.health <= 0) return;
+    player.health = 0;
+    player.state = "DEAD";
+    this.broadcast("PLAYER_DIED", { playerId: player.id });
+    this.broadcastRoom();
+  }
+  respawn(player) {
+    if (player.health > 0) return;
+    player.health = 100;
+    player.state = "IDLE";
+    const [x, z] = SPAWNS[Math.floor(Math.random() * SPAWNS.length)];
+    player.x = x; player.y = 0; player.z = z;
+    if (player.netPose) { player.netPose.x = x; player.netPose.z = z; }
+    this.broadcast("PLAYER_RESPAWNED", { playerId: player.id, x, y: 0, z });
+    this.broadcastRoom();
+  }
   constructor(code) {
     this.code = code;
     this.hostId = null;
@@ -85,6 +191,9 @@ export class Room {
         yaw: clampNumber(value.yaw, -Math.PI * 4, Math.PI * 4, player.yaw),
         vehicle: Boolean(value.vehicle),
         state: typeof value.state === "string" ? value.state.slice(0, 24) : null,
+        weapon: typeof value.weapon === "string" ? value.weapon.slice(0, 24) : null,
+        aiming: Boolean(value.aiming),
+        firing: Boolean(value.firing),
       };
     }
   }
@@ -98,6 +207,10 @@ export class Room {
     player.yaw = pose.yaw;
     player.vehicle = pose.vehicle;
     if (pose.state) player.state = pose.state;
+    if (player.health <= 0) player.state = "DEAD";
+    player.weapon = pose.weapon;
+    player.aiming = pose.aiming;
+    player.firing = pose.firing;
     return true;
   }
 
@@ -112,7 +225,7 @@ export class Room {
       p.yaw = i.yaw; p.vehicle = false; p.state = (x || z) ? (i.sprint ? "SPRINT" : i.crouch ? "CROUCH_WALK" : "RUN") : (i.crouch ? "CROUCH" : "IDLE");
     }
     this.tick++;
-    this.broadcast("SNAPSHOT", { serverTick: this.tick, players: [...this.players.values()].map(({ ws, input, ...p }) => p) });
+    this.broadcast("SNAPSHOT", { serverTick: this.tick, players: [...this.players.values()].map(({ ws, input, ...p }) => p), entities: this.entities ? [...this.entities.values()] : [] });
   }
 }
 

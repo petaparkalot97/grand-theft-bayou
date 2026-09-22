@@ -39,11 +39,25 @@
   #hpFill { background: linear-gradient(90deg, #c0392b, #e74c3c); }
   #spFill { background: linear-gradient(90deg, #2e86c1, #5dade2); }
   .lbl { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; opacity: .75; font-family: Arial, sans-serif; }
-  #cash {
-    position: absolute; top: 14px; right: 16px; text-align: right;
-    font-size: 30px; color: #6fe07a; text-shadow: 0 2px 0 #14351a, 0 0 16px rgba(90,220,120,.35);
+  /* Top-right equipment cluster: money, wanted stars, and the weapon panel
+     (the panel itself is injected by weapons.js) all stack in flow here, so
+     nothing needs a hardcoded top:Npx guess about where the element above it
+     ends. That guessing is what let the weapon panel drift into the stars. */
+  #hudRight {
+    position: absolute;
+    top: calc(14px + env(safe-area-inset-top, 0px));
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    display: flex; flex-direction: column; align-items: flex-end;
+    gap: clamp(6px, 1vw, 10px);
+    max-width: min(46vw, 260px);
   }
-  #stars { position: absolute; top: 54px; right: 16px; font-size: 22px; letter-spacing: 3px; filter: drop-shadow(0 2px 2px #000); }
+  #cash {
+    text-align: right;
+    font-size: clamp(22px, 3.4vw, 30px); color: #6fe07a;
+    text-shadow: 0 2px 0 #14351a, 0 0 16px rgba(90,220,120,.35);
+  }
+  #stars { font-size: clamp(16px, 2.4vw, 22px); letter-spacing: 3px; filter: drop-shadow(0 2px 2px #000); }
+  #stars:empty { display: none; }
   #stars .off { opacity: .18; }
   #cans { font-size: 20px; font-weight: bold; }
   #cans small { font-size: 12px; opacity: .7; font-weight: normal; }
@@ -69,18 +83,10 @@
   #overlay {
     position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 14px; text-align: center;
-    background: #05070a url("./assets/cover.png") center/cover no-repeat;
+    background: #05070a;
     padding: 22px; overflow-y: auto; overflow-x: hidden;
   }
-  #overlay::before {
-    content: ""; position: absolute; inset: 0;
-    background: linear-gradient(180deg, rgba(4,6,4,.35) 0%, rgba(4,6,4,.5) 45%, rgba(4,6,4,.92) 100%);
-  }
   #overlay > * { position: relative; z-index: 1; }
-  #coverArt {
-    max-height: 46vh; width: auto; border-radius: 8px;
-    box-shadow: 0 12px 50px rgba(0,0,0,.7); border: 2px solid rgba(0,0,0,.5);
-  }
   #overlay h1 { display: none; }
   #overlay h1.end {
     display: block; font-size: clamp(30px, 7vw, 64px); line-height: .95;
@@ -89,22 +95,190 @@
   #overlay h1 b { color: #e8a13a; font-style: italic; text-transform: none; display: block; font-size: .5em; margin-top: 6px; }
   #overlay p { max-width: 640px; line-height: 1.55; opacity: .95; font-size: 13.5px; font-family: Arial, sans-serif;
     background: rgba(4,6,4,.55); padding: 10px 16px; border-radius: 8px; }
-  #overlay .keys { font-size: 12px; opacity: .8; font-family: Arial, sans-serif; }
-  #overlay .keys b { color: #cfe8bf; }
-  #overlay button {
+  #overlay button:not(.menu-item) {
     pointer-events: auto; cursor: pointer; font-family: "Arial Black", Arial, sans-serif;
     font-size: 17px; padding: 13px 30px; border-radius: 6px; border: 2px solid #e8a13a;
     background: linear-gradient(180deg, #4a7a3a, #2c4f24); color: #f6fbe8; letter-spacing: .04em;
     text-transform: uppercase;
   }
-  #overlay button:hover { filter: brightness(1.12); }
-  #overlay button:disabled { opacity: .5; cursor: default; filter: none; }
+  #overlay button:not(.menu-item):hover { filter: brightness(1.12); }
+  #overlay button:not(.menu-item):disabled { opacity: .5; cursor: default; filter: none; }
   #overlay .btns { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-  #overlay button.alt { background: linear-gradient(180deg, #3a3f46, #22262b); border-color: #8a93a0; }
+  #overlay button.alt:not(.menu-item) { background: linear-gradient(180deg, #3a3f46, #22262b); border-color: #8a93a0; }
   #overlay.hidden { display: none; }
-  #loadNote { font-size: 12px; opacity: .6; font-family: Arial, sans-serif; }
-  #introPanel { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+
+  /* Mood-art slideshow, the permanent backdrop for the whole menu — no
+     static cover.png any more, this is what's always behind the SNES-style
+     panel below, cycling before, during and after loading (main.js's
+     startLoadScreen() never stops it; finishLoading() only retires the
+     #loadHud percentage readout). Negative z-index paints above #overlay's
+     own flat background but below its normal-flow content (the #overlay > *
+     rule above would otherwise win this element's z-index too since it's an
+     equal-specificity id selector, hence this rule has to come after it in
+     source order). */
+  #loadScreen {
+    position: absolute; inset: 0; z-index: -1; overflow: hidden; background: #05070a;
+  }
+  #loadScreen .slide {
+    /* contain, not cover: show the whole image, not a cropped/zoomed slice —
+       letterboxing against #loadScreen's own dark fill beats cutting off the
+       art. */
+    position: absolute; inset: 0; background-size: contain; background-repeat: no-repeat;
+    background-position: center; opacity: 0; transition: opacity 1.8s ease;
+  }
+  #loadScreen .slide.on { opacity: 1; }
+  /* Portrait images alone waste most of a widescreen frame as pillarboxing
+     either side — group them 3-up instead, each in its own contained pane,
+     so the width actually gets used. */
+  #loadScreen .slide.group { display: flex; gap: 3px; }
+  #loadScreen .slide.group .pane {
+    flex: 1; height: 100%; background-size: contain; background-repeat: no-repeat;
+    background-position: center;
+  }
+  /* Retro arcade loading readout: a neon LOADING/percentage row over a
+     segmented LED-style bar, with the current boot stage underneath — the
+     "what's it doing" text used to stand alone here as plain gray copy. */
+  #loadHud {
+    position: absolute; left: 6vw; bottom: calc(2vh + env(safe-area-inset-bottom, 0px));
+    width: min(360px, 70vw); font-family: "Arial Black", Arial, sans-serif;
+    background: rgba(6, 10, 14, .7);
+    border: 3px solid #29d6ff;
+    box-shadow: 0 0 0 3px #05070a, 0 0 22px rgba(41, 214, 255, .4), inset 0 0 22px rgba(0, 0, 0, .55);
+    padding: 12px 16px;
+  }
+  #loadHudRow {
+    display: flex; justify-content: space-between; align-items: baseline;
+    letter-spacing: .14em; text-transform: uppercase; margin-bottom: 6px;
+  }
+  #loadLabel {
+    font-size: 13px; color: #7ff2ff;
+    text-shadow: 0 0 4px #29d6ff, 0 0 12px rgba(41, 214, 255, .65);
+  }
+  #loadPct {
+    font-size: 15px; color: #ff5fce;
+    text-shadow: 0 0 4px #ff2bb8, 0 0 12px rgba(255, 43, 184, .65);
+  }
+  #loadBarTrack {
+    height: 10px; padding: 2px; border-radius: 2px;
+    background: rgba(255, 255, 255, .05);
+    border: 1px solid rgba(127, 242, 255, .35);
+    box-shadow: 0 0 6px rgba(41, 214, 255, .2) inset;
+  }
+  #loadBarFill {
+    height: 100%; width: 0%; border-radius: 1px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 6px, rgba(5, 7, 10, .55) 6px 8px),
+      linear-gradient(90deg, #29d6ff, #ff5fce);
+    box-shadow: 0 0 8px rgba(255, 95, 206, .65), 0 0 14px rgba(41, 214, 255, .45);
+    transition: width .5s ease;
+  }
+  #loadNote {
+    display: block; margin-top: 6px;
+    font: 12px/1.3 Arial, sans-serif; letter-spacing: .04em; color: #cfeeff; opacity: .7;
+  }
+
+  /* -------------------------------------------------- main menu (GTA-style) */
+  #introPanel {
+    position: absolute; inset: 0; align-self: stretch;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    gap: clamp(20px, 3.4vh, 38px);
+    padding: 6vh 7vw; text-align: center;
+  }
   #introPanel[hidden], #characterSelect[hidden], #multiplayerPanel[hidden] { display: none !important; }
+  #menuLogo { line-height: 1; }
+  .menu-kicker {
+    font: 700 clamp(13px, 1.6vw, 18px) Arial, sans-serif; letter-spacing: .5em;
+    text-transform: uppercase; color: #7ff2ff;
+    text-shadow: 0 0 6px rgba(41, 214, 255, .7);
+  }
+  .menu-wordmark {
+    font: 900 clamp(54px, 9vw, 120px)/.86 "Arial Black", Impact, sans-serif;
+    color: #f4f0e2; letter-spacing: -.01em;
+    text-shadow:
+      0 4px 0 #101018,
+      0 0 10px rgba(41, 214, 255, .75), 0 0 28px rgba(41, 214, 255, .45),
+      0 0 40px rgba(255, 43, 184, .35);
+  }
+  .menu-tagline {
+    font: italic 700 clamp(15px, 1.9vw, 24px) Georgia, serif; color: #ff8fe0; margin-top: 4px;
+    text-shadow: 0 0 8px rgba(255, 43, 184, .5);
+  }
+
+  /* SNES-style menu box: a chunky double-bordered panel the options sit
+     inside, instead of the old full-screen darkening wash — the art stays
+     visible everywhere outside the box. */
+  .menu-list, .menu-panel {
+    display: flex; flex-direction: column; align-items: stretch; gap: clamp(4px, 1.3vh, 13px);
+    background: rgba(6, 10, 14, .7);
+    border: 3px solid #29d6ff;
+    box-shadow: 0 0 0 3px #05070a, 0 0 22px rgba(41, 214, 255, .4), inset 0 0 22px rgba(0, 0, 0, .55);
+    padding: clamp(18px, 3vh, 30px) clamp(28px, 5vw, 52px);
+    min-width: min(360px, 82vw);
+  }
+  .menu-list[hidden], .menu-panel[hidden] { display: none; }
+  .menu-item {
+    all: unset; cursor: pointer; pointer-events: auto; box-sizing: border-box;
+    font: 700 clamp(19px, 2.5vw, 29px) "Arial Black", Arial, sans-serif;
+    color: rgba(244, 240, 226, .72); letter-spacing: .04em; text-transform: uppercase;
+    padding: 1px 26px; text-align: center; position: relative;
+    transition: color .12s, transform .12s;
+  }
+  .menu-item::before {
+    content: ""; position: absolute; left: 0; top: 50%; width: 16px; height: 4px;
+    background: #7ff2ff; box-shadow: 0 0 8px rgba(41, 214, 255, .8);
+    transform: translateY(-50%) scaleX(0); transform-origin: left;
+    transition: transform .12s;
+  }
+  .menu-item:hover, .menu-item:focus-visible, .menu-item.active {
+    color: #fff; transform: translateX(6px); outline: none;
+    text-shadow: 0 0 10px rgba(127, 242, 255, .85);
+  }
+  .menu-item:hover::before, .menu-item:focus-visible::before, .menu-item.active::before {
+    transform: translateY(-50%) scaleX(1);
+  }
+  .menu-item:disabled { opacity: .35; cursor: default; }
+  .menu-item:disabled:hover { transform: none; color: rgba(244, 240, 226, .35); }
+  .menu-item:disabled:hover::before { transform: translateY(-50%) scaleX(0); }
+  .menu-item.menu-back {
+    color: rgba(244, 240, 226, .48); font-size: clamp(14px, 1.7vw, 19px); margin-top: 6px;
+  }
+
+  .menu-panel { min-width: min(560px, 80vw); }
+  .opt-row { display: flex; align-items: center; gap: clamp(10px, 2vw, 24px); flex-wrap: wrap; }
+  .opt-label {
+    width: 150px; flex-shrink: 0; font: 700 13px Arial, sans-serif; letter-spacing: .1em;
+    text-transform: uppercase; color: #cfe8bf; opacity: .8;
+  }
+  .opt-choices { display: flex; gap: 6px; flex-wrap: wrap; }
+  .opt-choices .menu-item, .opt-toggle {
+    font-size: 12px; letter-spacing: .06em; padding: 7px 14px;
+    border: 1px solid rgba(160, 190, 150, .3); border-radius: 3px;
+    color: rgba(244, 240, 226, .65);
+  }
+  .opt-choices .menu-item::before, .opt-toggle::before { display: none; }
+  .opt-choices .menu-item:hover, .opt-toggle:hover { transform: none; border-color: #e8a13a; color: #fff; }
+  .opt-choices .menu-item.active {
+    color: #16210f; background: #e8a13a; border-color: #e8a13a; transform: none;
+  }
+  .opt-toggle.off { color: #ff8a7a; border-color: rgba(255, 90, 60, .5); }
+  #musicVolume { all: revert; width: 200px; accent-color: #e8a13a; pointer-events: auto; cursor: pointer; }
+
+  .menu-confirm { font: 700 clamp(18px, 2.2vw, 24px) Arial, sans-serif; color: #f4f0e2; }
+  .menu-confirm-sub { font: 13px Arial, sans-serif; color: rgba(244, 240, 226, .6); margin-top: -6px; }
+  .menu-row { display: flex; gap: clamp(20px, 3vw, 36px); margin-top: 4px; }
+
+  .menu-footer {
+    position: absolute; left: 50%; bottom: calc(3.4vh + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%); text-align: center;
+    font: 12px Arial, sans-serif; color: rgba(230, 230, 220, .45); letter-spacing: .02em;
+    max-width: 88vw; background: none; padding: 0;
+  }
+  .menu-footer b { color: rgba(207, 232, 191, .75); }
+  @media (max-width: 720px) {
+    #introPanel { padding: 5vh 6vw; gap: 16px; }
+    .menu-footer { display: none; }
+    .opt-label { width: 100%; }
+  }
   #characterSelect { width: min(1080px, 96vw); min-height: min(650px, 88vh); display: flex; flex-direction: column; gap: 18px; text-align: left; }
   #multiplayerPanel { width:min(760px,94vw); padding:28px; background:rgba(10,12,10,.9); border:1px solid rgba(220,165,78,.45); box-shadow:0 20px 80px #000b; text-align:left; }
   .mp-code { font-size:clamp(25px,5vw,48px); letter-spacing:.16em; color:#ffd28b; text-align:center; margin:18px 0; }
@@ -136,8 +310,11 @@
   /* the car radio sits to the left of the music toggle */
   #radioBtn { right: 60px; }
   #mute.off, #radioBtn.off { opacity: .45; text-decoration: line-through; }
-  #crosshair { position: fixed; left: 50%; top: 56%; width: 5px; height: 5px; margin: -2.5px;
-    background: rgba(255,240,200,.75); border-radius: 50%; z-index: 9; pointer-events: none; display: none; }
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px;
+    background: transparent; border: 2px solid rgba(255,240,200,0.85); border-radius: 50%;
+    z-index: 9; pointer-events: none; display: none; box-shadow: 0 0 4px rgba(0,0,0,0.7), inset 0 0 4px rgba(0,0,0,0.7); }
+  #crosshair::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px;
+    background: rgba(255,240,200,0.95); border-radius: 50%; box-shadow: 0 0 2px rgba(0,0,0,0.8); }
   .flash { animation: fl .4s ease-out; }
   @keyframes fl { from { background: rgba(200,40,30,.4); } to { background: transparent; } }
   /* ---- cutscenes (src/cinema.js) ---- */
@@ -202,12 +379,13 @@
   <div class="panel">
     <div class="lbl">Health</div><div class="bar"><i id="hpFill"></i></div>
     <div class="lbl">Stamina</div><div class="bar"><i id="spFill"></i></div>
-    <div class="lbl">Gas cans</div>
-    <div id="cans">0 <small>/ 4</small></div>
   </div>
-  <div id="cash">$0</div>
-  <div id="stars"></div>
-  <div id="objective">Steal a ride. Scrounge 4 gas cans. Get to the truck and get out of Dixie Beaux.</div>
+  <div id="hudRight">
+    <div id="cash">$0</div>
+    <div id="stars"></div>
+    <!-- weapons.js injects #weaponHud here -->
+  </div>
+  <div id="objective">Free roam. Explore Dixie Beaux.</div>
   <div id="vehIndic" hidden></div>
   <div id="gfxLabel">HIGH</div>
 </div>
@@ -225,31 +403,108 @@
 <div id="radioBtn" title="mute the car radio (K)">📻</div>
 
 <div id="overlay">
-  <div id="introPanel">
-    <img id="coverArt" src="./assets/cover.png" alt="Grand Theft Bayou: Louisiana Stories" />
-    <h1></h1>
-    <p><b>Dixie Beaux.</b> Eighty-nine degrees, ninety-eight percent humidity. Keseme Nadia
-       doesn't want to be the state's greatest criminal &mdash; she wants <b>out</b>.
-       From <b>Chatboro</b> up US&nbsp;167 to <b>Tusouxroe</b>, every <b>Feral Hog</b>,
-       <b>Redneck</b> and <b>Hoodrat</b> in the piney woods has other plans, and Sheriff
-       Mercer wants his book back.</p>
-    <p class="keys"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> sprint / handbrake &nbsp;·&nbsp;
-       <b>Space</b> jump &nbsp;·&nbsp; <b>C</b> crouch &nbsp;·&nbsp; <b>RMB</b> aim &nbsp;·&nbsp; <b>LMB</b> attack / fire &nbsp;·&nbsp; <b>F</b> jack &amp; exit vehicle &nbsp;·&nbsp;
-       <b>Mouse</b> look (click to capture, Esc releases) &nbsp;·&nbsp; <b>Wheel</b> zoom &nbsp;·&nbsp; <b>Q / E</b> rotate &nbsp;·&nbsp; <b>M</b> mute &nbsp;·&nbsp; <b>N</b> next track &nbsp;·&nbsp; <b>[ ]</b> graphics</p>
-    <div class="btns">
-      <button id="startBtn">Choose character · Story</button>
-      <button id="freeBtn" class="alt">Free Roam</button>
-      <button id="multiplayerBtn" class="alt">Multiplayer · Create / Join</button>
+  <div id="loadScreen" aria-hidden="true">
+    <div class="slide" style="background-image:url('./assets/ui/loading/neon-bayou.jpg')"></div>
+    <div class="slide group">
+      <div class="pane" style="background-image:url('./assets/ui/loading/hillbilly-heroin.jpg')"></div>
+      <div class="pane" style="background-image:url('./assets/ui/loading/aesthetic.jpg')"></div>
+      <div class="pane" style="background-image:url('./assets/ui/loading/louisiana-love.jpg')"></div>
     </div>
+    <div class="slide" style="background-image:url('./assets/ui/loading/happy-hogs.jpg')"></div>
+    <div class="slide group">
+      <div class="pane" style="flex: 687; background-image:url('./assets/ui/loading/popeyes-ad.png')"></div>
+      <div class="pane" style="flex: 687; background-image:url('./assets/ui/loading/porch-hangout.jpg')"></div>
+      <div class="pane" style="flex: 572; background-image:url('./assets/ui/loading/murder-capital.jpg')"></div>
+    </div>
+  </div>
+  <div id="introPanel" hidden>
+    <div id="menuLogo">
+      <div class="menu-kicker">Grand Theft</div>
+      <div class="menu-wordmark">BAYOU</div>
+      <div class="menu-tagline">Louisiana Stories</div>
+    </div>
+
+    <nav class="menu-list" id="menuRoot" data-panel="root">
+      <button class="menu-item" data-menu="start">Start Game</button>
+      <button class="menu-item" data-menu="options">Options</button>
+      <button class="menu-item" data-menu="exit">Exit Game</button>
+    </nav>
+
+    <nav class="menu-list" id="menuStartSub" data-panel="start" hidden>
+      <button id="startBtn" class="menu-item">Story</button>
+      <button id="freeBtn" class="menu-item">Free Roam</button>
+      <button id="multiplayerBtn" class="menu-item">Multiplayer</button>
+      <button class="menu-item menu-back" data-back="root">Back</button>
+    </nav>
+
+    <div class="menu-panel" id="menuOptionsPanel" data-panel="options" hidden>
+      <div class="opt-row">
+        <div class="opt-label">Graphics</div>
+        <div class="opt-choices" id="gfxChoices">
+          <button class="menu-item" data-tier="low">Performance</button>
+          <button class="menu-item" data-tier="medium">Balanced</button>
+          <button class="menu-item" data-tier="high">High</button>
+          <button class="menu-item" data-tier="ultra">4K Ultra</button>
+        </div>
+      </div>
+      <div class="opt-row">
+        <div class="opt-label">Music volume</div>
+        <input type="range" id="musicVolume" class="menu-item" min="0" max="100" value="55" />
+      </div>
+      <div class="opt-row">
+        <div class="opt-label">Sound</div>
+        <button class="menu-item opt-toggle" id="muteToggle">On</button>
+      </div>
+      <button class="menu-item menu-back" data-back="root">Back</button>
+    </div>
+
+    <div class="menu-panel" id="menuExitPanel" data-panel="exit" hidden>
+      <div class="menu-confirm">Quit Grand Theft Bayou?</div>
+      <div class="menu-confirm-sub">This closes the browser tab.</div>
+      <div class="menu-row">
+        <button class="menu-item" id="exitYes">Yes</button>
+        <button class="menu-item menu-back" id="exitNo" data-back="root">No</button>
+      </div>
+    </div>
+
+    <p class="menu-footer"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> sprint &nbsp;·&nbsp;
+       <b>Space</b> jump &nbsp;·&nbsp; <b>RMB</b> aim &nbsp;·&nbsp; <b>LMB</b> fire &nbsp;·&nbsp;
+       <b>F</b> jack a ride &nbsp;·&nbsp; <b>Mouse</b> look &nbsp;·&nbsp; <b>M</b> mute</p>
   </div>
   <section id="multiplayerPanel" hidden aria-label="Multiplayer lobby">
     <div class="select-kicker">Grand Theft Bayou · Shared Bayou</div>
     <div class="select-title">Bring the whole damn crew.</div>
     <div id="mpConnection">Not connected</div>
-    <div class="mp-row"><button id="mpCreate">Create game</button><input id="mpRoomInput" placeholder="BAYOU-7K3F" maxlength="10"><button id="mpJoin" class="alt">Join game</button></div>
-    <div class="mp-code" id="mpCode">—</div>
-    <div id="mpPlayers"></div>
-    <div class="mp-row"><button id="mpPick">Choose character</button><button id="mpReady" disabled>Ready</button><button id="mpStart" class="alt" disabled>Start game</button><button id="mpBack" class="alt">Back</button></div>
+    
+    <div id="mpBrowserView">
+      <div class="mp-row" style="margin-bottom: 10px;">
+        <button id="mpRefreshRooms">Refresh</button>
+        <button id="mpCreate">Create game</button>
+        <select id="mpVisibility" style="padding:4px;"><option value="PUBLIC">Public</option><option value="PRIVATE">Private</option></select>
+        <input id="mpCreatePassword" type="password" placeholder="Pass (Private)" style="width: 100px; padding: 4px;">
+      </div>
+      <div id="mpRoomList" style="background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; min-height: 120px; max-height: 200px; overflow-y: auto; margin-bottom: 10px;">
+        <!-- room items -->
+      </div>
+      <div class="mp-row">
+        <input id="mpRoomInput" placeholder="Code (BAYOU-1234)" maxlength="10" style="padding: 4px;">
+        <input id="mpJoinPassword" type="password" placeholder="Password (if any)" style="padding: 4px;">
+        <button id="mpJoin" class="alt">Join by Code</button>
+      </div>
+    </div>
+
+    <div id="mpLobbyView" hidden>
+      <div class="mp-code" id="mpCode">—</div>
+      <div id="mpPlayers"></div>
+      <div class="mp-row">
+        <button id="mpPick">Choose character</button>
+        <button id="mpReady" disabled>Ready</button>
+        <button id="mpStart" class="alt" disabled>Start game</button>
+        <button id="mpLeaveRoom" class="alt">Leave Room</button>
+      </div>
+    </div>
+
+    <div class="mp-row" style="margin-top: 15px;"><button id="mpBack" class="alt">Back to Main Menu</button></div>
     <div id="mpMessage" class="mp-status">Create a room or join a friend's code.</div>
   </section>
   <section id="characterSelect" hidden aria-label="Player character select">
@@ -266,7 +521,11 @@
     <div id="characterCards" role="listbox" aria-label="Characters"></div>
     <div class="select-actions"><button id="backCharacter" class="alt">Back</button><button id="confirmCharacter">Select character</button></div>
   </section>
-  <div id="loadNote">loading assets…</div>
+  <div id="loadHud" aria-hidden="true">
+    <div id="loadHudRow"><span id="loadLabel">Loading</span><span id="loadPct">0%</span></div>
+    <div id="loadBarTrack"><div id="loadBarFill"></div></div>
+    <div id="loadNote">loading assets…</div>
+  </div>
 </div>
 
 <audio id="music" src="./assets/audio/theme.mp3" loop preload="auto"></audio>
