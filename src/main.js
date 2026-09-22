@@ -3202,7 +3202,7 @@ function fire() {
   const isAiming = input.isDown("aim") || state.veh;
   if (isAiming) {
     _ray.setFromCamera(_crosshairNDC, camera);
-    const target3D = _ray.ray.at(25, new THREE.Vector3());
+    const target3D = _ray.ray.at(1000, new THREE.Vector3());
     _aim3D.subVectors(target3D, origin).normalize();
     _aim.copy(_aim3D);
     _aim.y = 0;
@@ -3211,6 +3211,7 @@ function fire() {
     _aim.set(Math.sin(player._yaw), 0, Math.cos(player._yaw));
     _aim3D.copy(_aim);
   }
+  flashObjective("Aim: " + _aim.x.toFixed(2) + ", " + _aim.z.toFixed(2));
 
   if (!state.veh) { 
     attackTimer = 0.42; 
