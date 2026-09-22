@@ -152,6 +152,15 @@ export function makeKit() {
 //   b.sign(text, ink, { x, y, z, w, h, ry, vertical })   a neon name face
 //   b.block(lx, lz, r)                 collision, in local hall space
 //   b.lit(lx, y, lz, power, range)     a pooled light spot, in local hall space
+//   b.spot(lx, lz, { role, face, y, anim, beat, r })
+//                                      a person stands here (crowd.js). A
+//                                      fixture proposes people the same way it
+//                                      places furniture, so a bar that moves
+//                                      takes its barman with it. `role` pins a
+//                                      staff part; leave it off for a punter
+//                                      drawn from the strip's own door mix.
+//                                      `face` is a local yaw (models face +z).
+//   b.bodies(n)                        shorthand: `n` free spots, no positions
 // ---------------------------------------------------------------------------
 
 const chipColors = [0xff4f6d, 0xffd23a, 0xf4f1ea];

@@ -4596,7 +4596,7 @@ async function boot() {
   }
   settleCans();                  // every blocker exists now: no can may sit inside one
   loadNote.textContent = "ready.";
-  stopLoadScreen();
+  finishLoading();
   startBtn.disabled = false;
   freeBtn.disabled = false;
   // Gated the same as Story/Free Roam: applyTier() (called by the Options
@@ -4614,10 +4614,13 @@ async function boot() {
   freeBtn.onclick = () => { pendingLaunch = "free"; selectionIndex = characterIds.indexOf("keseme"); confirmCharacter(); };
 }
 
-// Loading screen: cycles mood art behind the menu for as long as Story/Free
-// Roam/graphics-tier stay disabled above, so the wait reads as an intentional
-// slideshow instead of a stalled page. Stops (and fades to the static cover
-// art) the moment boot() finishes or fails — see stopLoadScreen() calls.
+// Loading screen: while boot() is loading assets, the menu (logo, Start/
+// Options/Exit — all of #introPanel, hidden by default in index.html) stays
+// off-screen entirely and this cycles mood art full-bleed instead, so there's
+// nothing half-clickable to notice is disabled. finishLoading() reveals the
+// menu and fades the slideshow out to the static cover art — called both
+// where loadNote already says "ready." (successful boot) and from boot()'s
+// catch (so a load error still leaves Exit Game reachable).
 let loadScreenTimer = null;
 function startLoadScreen() {
   if (!loadScreen) return;
@@ -4631,9 +4634,10 @@ function startLoadScreen() {
     slides[i].classList.add("on");
   }, 4200);
 }
-function stopLoadScreen() {
+function finishLoading() {
   if (loadScreenTimer) { clearInterval(loadScreenTimer); loadScreenTimer = null; }
   if (loadScreen) loadScreen.classList.add("done");
+  introPanel.hidden = false;
 }
 startLoadScreen();
 
@@ -4644,7 +4648,7 @@ tick();
 boot().catch((err) => {
   console.error(err);
   loadNote.textContent = "load error: " + err.message;
-  stopLoadScreen();
+  finishLoading();
 });
 
 let carHornAudioCtx = null;

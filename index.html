@@ -125,15 +125,17 @@
      so the classic cover art is what's left once the menu is fully usable. */
   #loadScreen {
     position: absolute; inset: 0; z-index: -1; overflow: hidden;
-    opacity: 1; transition: opacity 1s ease;
+    opacity: 1; transition: opacity 1s ease; background: #05070a;
   }
   #loadScreen.done { opacity: 0; }
   #loadScreen .slide {
-    position: absolute; inset: 0; background-size: cover; background-position: center;
-    opacity: 0; transform: scale(1.04);
-    transition: opacity 1.8s ease, transform 8s ease-out;
+    /* contain, not cover: the human asked to see the whole image, not a
+       cropped/zoomed slice of it — letterboxing against #loadScreen's own
+       dark fill beats cutting off the art. */
+    position: absolute; inset: 0; background-size: contain; background-repeat: no-repeat;
+    background-position: center; opacity: 0; transition: opacity 1.8s ease;
   }
-  #loadScreen .slide.on { opacity: 1; transform: scale(1); }
+  #loadScreen .slide.on { opacity: 1; }
   #loadNote {
     position: absolute; left: 6vw; bottom: calc(2vh + env(safe-area-inset-bottom, 0px));
     font-size: 12px; opacity: .55; font-family: Arial, sans-serif; letter-spacing: .04em;
@@ -251,8 +253,11 @@
     background: rgba(6,10,8,.6); border: 1px solid rgba(160,190,150,.25); color: #f2efe6;
     border-radius: 8px; padding: 6px 10px; font-size: 15px; font-family: Arial, sans-serif;
   }
-  #crosshair { position: fixed; left: 50%; top: 56%; width: 5px; height: 5px; margin: -2.5px;
-    background: rgba(255,240,200,.75); border-radius: 50%; z-index: 9; pointer-events: none; display: none; }
+  #crosshair { position: fixed; left: 50%; top: 56%; width: 28px; height: 28px; margin: -14px;
+    background: transparent; border: 2px solid rgba(255,240,200,0.85); border-radius: 50%;
+    z-index: 9; pointer-events: none; display: none; box-shadow: 0 0 4px rgba(0,0,0,0.7), inset 0 0 4px rgba(0,0,0,0.7); }
+  #crosshair::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px;
+    background: rgba(255,240,200,0.95); border-radius: 50%; box-shadow: 0 0 2px rgba(0,0,0,0.8); }
   .flash { animation: fl .4s ease-out; }
   @keyframes fl { from { background: rgba(200,40,30,.4); } to { background: transparent; } }
   /* ---- cutscenes (src/cinema.js) ---- */
@@ -350,7 +355,7 @@
     <div class="slide" style="background-image:url('./assets/ui/loading/porch-hangout.jpg')"></div>
     <div class="slide" style="background-image:url('./assets/ui/loading/popeyes-ad.png')"></div>
   </div>
-  <div id="introPanel">
+  <div id="introPanel" hidden>
     <div id="menuLogo">
       <div class="menu-kicker">Grand Theft</div>
       <div class="menu-wordmark">BAYOU</div>
