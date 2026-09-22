@@ -154,6 +154,7 @@ function makeThree() {
 // ------------------------------------------------------------------ the sandbox
 const calls = { blockers: 0, litSpots: 0, services: 0 };
 const blockers = [];        // every collision circle the district registered
+const litSpots = [];        // every pooled light spot the district registered
 // enough of a Scene for merge.js's batchStatic to walk it
 const scene = {
   children: [], visible: true,
@@ -199,7 +200,7 @@ const mockCtx = {
   surface: () => ({ material: () => ({ userData: {} }) }),
   roadMaterial: () => ({ userData: {} }),
   addBlocker: (x, z, r) => { calls.blockers++; blockers.push({ x, z, r }); },
-  addLitSpot: () => { calls.litSpots++; },
+  addLitSpot: (spot) => { calls.litSpots++; litSpots.push(spot); },
   addService: () => { calls.services++; },
   addLitSpotRaw: null,
   placeGlbLandmark() {},
@@ -339,6 +340,78 @@ check("every venue has the interaction points its room promised",
     }
   }
   check("every game, bar, cage and stage can be walked up to from the door", ok, ok ? "flood-filled at 0.5 m per venue" : why);
+}
+
+// ------------------------------------------------------------------ interior light
+// main.js runs a pool of exactly 8 real PointLights and gives them to the 8
+// nearest spots (initLightPool(8), 4 Hz). "Interior lighting comes on when you
+// walk in" is therefore not a switch anywhere — it is a claim about what the
+// nearest 8 spots are from inside. Check that claim instead of trusting it: at a
+// venue's own centre, every one of the nearest 8 has to be a spot inside that
+// hall, not a street lamp or a doorway spill.
+{
+  const POOL = 8;
+  const insideRect = (r, x, z) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1;
+  let ok = true, why = "";
+  const report = [];
+  for (const v of CROWN_STRIP.venues) {
+    // sample the middle of the room and four points 8 m in from it
+    const probes = [[v.x, v.cz], [v.x - 8, v.cz], [v.x + 8, v.cz], [v.x, v.cz - 8], [v.x, v.cz + 8]];
+    let worst = POOL;
+    for (const [px, pz] of probes) {
+      const nearest = [...litSpots]
+        .sort((a, b) => ((a.x - px) ** 2 + (a.z - pz) ** 2) - ((b.x - px) ** 2 + (b.z - pz) ** 2))
+        .slice(0, POOL);
+      const inHall = nearest.filter((s) => insideRect(v.hall, s.x, s.z));
+      worst = Math.min(worst, inHall.length);
+    }
+    report.push(`${v.name}:${worst}/${POOL}`);
+    if (worst === 0) {
+      ok = false;
+      why = `${v.name}: no interior spot reaches the light pool at all`;
+      break;
+    }
+  }
+  // An interior is not required to own all 8 slots — light spilling in a doorway is
+  // correct — but at least 5 of them have to be the room's own, or it is being lit
+  // by the street. Measured values are 5–6/8; this is a floor, not the reading.
+  const weak = report.filter((r) => Number(r.split(":")[1].split("/")[0]) < 5);
+  check("the interior lights win the 8-light pool inside every venue",
+    ok && weak.length === 0, (weak.length ? `weakest: ${weak.join(" ")} — ` : "") + report.join(" "));
+}
+
+// ------------------------------------------------------------------ the sign and the glove
+// The sign has to go with the roof, or a lifted roof leaves a name sign hanging
+// over an open room. And BILLY JEANS' glove is mounted above the roofline, so it
+// is only visible from inside *because* the roof group lifts.
+{
+  const signOf = (name) => {
+    const found = [];
+    const walk = (o) => { if (o.isMesh && (o.material?.name || "") === name) found.push(o); for (const c of o.children) walk(c); };
+    for (const c of scene.children) walk(c);
+    return found;
+  };
+  // A venue legitimately has two faces reading its own name: the one on the roof,
+  // and the neon brand inside on the back wall. The roof one must go when the roof
+  // lifts — and the interior one must stay, or the hall goes nameless as you walk in.
+  const hiddenUnder = (o) => {
+    for (let gp = o; gp; gp = gp.parent) if (gp.visible === false) return true;
+    return false;
+  };
+  let ok = true, why = "";
+  const tiles = [];
+  for (const v of CROWN_STRIP.venues) {
+    for (let i = 0; i < 40; i++) district.update(0.1, { x: v.x, y: 0, z: v.cz });   // stand inside
+    const faces = signOf(`crown sign: ${v.name}`);
+    const outside = faces.filter(hiddenUnder).length;
+    const inside = faces.length - outside;
+    const branded = v.layout.some((s) => s.fixture === "neonBrand");
+    tiles.push(`${v.name}:${outside}out/${inside}in`);
+    if (outside !== 1) { ok = false; why = `${v.name}: ${outside} name faces hidden with the roof, want exactly 1`; break; }
+    if (branded && inside < 1) { ok = false; why = `${v.name}: its interior brand vanished with the roof`; break; }
+  }
+  check("the name sign lifts with the roof and the interior brand stays put", ok,
+    ok ? tiles.join(" ") : why);
 }
 
 // ------------------------------------------------------------------ the cutaway

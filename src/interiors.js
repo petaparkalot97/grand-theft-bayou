@@ -157,9 +157,10 @@ export function makeKit() {
 const chipColors = [0xff4f6d, 0xffd23a, 0xf4f1ea];
 
 export const FIXTURES = {
-  /** The way in: a carpet runner, its brass edges and four bell posts. */
+  /** The way in: a carpet runner, its brass edges, four bell posts — and light. */
   runner(b, s) {
     const w = s.w ?? 9, d = s.d ?? 12;
+    b.lit(s.x, 3.2, s.z, 40, 13);
     const rx = s.rx ?? w / 2;
     const ry = s.ry ?? d / 2;
     b.add(b.G.box(w, 0.04, d), b.e("runner", b.v.theme.accent, 0.1), s.x, 0.13, s.z);
@@ -311,8 +312,8 @@ export const FIXTURES = {
         b.add(b.G.box(2.6, 0.95, 0.25), b.m("booth back", b.v.theme.felt, { roughness: 0.9 }), x, 1.08, s.z + sz * 1.68);
       }
       b.block(x, s.z, 1.5);
+      b.lit(x, 2.7, s.z, 28, 10);      // one per booth: a row of three is a 12 m span
     }
-    b.lit(s.x, 2.7, s.z, 30, 10);
   },
 
   /** Lounge seating: a rug, sofas facing each other, low tables. */
@@ -421,6 +422,8 @@ export const FIXTURES = {
   columns(b, s) {
     const n = s.n ?? 4, dx = s.dx ?? 12, dz = s.dz ?? 0;
     const shafts = [], caps = [], bases = [];
+    // the hall's mid-space: columns are what a big room has instead of walls
+    b.lit(s.x, b.H - 3.0, s.z, 34, 16);
     for (let i = 0; i < n; i++) {
       const x = s.x + (i - (n - 1) / 2) * dx;
       for (const z of dz ? [s.z - dz / 2, s.z + dz / 2] : [s.z]) {

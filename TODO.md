@@ -120,6 +120,37 @@ up" distance, does the 1-star foot-only response feel right, and does the
 overall damage nerf land where the human wants it (this pass used moderate,
 reversible numbers, not a full rebalance pass).
 
+**Addendum (same day, human follow-up):** *"its way too easy to reach wanted
+level 6. similarly, its way too easy to die when like getting fired at or
+chased by police. They are overpowered."* Two more root causes found, both in
+`src/main.js`:
+
+1. **Six stars cost the same per star as one.** `state.wanted` came straight
+   from `Math.floor(state.heat / 1.4)` — a flat rate, so climbing from 5 to 6
+   stars cost exactly as much crime as 0 to 1. ~7 kills (`crime()` is
+   ~1.1–1.2 per kill) maxed out the entire response — cruisers, a full foot
+   squad, and the helicopter. Replaced with `WANTED_THRESHOLDS =
+   [0, 1.4, 3.2, 5.8, 9.2, 13.8, 20]` and a `starsForHeat()` lookup: the first
+   two stars are barely changed (1.4, 3.2 vs. 1.4, 2.8 before — that
+   responsiveness was intentional, see above), but 6 stars now needs heat 20,
+   not 8.4 — roughly 17 kills' worth, a real rampage instead of a scuffle.
+2. **Every police shot was a guaranteed hit.** `policeShoot()` — the one
+   function shared by cruiser, deputy *and* helicopter fire — applied full
+   damage on every cooldown tick with no miss chance at all, at any range up
+   to each shooter's own cap (45 m cruiser / 38 m deputy / 58 m heli). With
+   several converging that was easily 15-20+ guaranteed DPS. Added a
+   range-scaled miss chance: `clamp(0.28 + dist/65, 0.28, 0.8)` — roughly a
+   72% hit chance point-blank, down to a 20% hit chance at max range. Tracers
+   and muzzle flash still fire on a miss, so it still reads as being shot at,
+   it just doesn't reliably connect from 40 m away anymore.
+
+**Testing performed:** `node --check` on `src/main.js` (clean). Hand-verified
+the new threshold table against heat 0–20+ and the miss-chance formula at 0,
+20, 38, 45 and 58 m. **Not verified live** — same no-GPU limitation as above;
+this needs an actual chase to confirm 6 stars feels like the top of an
+escalation rather than either trivial or unreachable, and that the miss
+chance makes gunfights survivable without making cops feel toothless.
+
 ---
 
 > **Task-ID collision, 2026-09-20 (second one — see the next note down for the
@@ -306,23 +337,35 @@ from primitives instead. Passing it would make the three existing calls at
   carry `userData.noBatch` (merge.js honours it per mesh), so the parish sweep still
   merges the furnished interiors — measured **704 district meshes → 92 in 59
   batches**, 84 material signatures, with all 56 moving meshes surviving and the
-  cutaway still opening afterwards. Interiors cost **100 lit spots** in total, all
+  cutaway still opening afterwards. Interiors cost **113 lit spots** in total, all
   `fx:false` pooled spots (baked at build time; nothing created or hidden per frame).
+- **"Interior lighting comes on when you enter" is the light pool, not a switch.**
+  `main.js` runs exactly **8** real `PointLight`s and hands them to the 8 nearest
+  spots at 4 Hz, so the requirement is a claim about *which* spots are nearest from
+  inside. Measured and asserted per venue at five points each: **5–6 of the 8** are
+  that hall's own interior spots (the rest is the doorway spill, which is correct).
+  Adding a light to a fixture therefore *helps* indoors and changes nothing on the
+  street — that is why `runner`, every booth and every column pair own a spot.
 - **New QA:** `crown_build_test.mjs` executes the build in a vm sandbox with the
   real kit and drive-in sign fitter loaded: the cutaway (roof down/up, walls
   dropped/raised, `insideVenue`), the walkable doorway, the no-stale-collision check,
-  the promised interaction points, a real `batchStatic` run — and a **flood fill at
+  the promised interaction points, a real `batchStatic` run — a **flood fill at
   0.5 m per venue** that proves every game, bar, cage and stage can be walked up to
   from the door (this is what caught the BILLY JEANS pool table sealed behind its
-  lounge). **24/24**. `crown_strip_test.mjs` is **29/29** (four venues, data
-  completeness, fixture/prop names against the real kit, door width, floor area, the
-  depth budget between North Ave 2 and 3, and no surviving old signage).
+  lounge), the **8-light pool** indoors, and which name face lifts with the roof.
+  **26/26**. `crown_strip_test.mjs` is **29/29** (four venues, data completeness,
+  fixture/prop names against the real kit, door width, floor area, the depth budget
+  between North Ave 2 and 3, and no surviving old signage).
 
 **Integration notes (for Claude) — two one-liners in `main.js`; neither is required
 for the buildings, the interiors or the cutaway to work:**
 - the F key: add `|| tusouxroeNorth.interact()` to the `input.onPress("interact", …)`
   chain (line ~1196), after `casinos.interact()`. `interact()` returns `false`
   anywhere but a venue door, so it is safe in that chain.
+- **for TASK-059, not now:** the gaming stations are the hook, but real betting needs
+  `state` and `syncHUD` in this district's ctx (line ~2386) — `casinos.js`'s
+  `gamble()` is the rule to mirror (38%, $10 slots / $25 roulette). Gambling and
+  robbery are TASK-059; nothing here spends or awards cash.
 - the radar: `for (const b of tusouxroeNorth.blips()) _blips.push(b);` beside the
   `nightlife.blips()` / `casinos.blips()` lines (line ~1292). `blips()` returns
   `{ kind: "casino"|"club", x, z }` and `minimap.js` already has both badges. Without

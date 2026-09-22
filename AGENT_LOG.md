@@ -218,6 +218,31 @@ lets the nearest one within 3.4 m take over `crownPrompt` (which became `{v, tex
 roulette, blackjack, cage, vault, bars, pool, stage, DJ, VIP. No new input handling,
 no new UI, and TASK-059 can hang gambling off `crownStations`.
 
+### Finding — "interior lighting comes on" is really a claim about the light pool
+
+There is no interior light switch to flip, and AGENT_PROTOCOL §6 forbids creating or
+hiding lights per frame anyway. `main.js` builds **8** real `PointLight`s
+(`initLightPool(8)`) and gives them to the 8 nearest spots at 4 Hz, so walking into
+a casino lights it *iff* its own spots are the nearest ones. That is testable, so the
+QA now does it: five probe points per hall, take the 8 nearest of the strip's **113**
+lit spots, and require at least 5 to be inside that hall. Measured **5–6/8**; the
+remainder is the doorway spill, which is correct. Corollary worth knowing: adding a
+spot to a fixture only ever helps indoors and never competes on the street, because
+the street's own lamps are nearer when you are out there — which is why `runner`,
+`booths` and `columns` each gained one.
+
+### Finding — a venue has *two* faces with its own name, and only one should lift
+
+`neonBrand` puts the venue's name on the interior back wall, so
+`crown sign: BAYOU GOLD` matches **two** meshes: the roof sign and the interior
+brand. The first version of the QA counted them and failed on "2 name faces, want
+1". It was the test that was wrong. The property that matters is which one survives
+the cutaway: exactly one face must be hidden by the lifted roof group, and the
+interior brand must still be visible from the floor. That is what it checks now —
+and it is a real regression guard, since moving the brand out of the venue group (or
+putting the roof sign in `g` instead of `roof`) would leave a name hanging in
+the air over an open room.
+
 ### INTERFACE — the kit's `b` context (for `interiors.js` authors)
 
 `b.v`, `b.g`, `b.W/b.D/b.H/b.FZ` (the hall, in metres), `b.G`/`b.M` (shared caches),

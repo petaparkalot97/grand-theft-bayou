@@ -3721,7 +3721,7 @@ function simulate(dt) {
     // the rest of the run, so a chase could only end by wrecking every cruiser.
     police.updateSearchAndEvasion(dt, playerPos, sheriffSees(dt), state);
     if (state.crimeCd <= 0) state.heat = Math.max(0, state.heat - dt * (state.veh ? 0.3 : 0.16));
-    const w = state.heat <= 0.1 ? 0 : Math.min(6, Math.max(1, Math.floor(state.heat / 1.4)));
+    const w = starsForHeat(state.heat);
     if (w !== state.wanted) {
       if (w === 0) { police.clearPursuit(); flashObjective("You lost them."); }
       state.wanted = w;
@@ -4047,6 +4047,14 @@ function policeShoot(origin, damage, source = "police") {
   spawnTracer(from, to);
   muzzleFlash(from, to);
   cine.sfx("pistolShot");
+  // Shared by every cruiser, deputy and the helicopter — this was a guaranteed
+  // hit on every cooldown tick, at any range up to each shooter's own cap
+  // (45m/38m/58m). With several of them converging that stacked into lethal
+  // DPS almost instantly. Real suppressive fire from a moving car or a running
+  // deputy misses plenty; scale that in by range instead of a certain hit.
+  const dist = from.distanceTo(to);
+  const missChance = THREE.MathUtils.clamp(0.28 + dist / 65, 0.28, 0.8);
+  if (Math.random() < missChance) return;
   if (state.veh) damageVehicle(state.veh, damage * 0.8);
   else hitPlayer(damage);
   if (source === "helicopter") flashObjective("POLICE HELICOPTER: incoming fire!");
@@ -4105,8 +4113,23 @@ function spawnSheriff() {
 // exactly as it did after the twelfth kill.
 // Stars go the GTA ways: get out of sight and stay hidden until they give up
 // (police.js), or drive into a Pay 'n' Spray (services.js).
-const WANTED_HEAT = 1.4;              // one star (see the stars formula in simulate)
+const WANTED_HEAT = 1.4;              // one star (see WANTED_THRESHOLDS below)
 const CRUISER_FOOT_STANDOFF = 9;      // m: how close a cruiser will get to a pedestrian before holding off
+// Heat needed to reach 1..6 stars. Was a flat `heat / 1.4`, so six stars — the
+// max police response, cruisers + a full foot squad + a helicopter — cost the
+// same per star as the first one: about seven kills (crime() ~1.1-1.2 each) and
+// you were maxed out. Escalating instead: the first couple of stars stay just
+// as easy to earn (that responsiveness was a deliberate earlier fix), but
+// climbing to the top costs a full rampage's worth of heat, not a scuffle's.
+const WANTED_THRESHOLDS = [0, 1.4, 3.2, 5.8, 9.2, 13.8, 20];
+function starsForHeat(heat) {
+  if (heat <= 0.1) return 0;
+  let stars = 0;
+  for (let i = 1; i < WANTED_THRESHOLDS.length; i++) {
+    if (heat >= WANTED_THRESHOLDS[i]) stars = i;
+  }
+  return Math.max(1, stars);
+}
 function copsActive() { return state.forceCops || !!state.copsCalled; }
 function checkHeatUp() {
   if (state.copsCalled || state.heat < WANTED_HEAT) return;
