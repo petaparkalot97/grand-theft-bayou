@@ -426,11 +426,95 @@ export function createStateWorld(ctx) {
     );
   }
 
+  // ================= 5. WILDERNESS BANDS (The empty cross connecting the corners) =================
+  function buildWildernessBands() {
+    const pineTrunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 4, 5).rotateY(Math.PI/5);
+    const pineLeavesGeo = new THREE.ConeGeometry(2.5, 10, 5).translate(0, 5, 0);
+
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 0.95 });
+    trunkMat.userData.gtbRealized = true;
+    const leavesMat = new THREE.MeshStandardMaterial({ color: 0x1f3b1d, roughness: 0.9 });
+    leavesMat.userData.gtbRealized = true;
+
+    const bands = [
+      { x0: -350, x1: 350, z0: -1050, z1: -450 }, // North
+      { x0: -350, x1: 350, z0: 400, z1: 1050 },   // South
+      { x0: -1050, x1: -450, z0: -350, z1: 350 }, // West
+      { x0: 400, x1: 1050, z0: -350, z1: 350 }    // East
+    ];
+
+    minimapLayers.areas.push(
+      { x0: -350, x1: 350, z0: -1050, z1: -450, color: "#22351a" },
+      { x0: -350, x1: 350, z0: 400, z1: 1050, color: "#1b2914" },
+      { x0: -1050, x1: -450, z0: -350, z1: 350, color: "#1c2612" },
+      { x0: 400, x1: 1050, z0: -350, z1: 350, color: "#2a3622" }
+    );
+
+    const trees = [];
+    for (const b of bands) {
+      const area = (b.x1 - b.x0) * (b.z1 - b.z0);
+      const numTrees = Math.floor(area / 600); // 1 per 600m2
+      for (let i = 0; i < numTrees; i++) {
+        const tx = b.x0 + Math.random() * (b.x1 - b.x0);
+        const tz = b.z0 + Math.random() * (b.z1 - b.z0);
+        if (Math.abs(tx) < 100 || Math.abs(tz) < 100) continue; // clear highways and city borders
+        trees.push([tx, tz, 0.8 + Math.random() * 0.8, Math.random() * 6]);
+      }
+      
+      const numShacks = Math.floor(area / 120000); 
+      for (let i = 0; i < numShacks; i++) {
+        const sx = b.x0 + 50 + Math.random() * (b.x1 - b.x0 - 100);
+        const sz = b.z0 + 50 + Math.random() * (b.z1 - b.z0 - 100);
+        if (Math.abs(sx) < 100 || Math.abs(sz) < 100) continue;
+        placeBayouStiltHut(ctx, sx, sz, Math.random() * Math.PI);
+        pois.push({ x: sx, z: sz, r: 15, label: "Abandoned Bayou Shack" });
+        
+        const water = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshPhysicalMaterial({ color: 0x0a1a22, roughness: 0.12, clearcoat: 1 }));
+        water.rotation.x = -Math.PI / 2;
+        water.position.set(sx, 0.05, sz);
+        scene.add(water);
+        props.push(water);
+      }
+    }
+
+    if (trees.length > 0) {
+      const CHUNK_SIZE = 200;
+      const chunks = new Map();
+      for (const [x, z, h, r] of trees) {
+        const key = Math.floor(x / CHUNK_SIZE) + "," + Math.floor(z / CHUNK_SIZE);
+        if (!chunks.has(key)) chunks.set(key, []);
+        chunks.get(key).push([x, z, h, r]);
+        if (addBlocker) addBlocker(x, z, 0.6 * h);
+      }
+
+      const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), v = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+      for (const list of chunks.values()) {
+        const trunks = new THREE.InstancedMesh(pineTrunkGeo, trunkMat, list.length);
+        const leaves = new THREE.InstancedMesh(pineLeavesGeo, leavesMat, list.length);
+        list.forEach(([x, z, h, ry], i) => {
+          q.setFromAxisAngle(up, ry);
+          s.set(h, h, h);
+          trunks.setMatrixAt(i, m.compose(v.set(x, 2 * h, z), q, s));
+          leaves.setMatrixAt(i, m.compose(v.set(x, 4 * h, z), q, s));
+        });
+        
+        for (const im of [trunks, leaves]) {
+          im.castShadow = true;
+          im.receiveShadow = true;
+          im.computeBoundingSphere();
+          scene.add(im);
+          props.push(im);
+        }
+      }
+    }
+  }
+
   function buildSet() {
     buildPortCalypso();
     buildCypressHills();
     buildLakeshoreMarsh();
     buildOysterBay();
+    buildWildernessBands();
   }
 
   return {
