@@ -63,8 +63,98 @@ I have implemented items 2 and 5 of TASK-053:
   
   # 🧠 DISCOVERIES
   
-  ## 2026-09-21 — Antigravity
-  **Type:** HANDOFF · **Task:** TASK-062 Dev mode AI duplicate variation
+## 2026-09-22 — Freebuff
+
+**Type:** DISCOVERY · **Task:** TASK-070 (the Crown Strip — casinos and bars/nightclubs north of Chatboro)
+
+### Finding — what was built, and the contract for it
+
+`tusouxroeNorth.js` now builds **the Crown Strip**: 14 venues (5 casinos, 5 clubs,
+4 bars) fronting **North Ave 2** (z = −320) either side of US-167, plus a lit
+gateway arch over the highway at z = −310 facing south. The human's brief was
+`Exteriors now, interiors later`, so every venue is a dressed, lit facade with a
+furnished interior visible through an open doorway (carpet, machine bank, bar,
+chandelier) and a **queue barrier across the door** — dressed, not open for trade.
+
+**The interface the follow-up needs** (TASK-059, walk-in interiors):
+
+- `CROWN_STRIP` is exported from `src/tusouxroeNorth.js` and also reachable as
+  `__game.tusouxroeNorth.crown`. `venues[]` carries per venue: `name`, `kind`,
+  `side` (−1 far terrace / +1 near), `x`, `cz`, `facadeZ` (the wall the door is
+  cut into), `rot` (0 or π), `entranceZ`, and the two rects — `hall` (the shell
+  to put a floor plan inside) and `fore` (its forecourt). `k` is the kind spec
+  (`w`, `d`, `h`, `fore`, `cars`, `door`).
+- `zoneAt` returns **`"building"`** over a hall and **`"entertainment"`** over a
+  forecourt or the avenue. "building" deliberately has no `ZONE_MIX` entry, which
+  is how the composer already says *nobody spawns inside walls*.
+- `spawnzones.js` gained `ZONE_MIX.entertainment` (tuxedo, tourist, hoodrat,
+  highendescort, prostitute, gayman, lesbian, suit — all existing kinds) and
+  `WANDER.entertainment`. Nothing else in that file changed.
+
+### Finding — building it *outside* a composer cluster was deliberate, and why
+
+main.js's batch sweep has `tusouxroeNorth.props` in **both** `moving` and
+`cullGroups`. `batchStatic` skips an excluded root's whole subtree, so every
+composer cluster in this district — and in West Parish, Lafourchette and the
+state map — is currently drawing one mesh at a time. The comment right above
+`moving` says those districts were **removed** from it (TASK-011) and that a
+cluster "can be batched safely", so the two lines disagree with each other; one
+of them is a leftover. **Not touched, because `main.js` is the orchestrator's.**
+
+Confirmed by reading `merge.js`: `for (const root of scene.children) { if
+(!root.visible || exclude(root)) continue; ... }`. So the Crown Strip adds its
+meshes **straight to the scene and never to `props`**, exactly like the filler
+buildings and the hand-built landmarks in the same file, which lets the sweep
+merge it per material and 48 m chunk and keeps it frustum-cullable. A cluster
+would have been all 592 with no batching at all. Whoever owns `main.js`: if those
+district props are meant to be batchable, the `moving` lines are the bug.
+
+### Finding — two existing landmarks stand across North Ave 2 (pre-existing)
+
+With the strip now fronting that avenue it became visible:
+
+- **Willowbrook School** — `LANDMARK_FOOTPRINTS` says x −144…−120, z −329…−311,
+  and it is *placed* at (−132, −320): its footprint straddles the avenue's whole
+  corridor (z −324.5…−315.5).
+- **Meadow Apartments** — placed at (128, −320), footprint x 120…136, z −326…−314:
+  same problem.
+
+Both predate this task. The strip routes around them (its west terrace hits
+x = −176 for the two venues that would otherwise sit on the school), and
+`tools/qa/crown_strip_test.mjs` asserts it. Fixing them properly means moving two
+landmarks **and** `newton.js`'s yard, which is pinned to the school at
+(−123, −309) — a change that belongs with whoever owns this district.
+
+### Finding — `placeParkedCar` is dead in this district
+
+`placeParkedCar` (`landmarks.js`) returns immediately when `ctx.loadDsCar` is
+missing. `main.js` passes `loadDsCar` to East Bank and West Parish but **not** to
+`tusouxroeNorth`, so the district's three existing calls (in the Market and
+Hospital lots at `BLVD_Z`) have never placed a car. The Crown Strip therefore
+builds its 20 parked cars from primitives. Passing `loadDsCar` through would fix
+both.
+
+### Action
+
+TASK-070 is `REVIEW` with no integration step required — the strip rides
+existing plumbing (`pois` → `NPC_POIS`, `occluders` → `losBoxes`, `minimap`,
+`zoneAt` → `extraZone`). Nothing locked was edited.
+
+Two plain-node audits ship with it. `tools/qa/crown_strip_test.mjs` (18/18) checks the
+layout numbers. `tools/qa/crown_build_test.mjs` **executes the district**: it strips
+the imports and runs the real `composer.js` and real `tusouxroeNorth.js` in a
+`vm` sandbox against a stub three.js (the `test.cjs` technique), then calls the
+real `buildSet()`. Measured off that run: builds clean; **592 meshes** for the
+strip; 14/14 venues sign themselves; no NaN transforms; 504 blockers, 34
+occluders, 31 POIs, 68 lit spots, 35 minimap footprints. **25 of the 592 meshes
+carry a unique sign material and can never merge**; the other 567 share 15
+materials. Counts, not draw calls — no browser here, so the night look and the
+frame cost still need a real-GPU pass (TASK-010).
+
+---
+
+## 2026-09-21 — Antigravity
+**Type:** HANDOFF · **Task:** TASK-062 Dev mode AI duplicate variation
   
   ### Finding
   Implemented TASK-062 as requested. Integrated an "AI Clone" action into the Map Editor's Select mode HUD. It passes the current selection (including world objects if selected via drag-box) and the natural-language prompt from the `aiInput` field to a new `/editor/ai-duplicate` route. The LLM translates this chunk (shifting it so it doesn't overlap) and varies it based on the prompt while preserving layout.

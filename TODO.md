@@ -78,6 +78,104 @@ Antigravity and Freebuff so they don't compete with the Act One work on
 > technique worth reusing rather than inventing a second one — see the note
 > added there too.
 
+### TASK-070 — The Crown Strip: casinos and bars/nightclubs north of Chatboro (human request, 2026-09-22)
+
+**Status:** `REVIEW` · **Agent:** Freebuff
+**Files / subsystem:**
+- `src/tusouxroeNorth.js`          (edit — the row itself, plus `CROWN_STRIP`)
+- `src/spawnzones.js`              (edit — the `entertainment` zone mix + wander profile)
+- `src/pauseMenu.js`               (edit — pins and the district label)
+- `tools/qa/crown_strip_test.mjs`       (new — plain-node layout/zone audit)
+- `tools/qa/crown_build_test.mjs`        (new — vm-sandboxed build execution audit)
+
+**Dependencies:** none. Reads on TASK-041 (COMPLETE — the composer owns the road
+surfaces here, so the strip adds no road planes).
+
+**Context:** the human asked to *"populate the area north of Chatboro with lots of
+casinos and bars / nightclubs."* North of Chatboro is Tusouxroe (`world.js`:
+NORTH = −Z). It has two halves: the US-167 strip (z 60 … −116, built from
+`main.js`'s `LANDMARKS` table — orchestrator-owned) and **North Tusouxroe**
+(z −136 … −440, `src/tusouxroeNorth.js`). The human chose North Tusouxroe, so
+nothing locked was touched. Casinos and clubs already existed, but only in
+OrleaRouge (`src/casinos.js`, `src/nightlife.js`); Tusouxroe had none.
+
+**Goal:** give the district the entertainment row a casino town should have —
+**five casinos and nine bars and clubs** down North Ave 2, either side of US-167,
+with a gateway arch on the highway. **Dressed exteriors**, per the human's call:
+the interiors are a follow-up.
+
+**Acceptance criteria:**
+- 14 venues, 5 casinos and 9 bars/clubs, fronting North Ave 2 on both sides.
+- Each: lit facade, roof sign (blade sign too on the narrow fronts), forecourt
+  with painted bays and parked cars at the casinos, queue barrier across the
+  door, collision, a camera occluder, a crowd POI and a minimap footprint.
+- A lit, furnished interior visible through the doorway (carpet, machine bank,
+  bar, chandelier) and a blocked door — "dressed, not open for trade yet".
+- New `entertainment` spawn zone so the row has a crowd of its own.
+- No venue, forecourt or arch pillar on a street or on a named landmark.
+- No new console errors; nothing that moves.
+
+**Out of scope:** enterable floors with counters, gambling and robbery (TASK-059);
+the US-167 strip above Chatboro (orchestrator-owned `main.js`);
+`src/stateWorld.js`; anything in OrleaRouge.
+
+**Integration notes (for Claude):** **none needed** — the strip is wired by
+existing plumbing. `tusouxroeNorth.buildSet()` builds it; `pois` reaches
+`NPC_POIS`, `occluders` reaches `losBoxes`, `minimap` reaches the map, and
+`zoneAt` is already the `extraZone` for `spawnzones.js`. The one thing worth a
+look is `loadDsCar`: it is **not** passed to this district's ctx, so
+`placeParkedCar` no-ops here — which is why the strip builds its parked cars
+from primitives instead. Passing it would make the three existing calls at
+`BLVD_Z` real and give the strip model cars.
+
+**Testing performed:**
+- `node tools/qa/crown_strip_test.mjs` — **18/18**. Covers: unique names, 5/5/4
+  casino/club/bar split, no two venues sharing a slot, no hall/forecourt overlap
+  between venues, none crossing any of the seven composed streets, none on a
+  named landmark, all halls inside bounds, every forecourt ending exactly on the
+  avenue kerb, the gate pillars clear of the carriageway, and `zoneAt` returning
+  `building` inside a hall / `entertainment` on a forecourt and the avenue /
+  `null` outside the district.
+- `node tools/qa/crown_build_test.mjs` — **all checks pass**. This one *executes* the
+  district: it runs the real `composer.js` and the real `tusouxroeNorth.js` in a
+  `vm` sandbox with a stub three.js (the `test.cjs` technique) and calls the real
+  `buildSet()`. Measured: **buildSet runs to completion; 592 Crown Strip meshes;
+  14/14 venues put a sign up; no NaN transforms; 504 blockers; 34 occluders;
+  31 POIs; 68 lit spots; 35 minimap footprints.** Material breakdown: `crown
+  hall` 86, `crown gold` 86, `crown tyre` 80, `crown hall deep` 57, `crown slot
+  bank` 57, `crown glass` 48, `crown trim` 29, 25 sign faces, `crown lot stripe`
+  25, then 20 and under. Of the 592, **25 carry a unique sign material and cannot
+  merge with anything**; the other 567 share 15 mergeable materials.
+- `node --experimental-detect-module --check` on all five files: clean.
+- **Not verified: anything a GPU does.** No browser is installed here, so draw
+  calls, frame time, the night look and screenshots still need a real-browser
+  pass. The 592-mesh / 25-unbatchable-numbers above are geometry counts, not
+  draw calls.
+
+**Two real bugs the audit caught, and one left alone:**
+1. `CROWN_RECT` (the district rect `zoneAt` and the pine pass use) was derived
+   from the forecourts only, so the far terrace's halls fell outside it and
+   classified as `forest`/`industrial`. Now the union of halls and forecourts.
+2. The avenue lamps were a 26 m grid, which dropped poles **inside Willowbrook
+   School**. Now one pole on the kerb outside each venue's own forecourt.
+3. **Willowbrook School (x −144…−120) and Meadow Apartments (x 120…136) are both
+   placed at z = −320 — i.e. standing across North Ave 2.** Pre-existing, not
+   introduced here; the strip's west terrace simply splits around the school
+   (Moonlight Casino and The Velvet Magnolia sit at x = −176 instead of −144).
+   Fixing it means moving two landmarks and `newton.js`'s yard with the school,
+   so it is logged rather than done under this task. See `AGENT_LOG.md`.
+
+**Known issues / what remains:**
+- **No interiors you can walk into.** That is the brief, not an omission: the
+  doorway is lit and furnished and the follow-up installs the floor plan inside
+  the shell (nightlife.js's technique — lift the roof, drop the walls).
+  `CROWN_STRIP.venues[]` carries each `hall`, `fore` and `facadeZ` for exactly
+  that, and the district also exposes it as `__game.tusouxroeNorth.crown`.
+- No gambling, no clerks, no drinks, no robbery — all TASK-059.
+- No peds *staffing* the places (valets, doormen); only ambience crowd.
+
+---
+
 ### TASK-065 — St. Louis No. 1: the OrleaRouge cemetery rebuilt above ground, + the ghost of Marie Laveau (human request, 2026-09-20)
 
 **Status:** `REVIEW` · **Agent:** Claude · **Files:** `src/cemetery.js` (new),
@@ -3643,7 +3741,7 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | Claude | TASK-009; orchestration, review, `main.js` integration | `src/actone.js`, `src/ledgerboard.js`, `src/cinema.js`, `src/prologue.js`, `src/main.js`, `tools/qa/actone.mjs` | Active |
 | Codex | — (suggested: TASK-011, then TASK-012) | — | Available |
 | Antigravity | TASK-038 (TASK-020 & TASK-035 in REVIEW) | `src/eastbank.js`, `src/westparish.js`, `src/orlearouge.js`, `docs/WORLD_BUILDING.md` | Active |
-| Freebuff | TASK-040 (REVIEW — Claude wiring review pending); TASK-018 (REVIEW) | `tools/characters.html`, `src/audio.js`, `src/weapons_3d.js` | Active |
+| Freebuff | TASK-070 (REVIEW — the Crown Strip); TASK-040 (REVIEW — Claude wiring review pending); TASK-018 (REVIEW) | `src/tusouxroeNorth.js`, `src/spawnzones.js`, `src/pauseMenu.js`, `tools/characters.html`, `src/audio.js`, `src/weapons_3d.js` | Active |
 
 > Update this table whenever ownership changes.
 
@@ -3687,7 +3785,12 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/npc.js` | — | TASK-066 (temperament only) | Available |
 | `src/camera.js`, `src/spatial.js`, `src/music.js` | — | — | Available |
 | `tools/qa/gameplay.mjs`, `tools/qa/prologue.mjs` | — | — | Available |
-| `src/stateWorld.js`, `src/tusouxroeNorth.js` | Antigravity (unclaimed — see AGENT_LOG) | State-wide expansion | Unclaimed, fixes by Freebuff and Claude (TASK-041) applied |
+| `src/stateWorld.js` | Antigravity (unclaimed — see AGENT_LOG) | State-wide expansion | Unclaimed, fixes by Freebuff and Claude (TASK-041) applied |
+| `src/tusouxroeNorth.js` | Freebuff | TASK-070 (REVIEW) — the Crown Strip | Locked by TASK-070; releases with it |
+| `src/spawnzones.js` | Freebuff | TASK-070 (REVIEW) — `entertainment` zone only | Locked by TASK-070; releases with it |
+| `src/pauseMenu.js` | Freebuff | TASK-070 (REVIEW) — pins + district label | Locked by TASK-070; releases with it |
+| `tools/qa/crown_strip_test.mjs` (new) | Freebuff | TASK-070 | Locked by TASK-070 |
+| `tools/qa/crown_build_test.mjs` (new) | Freebuff | TASK-070 | Locked by TASK-070 |
 | `src/composer.js` | Claude | TASK-041 (REVIEW) — road options | Available |
 | `tools/qa/roads.mjs` (new), `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs` | Claude | TASK-041 | Available |
 | `tools/qa/traffic_test.mjs` | Freebuff | TASK-039 | Locked |
