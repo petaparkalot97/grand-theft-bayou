@@ -68,13 +68,10 @@ import { createStateWorld, STATE_BOUNDS } from "./stateWorld.js";
 const WORLD = 136;           // half-width of the map (x), and its northern extent
 // State-Wide GTA San Andreas scale map bounds (~5 km x 5 km)
 const MAP = { minX: STATE_BOUNDS.minX, maxX: STATE_BOUNDS.maxX, minZ: STATE_BOUNDS.minZ, maxZ: STATE_BOUNDS.maxZ };
-const CAN_GOAL = 4;
-const CAN_REACH = 2.4;          // on foot, measured flat (x/z): the can bobs half a metre off the ground
-const CAN_REACH_VEHICLE = 3.4;  // in a car: drive through one to grab it
 const ROAD_X = -6;           // the highway runs N/S along this line
 const ROAD_HALF = 5;         // half road width
 const LOT_X = 24;            // how far off the centre line a lot's building sits
-const TRUCK_Z = -116;
+const TRUCK_Z = -116;        // south end of the dashed centre line; also where the (now-removed) escape truck used to sit
 const SPAWN_Z = 130;         // bottom of the map
 const SIGN_Z = 126;          // Louisiana sign, just north (in front) of the spawn
 
@@ -1063,7 +1060,7 @@ function spawnTracer(from, to) {
 // ---------------------------------------------------------------- game state
 const state = {
   running: false, over: false,
-  hp: 100, sp: 100, cans: 0, cash: 0,
+  hp: 100, sp: 100, cash: 0,
   fireCd: 0, hurtCd: 0, dusk: 0, prostituteTrips: 0,
   selectedCharacter: "keseme", campaign: "main",   // Keseme Nadia, the story's protagonist, is the default pick
   veh: null,          // vehicle the player is driving, or null (on foot)
@@ -1537,10 +1534,9 @@ function applyNetworkSnapshot(snapshot) {
          if (existing) ent = existing;
          else {
            if (multiplayer?.playerId === multiplayer?.room?.hostId) continue;
-           ent = makeHoodrat();
+           ent = spawnEnemy("hoodrat", data.x || 0, data.z || 0);
            ent.netId = data.id;
-           scene.add(ent);
-           enemies.push(ent);
+           ent.type = "npc"; // tag for the cleanup loop below
          }
       }
       if (ent) networkEntities.set(data.id, ent);
@@ -1558,13 +1554,18 @@ function applyNetworkSnapshot(snapshot) {
          }
          ent.owner = data.owner;
       } else if (data.type === "npc") {
-         ent.position.set(data.x, data.y, data.z);
-         if (data.yaw !== undefined) ent._yaw = data.yaw;
-         ent.health = data.health;
-         if (data.anim) ent.play(data.anim, { loop: true });
+         if (ent.spr) {
+           ent.spr.position.set(data.x, data.y, data.z);
+           if (data.yaw !== undefined) {
+             if (ent.spr.rotation) ent.spr.rotation.y = data.yaw;
+             ent._yaw = data.yaw;
+           }
+           if (data.anim && ent.spr.play) ent.spr.play(data.anim, { loop: true });
+         }
+         ent.hp = data.health;
          if (data.dead && !ent.dead) {
             ent.dead = true;
-            ent.play("death", { loop: false, force: true });
+            if (ent.spr && ent.spr.play) ent.spr.play("death", { loop: false, force: true });
          }
       }
     }
@@ -1577,7 +1578,8 @@ function applyNetworkSnapshot(snapshot) {
          const idx = vehicles.indexOf(ent);
          if (idx >= 0) vehicles.splice(idx, 1);
        } else if (ent.type === "npc" || ent.isEnemy) {
-         scene.remove(ent);
+         if (ent.spr) scene.remove(ent.spr);
+         else scene.remove(ent);
          const idx = enemies.indexOf(ent);
          if (idx >= 0) enemies.splice(idx, 1);
        }
@@ -1943,8 +1945,6 @@ function spawnEnemy(typeName, x, z, spot = null) {
   return rec;
 }
 
-// ---------------------------------------------------------------- truck (escape)
-let truck, truckMarker;
 let traffic = null;   // ambient cars (traffic.js), created once the car models load
 
 // Things a traffic car should stop for, gathered into one reused array.
@@ -1967,8 +1967,6 @@ function trafficObstacles() {
   }
   return _obstacles;
 }
-const truckPos = new THREE.Vector3(-6, 0, TRUCK_Z);
-
 // ---------------------------------------------------------------- build the level
 async function buildLevel() {
   // ---- Route 9: one long asphalt highway, swamp in the south, city in the north
@@ -3698,6 +3696,13 @@ function simulate(dt) {
   hemi.color.setHex(sky.hemiSky);
   hemi.groundColor.setHex(sky.hemiGround);
   hemi.intensity = sky.hemiIntensity * f;
+  // wetRoads (fx.js) was built expecting this and never got it: uWetness sat at
+  // its hardcoded construction-time default (0.6, full reflect strength) no
+  // matter the weather, so every road looked like a full-strength wet mirror in
+  // broad daylight, clear skies included — reflecting the bright sky straight
+  // at the camera. That's a real, separate contributor to "still very bright
+  // during the day" beyond the sun/exposure tuning in daycycle.js.
+  wetRoads.uniforms.uWetness.value = weather.wetness;
   scene.fog.color.setHex(sky.fogColor);
   scene.fog.density = sky.fogDensity * weather.fogMultiplier;
   MIST.y = sky.mist * weather.mistMultiplier;
@@ -4559,18 +4564,18 @@ async function boot() {
   camera.lookAt(playerPos);
   syncHUD();
 
-  window.__game = { scene, camera, state, enemies, cans, buckets, kills, vehicles, sheriffs,
+  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
     get policeHelicopters() { return police.helicopters; },
-    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; }, CAN_REACH, CAN_REACH_VEHICLE,
+    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; },
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
       playerPos.set(x, 0, z);
       player.position.set(x, 0, z);
       player.visible = true;
       if (player._last) player._last.copy(player.position);
-    }, cine, truck, blockers, blockerGrid, renderer, perf, input, spawnZones, klan,
+    }, cine, blockers, blockerGrid, renderer, perf, input, spawnZones, klan,
     get newton() { return newton; }, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
     get playerMoveHeading() { return playerMoveHeading; },
     get soundtrack() { return soundtrackReady; }, get casinos() { return casinos; } };

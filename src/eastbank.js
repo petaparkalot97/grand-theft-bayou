@@ -26,7 +26,7 @@ import { makeDecorativeFence, placeOfficeClutter, placeCityBuilding, placeParked
 
 export const EAST_MAX_X = 380;
 const CORE = { x0: 121, x1: 376, z0: -134, z1: 60 };            // streets and buildings: a "town" zone
-const WILD = { x0: 138, x1: 378, z0: -134, z1: 380 };           // what the pines may fill
+const WILD = { x0: 138, x1: 378, z0: -134, z1: 199 };           // what the pines may fill (stops before OrleaRouge)
 const BAYOU = { x0: 138, x1: EAST_MAX_X + 30, z0: 136, z1: 192 }; // the causeway's water, continued east
 const MAIN_Z = -106;                                             // South Tusouxroe's street line
 const ROAD_END_X = 352;

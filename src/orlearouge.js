@@ -26,10 +26,10 @@ export const CAUSEWAY = { minZ: 136, maxZ: 192 };
 // The nightlife core now continues east into a denser modern district. Keep the
 // western boundary stable (the parish transition and French District depend on
 // it), but give the skyline and casino lots room to grow on the east side.
-export const CITY = { minX: -136, maxX: 376, minZ: 196, maxZ: 382 };
+export const CITY = { minX: -136, maxX: 520, minZ: 196, maxZ: 382 };
 
 // the grid: US-167 is the boulevard at x = ROAD_X (-6)
-const AVENUES = [-86, -46, 34, 74, 114, 154, 194, 234, 274, 314, 354];    // north–south streets
+const AVENUES = [-86, -46, 34, 74, 114, 154, 194, 234, 274, 314, 354, 394, 434, 474, 514];    // north–south streets
 const STREETS = [210, 250, 290, 330, 370];        // east–west streets
 const STREET_W = 9;
 
@@ -359,7 +359,7 @@ export function createOrleaRouge(ctx) {
   function downtown(bl) {
     let v = 0;
     for (const b of bl) {
-      if (!(b.cx > 176 || (b.cx > ctx.ROAD_X && b.cz > 250 && b.cz < 370))) continue;
+      if (!(b.cx > 114 || (b.cx > ctx.ROAD_X && b.cz > 210 && b.cz < 370))) continue;
       const bw = b.x1 - b.x0, bd = b.z1 - b.z0;
       if (bw > 26) {
         tower(b.cx - bw / 4, b.cz, bw / 2 - 2, bd - 4, 26 + ((v * 17) % 44), v++);
