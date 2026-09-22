@@ -186,7 +186,7 @@ const CROWN_VENUES = [
       { fixture: "poolTable", x: 16, z: 6, n: 2, dx: 6 },
       { fixture: "lounge", x: -19, z: 11, n: 1, dx: 10 },
       // signature prop hanging prominently inside!
-      { fixture: "propGlove", x: 14, y: 7.5, z: -11, scale: 0.8 },
+      { fixture: "propGlove", x: 6, y: 9.5, z: -11, scale: 0.8 },
       // the stage end: deck, cans, PA stacks flanking it — and the headliner, who
       // works the front-centre of that deck all night (crowd.js's `star` role)
       { fixture: "stage", x: 14, z: -11, w: 14, d: 6, rise: 0.8, star: "BILLY JEANS" },
@@ -308,7 +308,7 @@ const CROWN_VENUES = [
       { fixture: "columns", x: 0, z: 0, n: 2, dx: 28 },
       { fixture: "discoBall", x: 0, z: -2, n: 2, dx: 6 },
       // signature prop hanging prominently inside!
-      { fixture: "propPig", x: -6, y: 7.5, z: -10, scale: 0.8 },
+      { fixture: "propPig", x: 2, y: 9.5, z: -10, scale: 0.8 },
       { fixture: "neonBrand", x: -6, y: 10.6, z: -12.6, w: 18, text: "HAPPY HOGS" },
     ],
     // Pink/red/purple, and a rope beside the door for the guests who are not on
@@ -687,10 +687,10 @@ export function createTusouxroeNorth(ctx) {
       rh(G.box(gap + 6, 1.0, 0.3), M.emis("crown fascia " + v.id, v.theme.accent, 1.15), 0, head + 0.5, FZ + 4.1);
       rh(G.box(gap + 6.4, 0.4, 0.4), trimMat, 0, head - 0.15, FZ + 4.1);
       rec.sign.push(rh(G.box(W * 0.72, v.sign.h, 0.3),
-        crownSignMat(v.name, v.ink, { w: W * 0.72, h: v.sign.h }), 0, H - 2.6, FZ + 0.15));
+        crownSignMat(v.name, v.ink, { w: W * 0.72, h: v.sign.h }), 0, H - 4.2, FZ + 0.15));
       if (v.sign.sub) {
         const sw = W * 0.34;
-        rec.sign.push(rh(G.box(sw, 1.1, 0.22), crownSignMat(v.sign.sub, v.ink, { w: sw, h: 1.1 }), 0, H - 5.0, FZ + 0.11));
+        rec.sign.push(rh(G.box(sw, 1.1, 0.22), crownSignMat(v.sign.sub, v.ink, { w: sw, h: 1.1 }), 0, H - 6.6, FZ + 0.11));
       }
 
       // ---- interior: the floor, then the venue's own fixture list ----

@@ -177,7 +177,7 @@ export const FIXTURES = {
   /** A very large white performance glove for interior use. */
   propGlove(b, s) {
     const white = b.m("glove white", 0xf4f7ff, { roughness: 0.22, metalness: 0.12, emissive: 0xffffff, emissiveIntensity: 0.35 });
-    const seam = b.e("glove sequin", 0xffffff, 0.9);
+    const seam = b.m("glove sequin", 0xffffff, { emissive: 0xffffff, emissiveIntensity: 0.9 });
     const gg = new THREE.Group();
     gg.position.set(s.x || 0, s.y || 4.0, s.z || 0);
     gg.rotation.set(0, s.ry || 0, 0.16);
@@ -942,7 +942,7 @@ export const PROPS = {
   glove(b) {
     const white = b.m("glove white", 0xf4f7ff,
       { roughness: 0.22, metalness: 0.12, emissive: 0xffffff, emissiveIntensity: 0.35 });
-    const seam = b.e("glove sequin", 0xffffff, 0.9);
+    const seam = b.m("glove sequin", 0xffffff, { emissive: 0xffffff, emissiveIntensity: 0.9 });
     const gg = new THREE.Group();
     gg.position.set(-b.W / 2 + 11, b.H + 6.4, b.FZ - 1.0);
     gg.rotation.set(0, -0.35, 0.16);

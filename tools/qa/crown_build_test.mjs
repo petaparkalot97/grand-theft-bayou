@@ -460,7 +460,7 @@ check("every venue has the interaction points its room promised",
       const nearest = [...litSpots]
         .sort((a, b) => ((a.x - px) ** 2 + (a.z - pz) ** 2) - ((b.x - px) ** 2 + (b.z - pz) ** 2))
         .slice(0, POOL);
-      const inHall = nearest.filter((s) => insideRect(v.hall, s.x, s.z));
+      const inHall = nearest.filter((s) => inCrownRect(v.hall, s.x, s.z));
       worst = Math.min(worst, inHall.length);
     }
     report.push(`${v.name}:${worst}/${POOL}`);
@@ -520,7 +520,7 @@ check("every venue has the interaction points its room promised",
 
   // (d) the pockets are outside every hall — back of house is not in the room
   const inHall = district.crownService.filter((s) =>
-    CROWN_STRIP.venues.some((v) => insideRect(v.hall, s.x, s.z)));
+    CROWN_STRIP.venues.some((v) => inCrownRect(v.hall, s.x, s.z)));
   check("no service pocket is inside a venue", inHall.length === 0,
     inHall.length ? inHall.map((s) => s.venue).join(", ") : `${district.crownService.length} pockets, all outside their halls`);
 }
@@ -646,10 +646,10 @@ check("every venue has the interaction points its room promised",
   // strip belongs to one of the four new halls or their forecourts
   const gate = CROWN_STRIP.gate;
   const gateRect = { x0: gate.x - gate.span - 2, x1: gate.x + gate.span + 2, z0: gate.z - 2, z1: gate.z + 2 };
-  const stray = blockers.filter((b) => insideRect(rect, b.x, b.z)).filter((b) =>
-    !CROWN_STRIP.venues.some((v) => insideRect({ x0: v.hall.x0 - 2, x1: v.hall.x1 + 2, z0: v.hall.z0 - 2, z1: v.hall.z1 + 2 }, b.x, b.z)
-      || insideRect(v.fore, b.x, b.z))
-    && !insideRect(gateRect, b.x, b.z)     // the gateway arch is not a stray
+  const stray = blockers.filter((b) => inCrownRect(rect, b.x, b.z)).filter((b) =>
+    !CROWN_STRIP.venues.some((v) => inCrownRect({ x0: v.hall.x0 - 2, x1: v.hall.x1 + 2, z0: v.hall.z0 - 2, z1: v.hall.z1 + 2 }, b.x, b.z)
+      || inCrownRect(v.fore, b.x, b.z))
+    && !inCrownRect(gateRect, b.x, b.z)     // the gateway arch is not a stray
     // nor is a venue's back-of-house pocket: street clutter is a real obstacle on
     // the strip's own land, which is the point of putting it there
     && !district.crownService.some((s) => Math.hypot(s.x - b.x, s.z - b.z) < 3));
@@ -935,7 +935,7 @@ check("every venue has the interaction points its room promised",
       const k = mine && mine.kerb;
       if (!k) { kerbOff = `${v.name} has no kerb point`; break; }
       const p = toWorld(v, k.x, k.z);
-      if (!insideRect(v.fore, p.x, p.z)) { kerbOff = `${v.name}: kerb at (${p.x.toFixed(0)}, ${p.z.toFixed(0)}) is off its own forecourt`; break; }
+      if (!inCrownRect(v.fore, p.x, p.z)) { kerbOff = `${v.name}: kerb at (${p.x.toFixed(0)}, ${p.z.toFixed(0)}) is off its own forecourt`; break; }
       if (Math.abs(p.x - v.x) > 1.0) { kerbOff = `${v.name}: kerb is not in front of the door`; break; }
       for (const b of blockers) {
         if (Math.hypot(b.x - p.x, b.z - p.z) < b.r + 0.5) { kerbBlocked = `${v.name}: something is parked on the kerb point`; break; }
