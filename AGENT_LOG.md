@@ -895,6 +895,40 @@ grid** instead: that went 4/4 to 0/0 for deputies and stayed 0 for cruisers.
 Clearance of exactly 0 is the correct resting state for a pushed-out mover, not
 a failure.
 
+### It is a Gulf now, not a river — and how far out it can actually go
+
+Brief changed: the Crescent and the waterfront road should sit on Gulf water,
+not a river. The water itself is done — `0x1a4a4c` green-blue instead of silt
+brown, lower roughness and a stronger environment term (clear sea takes a
+sharper sky reflection than a river carrying half of Missouri), and the swell
+now ROLLS SHOREWARD instead of running along the channel.
+
+**The swell change is one axis, not a rewrite.** Crests already lay along x
+(`stretch > 1` in `waterNormalTex` does that), which is right for both a current
+running along the shore and a swell parallel to the beach. The difference is
+only which way they travel, so the scroll moved from `offset.x` to `offset.y`.
+The plane is rotated -90° about x, so its local +y is world -z: ADDING to
+offset.y walks the crests toward the shore. Measured 0.091/s against a predicted
+3.0/34 = 0.088, with zero sideways drift.
+
+**WARNING — the depth is constrained by land, and it is not negotiable without
+world-building.** Running it 320 m out to put the far bank beyond the fog was
+tried and reverted. There are **~220 blockers between z 386 and 706** across the
+whole frontage, spread over every 40 m band, plus a structure around x 550 with
+r 11. That is `stateWorld.js`'s own tree scatter — **not** main.js's, whose
+`inKeepout()` already refuses everything past z 142. A gulf with two hundred
+pines standing in it looks far worse than a narrower one that reads clean.
+
+So it stays at the authored 80 m, which reads as one of the sounds the Louisiana
+coast is actually made of — Mississippi Sound, Lake Borgne — salt water with
+land on the far side.
+
+**What a true open-water horizon would take**, for whoever picks it up: clear
+`stateWorld`'s scatter and that structure out of roughly
+`x -260..645, z 386..706`, then the plane can go to 320 m and the fog does the
+rest. It is a coastline pass in a module this session does not own, not a water
+tweak.
+
 ### Making the river actually flow, and which way
 
 Asked for the water to flow the way the Mississippi does at New Orleans. Two
