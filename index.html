@@ -112,6 +112,28 @@
   #overlay .btns { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
   #overlay button.alt:not(.menu-item) { background: linear-gradient(180deg, #3a3f46, #22262b); border-color: #8a93a0; }
   #overlay.hidden { display: none; }
+
+  /* Loading screen: mood-art slideshow behind the menu, in place of the
+     static cover.png, for as long as boot() is still loading assets (Story/
+     Free Roam/graphics-tier buttons stay disabled that whole time — see
+     main.js). Sits between #overlay's own background and its ::before
+     scrim/menu text (negative z-index paints above an element's own
+     background but below its normal-flow content, per the stacking spec —
+     the #overlay > * rule above would otherwise win this element's z-index
+     too since it's an equal-specificity id selector, hence this rule has to
+     come after it in source order). Fades out once loadNote says "ready."
+     so the classic cover art is what's left once the menu is fully usable. */
+  #loadScreen {
+    position: absolute; inset: 0; z-index: -1; overflow: hidden;
+    opacity: 1; transition: opacity 1s ease;
+  }
+  #loadScreen.done { opacity: 0; }
+  #loadScreen .slide {
+    position: absolute; inset: 0; background-size: cover; background-position: center;
+    opacity: 0; transform: scale(1.04);
+    transition: opacity 1.8s ease, transform 8s ease-out;
+  }
+  #loadScreen .slide.on { opacity: 1; transform: scale(1); }
   #loadNote {
     position: absolute; left: 6vw; bottom: calc(2vh + env(safe-area-inset-bottom, 0px));
     font-size: 12px; opacity: .55; font-family: Arial, sans-serif; letter-spacing: .04em;
@@ -320,6 +342,14 @@
 <div id="mute" title="mute music (M)">♪</div>
 
 <div id="overlay">
+  <div id="loadScreen" aria-hidden="true">
+    <div class="slide" style="background-image:url('./assets/ui/loading/aesthetic.jpg')"></div>
+    <div class="slide" style="background-image:url('./assets/ui/loading/neon-bayou.jpg')"></div>
+    <div class="slide" style="background-image:url('./assets/ui/loading/happy-hogs.jpg')"></div>
+    <div class="slide" style="background-image:url('./assets/ui/loading/riverboat-night.jpg')"></div>
+    <div class="slide" style="background-image:url('./assets/ui/loading/porch-hangout.jpg')"></div>
+    <div class="slide" style="background-image:url('./assets/ui/loading/popeyes-ad.png')"></div>
+  </div>
   <div id="introPanel">
     <div id="menuLogo">
       <div class="menu-kicker">Grand Theft</div>

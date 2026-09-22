@@ -136,6 +136,7 @@ const overlay = document.getElementById("overlay");
 const loadNote = document.getElementById("loadNote");
 const startBtn = document.getElementById("startBtn");
 const freeBtn = document.getElementById("freeBtn");
+const loadScreen = document.getElementById("loadScreen");
 const hpFill = document.getElementById("hpFill");
 const spFill = document.getElementById("spFill");
 const cansEl = document.getElementById("cans");
@@ -4595,6 +4596,7 @@ async function boot() {
   }
   settleCans();                  // every blocker exists now: no can may sit inside one
   loadNote.textContent = "ready.";
+  stopLoadScreen();
   startBtn.disabled = false;
   freeBtn.disabled = false;
   // Gated the same as Story/Free Roam: applyTier() (called by the Options
@@ -4612,6 +4614,29 @@ async function boot() {
   freeBtn.onclick = () => { pendingLaunch = "free"; selectionIndex = characterIds.indexOf("keseme"); confirmCharacter(); };
 }
 
+// Loading screen: cycles mood art behind the menu for as long as Story/Free
+// Roam/graphics-tier stay disabled above, so the wait reads as an intentional
+// slideshow instead of a stalled page. Stops (and fades to the static cover
+// art) the moment boot() finishes or fails — see stopLoadScreen() calls.
+let loadScreenTimer = null;
+function startLoadScreen() {
+  if (!loadScreen) return;
+  const slides = loadScreen.querySelectorAll(".slide");
+  if (!slides.length) return;
+  let i = 0;
+  slides[0].classList.add("on");
+  loadScreenTimer = setInterval(() => {
+    slides[i].classList.remove("on");
+    i = (i + 1) % slides.length;
+    slides[i].classList.add("on");
+  }, 4200);
+}
+function stopLoadScreen() {
+  if (loadScreenTimer) { clearInterval(loadScreenTimer); loadScreenTimer = null; }
+  if (loadScreen) loadScreen.classList.add("done");
+}
+startLoadScreen();
+
 startBtn.disabled = true;
 freeBtn.disabled = true;
 for (const b of gfxChoices.querySelectorAll("[data-tier]")) b.disabled = true;
@@ -4619,6 +4644,7 @@ tick();
 boot().catch((err) => {
   console.error(err);
   loadNote.textContent = "load error: " + err.message;
+  stopLoadScreen();
 });
 
 let carHornAudioCtx = null;
