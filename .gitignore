@@ -53,3 +53,7 @@ tools/upload-log.txt
 /*.wav
 /*.aiff
 /*.flac
+
+# loose reference/scratch video dropped at the repo root — not game source,
+# keep it local only (same rationale as the loose audio masters above).
+/*.mp4

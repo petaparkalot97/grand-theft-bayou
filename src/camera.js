@@ -23,8 +23,8 @@ import { wrapAngle as wrap, cameraYawToHeading, headingToCameraYaw, forwardFromH
  */
 export const CAMERA_CONFIG = {
   cameraOrbitSensitivity: { x: 0.0024, y: 0.0019 },   // per pixel of mouse movement
-  cameraPitchMin: 0.1,
-  cameraPitchMax: 1.3,
+  cameraPitchMin: -0.6,
+  cameraPitchMax: 1.4,
   yawSmoothing: 22,
   pitchSmoothing: 18,
   collisionPullIn: 20,           // snap in front of a wall quickly…
@@ -192,12 +192,13 @@ export function createCameraController({ camera, dom, canCapture }) {
       // snap in quickly, ease back out — never teleport
       dist += (want - dist) * (1 - Math.exp(-(want < dist ? C.collisionPullIn : C.collisionEaseOut) * dt));
 
+      const camY = Math.max(focus.y + 1.2, focus.y + M.cameraHeight + sinP * dist);
       camera.position.set(
         focus.x + ox * cosP * dist,
-        Math.max(focus.y + 1.2, focus.y + M.cameraHeight + sinP * dist),
+        camY,
         focus.z + oz * cosP * dist,
       );
-      look.set(focus.x, focus.y + (aiming ? (driving ? (M.aimHeight || 1.4) : M.aimHeight) : M.cameraHeight), focus.z);
+      look.set(focus.x, camY - sinP * dist, focus.z);
       if (driving) {
         // look a little ahead of the car, so the road you're heading into is framed
         look.x += Math.sin(veh.heading) * C.driving.lookAhead;

@@ -68,6 +68,9 @@ function makeThree() {
     copy(v) { return this.set(v.x, v.y, v.z); }
     clone() { return new V(this.x, this.y, this.z); }
     add(v) { this.x += v.x; this.y += v.y; this.z += v.z; return this; }
+    sub(v) { this.x -= v.x; this.y -= v.y; this.z -= v.z; return this; }
+    addScaledVector(v, s) { this.x += v.x * s; this.y += v.y * s; this.z += v.z * s; return this; }
+    lerp(v, t) { this.x += (v.x - this.x) * t; this.y += (v.y - this.y) * t; this.z += (v.z - this.z) * t; return this; }
     applyAxisAngle() { return this; }
     multiplyScalar(s) { this.x *= s; this.y *= s; this.z *= s; return this; }
     normalize() { return this; }
@@ -196,7 +199,12 @@ function makeThree() {
     CircleGeometry: geo("CircleGeometry"), RepeatWrapping: 1000,
     MeshStandardMaterial: Material, MeshBasicMaterial: Material,
     CanvasTexture, SRGBColorSpace: "srgb",
-    MathUtils: { smoothstep: (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }, lerp: (a, b, t) => a + (b - a) * t },
+    // `clamp` is characters.js's walk clip scaling its stride with ground speed
+    MathUtils: {
+      clamp: (v, lo, hi) => Math.max(lo, Math.min(hi, v)),
+      smoothstep: (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); },
+      lerp: (a, b, t) => a + (b - a) * t,
+    },
   };
 }
 

@@ -3263,7 +3263,7 @@ function fire() {
   if (!state.veh && getWeaponMuzzle(_muzzleV)) origin.copy(_muzzleV);
 
   const _ray = new THREE.Raycaster();
-  const _crosshairNDC = new THREE.Vector2(0, -0.12);
+  const _crosshairNDC = new THREE.Vector2(0, 0);
   const _aim3D = new THREE.Vector3();
 
   const isAiming = input.isDown("aim") || state.veh;
