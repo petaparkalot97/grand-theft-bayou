@@ -678,12 +678,12 @@ export const FIXTURES = {
   privateRoom(b, s) {
     const w = s.w ?? 7, d = s.d ?? 4, h = 3.1, t = 0.28;
     const wall = b.m("room wall", b.v.theme.interior);
-    b.add(b.G.box(w, h, t), wall, s.x, h / 2, s.z - d / 2, { cast: true });
-    b.add(b.G.box(t, h, d), wall, s.x - w / 2, h / 2, s.z, { cast: true });
+    b.add(b.G.box(w, h, t), wall, s.x, h / 2, s.z - d / 2, { cast: true, wall: true });
+    b.add(b.G.box(t, h, d), wall, s.x - w / 2, h / 2, s.z, { cast: true, wall: true });
     const door = s.door ?? 1.6;
     const side = (d - door) / 2;
-    b.add(b.G.box(t, h, side), wall, s.x + w / 2, h / 2, s.z - (door + side) / 2, { cast: true });
-    b.add(b.G.box(t, h, side), wall, s.x + w / 2, h / 2, s.z + (door + side) / 2, { cast: true });
+    b.add(b.G.box(t, h, side), wall, s.x + w / 2, h / 2, s.z - (door + side) / 2, { cast: true, wall: true });
+    b.add(b.G.box(t, h, side), wall, s.x + w / 2, h / 2, s.z + (door + side) / 2, { cast: true, wall: true });
     b.add(b.G.box(w, 0.12, d), b.m("room floor", b.v.theme.felt, { roughness: 0.9 }), s.x, 0.08, s.z);
     b.add(b.G.box(0.14, 2.5, door), b.gl("room curtain", b.v.theme.accent), s.x + w / 2 + 0.05, 1.35, s.z);
     b.add(b.G.box(w - 1.2, 0.5, 0.9), b.M.velvet, s.x, 0.45, s.z - d / 2 + 0.7);
@@ -691,19 +691,18 @@ export const FIXTURES = {
     b.lit(s.x, 2.4, s.z, 28, 9);
     for (let i = 0; i <= 3; i++) b.block(s.x - w / 2 + (i * w) / 3, s.z - d / 2, 0.5);
     for (let i = 0; i <= 2; i++) b.block(s.x - w / 2, s.z - d / 2 + (i * d) / 2, 0.5);
-    b.block(s.x + w / 2, s.z - d / 2 + 0.4, 0.5);
-    b.block(s.x + w / 2, s.z + d / 2 - 0.4, 0.5);
-    // a guest (or two) behind the curtain — the room exists to have somebody in it
-    b.spot(s.x - 1.1, s.z + 0.3, { beat: "still" });
-    b.spot(s.x + 0.6, s.z - 0.5, { beat: "still" });
+    for (let i = 0; i <= 2; i++) b.block(s.x + w / 2, s.z - d / 2 + (i * d) / 2, 0.5);
+    // inside the room: a seated guest, and someone entertaining them
+    b.spot(s.x, s.z - d / 2 + 0.7, { face: 0, beat: "still" });
+    b.spot(s.x, s.z + 0.6, { face: Math.PI });
   },
 
   /** Backstage: mirrors, a rack of costumes, a bench. */
   dressingRoom(b, s) {
     const w = s.w ?? 10, d = s.d ?? 5, h = 3.1, t = 0.28;
     const wall = b.m("room wall", b.v.theme.interior);
-    b.add(b.G.box(w, h, t), wall, s.x, h / 2, s.z - d / 2, { cast: true });
-    b.add(b.G.box(t, h, d), wall, s.x - w / 2, h / 2, s.z, { cast: true });
+    b.add(b.G.box(w, h, t), wall, s.x, h / 2, s.z - d / 2, { cast: true, wall: true });
+    b.add(b.G.box(t, h, d), wall, s.x - w / 2, h / 2, s.z, { cast: true, wall: true });
     b.add(b.G.box(w, 0.12, d), b.m("room floor", b.v.theme.felt, { roughness: 0.9 }), s.x, 0.08, s.z);
     const mirrors = [], bulbs = [];
     const nm = Math.max(2, Math.round(w / 3));
@@ -912,7 +911,7 @@ export const FIXTURES = {
   /** A painted pool of light on the apron: "the entrance is here", no light cost. */
   spill(b, s) {
     const w = s.w ?? 14, d = s.d ?? 10;
-    b.add(b.G.plane(w, d), b.e("entrance spill", b.v.theme.accent, 0.11), s.x, 0.045, s.z, { rx: -Math.PI / 2 });
+    b.add(b.G.plane(w, d), b.e("entrance spill", b.v.theme.accent, 0.8, { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), s.x, 0.045, s.z, { rx: -Math.PI / 2 });
     b.add(b.G.box(w * 0.28, 0.08, 0.1), b.e("kerb stripe", b.v.theme.accent, 0.7), s.x, 0.1, s.z - d / 2);
   },
 
