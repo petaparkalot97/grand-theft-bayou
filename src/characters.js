@@ -274,27 +274,45 @@ function add(parent, geometry, material, x, y, z) {
   return m;
 }
 
-// The gun arm, per weapon class, carried and aimed. These are the ONLY numbers
-// that know about weapons being held, and they are deliberately about the gun
-// HAND: the support hand is solved onto the weapon (see applyWeaponHold), so a
-// new weapon of a new length gets a correct two-handed hold without a new entry
-// here. `pivot` is [pitch, spread] — the upper arm's forward rotation and how
-// far out from the ribs — and `blade` turns the torso onto the target.
+// The hold, per weapon class, carried and aimed. `hand` is where the GUN HAND
+// goes, as an offset from the gun shoulder pivot in torso space — and nothing
+// else in the game places a weapon, because the weapon hangs off that hand
+// (weapons_3d.js). Two consequences worth stating, since they are the whole
+// reason this is a target and not a pair of joint angles:
+//
+//   * the support hand is solved onto the weapon's actual foregrip, so it works
+//     for any weapon length without a new entry here;
+//   * because BOTH hands are placed from the same two numbers, a gun whose
+//     foregrip is out of reach of the support shoulder is a measurable error at
+//     build time rather than something that "looks a bit off" in the browser.
+//     (tools/qa/weapon_hold_test.mjs measures exactly that.)
+//
+// Earlier this was hand-tuned `pivot`/`elbow` angles instead, and they put the
+// gun hand 0.43 m out in front of the body — further than the support arm can
+// reach, so the off hand floated about 0.4 m short of the foregrip on every
+// two-handed weapon. Reaching across is what puts the gun near the centreline.
+//
+// `blade` turns the torso onto the target, and `pole` is where the elbow bulges
+// (down and out, the way an arm actually holds a gun).
 const HOLD_POSES = {
   pistol: {
-    carry: { pivot: [-1.2, 0.14], elbow: -0.4, blade: 0.16 },
-    aim:   { pivot: [-1.42, 0.1], elbow: -0.18, blade: 0.06 },
+    carry: { hand: [0.10, -0.24, 0.14], pole: [-0.7, -1, -0.2] },
+    aim:   { hand: [0.20, -0.10, 0.30], pole: [-0.7, -1, -0.2] },
+    blade: { carry: 0.20, aim: 0.10 },
   },
   long: {
-    // stock into the shoulder pocket, elbow tucked
-    carry: { pivot: [-1.02, 0.34], elbow: -1.5, blade: 0.3 },
-    aim:   { pivot: [-1.16, 0.26], elbow: -1.22, blade: 0.12 },
+    carry: { hand: [0.22, -0.20, 0.16], pole: [-0.8, -1, -0.1] },
+    aim:   { hand: [0.24, -0.10, 0.22], pole: [-0.8, -1, -0.1] },
+    blade: { carry: 0.34, aim: 0.18 },
   },
   melee: {
-    // bat shouldered: elbow folded, fist up beside the shoulder. A bat is not
-    // sighted, so carry and aim are the same pose.
-    carry: { pivot: [-0.72, 0.5], elbow: -2.3, blade: 0.22 },
-    aim:   { pivot: [-0.72, 0.5], elbow: -2.3, blade: 0.22 },
+    // Bat cocked over the shoulder: elbow folded, fist just in front of and
+    // beside the shoulder at shoulder height. The bat's own angle is set by
+    // weapons_3d.js (`orient: "melee"`), so a bat is never sighted and never
+    // tracks the camera — this only says where the fist is.
+    carry: { hand: [0.10, 0.02, 0.10], pole: [-0.9, -1, 0.35] },
+    aim:   { hand: [0.10, 0.02, 0.10], pole: [-0.9, -1, 0.35] },
+    blade: { carry: 0.22, aim: 0.22 },
   },
 };
 
@@ -1051,40 +1069,45 @@ class Hoodrat extends THREE.Object3D {
     const a = this._holdAim;
 
     const pose = HOLD_POSES[h.kind] || HOLD_POSES.pistol;
-    const pitch = pose.carry.pivot[0] + (pose.aim.pivot[0] - pose.carry.pivot[0]) * a;
-    const spread = pose.carry.pivot[1] + (pose.aim.pivot[1] - pose.carry.pivot[1]) * a;
-    const elbow = pose.carry.elbow + (pose.aim.elbow - pose.carry.elbow) * a;
-    right.pivot.rotation.set(pitch, 0, right.side * spread);
-    right.elbow.rotation.x = elbow;
-
-    // A bladed stance: rotation.y positive swings the −x (right) side forward on
-    // a body that faces +z, so the gun shoulder comes round toward the target.
-    const blade = pose.carry.blade + (pose.aim.blade - pose.carry.blade) * a;
-    this.torso.rotation.y = blade;
-    // keep the head on the target rather than the weapon
-    this.head.rotation.y = -blade * 0.75;
+    const carry = pose.carry, aim = pose.aim;
+    let hx = carry.hand[0] + (aim.hand[0] - carry.hand[0]) * a;
+    let hy = carry.hand[1] + (aim.hand[1] - carry.hand[1]) * a;
+    let hz = carry.hand[2] + (aim.hand[2] - carry.hand[2]) * a;
+    let blade = pose.blade.carry + (pose.blade.aim - pose.blade.carry) * a;
 
     // ---- the melee swing -------------------------------------------------
     // A bat swing is an ARM animation, not a weapon animation: the bat is
-    // welded to the fist (weapons_3d.js), so driving the shoulder, elbow and
-    // torso is what swings it, and it cannot come loose halfway through no
-    // matter how fast the player turns.
+    // welded to the fist (weapons_3d.js), so driving the arm is what swings it,
+    // and it cannot come loose halfway through no matter how fast the player
+    // turns. This moves the FIST — the bat's own angle is swept in
+    // weapons_3d.js, so the two together read as one swing.
     //
-    // `attack` is the attack's progress, 0 → 1. Two overlapping lobes so it
-    // starts and ends at the shoulder with no pop: `windUp` cocks it back, then
-    // `strike` drives it forward and down. (sin at both ends is 0, so the pose
-    // is continuous with the idle shouldered pose that follows.)
+    // `attack` is the attack's progress, 0 → 1, shaped as two overlapping lobes
+    // so the pose starts and ends at the shoulder with no pop: `windUp` cocks
+    // it back, then `strike` drives it forward and down. (sin is 0 at both ends
+    // of each lobe, so this is continuous with the idle hold that follows.)
     if (h.attack > 0) {
       const u = h.attack;
       const windUp = Math.sin(Math.min(1, u / 0.28) * Math.PI);
       const strike = u <= 0.28 ? 0 : Math.sin(((u - 0.28) / 0.72) * Math.PI);
-      right.pivot.rotation.x = pitch + 0.30 * windUp - 0.85 * strike;
-      right.pivot.rotation.z = right.side * (spread + 0.22 * windUp - 0.30 * strike);
-      right.elbow.rotation.x = elbow + 0.35 * windUp + 1.80 * strike;   // folds tighter, then extends through
-      const swung = blade - 0.30 * windUp + 0.55 * strike;              // the whole torso turns into it
-      this.torso.rotation.y = swung;
-      this.head.rotation.y = -swung * 0.75;
+      hx += -0.04 * windUp + 0.14 * strike;
+      hy += 0.04 * windUp - 0.12 * strike;
+      hz += -0.08 * windUp + 0.24 * strike;
+      blade += -0.30 * windUp + 0.60 * strike;          // the whole torso turns into it
     }
+
+    // A bladed stance: rotation.y positive swings the −x (right) side forward on
+    // a body that faces +z, so the gun shoulder comes round toward the target.
+    this.torso.rotation.y = blade;
+    // keep the head on the target rather than the weapon
+    this.head.rotation.y = -blade * 0.75;
+
+    // The gun arm itself is SOLVED onto that hand target rather than posed by
+    // angles: the weapon is attached to this hand, so putting the hand where the
+    // pose says is the same thing as putting the weapon where it should be.
+    const P = right.pivot.position;
+    _ikTarget.set(P.x + hx, P.y + hy, P.z + hz);
+    solveArm(right, _ikTarget, _ikPole.set(carry.pole[0], carry.pole[1], carry.pole[2]));
 
     if (h.kind === "long" && h.support) {
       // torso.worldToLocal needs the world matrices, which the caller refreshed

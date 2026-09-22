@@ -24,60 +24,13 @@ import * as THREE from "three";
 // matrix / quaternion / scene-graph math. Everything below is a transform
 // question, so without this the answers would all be "0, 0, 0".
 import "./lib/three_math.mjs";
+import { installBrowserStub } from "./lib/browser_stub.mjs";
 
 // characters.js pulls in graphics.js, which builds its surface noise maps on a
-// real <canvas>. There is no DOM here, so stand one up before those modules are
-// evaluated — the noise is read back as raw pixel data and never rendered, so a
-// buffer that returns zeros is enough to build the rig. This has to happen in a
-// module body with dynamic imports below, because static imports are evaluated
-// before any of this file's code runs.
-const CTX_IMPL = {
-  createImageData: (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
-  getImageData: (x, y, w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
-  measureText: () => ({ width: 0 }),
-  createLinearGradient: () => ({ addColorStop() {} }),
-  createRadialGradient: () => ({ addColorStop() {} }),
-};
-// A canvas context where every drawing call is a no-op and every property is
-// assignable — the texture code only ever needs the image buffers back.
-const _ctx = () => new Proxy({}, {
-  get: (t, k) => (k in CTX_IMPL ? CTX_IMPL[k] : k in t ? t[k] : () => {}),
-  set: (t, k, v) => { t[k] = v; return true; },
-});
-// A DOM just big enough for characters.js (canvas textures) and weapons.js
-// (its HUD panel): elements accept the calls those two make and nothing more.
-function makeEl(tag) {
-  const el = {
-    tagName: String(tag).toUpperCase(), id: "", className: "", textContent: "", innerHTML: "",
-    hidden: false, width: 0, height: 0, dataset: {}, children: [], parentNode: null,
-    style: { cssText: "", setProperty() {}, removeProperty() {}, getPropertyValue: () => "" },
-    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
-    appendChild(c) { this.children.push(c); if (c) c.parentNode = this; return c; },
-    insertBefore(c) { return this.appendChild(c); },
-    replaceChildren(...c) { this.children = c; },
-    removeChild(c) { this.children = this.children.filter((x) => x !== c); return c; },
-    remove() {}, setAttribute() {}, getAttribute: () => null, removeAttribute() {},
-    addEventListener() {}, removeEventListener() {}, dispatchEvent() {},
-    querySelector: () => null, querySelectorAll: () => [], closest: () => null,
-    focus() {}, blur() {}, click() {},
-    getBoundingClientRect: () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }),
-    getContext: tag === "canvas" ? _ctx : undefined,
-  };
-  return el;
-}
-const _byId = new Map();
-globalThis.document = {
-  createElement: makeEl,
-  createElementNS: (_ns, tag) => makeEl(tag),
-  getElementById: (id) => _byId.get(id) || null,
-  querySelector: () => null,
-  querySelectorAll: () => [],
-  addEventListener() {}, removeEventListener() {},
-  head: makeEl("head"),
-  body: makeEl("body"),
-};
-globalThis.devicePixelRatio = 1;
-globalThis.window = globalThis;
+// real <canvas>, and weapons.js writes a HUD panel into the document. Neither
+// exists in node, so stand them up before those modules are evaluated — which is
+// why they are dynamic imports: static ones all run before this file's body.
+installBrowserStub();
 
 const { makeHoodrat } = await import("../../src/characters.js");
 const {
@@ -98,7 +51,10 @@ const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 // ---------------------------------------------------------------- the world
 const scene = new THREE.Scene();
 initWeapons3D(scene);
-const actor = makeHoodrat({ height: 1.8 });
+// Fixed seed: the rig is randomised (bulk, palette), and a threshold that passes
+// for one body and fails for another is not a test. Every measurement here is
+// against this one 1.80 m body.
+const actor = makeHoodrat({ height: 1.8, seed: 777 });
 scene.add(actor);
 const playerPos = new THREE.Vector3(0, 0, 0);
 actor.position.copy(playerPos);
@@ -110,11 +66,14 @@ const handWorld = (arm) => arm.hand.getWorldPosition(new THREE.Vector3());
  * One tick, in the same order main.js runs it: pose/position the actor, then the
  * weapon after it. `frames` lets recoil/reload/swing settle over time.
  */
-function tick(weaponId, { aim, firing = false, frames = 1, dt = 1 / 60, yaw = 0 } = {}) {
+function tick(weaponId, { aim, firing = false, frames = 1, dt = 1 / 60, yaw = 0, pin = false } = {}) {
   actor.rotation.y = yaw;
+  if (pin) actor._last.copy(actor.position);   // don't let a teleport read as running
   const cam = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
   for (let i = 0; i < frames; i++) {
     actor.update(dt);
+    if (pin) actor._yaw = yaw;                 // the walk cycle would re-derive it
+    actor.rotation.y = yaw;
     updateWeapon3D(actor, playerPos, cam, weaponId, dt, aim, false, firing);
   }
   return cam;
@@ -136,8 +95,11 @@ for (const id of Object.keys(WEAPON_RIGS)) {
   const gW = grip.getWorldPosition(new THREE.Vector3());
   const hW = handWorld(actor.rightArm);
   const off = d(gW, hW);
-  const want = Math.hypot(...WEAPON_RIGS[id].handOffset);
-  check(`[${id}] grip sits in the fist`, off <= want + 1e-6, `off=${off.toFixed(5)} handOffset=${want.toFixed(5)}`);
+  // handOffset is in hand-socket units, so the expected world distance is it
+  // scaled by the body. This is an equality, not an "is it small" — the grip is
+  // placed from the hand, and if anything else ever moved it, it would show.
+  const want = Math.hypot(...WEAPON_RIGS[id].handOffset) * actor.scale.x;
+  check(`[${id}] grip sits in the fist`, Math.abs(off - want) < 1e-6, `off=${off.toFixed(6)} handOffset(scaled)=${want.toFixed(6)}`);
 
   // Grip-at-origin: the model's own origin is the grip, so rotating the weapon
   // is rotating about the point the hand holds. If a model were built
@@ -148,20 +110,31 @@ for (const id of Object.keys(WEAPON_RIGS)) {
 }
 
 // ---------------------------------------------------------------- 2. no floating: it follows the actor
+// The old build was a "view model" parked at the player's world position, which
+// is why a weapon could sit beside the player instead of in a hand. The property
+// that rules that out is rigidity: the vector from the HAND to the MUZZLE must
+// not depend on where the character is standing. Measure it standing still, walk
+// the character to a new spot, and measure it again.
 {
   const id = "pistol";
-  tick(id, { aim: false, frames: 20 });
-  const before = getWeaponMuzzle(new THREE.Vector3());
-  const gripBefore = actor.rightArm.hand.getObjectByName("weaponGrip").getWorldPosition(new THREE.Vector3());
+  const rigOffset = () => {
+    const m = getWeaponMuzzle(new THREE.Vector3());
+    const h = handWorld(actor.rightArm);
+    return { muzzle: m, hand: h, rel: m.clone().sub(h) };
+  };
+  tick(id, { aim: false, frames: 30, pin: true });
+  const a = rigOffset();
   actor.position.set(7, 0, -4);
-  tick(id, { aim: false, frames: 20 });
-  const after = getWeaponMuzzle(new THREE.Vector3());
-  const gripAfter = actor.rightArm.hand.getObjectByName("weaponGrip").getWorldPosition(new THREE.Vector3());
-  const moved = d(after, before);
-  const body = d(actor.position, new THREE.Vector3(0, 0, 0));
-  check("weapon teleports with the actor (no world-parked view model)", Math.abs(moved - body) < 1e-4, `muzzle moved ${moved.toFixed(3)} body moved ${body.toFixed(3)}`);
-  check("grip rides the hand to the new position", Math.abs(d(gripAfter, gripBefore) - body) < 1e-4);
+  tick(id, { aim: false, frames: 30, pin: true });
+  const b = rigOffset();
+  check("the muzzle is rigid relative to the hand, wherever the actor is", a.rel.distanceTo(b.rel) < 1e-6,
+    `relative offset changed by ${a.rel.distanceTo(b.rel).toFixed(6)}`);
+  check("the weapon actually travelled with the actor", b.muzzle.distanceTo(a.muzzle) > 7,
+    `moved ${b.muzzle.distanceTo(a.muzzle).toFixed(3)}m`);
+  check("the grip is still in the fist after the move",
+    d(actor.rightArm.hand.getObjectByName("weaponGrip").getWorldPosition(new THREE.Vector3()), b.hand) < 1e-6);
   actor.position.copy(playerPos);
+  tick(id, { aim: false, frames: 5 });
 }
 
 // ---------------------------------------------------------------- 3. per-weapon arm pose
@@ -169,14 +142,21 @@ for (const id of Object.keys(WEAPON_RIGS)) {
 // hand onto the foregrip. If both hands landed in the same place the two-handed
 // IK would be doing nothing.
 {
-  tick("pistol", { aim: false, frames: 30 });
+  tick("pistol", { aim: false, frames: 40 });
   const pistolLeft = handWorld(actor.leftArm);
-  const pistolRight = handWorld(actor.rightArm);
-  tick("deerRifle", { aim: true, frames: 30 });
+  tick("deerRifle", { aim: true, frames: 40 });
   const rifleLeft = handWorld(actor.leftArm);
-  const rifleRight = handWorld(actor.rightArm);
   check("two-handed pose moves the SUPPORT hand", d(pistolLeft, rifleLeft) > 0.12, `moved ${d(pistolLeft, rifleLeft).toFixed(3)}`);
-  check("gun hand stays on the grip in both poses", d(pistolRight, rifleRight) > 0.0 && d(actor.rightArm.hand.getObjectByName("weaponGrip").getWorldPosition(new THREE.Vector3()), rifleRight) < 1e-5);
+  check("the off hand is loose for a one-handed weapon",
+    Math.abs(pistolLeft.y - handWorld(actor.rightArm).y) > 0.05 || pistolLeft.x > 0.3);
+  // The weapon's grip is placed BY the gun hand, so this is the identity that
+  // makes the whole scheme work: grip == hand + handOffset, every frame.
+  const grip = actor.rightArm.hand.getObjectByName("weaponGrip").getWorldPosition(new THREE.Vector3());
+  const hand = handWorld(actor.rightArm);
+  // handOffset is in hand-socket units, so it scales with the character
+  const want = Math.hypot(...WEAPON_RIGS.deerRifle.handOffset) * actor.scale.x;
+  check("gun hand places the grip exactly", Math.abs(d(grip, hand) - want) < 1e-6,
+    `|grip-hand|=${d(grip, hand).toFixed(5)} handOffset(scaled)=${want.toFixed(5)}`);
 }
 
 // ---------------------------------------------------------------- 4. the support hand is ON the foregrip
@@ -195,9 +175,12 @@ for (const id of Object.keys(WEAPON_RIGS)) {
   const want = new THREE.Vector3(...def.foregrip).applyMatrix4(grip.matrixWorld);
   const got = handWorld(actor.leftArm);
   const err = d(want, got);
-  // the solver clamps at the arm chain's reach, so allow the chain length
-  const reach = actor.leftArm.upper + actor.leftArm.fore;
-  check(`[${id}] support hand reaches the foregrip`, err < 0.16, `off by ${err.toFixed(3)}m (arm reach ${reach.toFixed(2)}m) want=${fmt(want)} got=${fmt(got)}`);
+  // The arm chain is 0.51 m long, so a foregrip further than that from the
+  // support shoulder is physically unreachable and the fist stops short. 5 cm is
+  // the budget: comfortably "on the foregrip" on a 1.8 m body, and tight enough
+  // that moving a weapon's foregrip out of reach fails the test.
+  const reach = (actor.leftArm.upper + actor.leftArm.fore) * actor.scale.x;
+  check(`[${id}] support hand reaches the foregrip`, err < 0.05, `off by ${err.toFixed(3)}m (arm reach ${reach.toFixed(2)}m) want=${fmt(want)} got=${fmt(got)}`);
   check(`[${id}] muzzle is not at the grip (a real barrel)`, d(new THREE.Vector3(...def.muzzleOffset), new THREE.Vector3()) > 0.1);
   void cam;
 }
@@ -253,28 +236,51 @@ for (const id of Object.keys(WEAPON_RIGS)) {
 }
 
 // ---------------------------------------------------------------- 7. melee swing stays in the hand
+// A bat swing is an arm animation plus a swept bat angle, and the thing that must
+// hold through all of it is the grip staying in the fist. "The hand moved 0.45 m"
+// is not a failure — that IS the swing — so the assertion is on the grip-to-hand
+// vector, which must be rigid the whole way through.
 {
   const id = "bat";
-  tick(id, { aim: false, frames: 30 });
-  const grip = actor.rightArm.hand.getObjectByName("weaponGrip");
-  const muzzleRest = new THREE.Vector3(...WEAPON_RIGS[id].muzzleOffset).applyMatrix4(grip.matrixWorld);
+  const grip = () => actor.rightArm.hand.getObjectByName("weaponGrip");
+  tick(id, { aim: false, frames: 40 });
+  const muzzleRest = getWeaponMuzzle(new THREE.Vector3());
   const handRest = handWorld(actor.rightArm);
+  const handOffsetMag = Math.hypot(...WEAPON_RIGS[id].handOffset) * actor.scale.x;
+
   playFireAnim3D(id, true);
-  let maxMuzzleMove = 0, maxHandMove = 0, sawSwing = false;
+  let maxMuzzleMove = 0, maxHandMove = 0, maxGripSlip = 0, sawSwing = false, minAng = Infinity, maxAng = -Infinity;
   for (let i = 0; i < 30; i++) {
     tick(id, { aim: false, frames: 1 });
     if (weaponRigState().anim === "swing") sawSwing = true;
+    const hand = handWorld(actor.rightArm);
     maxMuzzleMove = Math.max(maxMuzzleMove, d(getWeaponMuzzle(new THREE.Vector3()), muzzleRest));
-    maxHandMove = Math.max(maxHandMove, d(handWorld(actor.rightArm), handRest));
+    maxHandMove = Math.max(maxHandMove, d(hand, handRest));
+    maxGripSlip = Math.max(maxGripSlip, Math.abs(d(grip().getWorldPosition(new THREE.Vector3()), hand) - handOffsetMag));
+    // The bat's angle in the BODY's sagittal plane: 0° is level and forward,
+    // +90° straight up, ±180° straight back. (asin(dir.y) would be a bad measure
+    // here — it is not monotonic through a swing that passes over the head.)
+    const dir = getWeaponMuzzleDir(new THREE.Vector3());
+    const ang = Math.atan2(dir.y, dir.x * Math.sin(actor.rotation.y) + dir.z * Math.cos(actor.rotation.y));
+    minAng = Math.min(minAng, ang); maxAng = Math.max(maxAng, ang);
   }
+  const deg = (r) => ((r * 180) / Math.PI).toFixed(0);
   check("bat swing is animated", sawSwing);
-  check("bat swing moves the bat a lot", maxMuzzleMove > 0.4, `moved ${maxMuzzleMove.toFixed(3)}m`);
-  check("bat never leaves the hand mid-swing", maxHandMove < 0.35, `hand moved ${maxHandMove.toFixed(3)}m`);
-  const gripNow = actor.rightArm.hand.getObjectByName("weaponGrip").getWorldPosition(new THREE.Vector3());
-  check("grip is still in the fist after the swing", d(gripNow, handWorld(actor.rightArm)) < 0.02);
+  check("bat swing actually swings the bat", maxMuzzleMove > 0.4, `moved ${maxMuzzleMove.toFixed(3)}m`);
+  check("bat never leaves the hand mid-swing", maxGripSlip < 1e-6, `grip slipped ${maxGripSlip.toFixed(6)}m`);
+  check("the ARM moves too (the swing is not just the bat rotating)", maxHandMove > 0.05, `hand moved ${maxHandMove.toFixed(3)}m`);
+  // Cocked back over the shoulder at rest, carried over the head and down
+  // through level on the strike: an arc of well over a right angle.
+  check("the swing sweeps an arc, not a wobble", maxAng - minAng > 1.4, `bat angle ${deg(minAng)}°..${deg(maxAng)}°`);
+  check("the bat rests cocked back over the shoulder", maxAng > 2.0, `rest ${deg(maxAng)}°`);
+  check("it is never carried down past the knees", minAng > -0.35, `lowest ${deg(minAng)}°`);
   // returns to rest rather than freezing mid-swing
   tick(id, { aim: false, frames: 40 });
-  check("swing returns to the shouldered pose", d(getWeaponMuzzle(new THREE.Vector3()), muzzleRest) < 0.05);
+  check("swing returns to the shouldered pose", d(getWeaponMuzzle(new THREE.Vector3()), muzzleRest) < 0.02,
+    `off by ${d(getWeaponMuzzle(new THREE.Vector3()), muzzleRest).toFixed(4)}`);
+  check("grip is still in the fist after the swing",
+    Math.abs(d(grip().getWorldPosition(new THREE.Vector3()), handWorld(actor.rightArm)) - handOffsetMag) < 1e-6,
+    `|grip-hand|=${d(grip().getWorldPosition(new THREE.Vector3()), handWorld(actor.rightArm)).toFixed(6)} expected ${handOffsetMag.toFixed(6)}`);
 }
 
 // ---------------------------------------------------------------- 8. reload dip
@@ -282,12 +288,20 @@ for (const id of Object.keys(WEAPON_RIGS)) {
   const id = "pistol";
   tick(id, { aim: true, frames: 40 });
   const rest = getWeaponMuzzle(new THREE.Vector3());
+  const handOffsetMag = Math.hypot(...WEAPON_RIGS[id].handOffset) * actor.scale.x;
   notifyReload3D(id, 1.1);
-  tick(id, { aim: true, frames: 4 });
-  check("reload dips the weapon", d(getWeaponMuzzle(new THREE.Vector3()), rest) > 0.02);
-  check("reload keeps the grip in the hand", d(actor.rightArm.hand.getObjectByName("weaponGrip").getWorldPosition(new THREE.Vector3()), handWorld(actor.rightArm)) < 1e-6);
-  tick(id, { aim: true, frames: 90 });
-  check("reload returns to the aim pose", d(getWeaponMuzzle(new THREE.Vector3()), rest) < 0.05);
+  let maxDip = 0, maxSlip = 0;
+  for (let i = 0; i < 60; i++) {          // through the dip and most of the way back
+    tick(id, { aim: true, frames: 1 });
+    maxDip = Math.max(maxDip, d(getWeaponMuzzle(new THREE.Vector3()), rest));
+    const gp = actor.rightArm.hand.getObjectByName("weaponGrip").getWorldPosition(new THREE.Vector3());
+    maxSlip = Math.max(maxSlip, Math.abs(d(gp, handWorld(actor.rightArm)) - handOffsetMag));
+  }
+  check("reload dips the weapon", maxDip > 0.08, `dipped ${maxDip.toFixed(3)}m`);
+  check("reload keeps the grip in the hand", maxSlip < 1e-6, `slipped ${maxSlip.toFixed(6)}m`);
+  tick(id, { aim: true, frames: 60 });
+  check("reload returns to the aim pose", d(getWeaponMuzzle(new THREE.Vector3()), rest) < 0.02,
+    `off by ${d(getWeaponMuzzle(new THREE.Vector3()), rest).toFixed(4)}`);
 }
 
 // ---------------------------------------------------------------- 9. switching weapons

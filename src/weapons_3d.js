@@ -245,15 +245,15 @@ function swapInGlbRifle(model) {
  */
 export const WEAPON_RIGS = Object.freeze({
   bat: {
-    // `orient: "hand"` keeps the bat rigid in the fist instead of sighting it
-    // down the camera, and `rotationOffset` lays it along the forearm: hand -y
-    // is the direction the forearm runs, so a bat rotated ~90° about x is a
-    // straight extension of the arm past the fist — the handle end where the
-    // palm closes, the barrel out beyond. That is what makes the arm and the
-    // bat read as one limb with a hand in the middle of it, rather than a bat
-    // standing next to a man.
-    type: "melee", hold: "melee", orient: "hand", twoHanded: false,
-    handOffset: [0, 0.005, 0.01], gripOffset: [0, 0, 0], rotationOffset: [1.42, 0.08, 0.12],
+    // `orient: "melee"` gives the bat its own angle instead of sighting it down
+    // the camera (see `meleeAim` below): cocked back over the shoulder at rest,
+    // swept down and through on the strike. It is deliberately NOT aimed at the
+    // crosshair — a bat is not a sighting device — and NOT left rigid in the
+    // wrist either, because the wrist tumbles through every walk and dance clip
+    // and a bat bolted to it would wave around on its own. rotationOffset is
+    // identity: the model's +z IS the bat, so the solved direction is the bat.
+    type: "melee", hold: "melee", orient: "melee", twoHanded: false,
+    handOffset: [0, 0.005, 0.01], gripOffset: [0, 0, 0], rotationOffset: [0, 0, 0],
     scale: 1, muzzleOffset: [0, 0, 0.78], foregrip: null,
     recoil: { pitch: 0.5, yaw: 0.1, kick: 0.03, time: 0.3 }, layer: 2,
   },
@@ -266,7 +266,11 @@ export const WEAPON_RIGS = Object.freeze({
   tec9: {
     type: "smg", hold: "long", orient: "aim", twoHanded: true,
     handOffset: [0, 0.0, -0.02], gripOffset: [0, 0, 0], rotationOffset: [0, 0, 0],
-    scale: 1, muzzleOffset: [0, 0.042, 0.35], foregrip: [0, -0.01, 0.21],
+    // foregrip is the FOREGRIP/forend modelled in the build above, measured from
+    // the grip — and it is also the one distance the support arm has to be able
+    // to reach across to, so it is kept near the weapon's actual forend rather
+    // than slid forward for looks. weapon_hold_test.mjs measures that reach.
+    scale: 1, muzzleOffset: [0, 0.042, 0.35], foregrip: [0, -0.02, 0.20],
     recoil: { pitch: 0.22, yaw: 0.14, kick: 0.03, time: 0.12 }, layer: 1,
   },
   sawnoff: {
@@ -278,13 +282,31 @@ export const WEAPON_RIGS = Object.freeze({
   deerRifle: {
     type: "rifle", hold: "long", orient: "aim", twoHanded: true,
     handOffset: [0, 0.0, -0.03], gripOffset: [0, 0, 0], rotationOffset: [0, 0, 0],
-    scale: 1, muzzleOffset: [0, 0.045, 0.6], foregrip: [0, 0.01, 0.21],
+    scale: 1, muzzleOffset: [0, 0.045, 0.6], foregrip: [0, 0.012, 0.16],
     recoil: { pitch: 0.5, yaw: 0.08, kick: 0.06, time: 0.5 }, layer: 1,
   },
 });
 
 const FALLBACK = "pistol";
 const rigFor = (id) => WEAPON_RIGS[id] || WEAPON_RIGS[FALLBACK];
+
+// ------------------------------------------------------------ the melee arc
+// Where a bat points, through the swing. Measured in the BODY's vertical plane
+// as an elevation off horizontal-forward: positive is up. ~125° is up and behind
+// the shoulder (cocked); the strike carries it down to ~+20°, level and forward,
+// which is the point in a swing that actually connects.
+//
+// This lives here rather than in characters.js because it is the WEAPON's angle,
+// the same as a gun's barrel direction — the arm only decides where the fist is.
+// The two are animated to the same clock (`attack`), so they read as one swing.
+const MELEE_REST = 2.44;      // rad, ~140°: laid back over the shoulder
+const MELEE_SWEEP = 1.92;     // rad, ~110° of arc, down to ~30° above horizontal
+// The bat also leans OUT of the body's sagittal plane, on the side the gun hand
+// is on. Without it the bat is coplanar with the spine, and a 0.78 m handle
+// resting on a shoulder passes through the head on its way back. (Every
+// character in the game is right-handed: `side` +1 is the support arm and the
+// weapon hangs off the −x shoulder — see characters.js.)
+const MELEE_OUT = -0.28;
 
 // ---------------------------------------------------------------- the rig
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _qIdent = new THREE.Quaternion();
@@ -384,12 +406,6 @@ function detach() {
  * wrist tumbles underneath it.
  */
 function solveGrip(actor, wantDir) {
-  if (rig.def.orient === "hand") {
-    // Rigid in the fist — a bat is an extension of the arm, not a sighting
-    // device. `rotationOffset` on the model is the tuning knob.
-    rig.grip.quaternion.identity();
-    return;
-  }
   _fwd.copy(wantDir);
   if (_fwd.lengthSq() < 1e-8) _fwd.set(0, 0, 1);
   _fwd.normalize();
@@ -473,13 +489,26 @@ export function updateWeapon3D(actor, playerPos, aimDir, stateWeapon, dt, aiming
 
   // 2. into the hand
   rig.grip.position.set(rig.def.handOffset[0], rig.def.handOffset[1], rig.def.handOffset[2]);
-  _goal.copy(aimDir);
-  if (!aiming && !firing) {
-    // Not aiming or shooting: point along the body rather than the camera, so
-    // the weapon does not swing around when the player looks about while
-    // walking. On the trigger it follows the true aim, because a muzzle that
-    // disagrees with the shot is the one thing a player always notices.
-    _goal.set(Math.sin(actor.rotation.y), 0, Math.cos(actor.rotation.y));
+  if (rig.def.orient === "melee") {
+    // The bat's own arc, in the body's vertical plane, so it swings with the
+    // torso and cannot be waved about by the wrist.
+    const u = attack;
+    const windUp = Math.sin(Math.min(1, u / 0.28) * Math.PI);
+    const strike = u <= 0.28 ? 0 : Math.sin(((u - 0.28) / 0.72) * Math.PI);
+    const th = MELEE_REST + 0.18 * windUp - MELEE_SWEEP * strike;
+    const yaw = actor.rotation.y, sy = Math.sin(yaw), cy = Math.cos(yaw);
+    // body-local direction, then rotated by the body's yaw
+    const lx = MELEE_OUT, ly = Math.sin(th), lz = Math.cos(th);
+    _goal.set(lx * cy + lz * sy, ly, -lx * sy + lz * cy);
+  } else {
+    _goal.copy(aimDir);
+    if (!aiming && !firing) {
+      // Not aiming or shooting: point along the body rather than the camera, so
+      // the weapon does not swing around when the player looks about while
+      // walking. On the trigger it follows the true aim, because a muzzle that
+      // disagrees with the shot is the one thing a player always notices.
+      _goal.set(Math.sin(actor.rotation.y), 0, Math.cos(actor.rotation.y));
+    }
   }
   solveGrip(actor, _goal);
   applyRecoil(dt);

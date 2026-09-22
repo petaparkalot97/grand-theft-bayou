@@ -66,6 +66,16 @@ V.setFromMatrixScale = function (m) {
 };
 V.negate = function () { this.x = -this.x; this.y = -this.y; this.z = -this.z; return this; };
 V.lerpVectors = function (a, b, t) { return this.subVectors(b, a).multiplyScalar(t).add(a); };
+// Euler.setFromQuaternion, XYZ order — used by the rotation/quaternion sync
+// below. (The stub's "Euler" is a Vector3, so it is a method here instead.)
+V.setFromQuaternion = function (q) {
+  const clamp = (v) => (v < -1 ? -1 : v > 1 ? 1 : v);
+  const t0 = 2 * (q.w * q.x + q.y * q.z), t1 = 1 - 2 * (q.x * q.x + q.y * q.y);
+  const t2 = clamp(2 * (q.w * q.y - q.z * q.x));
+  const t3 = 2 * (q.w * q.z + q.x * q.y), t4 = 1 - 2 * (q.y * q.y + q.z * q.z);
+  this.x = Math.atan2(t0, t1); this.y = Math.asin(t2); this.z = Math.atan2(t3, t4);
+  return this;
+};
 
 // ---------------------------------------------------------------- Quaternion
 const Q = Quaternion.prototype;
@@ -128,6 +138,28 @@ Q.normalize = function () {
   return this;
 };
 Q.dot = function (q) { return this.x * q.x + this.y * q.y + this.z * q.z + this.w * q.w; };
+
+// three keeps an Object3D's `rotation` (Euler) and `quaternion` in sync through
+// a pair of onChange callbacks, and updateMatrix composes the QUATERNION. The
+// stub has neither, and that difference matters twice over:
+//
+//   * without a sync, a node posed by Euler angles and then IK'd by quaternion
+//     gets posed by BOTH — which is how the support hand first measured 0.4 m
+//     off its foregrip, with nothing wrong in the game code;
+//   * and composing from the Euler would round-trip through atan2/asin every
+//     frame, which is lossy and degenerate near gimbal lock, so a shoulder
+//     solved by IK would not land where it was solved to.
+//
+// So: `_q` is authoritative (as in three), `rotation` is a mirror that is
+// recomputed from it only when it has actually gone stale, and every write to a
+// rotation field rebuilds the quaternion. Quaternion mutations just mark the
+// mirror stale — Object3D.updateMatrix then reads the quaternion, exactly like
+// the real thing.
+const _sync = (q) => { const o = q._owner; if (o) o._rotStale = true; };
+for (const name of ["identity", "copy", "set", "setFromAxisAngle", "setFromEuler", "setFromRotationMatrix", "multiply", "premultiply", "multiplyQuaternions", "invert", "conjugate", "normalize"]) {
+  const fn = Q[name];
+  Q[name] = function (...args) { const r = fn.apply(this, args); _sync(this); return r; };
+}
 
 // ---------------------------------------------------------------- Matrix4
 // Own `elements` never exists on a stub instance, so a prototype getter is both
@@ -294,20 +326,59 @@ const _m4copy = new Matrix4();
 // (the support-hand IK in characters.js) works exactly as in the browser.
 if (!("quaternion" in Object3D.prototype)) {
   Object.defineProperty(Object3D.prototype, "quaternion", {
-    get() { return this._q || (this._q = new Quaternion()); },
-    set(v) { this._q = v; },
+    get() {
+      if (!this._q) { this._q = new Quaternion(); this._q._owner = this; }
+      return this._q;
+    },
+    set(v) { this._q = v; if (v) v._owner = this; },
     configurable: true,
   });
 }
 
-const _qEuler = new Quaternion();
+// The Euler mirror: x/y/z assignments rebuild the quaternion (Euler XYZ, three's
+// default order), and the whole object is refreshed in place from the quaternion
+// whenever something else wrote it, so a held reference stays valid.
+const _rotTmp = new Vector3();
+function makeEuler(owner) {
+  const e = { order: "XYZ", _x: 0, _y: 0, _z: 0 };
+  const apply = () => {
+    owner.quaternion.setFromEuler(e._x, e._y, e._z);
+    owner._rotStale = false;          // this write IS the mirror — not stale
+  };
+  Object.defineProperty(e, "x", { get: () => e._x, set: (v) => { e._x = v; apply(); }, enumerable: true });
+  Object.defineProperty(e, "y", { get: () => e._y, set: (v) => { e._y = v; apply(); }, enumerable: true });
+  Object.defineProperty(e, "z", { get: () => e._z, set: (v) => { e._z = v; apply(); }, enumerable: true });
+  e.set = (x, y, z) => { e._x = x; e._y = y; e._z = z; apply(); return e; };
+  e.copy = (v) => e.set(v.x, v.y, v.z);
+  e.setFromQuaternion = (q) => {
+    _rotTmp.setFromQuaternion(q);
+    e._x = _rotTmp.x; e._y = _rotTmp.y; e._z = _rotTmp.z; return e;
+  };
+  // Start from whatever the quaternion already says: something may have posed
+  // this node by quaternion (the weapon rig, the support-hand IK) before
+  // anything ever read its rotation.
+  _rotTmp.setFromQuaternion(owner.quaternion);
+  e._x = _rotTmp.x; e._y = _rotTmp.y; e._z = _rotTmp.z;
+  owner._rotStale = false;
+  return e;
+}
+if (!("rotation" in Object3D.prototype)) {
+  Object.defineProperty(Object3D.prototype, "rotation", {
+    get() {
+      if (!this._rot) this._rot = makeEuler(this);
+      if (this._rotStale) { this._rot.setFromQuaternion(this.quaternion); this._rotStale = false; }
+      return this._rot;
+    },
+    // The stub's constructor assigns `this.rotation = new Vector3()`. Swallow it:
+    // the mirror above is created on first read instead.
+    set() {},
+    configurable: true,
+  });
+}
+
 const O = Object3D.prototype;
 O.updateMatrix = function () {
-  // An object can be posed by Euler angles (the rig) or by a quaternion (the
-  // weapon's solved grip, the IK'd shoulder). Both, if both were set.
-  _qEuler.setFromEuler(this.rotation.x, this.rotation.y, this.rotation.z);
-  if (this._q) _qEuler.multiply(this._q);
-  this.matrix.compose(this.position, _qEuler, this.scale);
+  this.matrix.compose(this.position, this.quaternion, this.scale);
   return this;
 };
 O.updateMatrixWorld = function (force = false) {

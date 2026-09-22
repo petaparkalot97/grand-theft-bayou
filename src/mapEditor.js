@@ -249,6 +249,51 @@ export function createMapEditor(ctx) {
   let nextId = 1;
   const gameHud = document.getElementById("hud");   // hidden while the editor's own panels are up
 
+  const undoStack = [];
+  const modifiedWorldRoots = new Set();
+
+  function saveUndoState() {
+    for (const w of selectedWorld) modifiedWorldRoots.add(w.root);
+    if (clipboard) {
+      for (const item of clipboard) if (item.kind === "world") modifiedWorldRoots.add(item.root);
+    }
+    const state = {
+      placements: placements.map(({ id, catalogKey, x, z, ry, dh, ds, dl }) => ({ id, catalogKey, x, z, ry, dh, ds, dl })),
+      world: Array.from(modifiedWorldRoots).map(root => ({ root, x: root.position.x, y: root.position.y, z: root.position.z, ry: root.rotation.y, visible: root.visible }))
+    };
+    undoStack.push(state);
+    if (undoStack.length > 50) undoStack.shift();
+  }
+
+  function undo() {
+    if (!undoStack.length) {
+      if (placements.length > 0) { // Fallback to old behavior if stack empty but placements exist
+        const last = placements.pop();
+        destroyPlacement(last);
+        updateHUD();
+        persist();
+      }
+      return;
+    }
+    const state = undoStack.pop();
+    
+    clearAllPlacements();
+    for (const entry of state.placements) replayPlacement(entry);
+    
+    for (const w of state.world) {
+      w.root.position.set(w.x, w.y, w.z);
+      w.root.rotation.y = w.ry;
+      w.root.visible = w.visible;
+      modifiedWorldRoots.add(w.root);
+    }
+    
+    selectedSet.clear();
+    selectedWorld.clear();
+    onSelectionChanged();
+    updateHUD();
+    persist();
+  }
+
   // Placements a click actually creates go straight into `scene` — same as
   // every other landmark in the game. Tracked here only so Undo can find and
   // remove exactly what one click added (mesh, blocker, light).
@@ -679,16 +724,33 @@ export function createMapEditor(ctx) {
   ctxMenu.style.cssText = "position:fixed;z-index:90;background:#111;border:1px solid #555;border-radius:4px;padding:4px;display:none;flex-direction:column;gap:4px;min-width:120px;box-shadow:0 4px 12px rgba(0,0,0,0.5);";
   document.body.appendChild(ctxMenu);
 
-  const editDesignBtn = document.createElement("button");
-  editDesignBtn.textContent = "Edit design";
-  editDesignBtn.style.cssText = "background:transparent;border:none;color:#fff;text-align:left;padding:6px 12px;cursor:pointer;border-radius:2px;";
-  editDesignBtn.onmouseover = () => editDesignBtn.style.background = "#333";
-  editDesignBtn.onmouseout = () => editDesignBtn.style.background = "transparent";
-  editDesignBtn.onclick = () => {
-    ctxMenu.style.display = "none";
-    openColorEditor();
-  };
+  function makeCtxBtn(text, onClick) {
+    const btn = document.createElement("button");
+    btn.textContent = text;
+    btn.style.cssText = "background:transparent;border:none;color:#fff;text-align:left;padding:6px 12px;cursor:pointer;border-radius:2px;";
+    btn.onmouseover = () => btn.style.background = "#333";
+    btn.onmouseout = () => btn.style.background = "transparent";
+    btn.onclick = (e) => {
+      ctxMenu.style.display = "none";
+      onClick(e);
+    };
+    return btn;
+  }
+
+  const editDesignBtn = makeCtxBtn("Edit design", () => openColorEditor());
   ctxMenu.appendChild(editDesignBtn);
+  
+  const moveBtn = makeCtxBtn("Move", () => copySelection(true, true));
+  ctxMenu.appendChild(moveBtn);
+  
+  const cutBtn = makeCtxBtn("Cut", () => copySelection(true, false));
+  ctxMenu.appendChild(cutBtn);
+  
+  const copyBtn = makeCtxBtn("Copy", () => copySelection(false, false));
+  ctxMenu.appendChild(copyBtn);
+  
+  const pasteBtn = makeCtxBtn("Paste", () => startPaste());
+  ctxMenu.appendChild(pasteBtn);
 
   // ------------------------------------------------------------- color editor
   const colorEditor = document.createElement("div");
@@ -788,6 +850,7 @@ export function createMapEditor(ctx) {
     hIn.oninput = onInput; sIn.oninput = onInput; lIn.oninput = onInput;
 
     colorEditor.querySelector("#ce-apply").onclick = () => {
+      saveUndoState();
       colorEditor.style.display = "none";
       const dh = parseInt(hIn.value, 10), ds = parseInt(sIn.value, 10), dl = parseInt(lIn.value, 10);
       for (const entry of ceTarget) {
@@ -931,7 +994,15 @@ export function createMapEditor(ctx) {
       // right-drag (see the free-fly camera below) still orbits the camera,
       // since a real drag never satisfies this distance check.
       if (active && rightDownClient && Math.hypot(e.clientX - rightDownClient.x, e.clientY - rightDownClient.y) <= CLICK_SLOP) {
-        if (selectedSet.size) {
+        const hasSelection = selectedSet.size > 0 || selectedWorld.size > 0;
+        const hasClipboard = clipboard && clipboard.length > 0;
+        if (hasSelection || hasClipboard) {
+          editDesignBtn.style.display = hasSelection ? "block" : "none";
+          moveBtn.style.display = hasSelection ? "block" : "none";
+          cutBtn.style.display = hasSelection ? "block" : "none";
+          copyBtn.style.display = hasSelection ? "block" : "none";
+          pasteBtn.style.display = hasClipboard ? "block" : "none";
+          
           ctxMenu.style.left = e.clientX + "px";
           ctxMenu.style.top = e.clientY + "px";
           ctxMenu.style.display = "flex";
@@ -953,8 +1024,7 @@ export function createMapEditor(ctx) {
     if (mode === "select") {
       const g = screenToGround(e.clientX, e.clientY);
       if (!g) return;
-      if (!selectedSet.size && !selectedWorld.size) selectNear(g.x, g.z, e.shiftKey);
-      else moveSelectionTo(g.x, g.z);
+      selectNear(g.x, g.z, e.shiftKey);
       return;
     }
     place();
@@ -1181,6 +1251,7 @@ export function createMapEditor(ctx) {
   // to live-transform); world objects are just repositioned in place, since
   // there's no placement function to rebuild them from.
   function moveSelectionTo(x, z) {
+    saveUndoState();
     const center = selectionCenter();
     if (!center) return;
     const dx = x - center.x, dz = z - center.z;
@@ -1201,6 +1272,7 @@ export function createMapEditor(ctx) {
     persist();
   }
   function rotateSelection(delta) {
+    saveUndoState();
     const moved = new Set();
     for (const entry of selectedSet) {
       const spec = CATALOG.find((s) => s.key === entry.catalogKey);
@@ -1218,6 +1290,7 @@ export function createMapEditor(ctx) {
     persist();
   }
   function deleteSelection() {
+    saveUndoState();
     for (const entry of selectedSet) {
       destroyPlacement(entry);
       const i = placements.indexOf(entry);
@@ -1303,7 +1376,7 @@ export function createMapEditor(ctx) {
   // Per the human's own spec: Ctrl+C/X puts the copy straight into the
   // cursor as a holographic preview, ready to click-place — not a separate
   // "now press Ctrl+V" step.
-  function copySelection(cut) {
+  function copySelection(cut, startPastePreview = true) {
     if (!selectedSet.size && !selectedWorld.size) return;
     if (!cut && !selectedSet.size) {
       // Check if we have batched parts that CAN be copied
@@ -1343,13 +1416,14 @@ export function createMapEditor(ctx) {
     // destroys+forgets the catalog entries, soft-hides the world roots (never a
     // real delete for those -- same rule as Backspace).
     if (cut) deleteSelection();
-    startPaste();
+    if (startPastePreview) startPaste();
   }
   const pastePreviewGroup = new THREE.Group();
   scene.add(pastePreviewGroup);
   function startPaste() {
     if (!clipboard || !clipboard.length) return;
     pasting = true;
+    ry = 0;
     ghost.visible = false;
     while (pastePreviewGroup.children.length) pastePreviewGroup.remove(pastePreviewGroup.children[0]);
     for (const item of clipboard) {
@@ -1383,12 +1457,17 @@ export function createMapEditor(ctx) {
   }
   function commitPaste(x, z) {
     if (!clipboard) return;
+    saveUndoState();
     const placed = new Set();
     const movedWorld = new Set();
+    const c = Math.cos(ry), s = Math.sin(ry);
     for (const item of clipboard) {
+      const rdx = item.dx * c - item.dz * s;
+      const rdz = item.dx * s + item.dz * c;
+      const dry = item.dry + ry;
       if (item.kind === "world") {
-        item.root.position.set(x + item.dx, item.baseY, z + item.dz);
-        item.root.rotation.y = item.dry;
+        item.root.position.set(x + rdx, item.baseY, z + rdz);
+        item.root.rotation.y = dry;
         item.root.visible = true;
         movedWorld.add({ root: item.root, name: item.root.name || "unnamed object" });
       } else if (item.kind === "world-copy") {
@@ -1501,6 +1580,7 @@ export function createMapEditor(ctx) {
   }
 
   function place() {
+    saveUndoState();
     const spec = CATALOG[catalogIndex];
     const p = ghost.position;
     placeAt(spec, p.x, p.z, ry);
@@ -1514,19 +1594,14 @@ export function createMapEditor(ctx) {
     for (const l of entry.createdLitSpots || []) removeLitSpot(l);
   }
 
-  function undo() {
-    const last = placements.pop();
-    if (!last) return;
-    destroyPlacement(last);
-    updateHUD();
-    persist();
-  }
+
 
   // Delete mode: remove whatever editor-placed object is nearest the ghost's
   // ground point, as long as it's actually close enough to be "that one" —
   // this only ever finds objects THIS tool tracks in `placements` (its own
   // session, or a loaded save), never the world's authored landmarks.
   function deleteNear(x, z) {
+    saveUndoState();
     let best = -1, bestDist = Infinity;
     placements.forEach((entry, i) => {
       const spec = CATALOG.find((s) => s.key === entry.catalogKey);
@@ -1820,6 +1895,7 @@ export function createMapEditor(ctx) {
     if (pasting) {
       const g = screenToGround(mouseClientX, mouseClientY) || { x, z };
       pastePreviewGroup.position.set(g.x, GROUND_Y, g.z);
+      pastePreviewGroup.rotation.y = ry;
     }
     updateHUD();
   }

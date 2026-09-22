@@ -165,6 +165,79 @@ const mpStart = document.getElementById("mpStart");
 const mpBack = document.getElementById("mpBack");
 const mpMessage = document.getElementById("mpMessage");
 
+// ---------------------------------------------------------------- main menu (GTA-style)
+// Start Game / Options / Exit Game, with Start Game opening onto the existing
+// Story/Free Roam/Multiplayer row (startBtn/freeBtn/multiplayerBtn keep their
+// ids so all the launch wiring further down needs no changes). Pure UI state —
+// nothing here depends on assets being loaded yet.
+const menuPanels = {
+  root: document.getElementById("menuRoot"),
+  start: document.getElementById("menuStartSub"),
+  options: document.getElementById("menuOptionsPanel"),
+  exit: document.getElementById("menuExitPanel"),
+};
+const gfxChoices = document.getElementById("gfxChoices");
+const musicVolumeInput = document.getElementById("musicVolume");
+const muteToggleBtn = document.getElementById("muteToggle");
+const exitYesBtn = document.getElementById("exitYes");
+
+function showMenuPanel(name) {
+  for (const [key, el] of Object.entries(menuPanels)) el.hidden = key !== name;
+  if (name === "options") syncGfxChoices();
+  const first = menuPanels[name].querySelector(".menu-item:not(:disabled)");
+  if (first) first.focus();
+}
+for (const [name, panel] of Object.entries(menuPanels)) {
+  panel.addEventListener("click", (e) => {
+    const menuBtn = e.target.closest("[data-menu]");
+    if (menuBtn) return showMenuPanel(menuBtn.dataset.menu);
+    const backBtn = e.target.closest("[data-back]");
+    if (backBtn) return showMenuPanel(backBtn.dataset.back || "root");
+  });
+  panel.addEventListener("mouseover", (e) => {
+    const item = e.target.closest(".menu-item");
+    if (item && !item.disabled) item.focus();
+  });
+}
+// Arrow-key / Escape navigation, console-menu style. Left alone while a range
+// input (music volume) has focus, so its own native left/right handling isn't
+// fought over.
+document.addEventListener("keydown", (e) => {
+  if (introPanel.hidden || !characterSelect.hidden || !multiplayerPanel.hidden) return;
+  const active = document.activeElement;
+  if (active && active.tagName === "INPUT") return;
+  const openPanel = Object.values(menuPanels).find((el) => !el.hidden);
+  if (!openPanel) return;
+  const items = [...openPanel.querySelectorAll(".menu-item:not(:disabled)")];
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const i = items.indexOf(active);
+    const next = e.key === "ArrowDown" ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+    items[Math.max(0, next)]?.focus();
+  } else if (e.key === "Escape" && openPanel !== menuPanels.root) {
+    showMenuPanel("root");
+  }
+});
+exitYesBtn.addEventListener("click", () => {
+  window.close();
+  setTimeout(() => {
+    menuPanels.exit.innerHTML =
+      '<div class="menu-confirm">Thanks for playing.</div>' +
+      '<div class="menu-confirm-sub">Browsers won’t let a page close its own tab — you can close it now.</div>';
+  }, 250);
+});
+function syncGfxChoices() {
+  for (const b of gfxChoices.querySelectorAll("[data-tier]")) b.classList.toggle("active", b.dataset.tier === GFX.tier);
+}
+for (const b of gfxChoices.querySelectorAll("[data-tier]")) {
+  b.addEventListener("click", () => {
+    GFX.adaptive = false;
+    GFX.tier = b.dataset.tier;
+    applyTier();
+    syncGfxChoices();
+  });
+}
+
 // ---------------------------------------------------------------- renderer / scene
 GFX.tier = autoTier();
 
@@ -1041,7 +1114,23 @@ document.getElementById("mute").onclick = () => toggleMute();
 function toggleMute() {
   music.muted = !music.muted;
   document.getElementById("mute").textContent = music.muted ? "♪̶" : "♪";
+  syncMuteToggle();
 }
+// The main-menu Options panel's own volume/mute controls (set before the game
+// starts, or from Options mid-session). The two music.volume = musicVolume
+// assignments elsewhere (starting the soundtrack fresh) read this instead of
+// a literal, so a choice made in Options survives into the game.
+let musicVolume = 0.55;
+function syncMuteToggle() {
+  muteToggleBtn.textContent = music.muted ? "Off" : "On";
+  muteToggleBtn.classList.toggle("off", music.muted);
+}
+musicVolumeInput.addEventListener("input", () => {
+  musicVolume = Number(musicVolumeInput.value) / 100;
+  music.volume = musicVolume;
+});
+muteToggleBtn.addEventListener("click", () => toggleMute());
+syncMuteToggle();
 
 function registerVehicle(obj, r = 1.8, opts = {}) {
   if (!obj) return null;
@@ -1302,7 +1391,7 @@ function confirmCharacter() {
   if (cfg.campaign === "sync") { prologue.skip(); syncCampaign.start(); return; }
   if (pendingLaunch === "story") prologue.start();
   else {
-    prologue.skip(); music.volume = 0.55; soundtrackReady.then((s) => s.play());
+    prologue.skip(); music.volume = musicVolume; soundtrackReady.then((s) => s.play());
     flashObjective("Click the game to look around with the mouse · Esc releases it");
     // Free Roam: every gun, no reload grind (human request, 2026-09-20).
     // weapons.js checks this flag itself so it survives weapon switches and
@@ -1877,7 +1966,7 @@ async function buildLevel() {
       player.visible = true;
     },
     startMusic: () => {
-      music.volume = 0.55;
+      music.volume = musicVolume;
       soundtrackReady.then((s) => s.play());
     },
     setPopulation: (on) => { populationOn = on; },
@@ -2881,14 +2970,20 @@ function fire() {
   const origin = _tmpV.copy(playerPos).setY(state.veh ? 1.4 : 1.2);
   if (!state.veh && getWeaponMuzzle(_muzzleV)) origin.copy(_muzzleV);
 
+  const isAiming = input.isDown("aim") || state.veh;
+  if (isAiming) {
+    camCtl.forward(_aim);
+  } else {
+    _aim.set(Math.sin(player._yaw), 0, Math.cos(player._yaw));
+  }
+
   if (!state.veh) { 
     attackTimer = 0.42; 
     player.play(gun.melee ? (state.weapon === "bat" ? "swing_bat" : "attack") : "shoot", { fps: 12, loop: false, force: true }); 
-    if (!gun.melee) player._yaw = camCtl.heading;
+    if (!gun.melee && isAiming) player._yaw = camCtl.heading;
     playFireAnim3D(state.weapon, gun.melee); 
   }
 
-  camCtl.forward(_aim);
   let best = null, bestScore = Infinity, bestKind = null, bestDist = 0;
   let hitTargets = [];
 
@@ -3215,7 +3310,7 @@ function tick() {
     // driving (the car is the view) and during cutscenes — without the gate its
     // last pose froze in the world.
     const shooting = input.isDown("attack") && !arsenal.current.melee;
-    updateWeapon3D(player, playerPos, _camFwd, state.weapon, dt, input.isDown("aim"), state.cinematic || !!state.veh, shooting);
+    updateWeapon3D(player, playerPos, _camFwd, state.weapon, dt, input.isDown("aim"), state.cinematic || (!!state.veh && !input.isDown("aim")), shooting);
 
     // Automatic fire: holding the trigger keeps firing at the weapon's own rate.
     // fire() gates on state.fireCd (= 60/rpm), so this cannot outrun the
@@ -4228,6 +4323,10 @@ async function boot() {
   loadNote.textContent = "ready.";
   startBtn.disabled = false;
   freeBtn.disabled = false;
+  // Gated the same as Story/Free Roam: applyTier() (called by the Options
+  // graphics buttons) touches `composer`, which doesn't exist until the
+  // top-level `await createComposer(...)` above resolves.
+  for (const b of gfxChoices.querySelectorAll("[data-tier]")) b.disabled = false;
   const begin = () => {
     overlay.classList.add("hidden");
     crosshair.style.display = "block";
@@ -4241,6 +4340,7 @@ async function boot() {
 
 startBtn.disabled = true;
 freeBtn.disabled = true;
+for (const b of gfxChoices.querySelectorAll("[data-tier]")) b.disabled = true;
 tick();
 boot().catch((err) => {
   console.error(err);
