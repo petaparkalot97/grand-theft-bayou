@@ -204,7 +204,11 @@ export function createPrologue(ctx) {
   }
 
   // ---------------------------------------------------------------- chase
-  const chase = { route: null, wi: 0, speed: 0, lost: 0, shotCd: 3, exchanged: false, start: null };
+  const chase = { route: null, wi: 0, speed: 0, lost: 0, shotCd: 3, exchanged: false, start: null,
+    // `talkCd`: the exchange fires this many seconds into the chase whatever the
+    // gap is. `talking`: the in-flight promise, so the stampede can wait for it
+    // rather than cutting the thief off mid-sentence.
+    talkCd: 2.5, talking: null };
 
   function launchBravado() {
     if (!bravado || chase.route) return;
@@ -271,21 +275,31 @@ export function createPrologue(ctx) {
     chase.lost = gap > 85 ? chase.lost + dt : 0;
     if (chase.lost > 6) { resetChase(); return; }
 
+    // The chase banter is the best writing in the mission and it used to be
+    // gated behind `gap < 26` — a skill check. The rubber band winds the Bravado
+    // up to 27 m/s the moment you close, so a player who never quite catches it
+    // heard none of this, and a player who caught it late heard the first line
+    // and then the stampede cut in. It now plays on its own timer, a beat into
+    // the chase, however the driving is going. Only the SHOOTING still needs him
+    // near enough to shoot at.
+    chase.talkCd -= dt;
+    if (!chase.exchanged && chase.talkCd <= 0) {
+      chase.exchanged = true;
+      chase.talking = dialogue(async (c) => {
+        await say(c, "THIEF", "Back off!");
+        await say(c, "KESEME", "No.");
+        await say(c, "THIEF", "We'll shoot!");
+        await say(c, "KESEME", "That is significantly more persuasive.");
+        if (Math.hypot(playerPos.x - o.position.x, playerPos.z - o.position.z) < 40) shotgunAtPlayer();
+        await say(c, "KESEME", "And unnecessarily loud.");
+      }).then(() => { chase.talking = null; });
+    }
+
     // the thief leans out with a shotgun
     chase.shotCd -= dt;
     if (gap < 26 && chase.shotCd <= 0) {
       chase.shotCd = 2.2 + Math.random() * 1.4;
-      if (!chase.exchanged) {
-        chase.exchanged = true;
-        dialogue(async (c) => {
-          await say(c, "THIEF", "Back off!");
-          await say(c, "KESEME", "No.");
-          await say(c, "THIEF", "We'll shoot!");
-          await say(c, "KESEME", "That is significantly more persuasive.");
-          shotgunAtPlayer();
-          await say(c, "KESEME", "And unnecessarily loud.");
-        });
-      } else {
+      if (chase.exchanged) {
         shotgunAtPlayer();
       }
     }
@@ -671,7 +685,13 @@ export function createPrologue(ctx) {
   function startStampede() {
     if (phase !== "chase") return;
     phase = "stampede";
-    cine.scene(stampede).then(() => {
+    // Let the chase exchange finish first. cine.scene queues, so the stampede
+    // would play after it either way — but `phase` flips synchronously here and
+    // the route stops being driven, so without the wait the thief is left
+    // talking to an empty road. Reaching the end of the route is not a reason to
+    // talk over him.
+    const after = chase.talking || Promise.resolve();
+    after.catch(() => {}).then(() => cine.scene(stampede)).then(() => {
       phase = "hogs";
       ctx.setObjective("Help Bubba clear the hogs off the Bravado.");
     });
