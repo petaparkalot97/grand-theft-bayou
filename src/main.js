@@ -1205,6 +1205,7 @@ let footSpawnCd = 0;      // stagger deputy call-outs — see updateSheriffs
 const cashEl = document.getElementById("cash");
 const clockEl = document.getElementById("clock");
 const starsEl = document.getElementById("stars");
+const zombieKillsEl = document.getElementById("zombieKills");
 const vehIndic = document.getElementById("vehIndic");
 const music = document.getElementById("music");
 // Soundtrack: every audio file in assets/music/ (see the README there), shuffled.
@@ -2826,7 +2827,18 @@ function updateZombiePopulation(dt) {
   // zombies (they're not a place's regular crowd)
   const spot = spawnZones.pick(playerPos, enemies, { minDist: 35, maxDist: 75 });
   if (!spot) return;
-  spawnEnemy("zombie", spot.x, spot.z, spot);
+  // A horde, not a queue: one at a time out of sight reads as a trickle no
+  // matter how low ZOMBIE_CAP is set. Drop a knot of 3-6 at the same spot,
+  // jittered so they don't spawn stacked on top of each other — npc.js's
+  // zombie branch then keeps a wandering knot loosely together (herding
+  // toward its nearest neighbour instead of each one wandering off alone),
+  // so it stays a visible mass shambling in rather than scattering the
+  // moment they're spawned.
+  const clusterN = Math.min(ZOMBIE_CAP - alive, 3 + ((Math.random() * 4) | 0));
+  for (let i = 0; i < clusterN; i++) {
+    const a = Math.random() * Math.PI * 2, r = Math.random() * 5;
+    spawnEnemy("zombie", spot.x + Math.cos(a) * r, spot.z + Math.sin(a) * r, spot);
+  }
 }
 
 // ---- an asphalt apron linking a lot to the highway shoulder ----
@@ -3490,6 +3502,28 @@ function fire() {
       if (score < bestScore) { bestScore = score; best = c; bestKind = "footCop"; bestDist = d; }
     }
   }
+  // Ambient venue crowds (tusouxroeNorth.js's Crown Strip, nightlife.js's
+  // clubs): everyone close enough for their district to be ticking them —
+  // bystanders, never hostile (neither system has a fight-back state), so
+  // the same tight facing cone as an unprovoked street pedestrian. Both
+  // expose the identical `{x, y, z, rec}` shape from `hittable()`, so one
+  // loop over both lists does the targeting for both.
+  const venuePeople = [];
+  if (tusouxroeNorth) venuePeople.push(...tusouxroeNorth.hittable(playerPos, gun.range + 5));
+  venuePeople.push(...nightlife.hittable(playerPos, gun.range + 5));
+  for (const p of venuePeople) {
+    const dx = p.x - playerPos.x, dz = p.z - playerPos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > gun.range || d < 1e-3) continue;
+    const facing = (dx * _aim.x + dz * _aim.z) / d;
+    if (state.weapon === "sawnoff") {
+      if (facing > 0.82) hitTargets.push({ t: p, kind: "crowd", d });
+    } else {
+      if (facing < 0.93) continue;
+      const score = d * (1.6 - facing);
+      if (score < bestScore) { bestScore = score; best = p; bestKind = "crowd"; bestDist = d; }
+    }
+  }
   for (const s of sheriffs) {
     if (s.dead) continue;
     const dx = s.obj.position.x - playerPos.x, dz = s.obj.position.z - playerPos.z;
@@ -3535,6 +3569,7 @@ function fire() {
       if (bestKind === "enemy") target = best.spr.position.clone().setY(best.type === "hog" ? 0.8 : 1.1);
       else if (bestKind === "sheriff") target = best.obj.position.clone().setY(1.1);
       else if (bestKind === "player") target = best.rp.position.clone().setY(1.1);
+      else if (bestKind === "crowd") target = new THREE.Vector3(best.x, best.y + 0.9, best.z);
       else target = origin.clone().addScaledVector(_aim3D, 24);
       spawnTracer(origin, target);
     }
@@ -3589,6 +3624,24 @@ function fire() {
       damageVehicle(t, dmg * 2);
     } else if (kind === "vehicle") {
       damageVehicle(t, dmg * 1.5);
+    } else if (kind === "crowd") {
+      // The Crown Strip's crowd (crowd.js, via tusouxroeNorth.js's hittable()):
+      // `t.rec` is the live actor record, mutated in place so the district's
+      // own tick() sees the same hp/dead every other kind already gets.
+      const p = t.rec;
+      const wp = { x: t.x, y: t.y + (p.a.userData.hog ? 0.5 : 0.9), z: t.z };
+      p.hp -= dmg;
+      spawnBloodSpray(wp, _aim3D);
+      if (p.a.play) p.a.play("hurt", { loop: false, force: true });
+      if (p.hp <= 0) {
+        p.dead = true;
+        if (p.a.play) p.a.play("death", { loop: false, force: true });
+        spawnBloodSpray(wp, _aim3D, 14);
+        spawnBloodPool(t.x, t.z);
+        crime(1.2);
+      } else {
+        crime(0.12);
+      }
     }
   }
 }
@@ -3634,6 +3687,12 @@ function syncHUD() {
   let s = "";
   if (copsActive()) for (let i = 0; i < 6; i++) s += `<span class="${i < state.wanted ? "on" : "off"}">★</span>`;
   starsEl.innerHTML = s;
+  if (state.zombieMode) {
+    zombieKillsEl.hidden = false;
+    zombieKillsEl.textContent = `🧟 ${kills.zombie || 0}`;
+  } else {
+    zombieKillsEl.hidden = true;
+  }
   if (state.veh) {
     vehIndic.hidden = false;
     vehIndic.textContent = state.veh.sheriff

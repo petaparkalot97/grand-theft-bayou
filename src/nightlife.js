@@ -311,7 +311,7 @@ export function createNightlife(ctx) {
     def.dancers.forEach((sex, i) => {
       const d = makeDancer({ sex, seed: Math.round(cx * 31 + cz * 7 + i * 101) });
       d.name = sex === "f" ? ["Mercedes", "Jazmine", "Porsha", "Angel"][(clubs.length + i) % 4] : ["Dante", "Rico", "Marquis", "Beau"][(clubs.length + i) % 4];
-      c.dancers.push({ a: d, home: [-3.6 + i * 3.2, -4.6], y: 0.6 });
+      c.dancers.push({ a: d, home: [-3.6 + i * 3.2, -4.6], y: 0.6, hp: 4, dead: false });
     });
     def.crowd.forEach((type, i) => {
       const rng = mulberry(Math.round(cx * 13 + cz * 17 + i * 7));
@@ -319,10 +319,10 @@ export function createNightlife(ctx) {
         : type === "hoodratF" ? makeHoodrat({ sex: "f", crew: rng() < 0.5 ? "red" : "blue", seed: (rng() * 1e9) | 0, height: 1.78 })
         : randomHoodrat(rng, 1.88);
       const spot = [[1.2, 1.4], [2.2, -0.6], [3.2, 1.4]][i];
-      c.crowd.push({ a, type: type === "hoodratF" ? "hoodrat" : type, home: spot });
+      c.crowd.push({ a, type: type === "hoodratF" ? "hoodrat" : type, home: spot, hp: 4, dead: false });
     });
     const bartender = randomHoodrat(mulberry(Math.round(cx + cz)), 1.84);
-    c.crowd.push({ a: bartender, type: "hoodrat", home: [5.3, -0.6], still: true });
+    c.crowd.push({ a: bartender, type: "hoodrat", home: [5.3, -0.6], still: true, hp: 4, dead: false });
     for (const d of c.dancers) actors.add(d.a);
     for (const p of c.crowd) actors.add(p.a);
     home(c);
@@ -402,6 +402,7 @@ export function createNightlife(ctx) {
   }
 
   async function tipRail(c) {
+    if (c.dancers[0].dead) { flash(`${c.dancers[0].a.name || "She"}'s not going to be dancing for anybody.`); return; }
     if (!pay(PRICES.tip, "Make it rain")) return;
     busy = true;
     state.cinematic = true;
@@ -428,6 +429,7 @@ export function createNightlife(ctx) {
   }
 
   async function lapDance(c) {
+    if (c.dancers[0].dead) { flash(`${c.dancers[0].a.name || "She"}'s not going to be dancing for anybody.`); return; }
     if (!pay(PRICES.lapDance, "A lap dance")) return;
     const P = ctx.getPlayer();
     if (!P) return;
@@ -551,6 +553,7 @@ export function createNightlife(ctx) {
     if (busy || state.cinematic || !inside) { prompt = null; promptEl.hidden = true; return; }
     const l = local(inside, playerPos);
     prompt = null;
+    if (inside.dancers[0].dead) { promptEl.hidden = true; return; }   // no rail tip, no VIP dance — she's down
     if (Math.hypot(l.x - inside.rail.lx, l.z - inside.rail.lz) < 0.9) {
       prompt = { c: inside, job: "tip", text: `<b>F</b> · Make it rain on ${inside.dancers[0].a.name}: $${PRICES.tip} (+${HEAL.tip} HP)` };
     } else if (Math.hypot(l.x - inside.vip.lx, l.z - inside.vip.lz) < 0.9) {
@@ -581,6 +584,27 @@ export function createNightlife(ctx) {
     blips() { return clubs.map((c) => { const p = c.toWorld(0, D / 2 + 1.5); return { kind: "club", x: p.x, z: p.z }; }); },
     /** Where people hang out on the street outside (main.js adds them to NPC_POIS). */
     get pois() { return clubs.map((c) => { const p = c.toWorld(0, D / 2 + 4); return { x: p.x, z: p.z, r: 4 }; }); },
+    /**
+     * Every dancer/crowd/bartender worth shooting at, in world space, in a
+     * club near enough to be ticking (`c.actorGroup.visible`) — same shape as
+     * tusouxroeNorth.js's `hittable()`, so main.js's fire() handles both with
+     * one loop. `rec` is the live club record: mutate its `hp`/`dead` and the
+     * per-frame `update()` above keeps animating it, same as everyone else.
+     */
+    hittable(playerPos, maxDist = 45) {
+      const out = [];
+      for (const c of clubs) {
+        if (!c.actorGroup.visible) continue;
+        for (const rec of [...c.dancers, ...c.crowd]) {
+          if (rec.dead) continue;
+          const p = rec.a.getWorldPosition(new THREE.Vector3());
+          const dx = p.x - playerPos.x, dz = p.z - playerPos.z;
+          if (dx * dx + dz * dz > maxDist * maxDist) continue;
+          out.push({ x: p.x, y: p.y, z: p.z, rec });
+        }
+      }
+      return out;
+    },
     /** QA: the jobs and a spot, directly. */
     debug: { tipRail: (i = 0) => tipRail(clubs[i]), lapDance: (i = 0) => lapDance(clubs[i]),
       spot(i = 0, which = "vip") { const c = clubs[i]; const s = which === "vip" ? c.vip : c.rail; return c.toWorld(s.lx, s.lz); } },

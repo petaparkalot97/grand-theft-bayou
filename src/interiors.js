@@ -928,12 +928,19 @@ export const FIXTURES = {
       b.spillMap = new THREE.CanvasTexture(canvas);
     }
     
-    b.add(b.G.plane(w, d), b.e("entrance spill", b.v.theme.accent, 0.8, { 
-      transparent: true, 
-      blending: THREE.AdditiveBlending, 
-      depthWrite: false,
-      map: b.spillMap
-    }), s.x, 0.045, s.z, { rx: -Math.PI / 2 });
+    // Not `b.e()`: that wrapper only forwards (name, color, intensity) to the
+    // kit's memoized `M.emis`/`M.of` — a transparent, additively-blended,
+    // textured material silently had its whole options object (map, blending,
+    // transparent, depthWrite) dropped on the floor, so this rendered as a
+    // flat, fully opaque colour slab instead of the soft gradient pool the
+    // canvas texture above was built for. Un-memoized on purpose: this is the
+    // one material here that actually needs those options honoured.
+    const spillMat = new THREE.MeshBasicMaterial({
+      name: "entrance spill", color: b.v.theme.accent, map: b.spillMap,
+      transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    spillMat.userData.gtbRealized = true;
+    b.add(b.G.plane(w, d), spillMat, s.x, 0.045, s.z, { rx: -Math.PI / 2 });
     b.add(b.G.box(w * 0.28, 0.08, 0.1), b.e("kerb stripe", b.v.theme.accent, 0.7), s.x, 0.1, s.z - d / 2);
   },
 

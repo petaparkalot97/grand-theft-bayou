@@ -206,7 +206,28 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
         if ((e.goal.x - p.x) ** 2 + (e.goal.z - p.z) ** 2 < 1.5 || e.stateT < -14) setState(e, "idle", rand(0.5, 3));
         return;
       }
-      if (e.stateT <= 0) { setState(e, "wander", 0); pickGoal(e); }
+      if (e.stateT <= 0) {
+        setState(e, "wander", 0);
+        // The horde: a spawned knot stays a knot. Wander toward whichever
+        // other still-wandering zombie is nearest, jittered a few metres off
+        // its position, rather than each one picking its own independent
+        // random walk (pickGoal) — a cluster main.js spawned together then
+        // shambles in as a visible mass instead of dispersing the moment
+        // they're on their feet. Falls back to the ordinary wander when
+        // nothing else is close (a straggler, or the last one standing).
+        let herd = null, herdD = 18;
+        for (const o of env.others) {
+          if (o === e || o.type !== "zombie" || o.dead || o.state === "dead" || o.state === "hostile") continue;
+          const d = Math.hypot(o.spr.position.x - p.x, o.spr.position.z - p.z);
+          if (d < herdD) { herdD = d; herd = o; }
+        }
+        if (herd) {
+          const a = Math.random() * Math.PI * 2, r = rand(2, 6);
+          e.goal.set(herd.spr.position.x + Math.cos(a) * r, 0, herd.spr.position.z + Math.sin(a) * r);
+        } else {
+          pickGoal(e);
+        }
+      }
       return;
     }
 

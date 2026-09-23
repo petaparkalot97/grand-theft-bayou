@@ -65,6 +65,10 @@
   #stars { font-size: clamp(16px, 2.4vw, 22px); letter-spacing: 3px; filter: drop-shadow(0 2px 2px #000); }
   #stars:empty { display: none; }
   #stars .off { opacity: .18; }
+  #zombieKills {
+    text-align: right; font-size: clamp(14px, 2vw, 18px); color: #8fce6a;
+    text-shadow: 0 2px 0 #14351a, 0 0 12px rgba(140,220,90,.4); font-weight: bold;
+  }
   #cans { font-size: 20px; font-weight: bold; }
   #cans small { font-size: 12px; opacity: .7; font-weight: normal; }
   #gfxLabel {
@@ -80,9 +84,10 @@
     letter-spacing: .05em;
   }
   #objective {
-    position: absolute; bottom: 30px; right: 30px;
+    position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%;
+    transform: translateX(-50%);
     background: rgba(6,10,8,.6); border: 1px solid rgba(160,190,150,.25);
-    border-radius: 8px; padding: 8px 16px; font-size: 13px; text-align: right;
+    border-radius: 8px; padding: 8px 16px; font-size: 13px; text-align: center;
     font-family: Arial, sans-serif; max-width: 92vw;
   }
 
@@ -390,6 +395,7 @@
     <div id="cash">$0</div>
     <div id="clock">00:00</div>
     <div id="stars"></div>
+    <div id="zombieKills" hidden></div>
     <!-- weapons.js injects #weaponHud here -->
   </div>
   <div id="objective">Free roam. Explore Dixie Beaux.</div>
@@ -425,11 +431,13 @@
     </div>
     <div class="slide group">
       <div class="pane" style="background-image:url('./assets/ui/loading/zombie.jfif')"></div>
-      <div class="pane" style="background-image:url('./assets/ui/loading/Zombies5.jfif')"></div>
+      <div class="pane" style="background-image:url('./assets/ui/loading/zombie2.png')"></div>
+      <div class="pane" style="background-image:url('./assets/ui/loading/zombie3.jfif')"></div>
     </div>
     <div class="slide" style="background-image:url('./assets/ui/loading/zombies 4.jfif')"></div>
     <div class="slide group">
-      <div class="pane" style="background-image:url('./assets/ui/loading/zombie2.png')"></div>
+      <div class="pane" style="background-image:url('./assets/ui/loading/Zombies5.jfif')"></div>
+      <div class="pane" style="background-image:url('./assets/ui/loading/zombie.jfif')"></div>
       <div class="pane" style="background-image:url('./assets/ui/loading/zombie3.jfif')"></div>
     </div>
   </div>
