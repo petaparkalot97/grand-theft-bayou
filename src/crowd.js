@@ -129,7 +129,11 @@ export const ROLES = {
   // 0.6 m disc. A `hogkeep` works the counter instead: `beat: "work"` cycles the
   // poses in `poses` on his own clock and drifts a step along the bar between
   // them, so the bar is never being minded by a statue.
-  hogdancer: { anim: "dance", h: 1.78, beat: "shuffle", r: 0.3,
+  // `poses` cycles the shuffle beat's clip on each new goal instead of always
+  // replaying `anim` (see makeCrowd's shuffle branch) — mostly still dancing,
+  // but she drops to all fours for one beat in four, the same animal getting
+  // up on its hind legs for a podium and then remembering what it is.
+  hogdancer: { anim: "dance", h: 1.78, beat: "shuffle", r: 0.3, poses: ["dance", "dance", "dance", "allfours"],
     make: (r, h, s) => makeHog({ variant: "dancer", sex: s && s.sex === "m" ? "m" : r() < 0.5 ? "m" : "f", seed: (r() * 1e9) | 0, height: h }) },
   hogkeep:   { anim: "pour",  h: 1.86, beat: "work", r: 1.5, poses: BAR_POSES,
     make: (r, h, s) => makeHog({ variant: "barman", sex: "m", seed: (r() * 1e9) | 0, height: h }) },
@@ -697,13 +701,23 @@ export function makeCrowd(spots, o = {}) {
         continue;
       }
 
-      // shuffle: a step inside the role's own radius, then stand again
+      // shuffle: a step inside the role's own radius, then stand again. The
+      // hogdancer's podium cycles ROLES.hogdancer's `poses` each time it picks
+      // a new spot instead of always replaying `anim` — `x.poses` defaults to
+      // BAR_POSES for every actor (see `rec` above, built for the `work` beat),
+      // so this is gated on the role by name rather than "poses is truthy".
       const d = Math.hypot(x.goal.x - a.position.x, x.goal.z - a.position.z);
       if (d < 0.3) {
         const ang = Math.random() * Math.PI * 2, r = Math.random() * x.radius;
         x.goal.set(x.home.x + Math.cos(ang) * r, x.home.y, x.home.z + Math.sin(ang) * r);
         x.wait = 0.7 + Math.random() * 3.2;
-        a.play(x.anim, { force: false });
+        if (x.role === "hogdancer") {
+          x.pose = (x.pose + 1) % x.poses.length;
+          x.anim = x.poses[x.pose];
+          a.play(x.anim, { force: true, loop: true });
+        } else {
+          a.play(x.anim, { force: false });
+        }
       } else {
         a.play("walk");
         target.copy(x.goal).sub(a.position);

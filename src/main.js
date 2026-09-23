@@ -515,7 +515,7 @@ const POOL_LIGHT_CAP = 30;
 // IS this fixture. Capped at 30 it read as pitch black except for chrome/neon
 // accents that don't need a light at all (specular and emissive materials
 // still show without one). Indoors gets a much higher knee instead.
-const POOL_LIGHT_CAP_INDOOR = 110;
+const POOL_LIGHT_CAP_INDOOR = 55;
 function updateLightPool(dt, focus) {
   poolTimer -= dt;
   if (poolTimer > 0 || !litSpots.length) return;

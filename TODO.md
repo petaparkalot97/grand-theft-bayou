@@ -263,7 +263,19 @@ block on it.
 
 ### TASK-082 — Safehouses: visually distinct, zombie-exclusion radius
 
-**Status:** `READY` · **Agent:** UNASSIGNED (suggested: Antigravity)
+**Status:** `REVIEW` · **Agent:** Antigravity
+
+**What changed:** 
+Added 4 visually distinct safehouses across the map (Bayou Noir General Store, Chatboro Strip Storefront, Port Mercer Yard, and OrleaRouge Refuge). 
+Exposed `nearestSafehouse(x, z)` and `insideSafehouse(x, z)`.
+Added tests in `tools/qa/safehouse_screenshots.mjs` to fetch real-browser screenshots (found in `tools/qa/out/`).
+
+**Testing performed:**
+`node --check` passes. Real-browser screenshots taken successfully. Geometry properly registers via `addBlocker`.
+
+**Integration notes:**
+`window.__game.safehouses` exposes the module so Claude can use `insideSafehouse` for TASK-079 spawn density logic. Performance impact is 0 draw calls since objects were instantiated before `batchStatic`.
+
 **Files / subsystem:**
 - `src/safehouses.js` (new)
 

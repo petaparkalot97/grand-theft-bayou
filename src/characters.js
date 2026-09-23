@@ -990,6 +990,27 @@ class Hoodrat extends THREE.Object3D {
       return;
     }
 
+    // HAPPY HOGS' podium beat (crowd.js): drop onto hands and knees like the
+    // animal, then hold it — a hog dancer working a pole is still a hog. Root
+    // pitch does the tip-forward (the rig has no separate spine bone), knees
+    // and elbows fold to plant "front legs," and the head comes back up level
+    // so the snout faces the room instead of the floor.
+    if (this.anim === "allfours") {
+      const t = Math.min(1, this.time / 0.5);
+      const e = t * t * (3 - 2 * t);
+      this.rotation.x = -e * 1.15;
+      this.rotation.y = this._yaw;
+      this.rotation.z = 0;
+      this.hips.position.y = 0.92 - e * 0.5;
+      this.hips.rotation.set(0, 0, 0);
+      this.torso.rotation.set(0, 0, 0);
+      this.head.rotation.x = e * 0.55;
+      for (const a of A) { a.pivot.rotation.x = -e * 1.5; a.pivot.rotation.z = a.side * 0.1; a.elbow.rotation.x = -e * 0.9; }
+      for (const l of L) { l.pivot.rotation.x = e * 0.5; l.knee.rotation.x = e * 1.3; l.foot.rotation.x = 0; }
+      return;
+    }
+
+    this.rotation.x = 0;
     this.rotation.z = 0;
     this.rotation.y = this._yaw;
     this.hips.position.y = 0.92;
