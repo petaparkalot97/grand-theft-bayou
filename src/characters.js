@@ -699,7 +699,7 @@ class Hoodrat extends THREE.Object3D {
         const inner = add(head, box(0.024, 0.088, 0.052), innerEar, side * 0.126, 0.134, -0.015);
         inner.rotation.z = side * -0.6;
         inner.rotation.x = -0.28;
-        const tusk = add(head, box(0.02, 0.06, 0.02), ivory, side * 0.048, -0.055, 0.226);
+        const tusk = add(head, box(0.017, 0.05, 0.017), ivory, side * 0.04, -0.05, 0.172);
         tusk.rotation.x = -0.3;
         tusk.rotation.z = side * 0.22;
       }

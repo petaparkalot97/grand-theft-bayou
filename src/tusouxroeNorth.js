@@ -1378,6 +1378,38 @@ export function createTusouxroeNorth(ctx) {
     get crownCrossers() { return crownWalk ? crownWalk.obstacles() : []; },
 
     /**
+     * Every crowd.js actor worth shooting at right now, in world space, within
+     * `maxDist` of the player: the room you're standing in, the door crew and
+     * pavement of whatever block is close enough to be ticking, and the
+     * highway crossing. Each entry carries `rec` — the live actor record
+     * (`hp`, `dead`, `a`) — so main.js's fire() mutates the actual crowd.js
+     * object, not a snapshot; killing someone here is the same `hp <= 0` →
+     * `dead = true` → play("death") shape main.js already uses for everyone
+     * else. Only visible/ticking groups are scanned (see update()'s LOD), so
+     * this never touches a venue nobody is near.
+     */
+    hittable(playerPos, maxDist = 45) {
+      const out = [];
+      const collect = (list, visible, v) => {
+        if (!visible) return;
+        for (const rec of list) {
+          if (rec.live === false || rec.dead) continue;
+          const p = v ? crownToWorld(v, rec.a.position.x, rec.a.position.z) : rec.a.position;
+          const dx = p.x - playerPos.x, dz = p.z - playerPos.z;
+          if (dx * dx + dz * dz > maxDist * maxDist) continue;
+          out.push({ x: p.x, y: rec.a.position.y, z: p.z, rec });
+        }
+      };
+      for (const r of crownRecs) {
+        collect(r.crowdIn.actors, r.crowdIn.group.visible, r.v);
+        collect(r.crowdOut.actors, r.crowdOut.group.visible, r.v);
+        if (r.pave) collect(r.pave.actors, r.pave.group.visible, r.v);
+      }
+      if (crownWalk) collect(crownWalk.actors, crownWalk.group.visible, null);
+      return out;
+    },
+
+    /**
      * QA: start a piece of street theatre now (`"cheer"`, `"bounce"`), at a named
      * venue or wherever is on screen. The district runs this itself on a timer;
      * exposed so a test can watch one happen rather than wait for it.
