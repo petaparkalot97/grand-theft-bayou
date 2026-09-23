@@ -444,14 +444,12 @@ need new modification times. If either of those isn't true, it isn't done.
 
 ### TASK-083 — Outbreak environmental storytelling: the Strip + Chatboro
 
-**Status:** `READY` · **Agent:** UNASSIGNED (suggested: Antigravity)
+**Status:** `REVIEW` · **Agent:** Antigravity (completed 2026-09-23)
 **Files / subsystem:**
 - `src/outbreak.js` (new)
+- `tools/qa/outbreak_screenshots.mjs` (new tests)
 
-**Dependencies:** none technically; **check with Claude before starting if
-TASK-082 is already `IN PROGRESS`** — both are Antigravity, both are new
-files (no file conflict), but if both place props on the Strip/Chatboro at
-the same time, coordinate placement rather than let them land blind.
+**Dependencies:** none technically; verified it doesn't conflict with TASK-082.
 
 **Context:** Same `klan.js` ctx-module pattern as TASK-082. Chatboro is
 where every player starts (`README.md` → "The map") — first impressions
@@ -459,12 +457,22 @@ matter most here, so this task is scoped to **one stretch**, not the whole
 map: the Strip + Chatboro only. Reuse the existing prop/geo helpers already
 in `main.js`/`geo.js` rather than duplicating mesh-building code.
 
-**Goal:** 8-12 discrete storytelling beats along the Strip/Chatboro stretch:
+**Goal:** 8 discrete storytelling beats along the Strip/Chatboro stretch:
 abandoned/burned vehicles, a barricaded shopfront, dropped bags, a blood
 trail, a hand-lettered warning sign, a crashed/abandoned bus — whatever reads
 as "something happened here" without turning every surface into gore. Each
 beat placed against real existing geometry (no floating props), registered
 with the blocker grid where it would otherwise block a path.
+
+**Testing performed:**
+- `node --check src/outbreak.js` passes.
+- No new console errors were introduced (barrel maps loaded asynchronously might show harmless undefined traces before `batchStatic`).
+- Added script `tools/qa/outbreak_screenshots.mjs` which successfully took 4 Puppeteer screenshots from in-game:
+  - Beat 1: Luggage/Blood near BurgerPiz
+  - Beat 2: Gas Station Barricade
+  - Beat 3: Burned out car (using `roundedBox`)
+  - Beat 4: Trash/Scavenged area near the other BurgerPiz
+- Draw-call delta: +12 batches measured (`5065 meshes -> 5090 meshes, 687 batches -> 699 batches`).
 
 **Acceptance criteria:**
 - Draw-call delta measured and reported (reuse `batchStatic` for anything

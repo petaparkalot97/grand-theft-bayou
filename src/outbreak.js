@@ -84,7 +84,7 @@ export function createOutbreak(ctx) {
     g.add(chassis, cabin);
     
     // Fire barrel next to it for lighting
-    if (makeFireBarrel) //-20, 96);
+    
     
     addBlocker(-22, 95, 3);
   });

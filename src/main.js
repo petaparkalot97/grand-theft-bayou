@@ -61,7 +61,6 @@ import { createMapEditor } from "./mapEditor.js";
 import { createSyncCampaign } from "./syncCampaign.js";
 import { createMultiplayer } from "./multiplayer.js";
 import { createStateWorld, STATE_BOUNDS } from "./stateWorld.js";
-import { createSafehouses } from "./safehouses.js";
 
 // ---------------------------------------------------------------- config
 // Dixie Beaux, a Gulf Coast state that isn't Louisiana, honest: US-167 runs from
@@ -2055,9 +2054,8 @@ const spawnZones = createSpawnZones({
 const factionWar = createFactionWar({ npcs, spawnZones });
 // Who actually threatened Keseme's mother (klan.js). Nothing here spawns on its
 // own: a story beat or `__game.klan.nightRide(...)` has to call them out.
-import { createSafehouses } from "./safehouses.js";
 import { createOutbreak } from "./outbreak.js";
-const safehouses = createSafehouses({ scene, addBlocker, poolLight });
+import { createSafehouses } from "./safehouses.js"; const safehouses = createSafehouses({ scene, addBlocker, poolLight });
 createOutbreak({ scene, addBlocker, makeBarrel, makePallet });
   const klan = createKlan({
   scene, state, playerPos, cine, enemies, npcs,
