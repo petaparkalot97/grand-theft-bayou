@@ -431,6 +431,11 @@ export function makeCrowd(spots, o = {}) {
       // the facing the part was cast at, for beats that move an actor who is not
       // supposed to turn with its feet (a barman walking his counter)
       face: s.face != null ? s.face : a._yaw,
+      // main.js's fire() hit-tests the room the same way it hits the street:
+      // hp, a death pose, gone. The house's own hogs carry a couple more than
+      // a patron — hp values mirror main.js's ENEMY_TYPES (redneck/hoodrat vs
+      // hog) without importing that table, so this module stays decoupled.
+      hp: a.userData.hog ? 6 : 4, dead: false,
     };
     if (beat === "stroll" && o.lane) {
       const l = o.lane;
@@ -640,6 +645,9 @@ export function makeCrowd(spots, o = {}) {
     for (const x of actors) {
       if (x.live === false) continue;
       const a = x.a;
+      // dead: only the fall keeps playing (death's own timer sets `finished`,
+      // same as main.js's street enemies) — no beat, no script, no act.
+      if (x.dead) { a.update(dt); continue; }
       // the act runs his own script; `hype` is what he does to the room
       if (x.act) { x.act.tick(dt, hype); continue; }
       // ...and a scripted errand (an escort, an arrival) owns the actor outright
@@ -825,6 +833,7 @@ export function makePavement(spec) {
         // most of the pavement is nightlife; a fifth of it works in daylight
         // (deliveries, cleaners, staff arriving) and the rest turns up after dark
         night: rng() < 0.8, dayOk: false, live: true, sway: (rng() - 0.5) * 1.6,
+        hp: 4, dead: false,
       };
       actors.push(rec);
       route(rec, pickTarget(rec));
@@ -856,6 +865,7 @@ export function makePavement(spec) {
     for (const x of actors) {
       if (!x.live) continue;
       const a = x.a;
+      if (x.dead) { a.update(dt); continue; }
       x.t += dt;
 
       // a cheer interrupts a pavement walker the same way it does a crowd
@@ -1027,6 +1037,7 @@ export function makeCrossing(spec) {
       a, s: from ? L + 0.5 : -0.5, u: (rng() - 0.5) * wide, dir: from ? -1 : 1,
       speed: 1.15 + rng() * 0.45, wait: rng() * 4.5, state: CROSS_WAIT, hidden: false,
       night: north, dayOk: !north, live: true,
+      hp: 4, dead: false,
     };
     a.baseY = 0;
     a.traverse((m) => {
@@ -1068,6 +1079,7 @@ export function makeCrossing(spec) {
     for (const x of actors) {
       if (x.live === false) continue;
       const a = x.a;
+      if (x.dead) { a.update(dt); continue; }
 
       if (x.state === CROSS_OFF) {
         if (x.hidden) {

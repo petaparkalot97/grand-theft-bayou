@@ -2055,8 +2055,15 @@ const factionWar = createFactionWar({ npcs, spawnZones });
 // Who actually threatened Keseme's mother (klan.js). Nothing here spawns on its
 // own: a story beat or `__game.klan.nightRide(...)` has to call them out.
 import { createSafehouses } from "./safehouses.js";
-  const safehouses = createSafehouses({ scene, addBlocker, poolLight });
-  const klan = createKlan({
+import { createOutbreak } from "./outbreak.js";
+const safehouses = createSafehouses({ scene, addBlocker, poolLight });
+// TASK-083: 8 outbreak-storytelling beats along the Strip/Chatboro stretch
+// (dropped luggage, a barricaded gas station, a burned-out car, a warning
+// sign, a checkpoint, scavenged trash, a crashed van, a blood trail toward
+// the causeway). Placed against the real LANDMARKS lot positions; nothing
+// dynamic, so nothing to hold onto after construction.
+createOutbreak({ scene, addBlocker, makeBarrel, makePallet });
+const klan = createKlan({
   scene, state, playerPos, cine, enemies, npcs,
   spawnEnemy, killEnemy, addBlocker, poolLight, flashObjective,
   setObjective: setStoryObjective,

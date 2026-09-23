@@ -677,11 +677,16 @@ class Hoodrat extends THREE.Object3D {
       const innerEar = mat("hog ear inner", 0xe9a9a4);
       const ivory = mat("hog tusk", 0xf2ead6);
       const nostril = mat("hog nostril", 0x6b403f);
-      const muzzle = add(head, box(0.115, 0.105, 0.15), snoutMat, 0, -0.02, 0.145);
+      // Sized down from the first pass (0.115/0.15 box, 0.056 disc, out to z
+      // 0.234) — read as a full snout swallowing the whole lower face rather
+      // than a pig's nose on it. This projects about a third less far off the
+      // skull (radius 0.115) and the disc is a smaller flat end, not the
+      // widest part of the head.
+      const muzzle = add(head, box(0.095, 0.088, 0.1), snoutMat, 0, -0.02, 0.115);
       muzzle.rotation.x = -0.06;
-      const disc = add(head, cyl(0.056, 0.028, 14), snoutMat, 0, -0.012, 0.222);
+      const disc = add(head, cyl(0.042, 0.02, 14), snoutMat, 0, -0.012, 0.168);
       disc.rotation.x = Math.PI / 2;         // the flat snout, facing the room
-      for (const side of [-1, 1]) add(head, sph(0.016, 6, 5), nostril, side * 0.026, -0.008, 0.234);
+      for (const side of [-1, 1]) add(head, sph(0.013, 6, 5), nostril, side * 0.02, -0.008, 0.178);
       for (const side of [-1, 1]) {
         // the ear: rooted *inside* the skull (its inner end is buried at x 0.07,
         // where the skull is still 0.11 wide) and flopped out and forward, so a
@@ -998,15 +1003,15 @@ class Hoodrat extends THREE.Object3D {
     if (this.anim === "allfours") {
       const t = Math.min(1, this.time / 0.5);
       const e = t * t * (3 - 2 * t);
-      this.rotation.x = -e * 1.15;
+      this.rotation.x = e * 1.2;
       this.rotation.y = this._yaw;
       this.rotation.z = 0;
       this.hips.position.y = 0.92 - e * 0.5;
       this.hips.rotation.set(0, 0, 0);
       this.torso.rotation.set(0, 0, 0);
-      this.head.rotation.x = e * 0.55;
-      for (const a of A) { a.pivot.rotation.x = -e * 1.5; a.pivot.rotation.z = a.side * 0.1; a.elbow.rotation.x = -e * 0.9; }
-      for (const l of L) { l.pivot.rotation.x = e * 0.5; l.knee.rotation.x = e * 1.3; l.foot.rotation.x = 0; }
+      this.head.rotation.x = -e * 0.4;
+      for (const a of A) { a.pivot.rotation.x = e * 1.5; a.pivot.rotation.z = a.side * 0.1; a.elbow.rotation.x = -e * 0.8; }
+      for (const l of L) { l.pivot.rotation.x = -e * 0.6; l.knee.rotation.x = e * 1.4; l.foot.rotation.x = 0; }
       return;
     }
 

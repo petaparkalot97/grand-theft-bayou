@@ -25,6 +25,71 @@ goes stale, add a new one saying why; don't rewrite history.
   
 ## 2026-09-23 — Claude
 
+**Type:** DECISION · **Task:** TASK-083 (accepted, wired in)
+
+### Finding
+TASK-083 (outbreak storytelling) checked out on substance — every one of
+its 8 beats' coordinates verified against `main.js`'s real `LANDMARKS`
+table math, not guessed (contrast with TASK-082's first, rejected attempt).
+Two paperwork problems, neither disqualifying: the task claimed a QA script
+at `tools/qa/outbreak_screenshots.mjs` that doesn't exist (the real one is
+an untracked `scratch_puppet/capture_outbreak.mjs`), and "Integration
+notes" was left blank. `git log` explains both: `createOutbreak` was
+genuinely wired into `main.js` for ~7 minutes (`9ab65ee` → `67374f8`), the
+screenshots are real and were taken during that window, and the wiring was
+then *deliberately removed* by the agent itself, titled "chore: remove
+createOutbreak from main.js to comply with review protocol" — it caught its
+own boundary violation and corrected it before submitting, unprompted. That
+self-correction is worth noting explicitly: it's the opposite failure mode
+from TASK-082's first pass, and better than either silently leaving the
+violation in or silently leaving the feature unwired and unreported.
+
+### Action
+Reconstructed the exact wiring from git history and added it back
+(`src/main.js`, same non-top-of-file import convention already accepted for
+`safehouses`): `import { createOutbreak } from "./outbreak.js";
+createOutbreak({ scene, addBlocker, makeBarrel, makePallet });`.
+`node --check` passes. Marked `COMPLETE`.
+
+---
+
+## 2026-09-23 — Claude
+
+**Type:** HANDOFF · **Task:** TASK-078, 079, 080, 081
+
+### Finding
+Human reported Freebuff's session crashed. Checked all four of its claimed
+tasks against the actual repo state rather than assuming the worst (or the
+best) from the crash alone:
+- **TASK-078 (zombie archetypes) and TASK-079 (spawn density) were both
+  actually finished** — real, careful, source-verified work, already
+  committed (same commit as Antigravity's first safehouses attempt,
+  `7516b4e`). The board just never got updated past `IN PROGRESS`, almost
+  certainly because the crash happened before Freebuff could write its own
+  `REVIEW` summary. Reviewed both properly (see their entries) and marked
+  `COMPLETE`.
+- **TASK-080 (contextual loot) and TASK-081 (ambient audio) were never
+  started at all** — no `LOCATION_LOOT` in `loot.js`, no zombie references
+  anywhere in `audio.js`. These claims were genuinely stale, not just
+  unreported.
+
+### Action
+Released TASK-080 and TASK-081 back to `READY`/`UNASSIGNED` so either agent
+can pick them up fresh — holding a claim indefinitely on a crashed session
+would just block the board. Kept TASK-078/079 as Freebuff's credited,
+completed work rather than re-assigning or re-doing it.
+
+### Lesson for next time
+A crash mid-task can leave the board saying less than what actually
+happened (078/079) or more than what actually happened (080/081, if the
+claim itself had been the only status without any commit to check against)
+in the same batch. Don't infer either direction from the status field alone
+after a reported crash — check the actual files and git history per task.
+
+---
+
+## 2026-09-23 — Claude
+
 **Type:** TEST · **Task:** TASK-082 (third review — accepted)
 
 ### Finding

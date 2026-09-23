@@ -70,7 +70,24 @@ dependencies and acceptance criteria.
 
 ### TASK-078 — Zombie archetypes: Shambler / Runner / Brute / Crawler / Screamer
 
-**Status:** `IN PROGRESS` · **Agent:** Freebuff (claimed 2026-09-23)
+**Status:** `COMPLETE` · **Agent:** Freebuff, reviewed by Claude (2026-09-23)
+
+**🔍 Claude's review:** Freebuff's session reportedly crashed before it could
+update this board — found the actual work already committed and in good
+shape, verified independently rather than left `IN PROGRESS` on a stale
+claim. `src/zombies.js` is exactly what the brief asked for: a pure data
+module (no game imports), `BASE_ZOMBIE` mirroring TASK-077's real
+`ENEMY_TYPES.zombie`, four archetypes (Shambler/Runner/Brute/Screamer) as
+stat multipliers + behavior flags, a weighted `pickArchetype()`, and four
+concrete, code-level Integration notes steps for me to wire later (it even
+caught that `recentViolence(p)` takes no radius argument and worked the
+noise-response flag around that, and correctly flagged that `tint` is
+inert on actor-kind views so archetypes are behaviorally not visually
+distinct until/unless art is commissioned). The Crawler question was written
+up as asked, not decided — three options with tradeoffs, recommendation (c),
+skip it this wave, left commented out. `git show --stat` on the commit
+confirms no changes to `main.js`, `npc.js`, or `characters.js`.
+`node --check` passes.
 **Files / subsystem:**
 - `src/zombies.js` (new)
 
@@ -131,7 +148,18 @@ reskins/data only, per the human's own TASK-077 decision).
 
 ### TASK-079 — District-aware zombie spawn density
 
-**Status:** `IN PROGRESS` · **Agent:** Freebuff (claimed 2026-09-23)
+**Status:** `COMPLETE` · **Agent:** Freebuff, reviewed by Claude (2026-09-23)
+
+**🔍 Claude's review:** Same crashed-session situation as TASK-078 — work
+was already committed, board just wasn't updated. `ZOMBIE_DENSITY` in
+`src/spawnzones.js` covers every one of the 15 zone keys that exist in
+`ZONE_MIX` (checked one-for-one, nothing silently missing), `highway`/`water`
+are explicitly `0` as required, and the reasoning comment per zone is
+specific rather than filler (e.g. `forest: 0.3` — "the woods should feel
+empty and watchful, not crawling"). `zombieDensityAt()`/`zombieDensityAtSpawn()`
+are safe against an unmapped zone (falls back to a sparse default, not
+`undefined`/`NaN`). Additive only — `ZONE_MIX`, `WANDER`, `pick()` all
+untouched. `node --check` passes.
 **Files / subsystem:**
 - `src/spawnzones.js` (edit — additive export only, don't change existing
   behavior of `zoneAt`/`ZONE_MIX`/`pick`)
@@ -178,7 +206,10 @@ water is a bug, not atmosphere). Also export a small helper,
 
 ### TASK-080 — Contextual loot by location type
 
-**Status:** `IN PROGRESS` · **Agent:** Freebuff (claimed 2026-09-23)
+**Status:** `READY` · **Agent:** UNASSIGNED (Freebuff's session crashed
+2026-09-23 before starting this one — checked `src/loot.js`, no
+`LOCATION_LOOT` or any related change exists; unlike TASK-078/079, this claim
+was stale, not just unreported. Released back to the pool.)
 **Files / subsystem:**
 - `src/loot.js` (edit — additive export only; don't touch the existing
   `LOOT_TABLES`/`dropFor`)
@@ -226,7 +257,9 @@ Claude wires the actual tagging.
 
 ### TASK-081 — Ambient audio layer for zombie mode
 
-**Status:** `IN PROGRESS` · **Agent:** Freebuff (claimed 2026-09-23)
+**Status:** `READY` · **Agent:** UNASSIGNED (Freebuff's session crashed
+2026-09-23 before starting this one — checked `src/audio.js`, no zombie
+references of any kind exist. Released back to the pool.)
 **Files / subsystem:**
 - `src/audio.js` (edit — additive export only)
 
@@ -444,7 +477,36 @@ need new modification times. If either of those isn't true, it isn't done.
 
 ### TASK-083 — Outbreak environmental storytelling: the Strip + Chatboro
 
-**Status:** `REVIEW` · **Agent:** Antigravity (completed 2026-09-23)
+**Status:** `COMPLETE` · **Agent:** Antigravity, integrated by Claude (2026-09-23)
+
+**🔍 Claude's review:** Verified rather than trusted, same bar as TASK-082.
+Checked every one of the 8 beats' coordinates in `src/outbreak.js` against
+the real lot positions (`main.js`'s `LANDMARKS` table +
+`landmarkPos(side, z) = [ROAD_X + side*LOT_X, z]`, `ROAD_X=-6`, `LOT_X=24`)
+— every beat lands within a few metres of the real building it's named
+after (e.g. "near BurgerPiz Left" at `(-20,120)` vs. the actual BurgerPiz lot
+at `(-30,126)`), unlike TASK-082's first, rejected attempt. Good methodology
+this time, not guesses.
+
+**The claimed `tools/qa/outbreak_screenshots.mjs` doesn't exist** — the real
+script is an untracked `scratch_puppet/capture_outbreak.mjs`, and the task's
+own "Files" list is simply wrong about where its test lives. Not treating
+this as a fabrication, though, because of what `git log` shows: `main.js`
+briefly *did* have `createOutbreak` wired in (commit `9ab65ee`, 14:34:53),
+the screenshots were taken 3 minutes later while that wiring was live and
+working, and the wiring was then deliberately removed in a follow-up commit
+titled *"chore: remove createOutbreak from main.js to comply with review
+protocol"* (`67374f8`, 14:41:44) — a real, voluntary self-correction of the
+same boundary issue TASK-082 got rejected for, not evasion. Net effect: the
+screenshots are genuine, but "Integration notes" was left blank, so the
+exact wiring had to be reconstructed from git history instead of being
+handed over as the brief asked.
+
+**Wired it back in properly** (`src/main.js`, right after `safehouses`,
+matching the same non-top-of-file import style already accepted for
+TASK-082 — not re-litigating that convention a second time):
+`import { createOutbreak } from "./outbreak.js"; createOutbreak({ scene,
+addBlocker, makeBarrel, makePallet });`. `node --check` passes.
 **Files / subsystem:**
 - `src/outbreak.js` (new)
 - `tools/qa/outbreak_screenshots.mjs` (new tests)
