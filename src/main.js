@@ -613,6 +613,56 @@ function buildTrees() {
   scene.add(trunks, foliage);
 }
 
+function buildSwampTrees() {
+  const trunkGeo = new THREE.CylinderGeometry(0.2, 0.4, 3.8, 10);
+  const foliageGeo = new THREE.ConeGeometry(2.2, 5.0, 12);
+  const waterGeo = new THREE.PlaneGeometry(5, 5).rotateX(-Math.PI / 2);
+  
+  const trunkMat = surface("dirt", 512).material(2, { color: 0x3a2f24, envMapIntensity: 0.6 });
+  const foliageMat = surface("grass", 512).material(3, { color: 0x4a5a30, envMapIntensity: 0.7 });
+  const waterMat = new THREE.MeshStandardMaterial({ color: 0x1a2a1a, transparent: true, opacity: 0.85, roughness: 0.1 });
+  
+  const N = 800; // Scattered across the entire map
+  let placed = 0;
+  for (let i = 0; i < N; i++) {
+    const x = rand(-WORLD + 10, WORLD - 10);
+    const z = rand(-WORLD + 10, WORLD - 10);
+    if (Math.hypot(x, z - 100) < 12) continue; // clear spawn
+    if (inKeepout(x, z)) continue; // keep roads and cities clear
+    
+    // extra filtering to ensure it really is wilderness (rural/forest/water/none)
+    const zZone = spawnZones.zoneAt(x, z);
+    if (zZone && !["rural", "forest", "water"].includes(zZone)) continue;
+
+    const h = rand(0.9, 1.4);
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * 6);
+    
+    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+    trunk.position.set(0, 1.9 * h, 0);
+    trunk.scale.set(h, h, h);
+    trunk.quaternion.copy(q);
+    
+    const fol = new THREE.Mesh(foliageGeo, foliageMat);
+    fol.position.set(0, 4.8 * h, 0);
+    fol.scale.set(h, h, h);
+    fol.quaternion.copy(q);
+    
+    const water = new THREE.Mesh(waterGeo, waterMat);
+    water.position.set(0, 0.05, 0);
+    water.scale.set(h, 1, h); // Scale the puddle too
+
+    const mesh = new THREE.Group();
+    mesh.add(trunk, fol, water);
+    mesh.position.set(x, 0, z);
+    
+    scene.add(mesh);
+    addBlocker(x, z, 0.7 * h); // keep collision
+    
+    swampTrees.push({ x, z, hp: 100, mesh, dead: false });
+    placed++;
+  }
+}
+
 // ---------------------------------------------------------------- kit loading
 const urbanTex = {};
 function loadUrbanTextures() {
@@ -1282,8 +1332,10 @@ function shotWitnessed() {
     if (state.weapon === "sawnoff") {
       if (facing > 0.82) hitTargets.push({ t: { id, rp }, kind: "player", d });
     } else {
-      if (facing < 0.8) continue;
-      const score = d * 1.5 * (1.6 - facing);
+      if (facing < 0) continue;
+      const distToRay = Math.sqrt(Math.max(0, d * d - (d * facing) * (d * facing)));
+      if (distToRay > 1.0) continue;
+      const score = d;
       if (score < bestScore) { bestScore = score; best = { id, rp }; bestKind = "player"; bestDist = d; }
     }
   }
@@ -1622,7 +1674,7 @@ function openMultiplayer() {
         state.veh = null;
       }
     },
-    onRoom: (room) => { drawMultiplayerRoom(room); if (room.phase === "PLAYING" && beginGame && !state.running) { multiplayerPanel.hidden = true; beginGame(); prologue.skip(); flashObjective("Multiplayer bayou loaded · watch your six"); } }, onSnapshot: applyNetworkSnapshot, onError: (code) => { mpMessage.textContent = code.replaceAll("_", " "); } });
+    onRoom: (room) => { drawMultiplayerRoom(room); if (room && room.phase === "PLAYING" && beginGame && !state.running) { multiplayerPanel.hidden = true; if (room.zombie) { state.zombieMode = true; worldTime.setTime(22.5); flashObjective("The Bayou is infected. Survive the night."); } else { flashObjective("Multiplayer bayou loaded · watch your six"); } state.freeRoam = true; state.reserve = { pistol: Infinity, tec9: Infinity, sawnoff: Infinity, deerRifle: Infinity }; state.ammo = Infinity; arsenal.render(); beginGame(); prologue.skip(); } }, onSnapshot: applyNetworkSnapshot, onError: (code) => { mpMessage.textContent = code.replaceAll("_", " "); } });
   multiplayer.connect();
 }
 
@@ -1899,7 +1951,8 @@ function updateRemotePlayers(dt) {
   }
 }
 multiplayerBtn.addEventListener("click", openMultiplayer);
-mpCreate.addEventListener("click", () => multiplayer?.createRoom({ visibility: mpVisibility.value, password: mpCreatePassword.value }));
+const mpZombieMode = document.getElementById("mpZombieMode");
+mpCreate.addEventListener("click", () => multiplayer?.createRoom({ visibility: mpVisibility.value, password: mpCreatePassword.value, zombie: mpZombieMode.checked }));
 mpJoin.addEventListener("click", () => multiplayer?.joinRoom(mpRoomInput.value, mpJoinPassword.value));
 if (mpRefreshRooms) mpRefreshRooms.addEventListener("click", () => multiplayer?.fetchRooms());
 if (mpLeaveRoom) mpLeaveRoom.addEventListener("click", () => multiplayer?.leave());
@@ -1907,7 +1960,13 @@ if (mpLeaveRoom) mpLeaveRoom.addEventListener("click", () => multiplayer?.leave(
 mpPick.addEventListener("click", () => { multiplayerPanel.hidden = true; openCharacterSelect("multiplayer"); });
 mpReady.addEventListener("click", () => { const me = multiplayer?.room?.players.find((p) => p.id === multiplayer.playerId); multiplayer?.ready(!me?.ready); });
 mpStart.addEventListener("click", () => multiplayer?.startGame());
-mpBack.addEventListener("click", () => { multiplayerMode = false; multiplayer?.leave(); multiplayerPanel.hidden = true; introPanel.hidden = false; });
+mpBack.addEventListener("click", () => {
+  multiplayerMode = false;
+  multiplayer?.leave();
+  multiplayerPanel.hidden = true;
+  showMenuPanel("root");
+  introPanel.hidden = false;
+});
 // scratch vectors, so movement doesn't allocate every frame
 const _mv = new THREE.Vector3(), _step = new THREE.Vector3(), _aim = new THREE.Vector3();
 const _camFwd = new THREE.Vector3(), _camRight = new THREE.Vector3();
@@ -1918,6 +1977,7 @@ let bumpCd = 0;   // one pedestrian bark at a time, not a crowd shouting in unis
 // ---------------------------------------------------------------- enemies
 // Bayou trouble: Feral Hogs, Rednecks, Hoodrats, Prostitutes.
 const enemies = [];
+const swampTrees = [];
 const atlases = {};   // name -> loaded atlas
 
 
@@ -2834,6 +2894,21 @@ function updateZombiePopulation(dt) {
   // zombies (they're not a place's regular crowd)
   const spot = spawnZones.pick(playerPos, enemies, { minDist: 35, maxDist: 75, forZombie: true });
   if (!spot) return;
+
+  // In the wilderness, zombies must spawn from the murky waters of a Swamp Tree.
+  // If the player cleanses the trees, the zombies stop spawning there!
+  const isWilderness = !spot.zone || ["rural", "forest", "water"].includes(spot.zone);
+  if (isWilderness) {
+    let nearSwamp = false;
+    for (const t of swampTrees) {
+      if (!t.dead && Math.hypot(t.x - spot.x, t.z - spot.z) < 16) {
+        nearSwamp = true;
+        break;
+      }
+    }
+    if (!nearSwamp) return; // spawn blocked by cleansed terrain
+  }
+
   const d = zombieDensityAtSpawn(spawnZones, spot.x, spot.z);
   if (Math.random() >= d) return;
 
@@ -3488,9 +3563,12 @@ function fire() {
     if (state.weapon === "sawnoff") {
       if (facing > 0.82) hitTargets.push({ t: e, kind: "enemy", d });
     } else {
-      if (!hostile && facing < 0.93) continue;
-      if (hostile && facing < -0.2 && d > 6) continue;
-      const score = d * (hostile ? 0.6 : 1) * (1.6 - facing);
+      if (facing < 0) continue; // must be in front
+      // perpendicular distance from ray to enemy center
+      const distToRay = Math.sqrt(Math.max(0, d * d - (d * facing) * (d * facing)));
+      const hitRadius = e.type === "hog" ? 1.5 : 1.0; 
+      if (distToRay > hitRadius) continue; // must actually aim at them
+      const score = d; // closest enemy along the ray gets hit
       if (score < bestScore) { bestScore = score; best = e; bestKind = "enemy"; bestDist = d; }
     }
   }
@@ -3503,8 +3581,10 @@ function fire() {
     if (state.weapon === "sawnoff") {
       if (facing > 0.82) hitTargets.push({ t: c, kind: "footCop", d });
     } else {
-      if (facing < -0.2 && d > 6) continue;
-      const score = d * 0.6 * (1.6 - facing);
+      if (facing < 0) continue;
+      const distToRay = Math.sqrt(Math.max(0, d * d - (d * facing) * (d * facing)));
+      if (distToRay > 1.0) continue;
+      const score = d;
       if (score < bestScore) { bestScore = score; best = c; bestKind = "footCop"; bestDist = d; }
     }
   }
@@ -3525,8 +3605,10 @@ function fire() {
     if (state.weapon === "sawnoff") {
       if (facing > 0.82) hitTargets.push({ t: p, kind: "crowd", d });
     } else {
-      if (facing < 0.93) continue;
-      const score = d * (1.6 - facing);
+      if (facing < 0) continue;
+      const distToRay = Math.sqrt(Math.max(0, d * d - (d * facing) * (d * facing)));
+      if (distToRay > 1.0) continue;
+      const score = d;
       if (score < bestScore) { bestScore = score; best = p; bestKind = "crowd"; bestDist = d; }
     }
   }
@@ -3539,7 +3621,10 @@ function fire() {
     if (state.weapon === "sawnoff") {
       if (facing > 0.82) hitTargets.push({ t: s, kind: "sheriff", d });
     } else {
-      if (d * 0.6 < bestScore) { bestScore = d * 0.6; best = s; bestKind = "sheriff"; bestDist = d; }
+      if (facing < 0) continue;
+      const distToRay = Math.sqrt(Math.max(0, d * d - (d * facing) * (d * facing)));
+      if (distToRay > 2.5) continue; // cars are wider
+      if (d < bestScore) { bestScore = d; best = s; bestKind = "sheriff"; bestDist = d; }
     }
   }
 
@@ -3552,9 +3637,28 @@ function fire() {
     if (state.weapon === "sawnoff") {
       if (facing > 0.82) hitTargets.push({ t: v, kind: "vehicle", d });
     } else {
-      if (facing < 0.8) continue;
-      const score = d * 1.5 * (1.6 - facing);
+      if (facing < 0) continue;
+      const distToRay = Math.sqrt(Math.max(0, d * d - (d * facing) * (d * facing)));
+      if (distToRay > 2.5) continue;
+      const score = d;
       if (score < bestScore) { bestScore = score; best = v; bestKind = "vehicle"; bestDist = d; }
+    }
+  }
+
+  for (const t of swampTrees) {
+    if (t.dead) continue;
+    const dx = t.x - playerPos.x, dz = t.z - playerPos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > gun.range || d < 1e-3) continue;
+    const facing = (dx * _aim.x + dz * _aim.z) / d;
+    if (state.weapon === "sawnoff") {
+      if (facing > 0.82) hitTargets.push({ t, kind: "swampTree", d });
+    } else {
+      if (facing < 0) continue;
+      const distToRay = Math.sqrt(Math.max(0, d * d - (d * facing) * (d * facing)));
+      if (distToRay > 1.5) continue; // tree trunk + leeway
+      const score = d;
+      if (score < bestScore) { bestScore = score; best = t; bestKind = "swampTree"; bestDist = d; }
     }
   }
   
@@ -3576,6 +3680,7 @@ function fire() {
       else if (bestKind === "sheriff") target = best.obj.position.clone().setY(1.1);
       else if (bestKind === "player") target = best.rp.position.clone().setY(1.1);
       else if (bestKind === "crowd") target = new THREE.Vector3(best.x, best.y + 0.9, best.z);
+      else if (bestKind === "swampTree") target = new THREE.Vector3(best.x, 1.5, best.z);
       else target = origin.clone().addScaledVector(_aim3D, 24);
       spawnTracer(origin, target);
     }
@@ -3599,7 +3704,16 @@ function fire() {
        }
        if (kind === "player") continue; // Server will handle player death
     }
-    if (kind === "enemy") {
+    if (kind === "swampTree") {
+      t.hp -= dmg;
+      if (t.hp <= 0) {
+        t.dead = true;
+        scene.remove(t.mesh);
+        npcs.noise(t.x, t.z, 20); // loud cracking sound radius
+        // Use explosion sfx as a placeholder for a loud crash
+        if (Math.hypot(t.x - playerPos.x, t.z - playerPos.z) < 50) cine.sfx("explosion"); 
+      }
+    } else if (kind === "enemy") {
       t.hp -= dmg;
       const freshFight = t.state !== "hostile" && t.state !== "flee";
       npcs.provoke(t);
@@ -4721,6 +4835,26 @@ function updateSheriffs(dt) {
 
 function damageVehicle(v, amount) {
   v.hp -= amount;
+
+  if (v.def && v.def.bike && v.seats && v.seats[0] && v.seats[0].occupant === "npc") {
+    if (traffic) traffic.releaseVehicle(v);
+    v.seats[0].occupant = null;
+    spawnEnemy(Math.random() < 0.55 ? "hoodrat" : "redneck", v.obj.position.x, v.obj.position.z);
+    const e = enemies[enemies.length - 1];
+    e.hp -= amount; 
+    const freshFight = e.state !== "hostile" && e.state !== "flee";
+    npcs.provoke(e);
+    spawnBloodSpray(e.spr.position.clone().setY(1.0), new THREE.Vector3(0, 1, 0));
+    if (e.hp <= 0) { 
+      killEnemy(e); 
+      crime(1.2); 
+    } else {
+      e.spr.play("hurt", { loop: false, force: true });
+      e.t = 0;
+      if (freshFight) speakPedestrian(e, fightLine(e.type, e.T.label, e.mood));
+    }
+  }
+
   if (v.exploded) return;
   if (v.hp <= 0) { explodeCar(v); return; }
   if (v.hp / (v.hpMax || 40) < VEHICLE_FIRE_HP_FRAC) startVehicleFire(v);
@@ -4814,6 +4948,7 @@ async function boot() {
   setLoadStage("planting the swamp…", 62);
   await paint();
   buildTrees();
+  buildSwampTrees();
 
   setLoadStage("building the parish…", 72);
   await paint();

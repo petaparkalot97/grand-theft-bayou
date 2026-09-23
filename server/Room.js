@@ -122,7 +122,7 @@ export class Room {
 
   snapshot() {
     return {
-      code: this.code, phase: this.phase, hostId: this.hostId,
+      code: this.code, phase: this.phase, hostId: this.hostId, zombie: this.zombie,
       players: [...this.players.values()].map(({ ws, input, ...player }) => ({ ...player })),
       maxPlayers: MAX_PLAYERS,
       availableCharacters: CHARACTERS.filter((id) => ![...this.players.values()].some((p) => p.character === id)),

@@ -80,7 +80,8 @@ const server = http.createServer((req, res) => {
       name: r.name || r.code,
       players: r.players.size,
       maxPlayers: require("./protocol.js").MAX_PLAYERS,
-      phase: r.phase
+      phase: r.phase,
+      zombie: r.zombie
     }));
     sendJson(res, 200, { rooms: list });
     return;
@@ -178,8 +179,9 @@ wss.on("connection", (ws) => {
       const room = new Room(createRoomCode(rooms));
       room.visibility = msg.visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC";
       room.password = msg.password || "";
+      room.zombie = !!msg.zombie;
       room.name = room.code;
-      rooms.set(room.code, room); const player = room.add(ws); attach(ws, room, player); console.log(`[ROOM] Created ${room.code}`); return;
+      rooms.set(room.code, room); const player = room.add(ws); attach(ws, room, player); console.log(`[ROOM] Created ${room.code} (Zombie: ${room.zombie})`); return;
     }
     if (msg.type === "JOIN_ROOM") {
       if (record) return fail(ws, "ALREADY_IN_ROOM");
