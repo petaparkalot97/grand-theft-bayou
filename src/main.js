@@ -2799,7 +2799,6 @@ function updateEnemyPopulation(dt) {
 // not instead of it — the horde is capped separately, and existing NPCs are
 // valid targets for it, not just the player (npc.js's zombie branch in
 // decide()). Runs only in state.zombieMode; the horde clears out at dawn.
-const ZOMBIE_CAP = 16;
 let zombieRespawnCd = 0;
 function updateZombiePopulation(dt) {
   // Ordinary Story/Free Roam/Multiplayer games never set state.zombieMode, so
@@ -2818,9 +2817,17 @@ function updateZombiePopulation(dt) {
   }
   let alive = 0;
   for (const e of enemies) if (!e.dead && e.type === "zombie") alive++;
+  
+  // Dynamic scaling: "The more you kill the more they swarm, they should form big hordes"
+  const zKills = kills.zombie || 0;
+  const currentCap = Math.min(300, 60 + zKills * 2);
+  
   zombieRespawnCd -= dt;
-  if (zombieRespawnCd > 0 || alive >= ZOMBIE_CAP) return;
-  zombieRespawnCd = alive < ZOMBIE_CAP * 0.4 ? 0.35 : 0.9;
+  if (zombieRespawnCd > 0 || alive >= currentCap) return;
+  
+  const fastCd = Math.max(0.05, 0.35 - (zKills * 0.005));
+  const slowCd = Math.max(0.2, 0.9 - (zKills * 0.01));
+  zombieRespawnCd = alive < currentCap * 0.4 ? fastCd : slowCd;
 
   // spawn out of sight, same ring spawnzones.js already uses for the ordinary
   // population — just force the kind, since the zone mix has no opinion on
@@ -2831,15 +2838,11 @@ function updateZombiePopulation(dt) {
   if (Math.random() >= d) return;
 
   // A horde, not a queue: one at a time out of sight reads as a trickle no
-  // matter how low ZOMBIE_CAP is set. Drop a knot of 3-6 at the same spot,
-  // jittered so they don't spawn stacked on top of each other — npc.js's
-  // zombie branch then keeps a wandering knot loosely together (herding
-  // toward its nearest neighbour instead of each one wandering off alone),
-  // so it stays a visible mass shambling in rather than scattering the
-  // moment they're spawned.
-  const clusterN = Math.min(ZOMBIE_CAP - alive, 3 + ((Math.random() * 4) | 0));
+  // matter how low the cap is set. Drop a knot of them at the same spot.
+  const maxCluster = Math.min(25, 4 + Math.floor(zKills / 10));
+  const clusterN = Math.min(currentCap - alive, 4 + ((Math.random() * maxCluster) | 0));
   for (let i = 0; i < clusterN; i++) {
-    const a = Math.random() * Math.PI * 2, r = Math.random() * 5;
+    const a = Math.random() * Math.PI * 2, r = Math.random() * Math.min(15, 5 + zKills * 0.1);
     spawnEnemy("zombie", spot.x + Math.cos(a) * r, spot.z + Math.sin(a) * r, spot);
   }
 }

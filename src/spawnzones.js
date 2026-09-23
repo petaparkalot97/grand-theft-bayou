@@ -97,8 +97,9 @@ export const ZOMBIE_DENSITY = Object.freeze({
   resort: 0.7,
   rural: 0.4,
   forest: 0.3,
-  highway: 0,
-  water: 0,
+  highway: 1.0,
+  water: 1.0,
+  building: 1.0,
 });
 
 const DEFAULT_ZOMBIE_DENSITY = 0.5;   // unknown zone: sparse, never dense
@@ -261,8 +262,7 @@ export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, resi
       }
       const zone = zoneAt(x, z);
       let kind = pickKind(zone, hogs);
-      
-      if (forZombie && zone !== "building" && zone !== "water" && zone !== "highway") {
+      if (forZombie) {
         kind = "zombie";
       }
 
