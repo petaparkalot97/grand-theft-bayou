@@ -216,12 +216,12 @@ export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, resi
      * and maxDist), or null if this attempt landed somewhere nobody should
      * appear. `living`: current NPC records.
      */
-    pick(focus, living, { minDist = 65, maxDist = 105 } = {}) {
+    pick(focus, living, { minDist = 65, maxDist = 105, forZombie = false } = {}) {
       let hogs = 0;
       for (const e of living) if (!e.dead && e.type === "hog") hogs++;
 
       let x, z;
-      if (Math.abs(focus.x - ROAD_X) < 60) {
+      if (!forZombie && Math.abs(focus.x - ROAD_X) < 60) {
         // along US-167: ahead of / behind the player, roadside most of the time
         const sign = Math.random() < 0.62 ? -1 : 1;
         z = focus.z + sign * rand(minDist, maxDist);
@@ -261,6 +261,11 @@ export function createSpawnZones({ MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea, resi
       }
       const zone = zoneAt(x, z);
       let kind = pickKind(zone, hogs);
+      
+      if (forZombie && zone !== "building" && zone !== "water" && zone !== "highway") {
+        kind = "zombie";
+      }
+
       if (kind === "hoodrat" && worldTime && (worldTime.isNight() || worldTime.dusk >= 0.6) && Math.random() < 0.35) {
         if (["urban", "commercial", "border_strip", "border_market", "town"].includes(zone)) {
           kind = "prostitute";

@@ -684,7 +684,7 @@ class Hoodrat extends THREE.Object3D {
       // widest part of the head.
       const muzzle = add(head, box(0.095, 0.088, 0.1), snoutMat, 0, -0.02, 0.115);
       muzzle.rotation.x = -0.06;
-      const disc = add(head, cyl(0.042, 0.02, 14), snoutMat, 0, -0.012, 0.168);
+      const disc = add(head, cyl(0.042, 0.042, 0.02, 14), snoutMat, 0, -0.012, 0.168);
       disc.rotation.x = Math.PI / 2;         // the flat snout, facing the room
       for (const side of [-1, 1]) add(head, sph(0.013, 6, 5), nostril, side * 0.02, -0.008, 0.178);
       for (const side of [-1, 1]) {
@@ -1012,6 +1012,18 @@ class Hoodrat extends THREE.Object3D {
       this.head.rotation.x = -e * 0.4;
       for (const a of A) { a.pivot.rotation.x = e * 1.5; a.pivot.rotation.z = a.side * 0.1; a.elbow.rotation.x = -e * 0.8; }
       for (const l of L) { l.pivot.rotation.x = -e * 0.6; l.knee.rotation.x = e * 1.4; l.foot.rotation.x = 0; }
+      
+      if (t >= 1) {
+        const crawl = this.time * 5.0;
+        const s = Math.sin(crawl);
+        const c = Math.cos(crawl);
+        A[0].pivot.rotation.x += s * 0.3;
+        A[1].pivot.rotation.x -= s * 0.3;
+        L[0].pivot.rotation.x -= s * 0.3;
+        L[1].pivot.rotation.x += s * 0.3;
+        this.hips.position.y += Math.abs(c) * 0.05;
+        this.torso.rotation.y = s * 0.1;
+      }
       return;
     }
 
@@ -1099,9 +1111,24 @@ class Hoodrat extends THREE.Object3D {
       A[0].pivot.rotation.z = -0.4;
       A[0].elbow.rotation.x = -1.2;
       
-      // Legs planted
-      L.forEach((l) => { l.pivot.rotation.x = 0; l.knee.rotation.x = 0.1; l.foot.rotation.x = 0; });
-      this.position.y = this.baseY || 0;
+      if (this._speed > 0.15) {
+        const rate = THREE.MathUtils.clamp(this._speed * 1.9, 3, 13);
+        this.phase += dt * rate;
+        const s = Math.sin(this.phase);
+        const c = Math.cos(this.phase);
+        const amp = THREE.MathUtils.clamp(this._speed * 0.13, 0.18, 0.62);
+        L.forEach((l, i) => {
+          const d = i ? s : -s;
+          l.pivot.rotation.x = d * amp;
+          l.knee.rotation.x = Math.max(0, (i ? -c : c) * amp * 1.15) + 0.05;
+          l.foot.rotation.x = -l.knee.rotation.x * 0.45;
+        });
+        this.position.y = (this.baseY || 0) + Math.abs(Math.sin(this.phase * 2)) * 0.022;
+      } else {
+        // Legs planted
+        L.forEach((l) => { l.pivot.rotation.x = 0; l.knee.rotation.x = 0.1; l.foot.rotation.x = 0; });
+        this.position.y = this.baseY || 0;
+      }
       
       if (this.anim === "shoot" && this.time > 0.15) {
         this.anim = "aim"; // go back to aim after recoil

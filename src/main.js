@@ -47,7 +47,7 @@ import { createEastBank, EAST_MAX_X } from "./eastbank.js";
 import { createNolantis } from "./nolantis.js";
 import { createWelcomeBack } from "./welcomeback.js";
 import { ROUTE_EAST, CRASH } from "./prologue.js";
-import { createSpawnZones } from "./spawnzones.js";
+import { createSpawnZones, zombieDensityAtSpawn } from "./spawnzones.js";
 import { createFactionWar } from "./factions.js";
 import { createKlan } from "./klan.js";
 import { createNewton } from "./newton.js";
@@ -2825,8 +2825,11 @@ function updateZombiePopulation(dt) {
   // spawn out of sight, same ring spawnzones.js already uses for the ordinary
   // population — just force the kind, since the zone mix has no opinion on
   // zombies (they're not a place's regular crowd)
-  const spot = spawnZones.pick(playerPos, enemies, { minDist: 35, maxDist: 75 });
+  const spot = spawnZones.pick(playerPos, enemies, { minDist: 35, maxDist: 75, forZombie: true });
   if (!spot) return;
+  const d = zombieDensityAtSpawn(spawnZones, spot.x, spot.z);
+  if (Math.random() >= d) return;
+
   // A horde, not a queue: one at a time out of sight reads as a trickle no
   // matter how low ZOMBIE_CAP is set. Drop a knot of 3-6 at the same spot,
   // jittered so they don't spawn stacked on top of each other — npc.js's
@@ -3662,7 +3665,7 @@ function muzzleFlash(from) {
 // `turf`: killed by a rival gang member, not the player. The body still drops its
 // loot, but there's no tally, no kill line and no heat (police and gang violence
 // is a separate decision; see TASK-035).
-function killEnemy(e, { turf = false } = {}) {
+function killEnemy(e, { turf = false, killer = null } = {}) {
   npcs.release(e);
   npcs.noise(e.spr.position.x, e.spr.position.z, 30);
   e.dead = true;
@@ -3672,6 +3675,11 @@ function killEnemy(e, { turf = false } = {}) {
   spawnBloodPool(e.spr.position.x, e.spr.position.z, e.type === "hog" ? 1.3 : 1);
   if (e.type !== "hog") e.spr.play("death", { fps: 9, loop: false, force: true });
   loot.dropFor(e);
+  
+  if (killer && killer.type === "zombie" && e.type !== "hog" && e.type !== "zombie") {
+    e.zombifyTimer = 300; // 5 minutes to rise as zombie
+  }
+  
   if (turf) return;
   kills[e.type] = (kills[e.type] || 0) + 1;
   flashObjective(`${e.T.label} down.  ${EMOJI.hog} ${kills.hog}   ${EMOJI.redneck} ${kills.redneck}   ${EMOJI.hoodrat} ${kills.hoodrat}`);
@@ -4199,11 +4207,14 @@ function onFootUpdate(dt) {
 
   attackTimer = Math.max(0, attackTimer - dt);
   if (attackTimer <= 0) {
-    if (input.isDown("aim")) {
+    if (moving) {
+      player.play("walk", { fps: 10 });
+      if (input.isDown("aim")) player._yaw = camCtl.heading;
+    } else if (input.isDown("aim")) {
       player.play("aim");
       player._yaw = camCtl.heading;
     } else {
-      player.play(moving ? "walk" : "idle", { fps: moving ? 10 : 5 });
+      player.play("idle", { fps: 5 });
     }
   }
   player.update(dt, camera);
@@ -4718,6 +4729,15 @@ function updateEnemy(e, dt) {
 
   if (e.dead) {
     e.t += dt;
+    if (e.zombifyTimer > 0) {
+      e.zombifyTimer -= dt;
+      if (e.zombifyTimer <= 0) {
+        scene.remove(e.spr); e.dead = "gone";
+        spawnEnemy("zombie", p.x, p.z);
+        return false;
+      }
+      return true; // prevent fading while waiting to rise
+    }
     if (e.type === "hog") {
       e.spr.rotation.z = Math.min(Math.PI / 2, e.spr.rotation.z + dt * 4); // topple
       e.fade -= dt * 0.35;

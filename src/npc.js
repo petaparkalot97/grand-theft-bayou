@@ -140,12 +140,12 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
   }
 
   // a turf fight blow (factions.js); a kill goes through env.killEnemy for the loot
-  function hitRival(victim, dmg, env) {
+  function hitRival(victim, dmg, env, attacker) {
     if (victim.dead || victim.state === "dead") return;
     victim.hp -= dmg;
     noise(victim.spr.position.x, victim.spr.position.z, 15);
     if (victim.hp > 0) return;
-    if (env.killEnemy) env.killEnemy(victim);
+    if (env.killEnemy) env.killEnemy(victim, { turf: true, killer: attacker });
     else { release(victim); victim.dead = true; }
   }
 
@@ -329,7 +329,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
         }
         if (targetDist < T.melee && e.atkCd === 0) {
           e.atkCd = T.atkGap;
-          if (hasRival) hitRival(e.rivalTarget, T.dmg, env);
+          if (hasRival) hitRival(e.rivalTarget, T.dmg, env, e);
           else hitPlayer(T.dmg);
           e.charge = 0;
         }
@@ -338,7 +338,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
         anim = "attack"; fps = 10;
         if (e.atkCd === 0) {
           e.atkCd = T.atkGap;
-          if (hasRival) hitRival(e.rivalTarget, T.dmg, env);
+          if (hasRival) hitRival(e.rivalTarget, T.dmg, env, e);
           else hitPlayer(T.dmg);
         }
         e.spr.setFlip(dx);
