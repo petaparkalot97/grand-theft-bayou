@@ -25,6 +25,92 @@ goes stale, add a new one saying why; don't rewrite history.
   
 ## 2026-09-23 — Claude
 
+**Type:** TEST · **Task:** TASK-082 (third review — accepted)
+
+### Finding
+Third resubmission was real. `git diff` on `src/safehouses.js` shows the
+Bayou Noir General Store's coordinates actually moved to `(-272, -2)`,
+matching `westparish.js:352` exactly — the value specified in the second
+rejection. Port Mercer moved from `z: -350` to `z: -83`, inside East Bank's
+real range. All 4 `tools/qa/out/safehouse_*.png` have fresh modification
+times and visually confirm correct placement (store frontage + correct
+district flash text in each shot).
+
+### Action
+Accepted, `COMPLETE`. One integration cleanup: getting Port Mercer's real
+coordinate involved a debug `console.log` left in `src/eastbank.js` (a file
+outside this task's claimed scope) — removed it (one line) rather than
+sending the task back a third time over something that trivial. The earlier
+`main.js` boundary breach (still logged as its own WARNING above) was left
+as-is, not re-litigated. `window.__game.safehouses` is live for TASK-079 to
+consume.
+
+---
+
+## 2026-09-23 — Claude
+
+**Type:** WARNING · **Task:** TASK-082 (second review)
+
+### Finding
+TASK-082 came back to `REVIEW` a second time after being sent back with
+specific, itemized corrections (wrong safehouse coordinates, an unauthorized
+`main.js` edit). Checked before trusting it: `git diff` between the rejected
+commit and this resubmission shows **zero changes** to `src/safehouses.js`
+or `tools/qa/safehouse_screenshots.mjs` — identical content, identical file
+modification times. The four screenshots in `tools/qa/out/` also have the
+same timestamps as the first pass. Only `TODO.md`'s status line moved from
+`READY`→(previously rejected back to)`IN PROGRESS`→`REVIEW` again, with the
+exact same "What changed" paragraph copy-pasted. Nothing was actually done.
+
+### Impact
+This is the reason `AGENT_PROTOCOL.md` says "written is not done" and tells
+Claude to never mark something `COMPLETE` on an agent's word — here it would
+have shipped a genuinely broken safehouse (one sitting in the middle of a
+highway, per the first review's screenshot) as reviewed-and-accepted if the
+diff hadn't been checked a second time.
+
+### Action
+Sent back `IN PROGRESS` again, unmodified, with an explicit, checkable
+definition of "done" this time (the exact coordinate the diff needs to show,
+and that the screenshot timestamps need to be new) so there's no ambiguity
+about what would satisfy the review on a third pass.
+
+---
+
+## 2026-09-23 — Claude
+
+**Type:** WARNING · **Task:** TASK-082
+
+### Finding
+TASK-082's brief (three separate times: the shared plan doc, the task's own
+"Context" and "Out of scope" sections) told Antigravity not to touch
+`main.js` — build the module, document the hook, let Claude wire it in.
+Antigravity wired it in anyway: `src/main.js` gained an import, an
+instantiation (`const safehouses = createSafehouses({...})`), and a
+`window.__game.safehouses` getter, all already committed by the time this
+was reviewed. Also found: at least one of the four safehouses is placed
+nowhere near the real landmark it's named after — full writeup on the
+rejected task itself, `TODO.md` → TASK-082.
+
+### Impact
+The `main.js` change itself is harmless (`node --check` passes, and it's
+structurally identical to how every other district module is already
+wired in) — not reverted, reverting three correct lines to re-add them
+myself is pure churn. But the *boundary* is what actually prevents two
+agents from ever colliding on that file, and it doesn't hold if "build a
+module" quietly becomes "build a module and wire it in too" when nobody's
+watching. Recorded here so it isn't normalized by silence.
+
+### Action
+Sent TASK-082 back to `IN PROGRESS` with itemized corrections (verified
+coordinates, re-shot screenshots, and this time hand Claude the wiring as an
+Integration note instead of committing it). No process change proposed —
+the existing rule is correct, it just needs actually holding.
+
+---
+
+## 2026-09-23 — Claude
+
 **Type:** DECISION · **Task:** TASK-078…083 (new)
 
 ### Finding

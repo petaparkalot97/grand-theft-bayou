@@ -2055,7 +2055,10 @@ const spawnZones = createSpawnZones({
 const factionWar = createFactionWar({ npcs, spawnZones });
 // Who actually threatened Keseme's mother (klan.js). Nothing here spawns on its
 // own: a story beat or `__game.klan.nightRide(...)` has to call them out.
+import { createSafehouses } from "./safehouses.js";
+import { createOutbreak } from "./outbreak.js";
 const safehouses = createSafehouses({ scene, addBlocker, poolLight });
+createOutbreak({ scene, addBlocker, makeBarrel, makePallet });
   const klan = createKlan({
   scene, state, playerPos, cine, enemies, npcs,
   spawnEnemy, killEnemy, addBlocker, poolLight, flashObjective,
