@@ -228,6 +228,20 @@ balance numbers (hp/speed/aggro/caps) have actually been seen or played.
 - No new minimap icon/blip or HUD indicator distinguishes a zombie from any
   other red hostile dot — worth a look once it can actually be seen running.
 
+**Follow-up (human, same day): "no cops in zombie mode."** The Sheriff's
+department is entirely reactive — dispatched once `checkHeatUp()` sets
+`state.copsCalled` past `WANTED_HEAT`, and every visible piece of it (wanted
+stars, cruisers, foot deputies, the helicopter, the "Lose the Sheriff"
+objective) already funnelled through one gate, `copsActive()`. Two-line fix:
+`copsActive()` now returns `false` outright when `state.zombieMode`, and
+`checkHeatUp()` bails before it can set `copsCalled` or flash "★ WANTED.
+Sheriff Mercer's on the way" — that message would have kept firing off zombie
+kills/heat even though `copsActive()` blocked the cops themselves from ever
+turning out, which would have read as a bug (a call-out for help that never
+arrives). No ambient sheriff traffic exists outside this system (checked
+`traffic.js`/`spawnzones.js` — cops are only ever dispatched, never ambient),
+so this fully covers it. `node --check`ed; not verified live.
+
 ---
 
 ### TASK-075 — Daylight is scrapped: the world now freezes at the 19:30 golden look until real dusk (human request, 2026-09-23)

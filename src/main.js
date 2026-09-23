@@ -1058,6 +1058,117 @@ function spawnTracer(from, to) {
   tracers.push(line);
 }
 
+// ---------------------------------------------------------------- blood / gore
+// Two looks, two textures: a soft round droplet for the airborne spray, and a
+// blotchy multi-blob splat (several overlapping radial gradients, not one
+// clean disc) for the pool a body leaves on the ground.
+let bloodDropTex = null;
+function bloodDropTexture() {
+  if (bloodDropTex) return bloodDropTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 32;
+  const x = c.getContext("2d");
+  const g = x.createRadialGradient(16, 16, 0, 16, 16, 16);
+  g.addColorStop(0, "rgba(150,4,4,1)");
+  g.addColorStop(0.55, "rgba(110,2,2,0.9)");
+  g.addColorStop(1, "rgba(80,0,0,0)");
+  x.fillStyle = g;
+  x.fillRect(0, 0, 32, 32);
+  bloodDropTex = new THREE.CanvasTexture(c);
+  bloodDropTex.colorSpace = THREE.SRGBColorSpace;
+  return bloodDropTex;
+}
+let bloodPoolTex = null;
+function bloodPoolTexture() {
+  if (bloodPoolTex) return bloodPoolTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const x = c.getContext("2d");
+  x.clearRect(0, 0, 128, 128);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + rand(-0.35, 0.35);
+    const r = rand(22, 48);
+    const cx = 64 + Math.cos(a) * rand(0, 20);
+    const cy = 64 + Math.sin(a) * rand(0, 20);
+    const g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, "rgba(112,6,6,0.95)");
+    g.addColorStop(0.7, "rgba(78,4,4,0.6)");
+    g.addColorStop(1, "rgba(78,4,4,0)");
+    x.fillStyle = g;
+    x.beginPath();
+    x.arc(cx, cy, r, 0, Math.PI * 2);
+    x.fill();
+  }
+  bloodPoolTex = new THREE.CanvasTexture(c);
+  bloodPoolTex.colorSpace = THREE.SRGBColorSpace;
+  return bloodPoolTex;
+}
+
+// Airborne droplets: pooled sprites with a velocity and gravity, same
+// pop/recycle shape as spawnTracer above. `dir` is the shot's own aim
+// vector — blood keeps travelling the way the bullet was going, not straight
+// up, so a point-blank shotgun blast reads differently from a pistol tap.
+const bloodSprayMat = new THREE.SpriteMaterial({ map: bloodDropTexture(), transparent: true, depthWrite: false, fog: false });
+bloodSprayMat.userData.gtbRealized = true;
+const bloodDrops = [];
+const bloodDropPool = [];
+function spawnBloodSpray(pos, dir, count = 7) {
+  for (let i = 0; i < count; i++) {
+    let s = bloodDropPool.pop();
+    if (!s) {
+      s = new THREE.Sprite(bloodSprayMat.clone());
+      s.userData.vel = new THREE.Vector3();
+    }
+    s.position.copy(pos);
+    s.scale.setScalar(rand(0.07, 0.2));
+    s.userData.vel.set(
+      dir.x * rand(1, 3.2) + rand(-1, 1),
+      rand(1.6, 3.6),
+      dir.z * rand(1, 3.2) + rand(-1, 1)
+    );
+    s.userData.life = s.userData.maxLife = rand(0.35, 0.6);
+    s.material.opacity = 1;
+    scene.add(s);
+    bloodDrops.push(s);
+  }
+}
+
+// Ground pools: capped and recycled like the loot pickups (see loot.js) —
+// gore accumulates forever otherwise, and a body dropped on top of an old
+// pool just steals it rather than growing the pile without bound.
+const bloodPoolGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+const bloodPoolBaseMat = new THREE.MeshBasicMaterial({
+  map: bloodPoolTexture(), transparent: true, depthWrite: false, fog: false,
+  polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+});
+bloodPoolBaseMat.userData.gtbRealized = true;
+const MAX_BLOOD_POOLS = 40;
+const bloodPools = [];
+function spawnBloodPool(x, z, scale = 1) {
+  let m = bloodPools.length >= MAX_BLOOD_POOLS ? bloodPools.shift() : null;
+  if (!m) {
+    m = new THREE.Mesh(bloodPoolGeo, bloodPoolBaseMat.clone());
+    scene.add(m);
+  }
+  m.position.set(x, 0.015, z);
+  m.rotation.y = rand(0, Math.PI * 2);
+  m.scale.setScalar(rand(0.75, 1.3) * scale);
+  m.material.opacity = 0;
+  bloodPools.push(m);
+}
+function updateBlood(dt) {
+  for (let i = bloodDrops.length - 1; i >= 0; i--) {
+    const s = bloodDrops[i];
+    s.userData.life -= dt;
+    s.userData.vel.y -= dt * 9;
+    s.position.addScaledVector(s.userData.vel, dt);
+    if (s.position.y <= 0.05) s.userData.life = 0;   // hit the ground, gone
+    s.material.opacity = Math.max(0, s.userData.life / s.userData.maxLife);
+    if (s.userData.life <= 0) { scene.remove(s); bloodDrops.splice(i, 1); bloodDropPool.push(s); }
+  }
+  for (const m of bloodPools) if (m.material.opacity < 1) m.material.opacity = Math.min(1, m.material.opacity + dt * 3);
+}
+
 // ---------------------------------------------------------------- game state
 const state = {
   running: false, over: false,
@@ -3434,18 +3545,22 @@ function fire() {
       t.hp -= dmg;
       const freshFight = t.state !== "hostile" && t.state !== "flee";
       npcs.provoke(t);
+      spawnBloodSpray(t.spr.position.clone().setY(t.type === "hog" ? 0.6 : 1.0), _aim3D);
       if (t.type !== "hog") { t.spr.play("hurt", { loop: false, force: true }); t.t = 0; }
       else t.spr.position.addScaledVector(t.spr.position.clone().sub(playerPos).setY(0).normalize(), 0.4);
       if (t.hp <= 0) { killEnemy(t); if (t.type !== "hog") crime(1.2); }
       else if (freshFight) speakPedestrian(t, fightLine(t.type, t.T.label, t.mood));
     } else if (kind === "footCop") {
       t.hp -= dmg;
+      spawnBloodSpray(t.spr.position.clone().setY(1.0), _aim3D);
       if (t.spr.play) { t.spr.play("hurt", { loop: false, force: true }); t.t = 0; }
-      if (t.hp <= 0) { 
+      if (t.hp <= 0) {
         // Custom kill logic since killEnemy accesses t.T.label which footCops lack
-        t.dead = true; 
+        t.dead = true;
         t.state = "dead";
         if (t.spr.play) t.spr.play("death", { fps: 9, loop: false, force: true });
+        spawnBloodSpray(t.spr.position.clone().setY(1.0), _aim3D, 14);
+        spawnBloodPool(t.spr.position.x, t.spr.position.z);
         loot.dropFor(t);
         crime(2.0); // Killing a cop is a serious crime
         flashObjective(`Deputy down.  ${EMOJI.hog} ${kills.hog}   ${EMOJI.redneck} ${kills.redneck}   ${EMOJI.hoodrat} ${kills.hoodrat}`);
@@ -3483,6 +3598,8 @@ function killEnemy(e, { turf = false } = {}) {
   e.dead = true;
   e.state = "dead";
   e.t = 0;
+  spawnBloodSpray(e.spr.position.clone().setY(e.type === "hog" ? 0.6 : 1.0), _aim, 14);
+  spawnBloodPool(e.spr.position.x, e.spr.position.z, e.type === "hog" ? 1.3 : 1);
   if (e.type !== "hog") e.spr.play("death", { fps: 9, loop: false, force: true });
   loot.dropFor(e);
   if (turf) return;
@@ -3728,6 +3845,7 @@ function tick() {
     t.material.opacity = Math.max(0, t.userData.life / 0.09) * 0.9;
     if (t.userData.life <= 0) { scene.remove(t); tracers.splice(i, 1); tracerPool.push(t); }
   }
+  updateBlood(dt);
   if (muzzleLight) muzzleLight.intensity = Math.max(0, muzzleLight.intensity - dt * 240);
 
   // water ripple
@@ -4302,9 +4420,12 @@ function starsForHeat(heat) {
   }
   return Math.max(1, stars);
 }
-function copsActive() { return state.forceCops || !!state.copsCalled; }
+// No cops in zombie mode (human request, 2026-09-23): the Sheriff's department
+// isn't part of that world, and a "★ WANTED, Mercer's on the way" flash while
+// you're fighting off a horde would be actively misleading — nobody's coming.
+function copsActive() { return !state.zombieMode && (state.forceCops || !!state.copsCalled); }
 function checkHeatUp() {
-  if (state.copsCalled || state.heat < WANTED_HEAT) return;
+  if (state.zombieMode || state.copsCalled || state.heat < WANTED_HEAT) return;
   state.copsCalled = true;
   // Give dispatch a beat before anyone turns out, rather than a cruiser
   // appearing on the same frame the first star lights up.
