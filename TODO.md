@@ -70,7 +70,7 @@ dependencies and acceptance criteria.
 
 ### TASK-078 — Zombie archetypes: Shambler / Runner / Brute / Crawler / Screamer
 
-**Status:** `READY` · **Agent:** UNASSIGNED (suggested: Freebuff)
+**Status:** `IN PROGRESS` · **Agent:** Freebuff (claimed 2026-09-23)
 **Files / subsystem:**
 - `src/zombies.js` (new)
 
@@ -131,7 +131,7 @@ reskins/data only, per the human's own TASK-077 decision).
 
 ### TASK-079 — District-aware zombie spawn density
 
-**Status:** `READY` · **Agent:** UNASSIGNED (suggested: Freebuff)
+**Status:** `IN PROGRESS` · **Agent:** Freebuff (claimed 2026-09-23)
 **Files / subsystem:**
 - `src/spawnzones.js` (edit — additive export only, don't change existing
   behavior of `zoneAt`/`ZONE_MIX`/`pick`)
@@ -178,7 +178,7 @@ water is a bug, not atmosphere). Also export a small helper,
 
 ### TASK-080 — Contextual loot by location type
 
-**Status:** `READY` · **Agent:** UNASSIGNED (suggested: Freebuff)
+**Status:** `IN PROGRESS` · **Agent:** Freebuff (claimed 2026-09-23)
 **Files / subsystem:**
 - `src/loot.js` (edit — additive export only; don't touch the existing
   `LOOT_TABLES`/`dropFor`)
@@ -226,7 +226,7 @@ Claude wires the actual tagging.
 
 ### TASK-081 — Ambient audio layer for zombie mode
 
-**Status:** `READY` · **Agent:** UNASSIGNED (suggested: Freebuff)
+**Status:** `IN PROGRESS` · **Agent:** Freebuff (claimed 2026-09-23)
 **Files / subsystem:**
 - `src/audio.js` (edit — additive export only)
 
@@ -4991,6 +4991,10 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/composer.js` | Claude | TASK-041 (REVIEW) — road options | Available |
 | `tools/qa/roads.mjs` (new), `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs` | Claude | TASK-041 | Available |
 | `tools/qa/traffic_test.mjs` | Freebuff | TASK-039 | Locked |
+| `src/zombies.js` (new) | Freebuff | TASK-078 | Locked |
+| `src/spawnzones.js` | Freebuff | TASK-079 — additive export only (`ZOMBIE_DENSITY` + helpers); extends the TASK-070 lock | Locked |
+| `src/loot.js` | Freebuff | TASK-080 — additive export only (`LOCATION_LOOT`); takes over the TASK-036 row above | Locked |
+| `src/audio.js` | Freebuff | TASK-081 — additive exports only (zombie ambience); extends the TASK-040 row above | Locked |
 
 
 ### Lock rules

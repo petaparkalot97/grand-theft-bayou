@@ -61,6 +61,7 @@ import { createMapEditor } from "./mapEditor.js";
 import { createSyncCampaign } from "./syncCampaign.js";
 import { createMultiplayer } from "./multiplayer.js";
 import { createStateWorld, STATE_BOUNDS } from "./stateWorld.js";
+import { createSafehouses } from "./safehouses.js";
 
 // ---------------------------------------------------------------- config
 // Dixie Beaux, a Gulf Coast state that isn't Louisiana, honest: US-167 runs from
@@ -508,6 +509,13 @@ const lampFx = [];
 let poolTimer = 0;
 // Soft ceiling for a pooled light's near-field brightness — see updateLightPool.
 const POOL_LIGHT_CAP = 30;
+// Crown Strip interiors (tusouxroeNorth.js's `indoor: true` spots) don't have
+// the outdoor problem this cap exists for — a casino floor isn't a bonfire a
+// couple of metres from its own prop, it's a windowless room whose only light
+// IS this fixture. Capped at 30 it read as pitch black except for chrome/neon
+// accents that don't need a light at all (specular and emissive materials
+// still show without one). Indoors gets a much higher knee instead.
+const POOL_LIGHT_CAP_INDOOR = 110;
 function updateLightPool(dt, focus) {
   poolTimer -= dt;
   if (poolTimer > 0 || !litSpots.length) return;
@@ -538,7 +546,8 @@ function updateLightPool(dt, focus) {
     // (POOL_LIGHT_CAP) instead of a hard clamp: small fixtures barely move,
     // the worst offenders (klan bonfires, casino fronts) get pulled way down,
     // and every light keeps its authored ranking relative to the others.
-    const nearFieldSafePower = POOL_LIGHT_CAP * sp.power / (POOL_LIGHT_CAP + sp.power);
+    const cap = sp.indoor ? POOL_LIGHT_CAP_INDOOR : POOL_LIGHT_CAP;
+    const nearFieldSafePower = cap * sp.power / (cap + sp.power);
     l.intensity = nearFieldSafePower * THREE.MathUtils.smoothstep(90 * 90 - sp.d, 0, 30 * 30) * (sp.fx === false ? 1 : lampPower * 0.72);
   }
 }
@@ -2046,7 +2055,8 @@ const spawnZones = createSpawnZones({
 const factionWar = createFactionWar({ npcs, spawnZones });
 // Who actually threatened Keseme's mother (klan.js). Nothing here spawns on its
 // own: a story beat or `__game.klan.nightRide(...)` has to call them out.
-const klan = createKlan({
+const safehouses = createSafehouses({ scene, addBlocker, poolLight });
+  const klan = createKlan({
   scene, state, playerPos, cine, enemies, npcs,
   spawnEnemy, killEnemy, addBlocker, poolLight, flashObjective,
   setObjective: setStoryObjective,
@@ -4816,7 +4826,7 @@ async function boot() {
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
     get policeHelicopters() { return police.helicopters; },
-    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; },
+    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, get safehouses() { return safehouses; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; },
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
       playerPos.set(x, 0, z);

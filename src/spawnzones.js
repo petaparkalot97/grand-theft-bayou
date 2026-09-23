@@ -48,6 +48,90 @@ export const ZONE_MIX = Object.freeze({
 });
 export const HOG_CAP = 4;
 
+// ---------------------------------------------------------------------------
+// ZOMBIE_DENSITY — how eagerly the zombie-mode horde fills each zone
+// (TASK-078/079 wave; consumed by main.js's updateZombiePopulation — see the
+// Integration notes there). One multiplier per zone name in ZONE_MIX, 1 = the
+// TASK-077 baseline spawn rate, 0 = zombies never spawn there.
+//
+// The shape mirrors WANDER above: a parallel per-zone table next to the one
+// it mirrors. Reasoning per zone:
+//
+//   entertainment 1.6  the Crown Strip — dense crowds, nightlife, "high-risk
+//                      outbreak" is the whole fantasy; the Strip pays for
+//                      being the signature location
+//   urban         1.5  OrleaRouge — the same logic, the city that never sleeps
+//                      now literally doesn't
+//   commercial    1.2  the US-167 strip frontage — shops, some crowds
+//   industrial    1.2  docks and yards: plenty of cover, few witnesses
+//   border_strip  1.1  the Chatboro crossroads — where everyone passes
+//   border_market 1.1  the Saturday market and its edges
+//   market_row    1.0  East Bank's market row — ordinary street density
+//   town          0.9  Tusouxroe — spread out, slower to fall
+//   residential   0.8  trailer park and junkyard patches — people kept to
+//                      themselves out here; the horde is thinner
+//   corporate     0.8  glass and plazas — sparse foot traffic even at the best
+//                      of times
+//   resort        0.7  tourists fled; those left make stories, not hordes
+//   rural         0.4  cane fields and Bayou Noir — the outbreak is a city
+//                      thing; out here you meet one, not fifteen
+//   forest        0.3  the pines — almost nothing; the woods should feel
+//                      empty and watchful, not crawling
+//   highway       0    MUTUALLY REQUIRED (main.js spawns nothing here; a
+//                      zombie shuffling down the carriageway is a bug, not
+//                      atmosphere — same rule as the civilians' null mix)
+//   water         0    the bayou causeway — same rule; nothing stands in the
+//                      water
+// ---------------------------------------------------------------------------
+export const ZOMBIE_DENSITY = Object.freeze({
+  entertainment: 1.6,
+  urban: 1.5,
+  commercial: 1.2,
+  industrial: 1.2,
+  border_strip: 1.1,
+  border_market: 1.1,
+  market_row: 1.0,
+  town: 0.9,
+  residential: 0.8,
+  corporate: 0.8,
+  resort: 0.7,
+  rural: 0.4,
+  forest: 0.3,
+  highway: 0,
+  water: 0,
+});
+
+const DEFAULT_ZOMBIE_DENSITY = 0.5;   // unknown zone: sparse, never dense
+
+/**
+ * The zombie density multiplier at a world position. Safe to call anywhere —
+ * a zone with no table entry falls back to the sparse default rather than
+ * `undefined` silently multiplying into NaN. The main.js integration is a
+ * one-liner: multiply updateZombiePopulation's respawn cooldown (or its
+ * per-attempt accept rate) by this.
+ * @param {number} x
+ * @param {number} z
+ * @returns {number} 0 (never spawns) … 1 (baseline) … >1 (denser)
+ */
+export function zombieDensityAt(x, z, zoneAtFn = null) {
+  const zone = zoneAtFn ? zoneAtFn(x, z) : null;
+  if (zone == null) return DEFAULT_ZOMBIE_DENSITY;
+  const d = ZOMBIE_DENSITY[zone];
+  return d == null ? DEFAULT_ZOMBIE_DENSITY : d;
+}
+
+/**
+ * Convenience wrapper so main.js's updateZombiePopulation stays one line:
+ * accepts the spawn-system object spawnzones.createSpawnZones() returns and
+ * reads zones through its own zoneAt (respects extraZone and OrleaRouge).
+ * @param {{ zoneAt: Function }} spawnZones
+ * @param {number} x
+ * @param {number} z
+ */
+export function zombieDensityAtSpawn(spawnZones, x, z) {
+  return zombieDensityAt(x, z, spawnZones && spawnZones.zoneAt);
+}
+
 // How NPCs cover ground, per zone: `r` scales the radius they wander around
 // their hangout (multiplied into the POI's own radius), `speed` scales their
 // stroll. Downtown blocks are tight and busy — short trips, quick steps —

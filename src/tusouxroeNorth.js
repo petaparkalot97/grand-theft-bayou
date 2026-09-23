@@ -732,7 +732,11 @@ export function createTusouxroeNorth(ctx) {
         free: (lx, lz, r = 0.5) => spotFree(placed, lx, lz, r),
         lit: (lx, y, lz, power, range) => {
           const p = crownToWorld(v, lx, lz);
-          addLitSpot({ x: p.x, y, z: p.z, warm: v.theme.accent, power, range, fx: false });
+          // `indoor: true` tells updateLightPool's near-field cap that this spot
+          // is not sitting a couple of metres from its own prop the way a torch
+          // or a bonfire is — it's the only illumination a windowless room gets,
+          // so it needs real headroom instead of the outdoor blowout guard.
+          addLitSpot({ x: p.x, y, z: p.z, warm: v.theme.accent, power, range, fx: false, indoor: true });
         },
         station: (lx, lz, kind, label) => {
           const p = crownToWorld(v, lx, lz);
