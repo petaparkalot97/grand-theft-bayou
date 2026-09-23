@@ -23,6 +23,9 @@ export const LOOT_TABLES = Object.freeze({
   redneck: { cash: 0.6, weapon: 0.24, ammo: 0.25 },
   prostitute: { cash: 0.92, weapon: 0.03, ammo: 0.05 },
   hog: { cash: 0, weapon: 0, ammo: 0 },
+  // no wallet on a corpse, but whatever they were carrying before they turned
+  // sometimes still is
+  zombie: { cash: 0, weapon: 0, ammo: 0.12 },
 });
 export const CASH_NOTES = Object.freeze([[5, 40], [10, 30], [20, 20], [50, 10]]);   // [amount, weight]
 const MAX_ACTIVE = 24;

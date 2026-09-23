@@ -37,11 +37,16 @@ function temperament(type) {
   // being written, so they are never timid — the rest of the temperament roll
   // would have made two thirds of any night ride scatter on first contact.
   if (type === "klansman") return "brave";
+  // zombie-mode (main.js): mood is moot — decide() never routes a zombie
+  // through the provoked flee-or-fight check below, they're hostile from the
+  // moment they notice anything — but "territorial" keeps them out of the
+  // "timid"/"skittish" flee branch if that ever changes.
+  if (type === "zombie") return "territorial";
   if (type === "redneck") return r < 0.5 ? "brave" : "timid";
   return r < 0.35 ? "brave" : "timid";
 }
 
-export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, worldTime = null }) {
+export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, worldTime = null, maxHostile = () => MAX_HOSTILE }) {
   const events = [];               // recent violence: { x, z, r, t }
   let now = 0, frame = 0, hostiles = 0, nextId = 1;
   const vel = new THREE.Vector3();
@@ -103,7 +108,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
       if (rivalTarget && (!e.rivalTarget || e.rivalTarget.dead)) e.rivalTarget = rivalTarget;
       return true;
     }
-    if (hostiles >= MAX_HOSTILE) return false;
+    if (hostiles >= maxHostile()) return false;
     e.rivalTarget = rivalTarget || null;
     setState(e, "hostile", 0);
     e.calm = 0;
@@ -159,6 +164,49 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
         if (e.spr) e.spr.visible = true;
         flee(e, env.player.x, env.player.z);
       }
+      return;
+    }
+
+    // Zombie-mode horde (main.js: state.zombieMode, night only). Unlike every
+    // other type here, a zombie is never provoked into hostility — it hunts on
+    // its own, at the player or at any other living NPC, whichever is closer,
+    // and once it has a target it never loses interest the way a turf fight or
+    // a shooting spree does. Handled entirely separately from the rest of
+    // decide() so it skips flee/provoke/calm-down, none of which apply to it.
+    if (e.type === "zombie") {
+      if (e.state === "hostile") {
+        // the only way a zombie drops its target: the target is actually dead
+        if (e.rivalTarget && (e.rivalTarget.dead || e.rivalTarget.state === "dead")) e.rivalTarget = null;
+        return;
+      }
+      let bestD = e.T.aggro, target = null;
+      if (dist < bestD) bestD = dist;
+      for (const o of env.others) {
+        if (o === e || o.dead || o.state === "dead" || o.type === "zombie") continue;
+        const d = Math.hypot(o.spr.position.x - p.x, o.spr.position.z - p.z);
+        if (d < bestD) { bestD = d; target = o; }
+      }
+      if (bestD < e.T.aggro) {
+        // whoever just got bitten reacts in character — the same brave-fights,
+        // rest-flee split as being provoked by the player, just aimed at the
+        // zombie instead. Skipped if the zombie itself failed to go hostile
+        // (the shared hostile budget is full) — no bite landed, no reaction.
+        if (becomeHostile(e, target) && target && target.state !== "hostile" && target.state !== "flee" && !target.dead) {
+          if (target.mood === "timid" || target.mood === "skittish") flee(target, p.x, p.z);
+          else becomeHostile(target, e);
+        }
+        return;
+      }
+      // nothing in biting range: shamble toward the last thing that made noise
+      // (gunfire, a kill, a fight) — the horde is drawn to a shooting spree —
+      // otherwise wander like anyone else waiting to notice something
+      const ev = recentViolence(p);
+      if (ev) { setState(e, "wander", 0); e.goal.set(ev.x, 0, ev.z); return; }
+      if (e.state === "wander") {
+        if ((e.goal.x - p.x) ** 2 + (e.goal.z - p.z) ** 2 < 1.5 || e.stateT < -14) setState(e, "idle", rand(0.5, 3));
+        return;
+      }
+      if (e.stateT <= 0) { setState(e, "wander", 0); pickGoal(e); }
       return;
     }
 

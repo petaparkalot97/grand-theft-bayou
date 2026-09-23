@@ -13,12 +13,12 @@ import { createRadio } from "./radio.js";
 import { batchStatic } from "./merge.js";
 import { initAudio, createCarAudio, resumeAudio } from "./audio.js";
 import { initWeapons3D, updateWeapon3D, playFireAnim3D, notifyReload3D, getWeaponMuzzle, RemoteWeaponRig } from "./weapons_3d.js";
-import { createNpcSystem } from "./npc.js";
+import { createNpcSystem, MAX_HOSTILE } from "./npc.js";
 import { bumpLine, fightLine } from "./pedestrianChatter.js";
 import { pedestrianVoiceWho } from "./voiceCast.js";
 import { createCameraController } from "./camera.js";
 import { createTraffic } from "./traffic.js";
-import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian, randomTuxedo, randomHighEndEscort, randomKlansman } from "./characters.js";
+import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian, randomTuxedo, randomHighEndEscort, randomKlansman, randomZombie } from "./characters.js";
 import { createCinema } from "./cinema.js";
 import { createPrologue, makeCastMember, PROLOGUE_KEEPOUT } from "./prologue.js";
 import { createMissionClinic } from "./missionClinic.js";   // unused: see missionClinic below
@@ -136,6 +136,7 @@ const loadBarFill = document.getElementById("loadBarFill");
 const loadHud = document.getElementById("loadHud");
 const startBtn = document.getElementById("startBtn");
 const freeBtn = document.getElementById("freeBtn");
+const zombieBtn = document.getElementById("zombieBtn");
 const loadScreen = document.getElementById("loadScreen");
 const hpFill = document.getElementById("hpFill");
 const spFill = document.getElementById("spFill");
@@ -1403,6 +1404,19 @@ function confirmCharacter() {
     state.reserve = { pistol: Infinity, tec9: Infinity, sawnoff: Infinity, deerRifle: Infinity };
     state.ammo = Infinity;
     arsenal.render();
+    // Zombie Survival Nightmare (human request, 2026-09-23): a free-roam
+    // variant, not the default — ordinary Free Roam is untouched. Cuts
+    // straight to night so the horde (updateZombiePopulation) is already out
+    // instead of the player waiting through a daylight freeze first.
+    if (pendingLaunch === "zombie") {
+      state.zombieMode = true;
+      // worldTime.isNight() (worldtime.js) is what updateZombiePopulation
+      // gates on, and its own night threshold is 22:00, not daycycle.js's
+      // visual dusk — 21:00 reads dark already but isNight() would still say
+      // no and the horde would never spawn. 22:30 clears both.
+      worldTime.setTime(22.5);
+      flashObjective("The Bayou is infected. Survive the night.");
+    }
   }
 }
 for (const id of characterIds) {
@@ -1824,6 +1838,12 @@ const ENEMY_TYPES = {
   // and slower than a Redneck — they come in a group and they do not scatter.
   klansman: { label: "Klansman", kind: "klansman", tint: 0xe8e4d8,
               h: 2.0, hp: 9, speed: 3.7, aggro: 30, melee: 2.0, dmg: 13, atkGap: 1.0 },
+  // Zombie-mode only (main.js: state.zombieMode). Weak one-on-one — a couple
+  // of hits from anything drops one — but slow to notice and then relentless
+  // (npc.js) once it does, and it comes in numbers. `aggro` doubles as its
+  // detection range here, not just its leash.
+  zombie: { label: "Zombie", kind: "actor", tint: 0x6b8f5a,
+            h: 1.9, hp: 5, speed: 2.1, aggro: 30, melee: 1.7, dmg: 9, atkGap: 0.8 },
 };
 
 function buildHog() {
@@ -1866,7 +1886,16 @@ const NPC_POIS = [
 for (let z = MAP.maxZ - 16; z > MAP.minZ + 16; z -= 24) {
   NPC_POIS.push({ x: ROAD_X + (z % 48 ? 9 : -9), z, r: 4 });
 }
-const npcs = createNpcSystem({ pois: NPC_POIS, resolveCollision, hitPlayer, bounds: MAP, worldTime });
+// Zombie mode (state.zombieMode) wants an actual horde bearing down on the
+// player, not npc.js's usual 7-assailant cap meant for ordinary street fights.
+// state.zombieMode is only known once the player picks the mode from the
+// menu, well after this module-scope call runs, so the cap is read live
+// through a getter rather than snapshotted here.
+const ZOMBIE_MAX_HOSTILE = 20;
+const npcs = createNpcSystem({
+  pois: NPC_POIS, resolveCollision, hitPlayer, bounds: MAP, worldTime,
+  maxHostile: () => (state.zombieMode ? ZOMBIE_MAX_HOSTILE : MAX_HOSTILE),
+});
 // The Sheriff's search / give-up logic (police.js). The cruisers themselves are
 // driven below in updateSheriffs; the module owns "where do they think you are".
 const police = createPoliceSystem({
@@ -1940,6 +1969,8 @@ function spawnEnemy(typeName, x, z, spot = null) {
     view = randomTuxedo(rng, T.h);
   } else if (T.kind === "highendescort") {
     view = randomHighEndEscort(rng, T.h);
+  } else if (typeName === "zombie") {
+    view = randomZombie(rng, T.h);
   } else if (T.kind === "klansman") {
     // `spot.officer`: the one in the crimson robe, so a mission can point at
     // whoever is giving the orders without putting a health bar over him
@@ -2606,8 +2637,12 @@ let enemyRespawnCd = 0;
 let populationOn = true;      // missions switch spawning off during set pieces
 function updateEnemyPopulation(dt) {
   if (!populationOn) return;
+  // Zombie mode's horde (updateZombiePopulation, below) shares this same
+  // `enemies` array and its own separate cap — counted out here so it can't
+  // eat into this budget and thin out the ordinary population as it fills
+  // up. It's meant to be added on top of the civilian count, not carved out of it.
   let alive = 0;
-  for (const e of enemies) if (!e.dead) alive++;
+  for (const e of enemies) if (!e.dead && e.type !== "zombie") alive++;
   enemyRespawnCd -= dt;
   if (enemyRespawnCd > 0 || alive >= ENEMY_CAP) return;
   enemyRespawnCd = alive < ENEMY_CAP * 0.5 ? 0.5 : 1.1;
@@ -2628,6 +2663,42 @@ function updateEnemyPopulation(dt) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     if (enemies[i].dead === "gone") enemies.splice(i, 1);
   }
+}
+
+// Zombie Survival Nightmare (human request, 2026-09-23): "the zombies come out
+// after dark" in free roam. Added on top of the ordinary population above,
+// not instead of it — the horde is capped separately, and existing NPCs are
+// valid targets for it, not just the player (npc.js's zombie branch in
+// decide()). Runs only in state.zombieMode; the horde clears out at dawn.
+const ZOMBIE_CAP = 16;
+let zombieRespawnCd = 0;
+function updateZombiePopulation(dt) {
+  // Ordinary Story/Free Roam/Multiplayer games never set state.zombieMode, so
+  // this is a single boolean check for them, forever — not a per-frame scan
+  // of `enemies` for a type that can never appear.
+  if (!state.zombieMode) return;
+  if (!worldTime.isNight()) {
+    // the sun's up: nobody's left standing come morning
+    for (const e of enemies) {
+      if (e.type === "zombie" && !e.dead) { npcs.release(e); scene.remove(e.spr); e.dead = "gone"; }
+    }
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      if (enemies[i].dead === "gone") enemies.splice(i, 1);
+    }
+    return;
+  }
+  let alive = 0;
+  for (const e of enemies) if (!e.dead && e.type === "zombie") alive++;
+  zombieRespawnCd -= dt;
+  if (zombieRespawnCd > 0 || alive >= ZOMBIE_CAP) return;
+  zombieRespawnCd = alive < ZOMBIE_CAP * 0.4 ? 0.35 : 0.9;
+
+  // spawn out of sight, same ring spawnzones.js already uses for the ordinary
+  // population — just force the kind, since the zone mix has no opinion on
+  // zombies (they're not a place's regular crowd)
+  const spot = spawnZones.pick(playerPos, enemies, { minDist: 35, maxDist: 75 });
+  if (!spot) return;
+  spawnEnemy("zombie", spot.x, spot.z, spot);
 }
 
 // ---- an asphalt apron linking a lot to the highway shoulder ----
@@ -3849,6 +3920,7 @@ function simulate(dt) {
   // ---- enemies ----
   const a0 = performance.now();
   updateEnemyPopulation(dt);
+  updateZombiePopulation(dt);
   npcEnv.driving = !!state.veh;
   npcs.beginFrame(dt);
   for (const e of enemies) {
@@ -4680,6 +4752,7 @@ async function boot() {
   finishLoading();
   startBtn.disabled = false;
   freeBtn.disabled = false;
+  zombieBtn.disabled = false;
   // Gated the same as Story/Free Roam: applyTier() (called by the Options
   // graphics buttons) touches `composer`, which doesn't exist until the
   // top-level `await createComposer(...)` above resolves.
@@ -4693,6 +4766,7 @@ async function boot() {
   beginGame = begin;
   startBtn.onclick = () => openCharacterSelect("story");
   freeBtn.onclick = () => { pendingLaunch = "free"; selectionIndex = characterIds.indexOf("keseme"); confirmCharacter(); };
+  zombieBtn.onclick = () => { pendingLaunch = "zombie"; selectionIndex = characterIds.indexOf("keseme"); confirmCharacter(); };
 }
 
 // Loading screen: while boot() is loading assets, the menu (logo, Start/
@@ -4731,6 +4805,7 @@ startLoadScreen();
 
 startBtn.disabled = true;
 freeBtn.disabled = true;
+zombieBtn.disabled = true;
 for (const b of gfxChoices.querySelectorAll("[data-tier]")) b.disabled = true;
 tick();
 boot().catch((err) => {

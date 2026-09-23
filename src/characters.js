@@ -1531,6 +1531,31 @@ export function randomRedneck(rng = Math.random, height, opts = {}) {
   });
 }
 
+// Sickly, bloodless skin and clothes gone the same grey-brown — a reskin of
+// the same rig, not a new one, per the human's ask (2026-09-23): "reskin an
+// existing rig" for the zombie-mode horde. No plaid, no crew colours, no
+// headwear: whatever they were wearing when they turned, it's filthy now.
+const ZOMBIE_SKIN = [0x7c8f6e, 0x6f8560, 0x8a9878, 0x5e7454, 0x94a084];
+const ZOMBIE_CLOTH = [0x4a4438, 0x40453a, 0x3c3830, 0x454034];
+
+/** A random zombie: the Hoodrat rig under a corpse's palette. */
+export function randomZombie(rng = Math.random, height) {
+  const cloth = ZOMBIE_CLOTH[(rng() * ZOMBIE_CLOTH.length) | 0];
+  return new Hoodrat({
+    sex: rng() < 0.5 ? "f" : "m",
+    crew: { cloth, chain: 0x4a4a46, shoe: 0x2c281f, legging: cloth },
+    seed: (rng() * 1e9) | 0,
+    yaw: rng() * Math.PI * 2,
+    skin: ZOMBIE_SKIN[(rng() * ZOMBIE_SKIN.length) | 0],
+    top: cloth,
+    denim: 0x353128,
+    hair: 0x1c1a16,
+    headwear: "none",
+    shoe: "boots",
+    height,
+  });
+}
+
 // Klan robe whites. Mostly the same laundered off-white, because a crowd of
 // them is meant to read as one thing with no faces in it; the darker creams are
 // robes that have seen more nights out. `officer` picks the crimson one — the

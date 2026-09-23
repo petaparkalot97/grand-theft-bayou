@@ -144,6 +144,92 @@ actual browser.
 
 ---
 
+### TASK-077 — Zombie Survival Nightmare: a new free-roam mode, horde comes out after dark (human request, 2026-09-23)
+
+**Status:** `REVIEW` (`node --check`ed; **not verified live** — no GPU/Chromium
+this session) · **Agent:** Claude · **Files:** `src/main.js`, `src/npc.js`,
+`src/characters.js`, `src/loot.js`, `index.html`
+
+Human: *"In free roam mode we want to make the zombies come out after dark...
+Lets make this a Zombie survival nightmare now."* Scope nailed down via
+AskUserQuestion before writing anything: (1) zombies are **added on top** of
+the ordinary night population, not a replacement, and **zombies attack other
+NPCs too**, not just the player; (2) a **new menu entry** ("Zombie Survival
+Nightmare"), leaving ordinary Free Roam untouched, not a flag on it; (3) the
+zombie **reskins the existing Hoodrat rig** rather than needing new art; (4) an
+**ambient hazard** using the existing spawn/combat/HUD systems, not a
+dedicated escalation/HUD-tracked mode.
+
+**What's new:**
+- **Menu:** `index.html` gets a `zombieBtn` ("Zombie Survival Nightmare") next
+  to Free Roam. Its click handler (`main.js`) is Free Roam's, plus
+  `state.zombieMode = true` and `worldTime.setTime(22.5)` — the mode drops you
+  straight into night instead of making you wait through it. (`worldTime`'s own
+  `isNight()` gate is 22:00, not daycycle.js's visual dusk — see TASK-075 —
+  22:30 clears both, 21:00 would have looked dark but not actually spawned
+  anything.)
+- **Look:** `characters.js` adds `randomZombie()` — the same `Hoodrat` rig as
+  every other street NPC, palette-swapped to sickly green-grey skin and
+  filthy grey-brown clothes (`ZOMBIE_SKIN`/`ZOMBIE_CLOTH`), no headwear, no
+  crew colours. Zero new art.
+- **Stats:** `ENEMY_TYPES.zombie` (`main.js`) — weak one-on-one (hp 5, same as
+  a Hoodrat), slow (`speed: 2.1` vs. a Redneck's 3.9), long `aggro: 30`
+  (doubles as its detection range, see below).
+- **Behaviour, the actual new mechanic (`npc.js`):** every other NPC type here
+  only turns hostile when the *player* provokes it. A zombie never is —
+  `decide()` gives it its own branch: each think-tick it looks for whichever
+  is closer within `aggro` range, the player or *any other living NPC*, and
+  attacks that instead if it's closer (so a horde tears through a crowd of
+  Hoodrats/Rednecks, not just the player). Once it has a target it never
+  calms down and wanders off the way a turf fight does — only losing the
+  target to death breaks it off. Bitten civilians react in character (reusing
+  the existing brave-fights/timid-flees temperament split). Idle zombies with
+  nothing in range shamble toward the last gunshot/kill/fight
+  (`recentViolence`, already wired for bystanders fleeing violence) — gunfire
+  draws the horde in, for free, off infrastructure that already existed.
+- **The shared hostile-slot budget:** `npc.js`'s `MAX_HOSTILE = 7` caps how
+  many NPCs can be actively attacking at once, map-wide — fine for ordinary
+  street fights, but it would cap the whole "horde" fantasy at 7 zombies ever
+  actually swinging. `createNpcSystem` now takes a `maxHostile` **getter**
+  (defaults to the constant) rather than a snapshot value, because
+  `state.zombieMode` isn't known until a menu click, long after
+  `createNpcSystem(...)` runs at module load. `main.js` passes
+  `() => state.zombieMode ? 20 : MAX_HOSTILE`. Ordinary games are completely
+  unaffected — same constant, same behaviour.
+- **Spawning (`main.js`):** `updateZombiePopulation()`, modeled on the
+  existing `updateEnemyPopulation()` top-up spawner — same out-of-sight ring
+  placement (`spawnZones.pick`), same far-cull pattern — but its own separate
+  population (`ZOMBIE_CAP = 16`), counted out of the ordinary 48-civilian cap
+  so the horde is additive rather than crowding out the regular population.
+  Bails in one boolean check for every non-zombie-mode game, forever — no
+  per-frame cost for Story/Free Roam/Multiplayer. At dawn (`!worldTime.isNight()`)
+  it silently clears every zombie still standing.
+- **Loot:** `loot.js` gives `zombie` its own table — no cash, no weapon, a
+  small (12%) chance of ammo.
+
+**Testing performed:** `node --check` on every touched file. Traced the
+`Hoodrat` constructor's option-merging (`{...CREWS.red, ...opts.crew}`) to
+confirm the custom zombie palette can't leave any material undefined the way
+a naive partial-object override might have. **Not verified live** — no
+GPU/Chromium this session, so none of the visuals, the horde feel, or the
+balance numbers (hp/speed/aggro/caps) have actually been seen or played.
+
+**What remains:**
+- A real play session is the big one here — every number above (hp 5, speed
+  2.1, aggro 30, cap 16, hostile budget 20) is a first-pass guess, not a
+  tuned value.
+- The kill-flash HUD line (`killEnemy` in `main.js`) only ever prints
+  hog/redneck/hoodrat counts; zombie kills are tallied (`kills.zombie`) but
+  not shown on that line. Minor, left alone rather than reworking a HUD line
+  this session didn't otherwise touch.
+- The new menu button's label is long ("Zombie Survival Nightmare") next to
+  "Free Roam"/"Multiplayer" — not checked at narrow viewport widths for
+  wrapping against `.menu-item`'s clamp()'d font size.
+- No new minimap icon/blip or HUD indicator distinguishes a zombie from any
+  other red hostile dot — worth a look once it can actually be seen running.
+
+---
+
 ### TASK-075 — Daylight is scrapped: the world now freezes at the 19:30 golden look until real dusk (human request, 2026-09-23)
 
 **Status:** `REVIEW` (`node --check`ed; **not verified live** — no GPU/Chromium
