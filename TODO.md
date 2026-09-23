@@ -184,6 +184,51 @@ the human's ask, but worth eyeballing).
 
 ---
 
+### TASK-076 — Crash damage was one-shotting cars: any hit above ~22 km/h already dealt ~30% health (human report, 2026-09-23)
+
+**Status:** `REVIEW` (`node --check`ed; **not verified live** — no GPU/Chromium
+this session) · **Agent:** Claude · **Files:** `src/vehicles.js`, `src/main.js`
+
+Human: *"the cars turn on fire and blow up far too easily even after just one
+collision sometimes..."*
+
+**Root cause:** `collisionResponse()` (`src/vehicles.js`) only registered
+`v.impact` (the closing speed a crash "costs") once it exceeded 6 m/s (~22
+km/h) — a light bump. `damageVehicle`'s crash-damage line in `main.js` then
+did `v.hp -= v.impact * 1.5`. Typical vehicle health is 20-34
+(`registerVehicle(..., { hp })` across main.js/traffic.js/police.js), and the
+fire threshold is 30% of max health. Doing the math: a hit at exactly the 6
+m/s gate already dealt 9 damage — 30-45% of a normal car's health — so
+practically *any* registered collision, not just hard ones, was enough to set
+the car on fire immediately, and top-speed (30 m/s max) head-on stops could
+one-shot explode most traffic cars outright.
+
+**Fix:** raised the gate to a real crash speed and changed the damage formula
+to scale off the excess above it, so a hit right at the gate now does zero
+damage instead of a third of your health:
+- `CRASH_MIN_IMPACT = 10` (m/s) — new export in `vehicles.js`, replaces the
+  hardcoded `6` in `collisionResponse`'s impact/jolt gate.
+- `CRASH_DAMAGE_SCALE = 1.1` — `main.js`'s crash-damage line is now
+  `v.hp -= Math.max(0, v.impact - CRASH_MIN_IMPACT) * CRASH_DAMAGE_SCALE`.
+
+Net feel: bumps/scrapes under ~36 km/h now do nothing; a full max-speed
+(108 km/h) head-on stop lights a normal car on fire but doesn't instantly
+explode it (a second hit will); only the most fragile vehicle (the scooter,
+hp 20) can still be one-shot exploded, and only at a dead-stop max-speed hit.
+Bullet damage (`damageVehicle` called from gunfire, unrelated to
+`v.impact`) is untouched — this was purely the collision path.
+
+**Testing performed:** `node --check` on both files; a standalone script
+sampling the new damage formula across impact speeds (7/10/15/20/25/30 m/s)
+and vehicle health tiers (20/30/34/48) to confirm the fire/explode thresholds
+land where intended. **Not verified live.**
+
+**What remains:** a real play session to confirm the crash feel (jolt/camera
+shake also now gates at 10 m/s instead of 6, since it shares the same check)
+still reads as a satisfying hit and not too soft.
+
+---
+
 ### TASK-073 — Vehicle destruction: catch fire, then explode, then a charred wreck that outlasts the player (human request, 2026-09-22)
 
 **Status:** `REVIEW` (`node --check`ed; **not verified live** — no GPU/Chromium

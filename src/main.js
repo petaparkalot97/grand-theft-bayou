@@ -28,7 +28,7 @@ import { createPotholes } from "./potholes.js";
 import { createBlueLight } from "./bluelight.js";
 import { headingFromVector, forwardFromHeading } from "./world.js";
 import { createInput } from "./input.js";
-import { VEHICLE_DEFS, vehicleDef, normalizeVehicleModel, createSeats, exitOffset, stepArcadeVehicle, collisionResponse, canHijack } from "./vehicles.js";
+import { VEHICLE_DEFS, vehicleDef, normalizeVehicleModel, createSeats, exitOffset, stepArcadeVehicle, collisionResponse, canHijack, CRASH_MIN_IMPACT, CRASH_DAMAGE_SCALE } from "./vehicles.js";
 import { createOrientationDebug, createCompass } from "./debug.js";
 import { createMinimap } from "./minimap.js";
 import { createHijacker } from "./hijack.js";
@@ -4024,9 +4024,11 @@ function drivingUpdate(dt) {
     }
     v.lastHole = hit ? hit.hole : null;
   }
-  // Crash damage (vehicles.js sets v.impact on the first frame of a hit)
+  // Crash damage (vehicles.js sets v.impact on the first frame of a hit, only
+  // once it clears CRASH_MIN_IMPACT — anything below that is a scrape, not a
+  // crash, and does no damage at all)
   if (v.impact > 0) {
-    v.hp -= v.impact * 1.5;
+    v.hp -= Math.max(0, v.impact - CRASH_MIN_IMPACT) * CRASH_DAMAGE_SCALE;
     v.impact = 0;
     if (v.hp <= 0 && !v.exploded) { crime(0.5); explodeCar(v); }
     else if (v.hp / (v.hpMax || 40) < VEHICLE_FIRE_HP_FRAC) startVehicleFire(v);

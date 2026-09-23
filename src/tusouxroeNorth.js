@@ -658,9 +658,9 @@ export function createTusouxroeNorth(ctx) {
       };
 
       // ---- shell: back and sides, floor-pivoted so the cutaway drops them ----
-      add(G.wall(W, H, T), wallMat, 0, 0, -FZ + T / 2, { cast: true, wall: true });
-      add(G.wall(T, H, D), wallMat, -(W / 2 - T / 2), 0, 0, { cast: true, wall: true });
-      add(G.wall(T, H, D), wallMat, (W / 2 - T / 2), 0, 0, { cast: true, wall: true });
+      add(G.wall(W, H, T), wallMat, 0, 0, -FZ + T / 2, { cast: true });
+      add(G.wall(T, H, D), wallMat, -(W / 2 - T / 2), 0, 0, { cast: true });
+      add(G.wall(T, H, D), wallMat, (W / 2 - T / 2), 0, 0, { cast: true });
 
       // ---- front: stone either side of one entrance, with glazed shopfronts ----
       const sideW = (W - gap) / 2;

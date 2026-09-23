@@ -678,12 +678,12 @@ export const FIXTURES = {
   privateRoom(b, s) {
     const w = s.w ?? 7, d = s.d ?? 4, h = 3.1, t = 0.28;
     const wall = b.m("room wall", b.v.theme.interior);
-    b.add(b.G.box(w, h, t), wall, s.x, h / 2, s.z - d / 2, { cast: true, wall: true });
-    b.add(b.G.box(t, h, d), wall, s.x - w / 2, h / 2, s.z, { cast: true, wall: true });
+    b.add(b.G.box(w, h, t), wall, s.x, h / 2, s.z - d / 2, { cast: true });
+    b.add(b.G.box(t, h, d), wall, s.x - w / 2, h / 2, s.z, { cast: true });
     const door = s.door ?? 1.6;
     const side = (d - door) / 2;
-    b.add(b.G.box(t, h, side), wall, s.x + w / 2, h / 2, s.z - (door + side) / 2, { cast: true, wall: true });
-    b.add(b.G.box(t, h, side), wall, s.x + w / 2, h / 2, s.z + (door + side) / 2, { cast: true, wall: true });
+    b.add(b.G.box(t, h, side), wall, s.x + w / 2, h / 2, s.z - (door + side) / 2, { cast: true });
+    b.add(b.G.box(t, h, side), wall, s.x + w / 2, h / 2, s.z + (door + side) / 2, { cast: true });
     b.add(b.G.box(w, 0.12, d), b.m("room floor", b.v.theme.felt, { roughness: 0.9 }), s.x, 0.08, s.z);
     b.add(b.G.box(0.14, 2.5, door), b.gl("room curtain", b.v.theme.accent), s.x + w / 2 + 0.05, 1.35, s.z);
     b.add(b.G.box(w - 1.2, 0.5, 0.9), b.M.velvet, s.x, 0.45, s.z - d / 2 + 0.7);
@@ -701,8 +701,8 @@ export const FIXTURES = {
   dressingRoom(b, s) {
     const w = s.w ?? 10, d = s.d ?? 5, h = 3.1, t = 0.28;
     const wall = b.m("room wall", b.v.theme.interior);
-    b.add(b.G.box(w, h, t), wall, s.x, h / 2, s.z - d / 2, { cast: true, wall: true });
-    b.add(b.G.box(t, h, d), wall, s.x - w / 2, h / 2, s.z, { cast: true, wall: true });
+    b.add(b.G.box(w, h, t), wall, s.x, h / 2, s.z - d / 2, { cast: true });
+    b.add(b.G.box(t, h, d), wall, s.x - w / 2, h / 2, s.z, { cast: true });
     b.add(b.G.box(w, 0.12, d), b.m("room floor", b.v.theme.felt, { roughness: 0.9 }), s.x, 0.08, s.z);
     const mirrors = [], bulbs = [];
     const nm = Math.max(2, Math.round(w / 3));
@@ -911,7 +911,29 @@ export const FIXTURES = {
   /** A painted pool of light on the apron: "the entrance is here", no light cost. */
   spill(b, s) {
     const w = s.w ?? 14, d = s.d ?? 10;
-    b.add(b.G.plane(w, d), b.e("entrance spill", b.v.theme.accent, 0.8, { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), s.x, 0.045, s.z, { rx: -Math.PI / 2 });
+    
+    // Generate a soft radial gradient so the light pools naturally instead of being a hard rectangle
+    if (!b.spillMap) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 64; canvas.height = 64;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, 64, 64);
+      const grd = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      grd.addColorStop(0, "rgba(255, 255, 255, 1)");
+      grd.addColorStop(0.5, "rgba(255, 255, 255, 0.7)");
+      grd.addColorStop(1, "rgba(0, 0, 0, 1)");
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, 64, 64);
+      b.spillMap = new THREE.CanvasTexture(canvas);
+    }
+    
+    b.add(b.G.plane(w, d), b.e("entrance spill", b.v.theme.accent, 0.8, { 
+      transparent: true, 
+      blending: THREE.AdditiveBlending, 
+      depthWrite: false,
+      map: b.spillMap
+    }), s.x, 0.045, s.z, { rx: -Math.PI / 2 });
     b.add(b.G.box(w * 0.28, 0.08, 0.1), b.e("kerb stripe", b.v.theme.accent, 0.7), s.x, 0.1, s.z - d / 2);
   },
 

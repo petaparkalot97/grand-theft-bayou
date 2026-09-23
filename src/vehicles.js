@@ -127,6 +127,16 @@ export const DRIVE = Object.freeze({
   wallAlign: 5,         // per second: how fast the nose swings round to follow a wall
 });
 
+// Human report (2026-09-23): cars were catching fire/exploding off a single,
+// often quite mild, collision. The old gate (`-into > 6`, ~22 km/h) let almost
+// any registered hit through, and main.js's `v.impact * 1.5` damage formula
+// meant a hit right at that gate already dealt ~30% of a typical car's health
+// — enough to ignite it on contact. Raised the gate to a genuine crash speed
+// and switched the damage formula (main.js) to scale off the excess above it,
+// so a graze at the threshold does zero damage instead of a third of your hp.
+export const CRASH_MIN_IMPACT = 10;   // m/s closing speed before a hit counts as a crash at all
+export const CRASH_DAMAGE_SCALE = 1.1; // hp lost per m/s of impact above CRASH_MIN_IMPACT
+
 /**
  * Arcade model. `controls`: { throttle −1…1 (W = +1), steer −1…1 (D = right), brake }.
  * Updates v.speed and v.heading only; the vehicle travels along its own heading.
@@ -188,7 +198,7 @@ export function collisionResponse(v, intendedX, intendedZ, resolvedX, resolvedZ,
       if (!v.inContact) {
         const headOn = Math.min(1, -into / Math.max(1, Math.abs(v.speed)));
         speed *= 1 - DRIVE.impactLoss * headOn;
-        if (-into > 6) {
+        if (-into > CRASH_MIN_IMPACT) {
           v.jolt = Math.min(1, (v.jolt || 0) + Math.min(0.8, -into / 25));
           v.impact = -into;   // m/s that hit the wall; the driver turns this into crash damage
         }
