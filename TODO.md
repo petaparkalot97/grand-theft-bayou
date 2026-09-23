@@ -53,9 +53,298 @@ backlog stub), TASK-038 (unused-asset integration pass). Suggested for
 Antigravity and Freebuff so they don't compete with the Act One work on
 `main.js`. See each brief for exact files.
 
+**Parallel workstream (human request, 2026-09-23): "Zombie Survival
+Nightmare."** Full transformation brief — turn Free Roam's zombie mode
+(TASK-077, `REVIEW`) into "Grand Theft Bayou after the world collapsed,"
+without replacing the existing map, engine or GTA-style foundation. Audit,
+architecture and the reasoning behind every task below: see
+[`docs/ZOMBIE_TRANSFORMATION_PLAN.md`](docs/ZOMBIE_TRANSFORMATION_PLAN.md).
+Next wave — **TASK-078 through TASK-083**, all Antigravity/Freebuff, all
+scoped to new or additive files (none touch `main.js` — Claude wires each in
+during review, per protocol §1 rule 5). See each brief below for exact files,
+dependencies and acceptance criteria.
+
 ---
 
 # 🔒 ACTIVE TASKS
+
+### TASK-078 — Zombie archetypes: Shambler / Runner / Brute / Crawler / Screamer
+
+**Status:** `READY` · **Agent:** UNASSIGNED (suggested: Freebuff)
+**Files / subsystem:**
+- `src/zombies.js` (new)
+
+**Dependencies:** TASK-077 (`REVIEW`) — read it before starting.
+
+**Context:** TASK-077 added exactly one zombie archetype:
+`ENEMY_TYPES.zombie` in `main.js` (hp 5, speed 2.1, aggro 30, melee 1.7,
+dmg 9, atkGap 0.8) plus one behavior branch in `npc.js`'s `decide()` — hunts
+whichever is closer of the player or any living non-zombie NPC within
+`aggro` range, never calms down once hostile, converges on
+`recentViolence()` (gunfire/kills already call `npcs.noise()`, this is real
+infrastructure, not aspirational). Read both before starting: `npc.js`'s
+zombie branch (search `e.type === "zombie"`) and `main.js`'s `ENEMY_TYPES` /
+`randomZombie` wiring in `spawnEnemy()`.
+
+**Goal:** Design a small set of archetypes as **data** — stat multipliers and
+behavior *flags* layered on the existing zombie base, not a new engine or
+state machine:
+- **Shambler** — the baseline that already exists. Document it as the
+  reference archetype.
+- **Runner** — faster, lower hp, notices things at longer range (a bigger
+  effective `aggro`).
+- **Brute** — slow, tanky, hits hard, and should be *less* drawn to distant
+  noise than the others (a lower noise-response radius) — it doesn't run
+  toward gunfire, it lumbers.
+- **Screamer** — weak, little or no melee, but the interesting one: on first
+  going hostile it should cause a *much* bigger `npcs.noise()` call than a
+  normal zombie, pulling in every other zombie in earshot. This is the one
+  archetype that needs an actual (small) behavioral hook, not just stat
+  numbers — document exactly where (a call to `noise()` the moment
+  `becomeHostile` succeeds).
+- **Crawler** — open design question, don't just pick an answer: is this (a)
+  a distinct spawn that's simply slow/low-to-the-ground, (b) a shambler that
+  gets *replaced* by a crawler on taking heavy but non-lethal damage
+  (a stagger/dismemberment state), or (c) not worth the complexity this wave?
+  Write up the tradeoffs in your task's Notes and recommend one; don't build
+  (b) without flagging it first, since it implies a new state nothing else in
+  `npc.js` has (a mid-fight archetype swap).
+
+**Acceptance criteria:**
+- `src/zombies.js` exports a plain archetype table (e.g. keyed by name), each
+  entry a set of multipliers/overrides on the TASK-077 base stats, plus any
+  behavior flags (documented, not wired).
+- A short **Integration notes** section listing, precisely, what `main.js`
+  (`ENEMY_TYPES`) and `npc.js` (the zombie `decide()` branch) would need to
+  change to consume this table — Claude does that wiring, not this task.
+- `node --experimental-detect-module --check src/zombies.js` passes.
+- No edits to `main.js`, `npc.js`, or `characters.js`.
+
+**Out of scope:** Wiring the table into the game. New art/animations (this is
+reskins/data only, per the human's own TASK-077 decision).
+
+**Integration notes (for Claude):** _(fill in when done)_
+
+**Notes:** _(progress, the Crawler recommendation, anything surprising)_
+
+---
+
+### TASK-079 — District-aware zombie spawn density
+
+**Status:** `READY` · **Agent:** UNASSIGNED (suggested: Freebuff)
+**Files / subsystem:**
+- `src/spawnzones.js` (edit — additive export only, don't change existing
+  behavior of `zoneAt`/`ZONE_MIX`/`pick`)
+
+**Dependencies:** none blocking; pairs naturally with TASK-078 but doesn't
+need it.
+
+**Context:** `updateZombiePopulation()` (`main.js`, TASK-077) currently
+spawns zombies at a flat rate everywhere — it calls
+`spawnZones.pick(playerPos, enemies, {minDist, maxDist})` purely for a
+legal, out-of-sight position and ignores the zone it lands in entirely.
+`spawnzones.js` already classifies every point on the map into a zone
+(`urban`, `town`, `commercial`, `border_strip`, `border_market`,
+`residential`, `market_row`, `rural`, `forest`, `highway`, `water`,
+`industrial`, `corporate`, `resort`, `entertainment`) via `zoneAt(x,z)`, and
+already has a precedent for a parallel per-zone table (`WANDER`, right next
+to `ZONE_MIX`).
+
+**Goal:** Add `export const ZOMBIE_DENSITY = {...}`, one multiplier per zone
+name above (0 = never spawns there, 1 = the TASK-077 baseline rate, >1 =
+denser). Suggested starting point, tune as you see fit and justify it in your
+notes: `entertainment`/`urban` highest (dense, "high-risk nightlife
+outbreak"), `commercial`/`industrial` medium-high, `residential`/`corporate`/
+`resort` medium, `rural`/`forest` low, `border_*` medium, **`highway` and
+`water` must stay 0** (spawnzones.js already returns `null` for these zones
+for civilians — a zombie standing in the middle of the highway or the bayou
+water is a bug, not atmosphere). Also export a small helper,
+`zombieDensityAt(x, z)`, so Claude's `main.js` change is a one-liner.
+
+**Acceptance criteria:**
+- Every zone key that exists in `ZONE_MIX` has a corresponding entry (no
+  silent fallback to `undefined`).
+- `highway`/`water` are explicitly 0.
+- `node --check` passes.
+- No changes to existing exports' behavior — this is additive.
+
+**Out of scope:** Changing `updateZombiePopulation` itself, or `ZONE_MIX`.
+
+**Integration notes (for Claude):** _(fill in when done)_
+
+**Notes:** _(your reasoning for the numbers you picked)_
+
+---
+
+### TASK-080 — Contextual loot by location type
+
+**Status:** `READY` · **Agent:** UNASSIGNED (suggested: Freebuff)
+**Files / subsystem:**
+- `src/loot.js` (edit — additive export only; don't touch the existing
+  `LOOT_TABLES`/`dropFor`)
+
+**Dependencies:** none.
+
+**Context:** `loot.js`'s `LOOT_TABLES` is keyed by **NPC type**
+(`hoodrat`/`redneck`/`prostitute`/`hog`/`zombie`) and rolled by `dropFor(npc)`
+on a kill. There's no location-based loot yet. Real business types that
+already exist as built geometry in this world (see `README.md` → "The map,"
+`docs/WORLD_BUILDING.md`): gas stations and a general store (Bayou Noir) on
+the fuel/convenience side, restaurants (Popeyes, BurgerPiz, Tacos, 6twelve),
+a public hospital (OrleaRouge) and one in Market Row (East Bank), plus
+ordinary residential buildings everywhere.
+
+**Goal:** Add a second table, e.g. `export const LOCATION_LOOT = {...}`,
+keyed by a **small, real** set of location kinds — `gas_station`,
+`restaurant`, `hospital`, `general_store`, `residential` — do not invent a
+`police_station` or `hardware_store` entry unless you find one already built
+in the codebase (search before assuming; if none exists, say so in your
+notes rather than speccing loot for a building that isn't there). Each kind
+gets its own odds, following the existing table's shape (a 0-1 chance per
+drop category). **Do not introduce food/water as new drop categories** — no
+survival-resource system has been approved yet (see `TODO.md` → Blockers);
+stick to the existing `cash`/`weapon`/`ammo` categories, and note in your
+Integration notes where a `food`/`medical` category *would* plug in later if
+that decision is made.
+
+**Acceptance criteria:**
+- Additive only — existing NPC-keyed loot is byte-for-byte unchanged.
+- Every location kind used is backed by real, findable geometry (cite the
+  file/function in your notes).
+- `node --check` passes.
+
+**Out of scope:** Tagging actual buildings with a location kind in the world
+(that's a `main.js`/district-module change) — document what a spawn point
+would need (e.g. a `{ kind: "gas_station" }` hint) as an interface contract,
+Claude wires the actual tagging.
+
+**Integration notes (for Claude):** _(fill in when done)_
+
+**Notes:**
+
+---
+
+### TASK-081 — Ambient audio layer for zombie mode
+
+**Status:** `READY` · **Agent:** UNASSIGNED (suggested: Freebuff)
+**Files / subsystem:**
+- `src/audio.js` (edit — additive export only)
+
+**Dependencies:** TASK-077 (`REVIEW`) — context only, not blocking.
+
+**Context:** `audio.js` already handles lazy, gesture-safe playback (the
+`resumeAudio()` pattern main.js's own free-roam/zombie launch already calls).
+There is no horror/zombie SFX in `assets/` yet as far as this session found —
+**check for real** before assuming; if nothing suitable exists, say so
+plainly in your notes rather than wiring paths to files that don't exist.
+
+**Goal:** An exported function pair, e.g. `startZombieAmbience(getPlayerPos,
+getNearbyZombieCount)` / `stopZombieAmbience()`, that layers **occasional**
+distant groans/screams — volume or pick-rate scaled by how many zombies are
+actually nearby — with real silence in between. Explicitly not a looping
+moan bed. If no assets exist, the function should still be safe to call
+(no-op, never throws) so Claude can wire the hook now and drop real audio in
+later without another integration pass.
+
+**Acceptance criteria:**
+- Never throws if assets are missing or the AudioContext is suspended.
+- Documented call sites: when to start (entering zombie mode / night) and
+  stop (dawn / leaving the mode).
+- `node --check` passes.
+
+**Out of scope:** Sourcing or licensing new SFX assets — flag the gap, don't
+block on it.
+
+**Integration notes (for Claude):** _(fill in when done)_
+
+**Notes:**
+
+---
+
+### TASK-082 — Safehouses: visually distinct, zombie-exclusion radius
+
+**Status:** `READY` · **Agent:** UNASSIGNED (suggested: Antigravity)
+**Files / subsystem:**
+- `src/safehouses.js` (new)
+
+**Dependencies:** none to start; TASK-079's density table is what Claude will
+use to actually enforce "no zombies here" once this lands.
+
+**Context:** Follow `src/klan.js`'s pattern exactly: a module that exports a
+factory (e.g. `createSafehouses(ctx)`) taking an injected context from
+`main.js` (`scene`, `state`, `addBlocker`, `poolLight`, etc. — see klan.js's
+own ctx doc comment at the top of that file for the shape). Do not spawn
+zombies or touch `npc.js`/`enemies` yourself — this task is the *place*, not
+the exclusion rule.
+
+**Goal:** 3-5 hand-placed, visually distinct safe locations across the
+existing map (boarded windows, a barricade prop, a light left on — reuse
+existing geo/prop helpers, don't build a new asset pipeline). Good
+candidates based on real existing geometry: a boarded-up storefront on the
+Strip, the Bayou Noir general store, Port Mercer's fenced service yard
+(East Bank), an OrleaRouge rooftop. Expose a simple query API:
+`nearestSafehouse(x, z)` and/or `insideSafehouse(x, z, r)`.
+
+**Acceptance criteria:**
+- Real-browser screenshot of each safehouse (per `AGENT_PROTOCOL.md` §6 —
+  Antigravity's real-browser testing pass).
+- No geometry intersecting existing static props; use `ctx.addBlocker` the
+  way `klan.js`'s `burningCross` does.
+- No performance regression (draw-call delta reported).
+- `node --check` passes.
+
+**Out of scope:** Actually preventing zombies from spawning/entering near a
+safehouse — that's a one-line consumer of this module's query API, written
+by Claude once this and TASK-079 both land. Document the exact function
+signature you'd want called, in Integration notes.
+
+**Integration notes (for Claude):** _(fill in when done)_
+
+**Notes:**
+
+---
+
+### TASK-083 — Outbreak environmental storytelling: the Strip + Chatboro
+
+**Status:** `READY` · **Agent:** UNASSIGNED (suggested: Antigravity)
+**Files / subsystem:**
+- `src/outbreak.js` (new)
+
+**Dependencies:** none technically; **check with Claude before starting if
+TASK-082 is already `IN PROGRESS`** — both are Antigravity, both are new
+files (no file conflict), but if both place props on the Strip/Chatboro at
+the same time, coordinate placement rather than let them land blind.
+
+**Context:** Same `klan.js` ctx-module pattern as TASK-082. Chatboro is
+where every player starts (`README.md` → "The map") — first impressions
+matter most here, so this task is scoped to **one stretch**, not the whole
+map: the Strip + Chatboro only. Reuse the existing prop/geo helpers already
+in `main.js`/`geo.js` rather than duplicating mesh-building code.
+
+**Goal:** 8-12 discrete storytelling beats along the Strip/Chatboro stretch:
+abandoned/burned vehicles, a barricaded shopfront, dropped bags, a blood
+trail, a hand-lettered warning sign, a crashed/abandoned bus — whatever reads
+as "something happened here" without turning every surface into gore. Each
+beat placed against real existing geometry (no floating props), registered
+with the blocker grid where it would otherwise block a path.
+
+**Acceptance criteria:**
+- Draw-call delta measured and reported (reuse `batchStatic` for anything
+  static — per `AGENT_PROTOCOL.md` §6 performance guardrails).
+- No new console errors.
+- Real-browser screenshots of at least 4 of the beats.
+- Nothing placed inside a collision volume or blocking a road/lane traffic.js
+  already drives.
+- `node --check` passes.
+
+**Out of scope:** The rest of the map (OrleaRouge, Crown Strip, East Bank,
+etc.) — later tasks, once this first pass is reviewed.
+
+**Integration notes (for Claude):** _(fill in when done)_
+
+**Notes:**
+
+---
 
 ### TASK-074 — Daylight brightness (wet-road wiring bug), spawn-area torch scale, and removing the vestigial gas-can/escape-truck mode (human reports, 2026-09-22)
 
@@ -4830,6 +5119,21 @@ before `COMPLETE`.
   conversion worth doing (the name suggests these were meant for the Hoodrat
   faction specifically), or should Hoodrat character variety stay on the
   existing sprite/`makeHoodrat` palette system? Not assigned to a task.
+- **Survival resources — food/water/fuel (2026-09-23, from the Zombie
+  Transformation plan).** The human's own mega-brief for the zombie
+  transformation lists this as a possible layer, then immediately cautions
+  "this is NOT supposed to become a huge crafting simulator." Real product
+  decision before any agent builds it: do we want a resource-management
+  layer at all, and if so how thin? Nothing in TASK-078…083 assumes an
+  answer either way. See `docs/ZOMBIE_TRANSFORMATION_PLAN.md` §6/"Explicitly
+  not scoped this wave."
+- **`TODO.md`'s own archive has drifted (2026-09-23).** The "File / subsystem
+  locks," "Review queue" and "Completed tasks" sections below stop being
+  kept current somewhere around TASK-045-070; new work keeps prepending under
+  ACTIVE TASKS instead. Decision needed: treat ACTIVE TASKS as the only live
+  section from here on (simplest), or have someone archive everything below
+  a cut line into `docs/TODO_ARCHIVE.md`. Not fixed unilaterally this
+  session — see `docs/ZOMBIE_TRANSFORMATION_PLAN.md` §5.
 
 ---
 

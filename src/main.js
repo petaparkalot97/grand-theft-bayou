@@ -4391,7 +4391,7 @@ function spawnSheriff() {
   car.position.set(sx, 0, sz);
   car.rotation.y = ang;
   scene.add(car);
-  const v = registerVehicle(car, 2.0, { sheriff: true, hp: 48 });
+  const v = registerVehicle(car, 2.0, { sheriff: true, hp: 32 });
   v.shootCd = Math.random() * 0.8;
   sheriffs.push(v);
 }

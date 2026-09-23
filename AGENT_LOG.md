@@ -23,6 +23,72 @@ goes stale, add a new one saying why; don't rewrite history.
   ### Finding
   What you discovered.
   
+## 2026-09-23 — Claude
+
+**Type:** DECISION · **Task:** TASK-078…083 (new)
+
+### Finding
+Human directive: turn the Zombie Mode groundwork from TASK-077 into a full
+"Grand Theft Bayou after the world collapsed" transformation, with Claude
+orchestrating Antigravity and Freebuff per `AGENT_PROTOCOL.md` rather than
+implementing it all solo. Checked first whether Antigravity/Freebuff are
+addressable as live sessions from here (`ListAgents`) — they are not; they're
+separate tools the human runs independently. The coordination channel is, and
+remains, the files this protocol already defines: `TODO.md` for tasks,
+`AGENT_LOG.md` for decisions/interfaces, `docs/` for standing references.
+
+### Decision
+Wrote `docs/ZOMBIE_TRANSFORMATION_PLAN.md`: an audit of what already exists
+(the real map — `stateWorld.js`'s four regions, East Bank, the Crown Strip,
+not a generic placeholder map — plus every system TASK-077 already touched),
+what's reusable as-is (`npcs.noise()`, `becomeHostile()` pairing,
+`spawnZones.pick()`, the klan.js ctx-module pattern), what needs modification
+vs. a genuinely new module, technical debt found along the way (see below),
+and a **next wave of six tasks** (TASK-078 through TASK-083, written into
+`TODO.md` → ACTIVE TASKS) covering zombie archetypes, district-aware spawn
+density, contextual loot, an ambient audio layer, safehouses and a first
+outbreak-storytelling pass on the Strip/Chatboro.
+
+**Every one of the six is scoped to new or additive files only — none touch
+`main.js`.** Per protocol §1/§2 rule 5, that stays Claude's. Each task's brief
+ends in an interface contract Claude wires in during review, not something
+the implementing agent does itself.
+
+Explicitly deferred, not decided by fiat: survival resources (food/water/fuel)
+— a real product-scope question, added to `TODO.md` → Blockers for the human,
+not inferred from the brief. Also deferred: multiplayer combat authority
+(README already documents this as a known gap, human's own brief says
+single-player first), and any QA-suite-in-advance-of-features work.
+
+### Technical debt found during the audit (not fixed, flagged)
+- `TODO.md` is ~4,950 lines; its "File / subsystem locks" / "Review queue" /
+  "Completed tasks" sections stop being kept current somewhere around
+  TASK-045-070 while new tasks keep prepending under ACTIVE TASKS. Left alone
+  this session — rewriting another agent's history without being asked is
+  exactly the kind of thing `AGENT_PROTOCOL.md` warns against — but flagged
+  as a Blockers item: either treat ACTIVE TASKS as the only live truth going
+  forward, or someone archives the tail into `docs/TODO_ARCHIVE.md`.
+- `worldtime.js`'s `isNight()` (22:00 threshold) and `daycycle.js`'s visual
+  dusk model (full dark closer to 21:00, TASK-075) are two different clocks
+  answering "is it night." Already bit TASK-077 once (an initial
+  `setTime(21)` would have looked dark but spawned nothing, since
+  `updateZombiePopulation` gates on `worldTime.isNight()`). Any future
+  night-gated system: use `worldTime.isNight()` for gameplay, the sky model
+  is cosmetic only.
+- `docs/ARCHITECTURE.md` and `README.md` have drifted in small ways
+  (`ENEMY_CAP` documented as 30, actually 48; zone table missing
+  `entertainment`/`industrial`/`corporate`/`resort`; minimap blip list still
+  mentions the gas cans/escape truck removed in TASK-074). Not urgent, noted
+  for a future Freebuff docs-cleanup pass.
+
+### Interface contracts other agents should read before claiming TASK-078…083
+See `docs/ZOMBIE_TRANSFORMATION_PLAN.md` §10-12 for the full architecture
+sketch and the task table. Short version: build the module, document exactly
+what `main.js`/`npc.js` hook you need in your task's *Integration notes*, stop
+there — don't reach into `main.js` yourself.
+
+---
+
 ## 2026-09-21 14:30 — Antigravity
 
 **Type:** HANDOFF
