@@ -1112,6 +1112,44 @@ grid** instead: that went 4/4 to 0/0 for deputies and stayed 0 for cruisers.
 Clearance of exactly 0 is the correct resting state for a pushed-out mover, not
 a failure.
 
+### Story regression sweep — Keseme's chain is intact
+
+Asked to confirm Keseme's original story still works after a day of changes from
+three sessions. Played, not inspected:
+
+| chapter | result |
+|---|---|
+| Prologue | all nine beats: cold open, aerial, drive, chase, stampede, hogs, retrieve, ledger, done. Hands off on "ACT ONE — Welcome Home" |
+| Act One | afterPrologue, toCity, establishing, door, **kitchen**, **ledger board**, done. Hands off to Blue Light |
+| Blue Light Special | toMeet, meet, raid, overload, run, WASTED + checkpoint respawn, tunnel, done. 0 console errors |
+| Nirbayou Nolantis | **12/12** assertions |
+
+`selectedCharacter` is `keseme`, all six story modules load, and every handoff
+hook is live. Her voice casting is untouched (KESEME / KESEM / NADIA, plus
+KESEME_PRE_TRANSITION for the clinic).
+
+**One stale assertion, caught by the suite and worth reading as a success.**
+`tools/qa/nolantis.mjs` asserted "reaching Mama's door completes it" —
+`phase === "done"` and a "Mama's safe" flash. TASK-066 changed exactly that: the
+door is now where the night ride STARTS, and Act One completes when the mission
+does. The test was updated to assert the new shape (door → `arrived` +
+`klan.missionPhase === "opening"`, then play the ride out and require
+`actOne.phase === "done"`), and it keeps the old fallback branch for a build
+where the Klan module is not wired. **Do not "fix" a failing assertion by
+relaxing it — work out which behaviour is correct first.** Here the new one was,
+and the test now covers more than it did.
+
+**PRE-EXISTING, not a regression: `missionClinic.js` ("Transition Day") is not
+wired.** `main.js` has held `missionClinic = null` with an explanatory comment
+since 2026-09-18 — her story opens on the Prologue by design and Hog Wild is
+Mission 1. The module is intact on disk with its dialogue; re-creating it in
+main.js is the one line that would put it back in the flow. Flagged because it
+is the only part of her story currently unreachable.
+
+**Also repaired:** `prologue.mjs`, `actone.mjs` and the rest now open the nested
+menu ("Start Game" → Story) before clicking. Every story script was timing out
+on a zero-size button after the menu rework.
+
 ### US-167 was under the Gulf. It has a causeway now.
 
 The highway runs the length of the map at `ROAD_X` and simply carried on north

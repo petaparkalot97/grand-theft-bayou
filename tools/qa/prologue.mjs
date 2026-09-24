@@ -42,6 +42,9 @@ export default async function run(page) {
   }, null, { timeout: 240000 });
   log.menu = await page.evaluate(() => [...document.querySelectorAll("#overlay button")].map((b) => b.textContent));
 
+  // the menu nests now: root -> "Start Game" -> Story
+  await page.click('[data-menu="start"]');
+  await page.waitForTimeout(300);
   await page.click("#startBtn");
 
   // the title buttons open the character select: confirm the default pick (Keseme Nadia)

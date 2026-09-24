@@ -57,6 +57,9 @@ export default async function run(page) {
   }, null, { timeout: 240000 });
 
   // ---- speed-run the prologue ----
+  // the menu nests now: root -> "Start Game" -> Story
+  await page.click('[data-menu="start"]');
+  await page.waitForTimeout(300);
   await page.click("#startBtn");
   // the title buttons open the character select: confirm the default pick (Keseme Nadia)
   await page.waitForFunction(() => { const s = document.getElementById("characterSelect"); return !s || !s.hidden; }, null, { timeout: 20000 });

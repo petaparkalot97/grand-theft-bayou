@@ -182,7 +182,36 @@ async function tests(page, log) {
     mama.phase === "toMama" && /Mama/.test(mama.objective) && !/gas cans/i.test(mama.objective), mama);
   pass("the radar waypoint points at Mama's door", !!mama.waypoint && Math.hypot(mama.waypoint.x - 100, mama.waypoint.z + 97.3) < 1, mama);
   await js(`g.actOne.debug("door"); return true;`);
-  await page.waitForTimeout(800);
-  const home = await js(`return { phase: g.actOne.phase, objective: document.getElementById("objective").textContent };`);
-  pass("reaching Mama's door completes it", home.phase === "done" && /Mama's safe/.test(home.objective), home);
+  await page.waitForTimeout(1400);
+  const home = await js(`return { phase: g.actOne.phase, klan: g.klan ? g.klan.missionPhase : null,
+    objective: document.getElementById("objective").textContent };`);
+  // Reaching the door used to BE the ending — a flash of "Mama's safe, for now"
+  // and back to the gas cans, with nolantis.js's question left hanging. It is
+  // now where the night ride starts (klan.js, TASK-066), so Act One completes
+  // when that mission does, not when she knocks. The old fallback still applies
+  // if the Klan module is not wired, so both shapes are accepted here.
+  pass("reaching Mama's door starts the night ride",
+    home.klan !== null
+      ? home.phase === "arrived" && home.klan === "opening"
+      : home.phase === "done" && /Mama's safe/.test(home.objective), home);
+
+  if (home.klan !== null) {
+    // play it out: skip the opening scene, clear the mob, skip the aftermath
+    for (let i = 0; i < 40; i++) {
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(300);
+      await js(`g.state.hp = 100; g.state.paused = false; return true;`);
+      if ((await js(`return g.klan.missionPhase;`)) === "fight") break;
+    }
+    await js(`for (const e of g.enemies) if (e.type === "klansman" && !e.dead) g.killEnemy(e); return true;`);
+    for (let i = 0; i < 50; i++) {
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(300);
+      await js(`g.state.hp = 100; g.state.paused = false; return true;`);
+      if ((await js(`return g.klan.missionPhase;`)) === "done") break;
+    }
+    const after = await js(`return { actOne: g.actOne.phase, klan: g.klan.missionPhase,
+      objective: document.getElementById("objective").textContent };`);
+    pass("the night ride completes Act One", after.actOne === "done" && after.klan === "done", after);
+  }
 }
