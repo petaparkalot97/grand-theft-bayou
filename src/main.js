@@ -2018,6 +2018,15 @@ const ENEMY_TYPES = {
   // and slower than a Redneck — they come in a group and they do not scatter.
   klansman: { label: "Klansman", kind: "klansman", tint: 0xe8e4d8,
               h: 2.0, hp: 9, speed: 3.7, aggro: 30, melee: 2.0, dmg: 13, atkGap: 1.0 },
+  // Keseme's people, as fighting NPCs rather than cutscene props — the same rig
+  // the story cast already uses (prologue.js CAST), driven by the same AI as
+  // everyone else, so they chase, swing and take hits for real. Tough on
+  // purpose: watching Mally get dropped by the third man through the gate is
+  // not the scene. klan.js is the only thing that spawns these.
+  mally: { label: "Mally", kind: "cast", who: "mally", tint: 0x2f9e44,
+           h: 1.9, hp: 26, speed: 4.7, aggro: 34, melee: 2.0, dmg: 9, atkGap: 0.75 },
+  bubba: { label: "Bubba", kind: "cast", who: "bubba", tint: 0x6a6f3c,
+           h: 1.96, hp: 32, speed: 4.2, aggro: 34, melee: 2.1, dmg: 12, atkGap: 0.9 },
   // Zombie-mode only (main.js: state.zombieMode). Weak one-on-one — a couple
   // of hits from anything drops one — but slow to notice and then relentless
   // (npc.js) once it does, and it comes in numbers. `aggro` doubles as its
@@ -2160,6 +2169,8 @@ function spawnEnemy(typeName, x, z, spot = null) {
     view = randomHighEndEscort(rng, T.h);
   } else if (typeName === "zombie") {
     view = randomZombie(rng, T.h);
+  } else if (T.kind === "cast") {
+    view = makeCastMember(makeHoodrat, T.who);
   } else if (T.kind === "klansman") {
     // `spot.officer`: the one in the crimson robe, so a mission can point at
     // whoever is giving the orders without putting a health bar over him

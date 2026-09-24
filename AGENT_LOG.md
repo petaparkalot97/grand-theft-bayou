@@ -1112,6 +1112,49 @@ grid** instead: that went 4/4 to 0/0 for deputies and stayed 0 for cruisers.
 Clearance of exactly 0 is the correct resting state for a pushed-out mover, not
 a failure.
 
+### The night ride is a fight now, not an ambush — and she is not alone in it
+
+Two playtest notes: spread the mob out so Keseme can get set, and let Bubba and
+Mally actually help.
+
+**Spread.** `callOut` ringed them at radius 7, so six men appeared inside arm's
+reach the instant the scene ended — you were taking hits before you had finished
+reading what was happening. It now takes `arc`, `facing` and `minRadius`, and
+the ride lays them in a 0.85π arc on the far side of the cross from wherever she
+is standing, 16–27 m out. Measured: nearest man on arrival went from about 7 m
+to **22 m**. They also spawn UNPROVOKED and `armIn` holds them for 3.4 s, which
+is the beat she needs to draw — the whole reason the holster toggle exists.
+
+**Allies.** Mally and Bubba are now ENEMY_TYPES `mally` / `bubba` with
+`kind: "cast"`, built from the story-cast rig, so **the ordinary NPC AI drives
+them** — `hitRival` already existed, so they close, swing, take damage and can
+go down. No bespoke ally controller. `factions.js` lists them in `ENEMIES_OF`
+both ways.
+
+Two things that did not work without help, both worth knowing:
+
+1. **An ally that kills its man goes back to wandering** and then stands in the
+   middle of a fight doing nothing, which reads worse than not being there. The
+   ride re-targets every 0.8 s.
+2. **A klansman provoked at the player never fights back.** He walks past Mally
+   taking swings at him to reach her, so the allies beat up a queue of men who
+   have not noticed — measured `klanTargetingAlly: 0`. Any klansman without a
+   target now turns on whichever ally is genuinely in his face: closer than
+   Keseme by 3 m and within 14 m, so it pulls men OFF her without emptying the
+   fight away from her. After: **2**.
+
+**INTERFACE — `npcs.becomeHostile(e, rival, force)`.** The third argument skips
+the crowd cap. The cap exists so an ambient brawl cannot eat the frame budget
+and ambient fights must keep respecting it, but a scripted fight has a fixed
+cast, and an ally who silently refuses to join because six others are already
+swinging is a bug the player reads as "Mally just stood there".
+
+Result: klan HP 54 → 0, all six down, both allies alive — and the test never
+fired a shot, so that was entirely Mally and Bubba.
+
+**NOT DONE: running them over.** The ally AI is on foot; nothing drives a car
+for an NPC. Vehicular help would need a driving AI, which does not exist.
+
 ### Story regression sweep — Keseme's chain is intact
 
 Asked to confirm Keseme's original story still works after a day of changes from

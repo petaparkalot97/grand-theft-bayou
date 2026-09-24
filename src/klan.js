@@ -93,11 +93,18 @@ export function createKlan(ctx) {
    * point them at the player. Returns the NPC records, so a mission can wait on
    * them being dead.
    */
-  function callOut(x, z, n = 5, { radius = 7, officer = true, provoke = true } = {}) {
+  function callOut(x, z, n = 5,
+    { radius = 7, minRadius = 0, officer = true, provoke = true, arc = Math.PI * 2, facing = 0 } = {}) {
     const out = [];
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + Math.random() * 0.4;
-      const r = radius * (0.55 + Math.random() * 0.45);
+      // `arc` + `facing` lay them across one side instead of ringing the point,
+      // and `minRadius` keeps them off you. A full ring at radius 7 put six men
+      // inside arm's reach the instant the scene ended — you were taking hits
+      // before you had finished reading what was happening.
+      const spread = n > 1 ? (i / (n - 1) - 0.5) * arc : 0;
+      const a = facing + spread + (Math.random() - 0.5) * 0.22;
+      const lo = minRadius || radius * 0.55;
+      const r = lo + Math.random() * Math.max(0.001, radius - lo);
       // the first one out is the one giving the orders, in the crimson robe.
       // spawnEnemy reads `officer` off the spot argument, because the robe
       // colour is chosen when the body is built, not afterwards.
@@ -132,8 +139,16 @@ export function createKlan(ctx) {
     if (ride) return ride;
     rideCd = RIDE_COOLDOWN;
     const cross = burningCross(x, z, ry);
-    const mob = callOut(x, z, count, { radius: 9 });
-    ride = { cross, mob, onClear, done: false };
+    // They come from the road, not out of the ground at your feet: an arc on
+    // the far side of the cross from wherever Keseme is standing, 16–27 m out,
+    // and NOT provoked yet. `armIn` gives her a beat to see them coming, get
+    // her back to the wall and draw — which is the whole reason the holster
+    // toggle exists.
+    const away = Math.atan2(x - playerPos.x, z - playerPos.z);
+    const mob = callOut(x, z, count, {
+      radius: 27, minRadius: 16, arc: Math.PI * 0.85, facing: away, provoke: false,
+    });
+    ride = { cross, mob, onClear, done: false, armIn: 3.4, armed: false, allies: [], retarget: 0 };
     if (why) ctx.setObjective(why);
     if (!seen) {
       seen = true;
@@ -146,6 +161,33 @@ export function createKlan(ctx) {
       });
     }
     return ride;
+  }
+
+  /**
+   * Mally and Bubba turn up. They are ordinary NPC records (main.js ENEMY_TYPES
+   * "mally" / "bubba", built from the story cast rig), so the same AI that
+   * drives every other fight drives them — they close, they swing, they take
+   * damage and they can go down. factions.js lists them as the klan's enemies,
+   * so the mob fights back rather than ignoring them.
+   *
+   * They spawn behind Keseme relative to the mob, so they arrive INTO the
+   * fight rather than on top of it.
+   */
+  function callAllies(fromX, fromZ) {
+    if (!ctx.spawnEnemy || !ctx.npcs) return [];
+    // behind her, relative to where the mob is coming from
+    const toward = Math.atan2(playerPos.x - fromX, playerPos.z - fromZ);
+    const out = [];
+    const who = ["mally", "bubba"];
+    for (let i = 0; i < who.length; i++) {
+      const a = toward + (i === 0 ? 0.5 : -0.5);
+      const e = ctx.spawnEnemy(who[i], playerPos.x + Math.sin(a) * 5.5, playerPos.z + Math.cos(a) * 5.5);
+      if (!e) continue;
+      e.ally = true;
+      e.leash = { x: playerPos.x, z: playerPos.z, r: 46 };   // they stay in the fight, not the parish
+      out.push(e);
+    }
+    return out;
   }
 
   function stop({ clear = true } = {}) {
@@ -182,6 +224,60 @@ export function createKlan(ctx) {
     if (mission && mission.phase === "cleared" && !ctx.state.cinematic) missionAftermath();
 
     if (!ride) return;
+
+    // ---- they come on, and so do hers ----
+    if (!ride.armed) {
+      ride.armIn -= dt;
+      if (ride.armIn <= 0 && !state.cinematic) {
+        ride.armed = true;
+        for (const e of ride.mob) if (!e.dead) ctx.npcs.provoke(e);
+        const c = ride.cross.group.position;
+        ride.allies = callAllies(c.x, c.z);
+        if (ride.allies.length) {
+          ctx.flashObjective("MALLY: \"You did NOT think we'd let you do this by yourself.\"");
+        }
+      }
+    }
+
+    // Keep both sides pointed at each other. Without this, an ally that kills
+    // its man goes back to wandering and stands in the middle of a fight doing
+    // nothing, which is worse than not having him there at all.
+    ride.retarget -= dt;
+    if (ride.armed && ride.retarget <= 0) {
+      ride.retarget = 0.8;
+      const standing = ride.mob.filter((e) => !e.dead && e.state !== "dead");
+      for (const a of ride.allies) {
+        if (a.dead || a.state === "dead") continue;
+        const live = a.rivalTarget && !a.rivalTarget.dead && a.rivalTarget.state !== "dead";
+        if (live || !standing.length) continue;
+        let best = null, bd = Infinity;
+        for (const k of standing) {
+          const d = Math.hypot(k.spr.position.x - a.spr.position.x, k.spr.position.z - a.spr.position.z);
+          if (d < bd) { bd = d; best = k; }
+        }
+        // `force`: a scripted ally must never lose its place to the crowd cap
+        if (best) ctx.npcs.becomeHostile(a, best, true);
+      }
+
+      // And the mob fights BACK. Provoked at Keseme, a klansman will walk past
+      // Mally taking swings at him to get to her, which plays as the allies
+      // beating up a queue of men who have not noticed. Anyone without a target
+      // of his own turns on whichever of hers is genuinely in his face —
+      // closer than Keseme by a clear margin, so this pulls men OFF her (the
+      // point of having help) without emptying the fight away from her.
+      const live = ride.allies.filter((a) => !a.dead && a.state !== "dead");
+      for (const k of standing) {
+        if (k.rivalTarget && !k.rivalTarget.dead) continue;
+        let best = null, bd = Infinity;
+        for (const a of live) {
+          const d = Math.hypot(a.spr.position.x - k.spr.position.x, a.spr.position.z - k.spr.position.z);
+          if (d < bd) { bd = d; best = a; }
+        }
+        if (!best) continue;
+        const toHer = Math.hypot(playerPos.x - k.spr.position.x, playerPos.z - k.spr.position.z);
+        if (bd < toHer - 3 && bd < 14) ctx.npcs.becomeHostile(k, best, true);
+      }
+    }
     // the ride is over when the last of them is down
     if (ride.mob.every((e) => e.dead)) {
       const done = ride.onClear;

@@ -103,12 +103,20 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
     return null;
   }
 
-  function becomeHostile(e, rivalTarget = null) {
+  /**
+   * `force` skips the crowd cap. That cap exists so an ambient street brawl
+   * cannot eat the frame budget, and ambient fights should keep respecting it —
+   * but a SCRIPTED fight has a fixed, known cast, and an ally who silently
+   * refuses to join in because six other people are already swinging is a bug
+   * the player reads as "Mally just stood there". klan.js uses it for Bubba and
+   * Mally; nothing ambient should.
+   */
+  function becomeHostile(e, rivalTarget = null, force = false) {
     if (e.state === "hostile") {
       if (rivalTarget && (!e.rivalTarget || e.rivalTarget.dead)) e.rivalTarget = rivalTarget;
       return true;
     }
-    if (hostiles >= maxHostile()) return false;
+    if (!force && hostiles >= maxHostile()) return false;
     e.rivalTarget = rivalTarget || null;
     setState(e, "hostile", 0);
     e.calm = 0;

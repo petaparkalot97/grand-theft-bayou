@@ -20,7 +20,12 @@ import { MAX_HOSTILE } from "./npc.js";
 const ENEMIES_OF = {
   redneck: new Set(["hoodrat"]),
   hoodrat: new Set(["redneck", "klansman"]),
-  klansman: new Set(["hoodrat"]),
+  // Mally and Bubba (klan.js) exist only inside the night ride, so listing them
+  // costs nothing the rest of the time — but it means a klansman who finishes
+  // with Keseme turns on whoever is next instead of queueing politely for her.
+  klansman: new Set(["hoodrat", "mally", "bubba"]),
+  mally:    new Set(["klansman"]),
+  bubba:    new Set(["klansman"]),
 };
 const FIGHTERS = new Set(Object.keys(ENEMIES_OF));
 
