@@ -16,17 +16,31 @@
 
 import * as THREE from "three";
 import { createLedgerBoard } from "./ledgerboard.js";
+import { DISTRICTS } from "./districts.js";
 
-export const NB = { x: 92, z: -100 };            // South Tusouxroe
+// WHERE THIS DISTRICT IS. Everything below is written in TOWN-LOCAL
+// coordinates, exactly as it was when Tusouxroe sat at the world origin, and
+// the town is moved by changing districts.js — not by editing any number in
+// this file. The visuals hang off a group at the origin so they travel for
+// free; only the things that are unavoidably WORLD-space (collision blockers,
+// pooled lights, teleports, waypoints and distance checks against playerPos)
+// are converted, through `wx`/`wz`.
+const TOWN = DISTRICTS.tusouxroe;
+const wx = (x) => TOWN.x + x;
+const wz = (z) => TOWN.z + z;
+
+export const NB = { x: 92, z: -100 };            // South Tusouxroe, town-local
 const STREET_Z = -106;
 const HOME = { x: 100, z: -93, w: 9, d: 8 };      // the Nadia house (door faces the street)
 const DOOR = { x: HOME.x, z: HOME.z - HOME.d / 2 - 0.3 };
+/** The same two points in WORLD space, for anything outside this module. */
+export const NB_WORLD = { x: wx(NB.x), z: wz(NB.z) };
 // Emiko's house and her front door, exported because the threat in
 // nolantis.js — "Your mother's house is very pretty" — is about THIS house, and
 // klan.js has to be able to stage a night on its lawn without a second copy of
 // these numbers drifting out of step with them.
-export const NADIA_HOME = HOME;
-export const NADIA_DOOR = DOOR;
+export const NADIA_HOME = { x: wx(HOME.x), z: wz(HOME.z), w: HOME.w, d: HOME.d };
+export const NADIA_DOOR = { x: wx(DOOR.x), z: wz(DOOR.z) };
 const ROOM_Y = -40;
 
 function basic(color, extra = {}) {
@@ -77,7 +91,7 @@ export function createActOne(ctx) {
     const w = HOME.w, d = HOME.d, h = 3.4;
     const g = new THREE.Group();
     g.position.set(cx, 0, cz);
-    scene.add(g);
+    town.add(g);
     const wall = new THREE.MeshStandardMaterial({ name: "siding wood", color: siding });
     const trimMat = new THREE.MeshStandardMaterial({ name: "trim wood", color: trim });
     box(w, 0.6, d, new THREE.MeshStandardMaterial({ name: "concrete block", color: 0x77756e }), 0, 0.3, 0, g);
@@ -102,9 +116,15 @@ export function createActOne(ctx) {
       box(1.7, 0.12, 0.16, trimMat, wx, 1.6, -d / 2 - 0.05, g, false);
     }
     // collision: the house body
-    for (const [bx, bz] of [[-w / 4, 0], [w / 4, 0]]) ctx.addBlocker(cx + bx, cz + bz, d / 2);
+    for (const [bx, bz] of [[-w / 4, 0], [w / 4, 0]]) ctx.addBlocker(wx(cx + bx), wz(cz + bz), d / 2);
     return g;
   }
+
+  // Everything visual goes in here, so moving the district moves the lot.
+  // Collision, lights and story logic are world-space and converted separately.
+  const town = new THREE.Group();
+  town.position.set(TOWN.x, 0, TOWN.z);
+  scene.add(town);
 
   function buildSet() {
     // the street, from the truck lot east into the neighbourhood
@@ -117,7 +137,7 @@ export function createActOne(ctx) {
     street.rotation.x = -Math.PI / 2;
     street.position.set(29 + len / 2, 0.018, STREET_Z);
     street.receiveShadow = true;
-    scene.add(street);
+    town.add(street);
 
     house(HOME.x, HOME.z, { siding: 0xb7c4b1, trim: 0xefeae0 });        // the Nadia house
     house(82, -93, { siding: 0xd8b98a, trim: 0xf2efe6 });                 // the porch-plates house
@@ -149,7 +169,7 @@ export function createActOne(ctx) {
     court.rotation.x = -Math.PI / 2;
     court.position.set(84, 0.03, -119);
     court.receiveShadow = true;
-    scene.add(court);
+    town.add(court);
     const steel = new THREE.MeshStandardMaterial({ name: "steel pole", color: 0x5a5d60 });
     for (const s of [-1, 1]) {
       box(0.16, 3.4, 0.16, steel, 84 + s * 8.6, 1.7, -119);
@@ -157,8 +177,8 @@ export function createActOne(ctx) {
       const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.025, 6, 16), basic(0xe0561c));
       hoop.rotation.x = Math.PI / 2;
       hoop.position.set(84 + s * 7.95, 3.05, -119);
-      scene.add(hoop);
-      ctx.addBlocker(84 + s * 8.6, -119, 0.3);
+      town.add(hoop);
+      ctx.addBlocker(wx(84 + s * 8.6), wz(-119), 0.3);
     }
 
     // domino table
@@ -169,7 +189,7 @@ export function createActOne(ctx) {
       const tile = box(0.1, 0.03, 0.2, basic(0xf2efe6), 103.5 + (i % 5) * 0.22, 0.88, -117.2 + ((i * 7) % 3) * 0.2, scene, false);
       tile.rotation.y = (i % 2) * Math.PI / 2;
     }
-    ctx.addBlocker(104, -117, 0.9);
+    ctx.addBlocker(wx(104), wz(-117), 0.9);
 
     // porch food table in front of the plates house
     box(1.8, 0.06, 0.8, new THREE.MeshStandardMaterial({ name: "plastic table", color: 0xe6e3dc }), 82, 0.76, -99.6);
@@ -188,13 +208,13 @@ export function createActOne(ctx) {
       for (let i = 0; i < 9; i++) { x.fillStyle = "#ffdca0"; x.beginPath(); x.arc(120 + i * 100, 214, 9, 0, 7); x.fill(); }
     });
     box(14, 3.2, 0.4, new THREE.MeshStandardMaterial({ map: mural, name: "brick wall" }), 68, 1.6, -121);
-    ctx.addBlocker(63, -121, 1); ctx.addBlocker(68, -121, 1); ctx.addBlocker(73, -121, 1);
+    ctx.addBlocker(wx(63), wz(-121), 1); ctx.addBlocker(wx(68), wz(-121), 1); ctx.addBlocker(wx(73), wz(-121), 1);
 
     // the billboard the script calls for, over the neighbourhood
-    ctx.makeBillboard(118, -124, 0, "LUXURY CONDOS", "COMING SOON", "WHERE WE SUPPOSED TO GO?");
+    ctx.makeBillboard(wx(118), wz(-124), 0, "LUXURY CONDOS", "COMING SOON", "WHERE WE SUPPOSED TO GO?");
 
     // street lights
-    for (const x of [50, 72, 94, 116]) ctx.addLitSpot({ x, y: 5, z: STREET_Z - 5.5, warm: 0xffd9a0, power: 90, range: 22, pole: true });
+    for (const x of [50, 72, 94, 116]) ctx.addLitSpot({ x: wx(x), y: 5, z: wz(STREET_Z - 5.5), warm: 0xffd9a0, power: 90, range: 22, pole: true });
 
     // ---- the kitchen, sealed under the neighbourhood ----
     const rx = NB.x, rz = NB.z, y = ROOM_Y;
@@ -217,7 +237,7 @@ export function createActOne(ctx) {
     for (const [cx, cz] of [[-0.3, 0.2], [0.45, -0.25]]) {
       const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.1, 10), basic(0xf4efe4));
       cup.position.set(rx + cx, y + 0.86, rz + cz);
-      scene.add(cup);
+      town.add(cup);
     }
     ledgerProp = box(0.32, 0.05, 0.42, new THREE.MeshStandardMaterial({ color: 0x5a1f1a, name: "leather book" }), rx - 0.1, y + 0.84, rz + 0.05, scene, false);
     ledgerProp.visible = false;
@@ -231,7 +251,7 @@ export function createActOne(ctx) {
     a.position.set(x, 0, z);
     a._last.copy(a.position);
     if (yawTo) a._yaw = Math.atan2(yawTo[0] - x, yawTo[1] - z);
-    scene.add(a);
+    town.add(a);
     actors.push(a);
     return a;
   }
@@ -251,7 +271,7 @@ export function createActOne(ctx) {
     ball = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10),
       new THREE.MeshStandardMaterial({ color: 0xd9621c, roughness: 0.7, name: "rubber ball" }));
     ball.castShadow = true;
-    scene.add(ball);
+    town.add(ball);
 
     // older men at the dominoes
     const elders = [
@@ -389,7 +409,7 @@ export function createActOne(ctx) {
     // the ledger map, with Mally and Bubba crowding in
     cast.mally = cast.mally || ctx.makeCastMember("mally");
     cast.bubba = cast.bubba || ctx.makeCastMember("bubba");
-    for (const a of [cast.mally, cast.bubba]) if (!a.parent) scene.add(a);
+    for (const a of [cast.mally, cast.bubba]) if (!a.parent) town.add(a);
     placeActor(cast.mally, rx + 1.25, y, rz + 0.6, [rx, rz]);
     placeActor(cast.bubba, rx + 0.3, y, rz + 1.5, [rx, rz]);
     await c.caption("Later. Mally and Bubba crowd around the kitchen table.");
@@ -431,7 +451,7 @@ export function createActOne(ctx) {
     await c.black(true, 0.6);
     for (const a of [cast.mally, cast.bubba]) a.visible = false;
     // out on the pavement, with the camera on the street side looking back at the house
-    ctx.teleport(DOOR.x, DOOR.z - 5, Math.PI);
+    ctx.teleport(wx(DOOR.x), wz(DOOR.z - 5), Math.PI);
     k.baseY = 0;
     k.position.set(DOOR.x, 0, DOOR.z - 5);
     k._last.copy(k.position);
@@ -474,8 +494,9 @@ export function createActOne(ctx) {
     get phase() { return phase; },
     /** Where the player should go next ({x, z}), or null: the minimap's waypoint blip. */
     get waypoint() {
-      if (phase === "toCity") return { x: NB.x - 20, z: STREET_Z };
-      return phase === "door" || phase === "toMama" ? DOOR : null;
+      // world space: the minimap and the on-screen marker both read this
+      if (phase === "toCity") return { x: wx(NB.x - 20), z: wz(STREET_Z) };
+      return phase === "door" || phase === "toMama" ? NADIA_DOOR : null;
     },
 
     /** Called when Nirbayou Nolantis ends: someone threatened Mama, so go to her. */
@@ -501,8 +522,8 @@ export function createActOne(ctx) {
 
     /** QA hooks for tools/qa/actone.mjs: "arrive" | "door". */
     debug(step) {
-      if (step === "arrive" && phase === "toCity") ctx.teleport(NB.x - 30, STREET_Z, -Math.PI / 2);
-      if (step === "door" && (phase === "door" || phase === "toMama")) { ctx.exitVehicle(); ctx.teleport(DOOR.x, DOOR.z - 1, 0); }
+      if (step === "arrive" && phase === "toCity") ctx.teleport(wx(NB.x - 30), wz(STREET_Z), -Math.PI / 2);
+      if (step === "door" && (phase === "door" || phase === "toMama")) { ctx.exitVehicle(); ctx.teleport(wx(DOOR.x), wz(DOOR.z - 1), 0); }
       return phase;
     },
 
@@ -510,7 +531,7 @@ export function createActOne(ctx) {
       if (phase === "idle") return;
       updateMovers(dt);
       const t = performance.now() / 1000;
-      const near = Math.hypot(playerPos.x - NB.x, playerPos.z - NB.z) < 110 || state.cinematic;
+      const near = Math.hypot(playerPos.x - NB_WORLD.x, playerPos.z - NB_WORLD.z) < 110 || state.cinematic;
       if (near) {
         for (const a of actors) {
           if (a.court && !movers.some((m) => m.obj === a) && Math.random() < dt * 0.8) {
@@ -534,8 +555,8 @@ export function createActOne(ctx) {
       }
 
       if (phase === "toCity") {
-        if (!radioDone && playerPos.z < -25) { radioDone = true; dialogue(radio); }
-        if (Math.hypot(playerPos.x - NB.x, playerPos.z - NB.z) < 36 && !state.cinematic) {
+        if (!radioDone && playerPos.z < wz(-25)) { radioDone = true; dialogue(radio); }
+        if (Math.hypot(playerPos.x - NB_WORLD.x, playerPos.z - NB_WORLD.z) < 36 && !state.cinematic) {
           phase = "arrive";
           dialogue(establishing).then(() => {
             phase = "door";
@@ -543,7 +564,7 @@ export function createActOne(ctx) {
           });
         }
       } else if (phase === "door") {
-        const d = Math.hypot(playerPos.x - DOOR.x, playerPos.z - DOOR.z);
+        const d = Math.hypot(playerPos.x - NADIA_DOOR.x, playerPos.z - NADIA_DOOR.z);
         if (state.veh && d < 14) ctx.setObjective("Get out of the car and go inside (F).");
         else if (!state.veh) ctx.setObjective("Go inside: Mama Emiko's house (the green one).");
         if (!state.veh && d < 2.6 && !state.cinematic) {
@@ -551,7 +572,7 @@ export function createActOne(ctx) {
           dialogue(home).then(finish);
         }
       } else if (phase === "toMama") {
-        const d = Math.hypot(playerPos.x - DOOR.x, playerPos.z - DOOR.z);
+        const d = Math.hypot(playerPos.x - NADIA_DOOR.x, playerPos.z - NADIA_DOOR.z);
         if (state.veh && d < 14) ctx.setObjective("Get out of the car and go to Mama's door (F).");
         else if (d < 14) ctx.setObjective("Go to Mama's door: the green house.");
         else ctx.setObjective(MAMA_OBJECTIVE);

@@ -5070,7 +5070,10 @@ async function boot() {
       if (player._last) player._last.copy(player.position);
     }, cine, blockers, blockerGrid, renderer, perf, input, spawnZones, klan, radio,
     get radioOff() { return radioOff; },
-    get newton() { return newton; }, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
+    get newton() { return newton; },
+    // where the story says Mama's house is, so QA never hardcodes a town's
+    // position again — districts.js moves it and this follows
+    mamaDoor: NADIA_DOOR, mamaHouse: NADIA_HOME, orientDebug, minimap, hijacker, arsenal, services, nightlife, tips, loot, worldTime, weather, POPEYES_LOCATIONS, popeyesPlaced, killEnemy, spawnEnemy, factionWar, police, sheriffSees: () => sheriffSees(0.21), get nolantis() { return nolantis; }, get welcomeBack() { return welcomeBack; },
     get playerMoveHeading() { return playerMoveHeading; },
     get soundtrack() { return soundtrackReady; }, get casinos() { return casinos; } };
   // the radar's base map, from the level as built

@@ -180,7 +180,14 @@ async function tests(page, log) {
     objective: document.getElementById("objective").textContent };`);
   pass("after Nolantis the objective is Mama's house, not the gas cans",
     mama.phase === "toMama" && /Mama/.test(mama.objective) && !/gas cans/i.test(mama.objective), mama);
-  pass("the radar waypoint points at Mama's door", !!mama.waypoint && Math.hypot(mama.waypoint.x - 100, mama.waypoint.z + 97.3) < 1, mama);
+  // Derived, never hardcoded: Tusouxroe's position lives in districts.js and the
+  // house moves with it. This assertion used to pin (100, -97.3) and broke the
+  // moment the town was relocated, which is exactly the coupling that made
+  // moving a town dangerous in the first place.
+  const doorAt = await js(`return { x: g.mamaDoor.x, z: g.mamaDoor.z };`);
+  pass("the radar waypoint points at Mama's door",
+    !!mama.waypoint && Math.hypot(mama.waypoint.x - doorAt.x, mama.waypoint.z - doorAt.z) < 1,
+    { waypoint: mama.waypoint, doorAt });
   await js(`g.actOne.debug("door"); return true;`);
   await page.waitForTimeout(1400);
   const home = await js(`return { phase: g.actOne.phase, klan: g.klan ? g.klan.missionPhase : null,
