@@ -59,6 +59,10 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
   const minimap = { roads: [], buildings: [], areas: [], water: [] };
   const log = [];
   let stage = -1, built = 0, rejected = 0, trees = 0, focal = null, cullTimer = 0;
+  // A site() landing on ground something else already holds. It only warns, and a
+  // console warning at load is a thing nobody reads: counted here so a district's
+  // own QA can assert on it (see tools/qa/tusouxroe.mjs).
+  let siteOverlaps = 0;
 
   function enter(s) {
     const i = STAGES.indexOf(s);
@@ -150,7 +154,10 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
 
     /** Hold ground for something built in a later stage (a side street, a lot, the landmark). */
     site(siteName, rect) {
-      if (!isFree(rect)) console.warn(`[composer] ${name}: site "${siteName}" overlaps something already placed`);
+      if (!isFree(rect)) {
+        siteOverlaps++;
+        console.warn(`[composer] ${name}: site "${siteName}" overlaps something already placed`);
+      }
       fill(rect, SITE);
       sites.set(siteName, rect);
       return rect;
@@ -344,7 +351,7 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
     get drawn() { return clusters.filter((c) => c.group.visible).length + " / " + clusters.length; },
 
     report() {
-      return { name, stages: log.map((e) => ({ ...e })), built, rejected, trees, clusters: clusters.length, focal };
+      return { name, stages: log.map((e) => ({ ...e })), built, rejected, trees, siteOverlaps, clusters: clusters.length, focal };
     },
 
     update(dt, eye) {

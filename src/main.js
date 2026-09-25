@@ -44,6 +44,8 @@ import { createLoot } from "./loot.js";
 import { createWorldTime } from "./worldtime.js";
 import { createWeather } from "./weather.js";
 import { createEastBank, EAST_MAX_X } from "./eastbank.js";
+import { createTusouxroe } from "./tusouxroe.js";
+import { createChatboro } from "./chatboro.js";
 import { createNolantis } from "./nolantis.js";
 import { createWelcomeBack } from "./welcomeback.js";
 import { ROUTE_EAST, CRASH } from "./prologue.js";
@@ -64,8 +66,20 @@ import { createMultiplayer } from "./multiplayer.js";
 import { createStateWorld, STATE_BOUNDS } from "./stateWorld.js";
 
 // ---------------------------------------------------------------- config
-// Dixie Beaux, a Gulf Coast state that isn't Louisiana, honest: US-167 runs from
-// Chatboro (south, the swamp and the trailer park) up the Tusouxroe strip (north).
+// Dixie Beaux, a Gulf Coast state that isn't Louisiana, honest. US-167 runs south
+// to north up the whole map at x = ROAD_X, and the towns hang off it:
+//
+//   z  130 .. -440   ORLEAROUGE, and its US-167 strip. The swamp, the trailer
+//                    park, the riverfront, the Gulf, Lafourchette to the east,
+//                    and the strip's north end. Keseme's prologue is here.
+//   z -500 .. -720   CHATBORO, on the US-167 / Port Highway crossroads, which is
+//                    the only junction on the way north (chatboro.js)
+//   z -592 .. -1152  TUSOUXROE, away to the north-east across the Tusoux River.
+//                    Mama's house is on its south edge (tusouxroe.js + actone.js)
+//
+// The numbers below are OrleaRouge's own, and always have been — every one of
+// them is measured from (0, 0). The two northern towns take their coordinates
+// from districts.js instead, which is why they can be moved and this cannot.
 const WORLD = 136;           // half-width of the map (x), and its northern extent
 // State-Wide GTA San Andreas scale map bounds (~5 km x 5 km)
 const MAP = { minX: STATE_BOUNDS.minX, maxX: STATE_BOUNDS.maxX, minZ: STATE_BOUNDS.minZ, maxZ: STATE_BOUNDS.maxZ };
@@ -1395,6 +1409,8 @@ let blueLight = null;          // Act One continued: Solange, the raid, the floo
 let storyFail = null;
 let westParish = null;         // Parish Highway 9 and the rural west (westparish.js)
 let eastBank = null;           // Lafourchette, the east bank (eastbank.js, laid out by composer.js)
+let tusouxroe = null;          // the Tusouxroe metro: downtown, West Tusouxroe, Bastroux (tusouxroe.js)
+let chatboro = null;           // the village on the US-167 / Port Highway crossroads (chatboro.js)
 let tusouxroeNorth = null;     // North Tusouxroe, composed district
 let stateWorld = null;         // State-Wide Expansion (stateWorld.js)
 let nolantis = null;           // Act One continued underground: Nirbayou Nolantis (nolantis.js)          // a story chapter can catch WASTED / BUSTED and respawn instead
@@ -2118,7 +2134,7 @@ const npcEnv = {
 const spawnZones = createSpawnZones({
   MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea: () => orlea,
   residential: [{ x: -48, z: 116, r: 24 }, { x: 48, z: 100, r: 20 }],   // trailer park, junkyard
-  extraZone: (x, z) => (stateWorld && stateWorld.zoneAt(x, z)) || (tusouxroeNorth && tusouxroeNorth.zoneAt(x, z)) || (westParish && westParish.zoneAt(x, z)) || (eastBank && eastBank.zoneAt(x, z)) || null,   // Hwy 9, Bayou Noir, Lafourchette
+  extraZone: (x, z) => (stateWorld && stateWorld.zoneAt(x, z)) || (tusouxroe && tusouxroe.zoneAt(x, z)) || (chatboro && chatboro.zoneAt(x, z)) || (tusouxroeNorth && tusouxroeNorth.zoneAt(x, z)) || (westParish && westParish.zoneAt(x, z)) || (eastBank && eastBank.zoneAt(x, z)) || null,   // Hwy 9, Bayou Noir, Lafourchette, the Tusouxroe metro
   coreMinX: -WORLD - 4,                                                   // town / city zones end at the old west edge
   worldTime,
   // crowd sinks pull spawns onto small busy places the sample ring would miss
@@ -2363,7 +2379,10 @@ async function buildLevel() {
   for (const [x, z] of [[-18, 88], [6, 64], [-18, 34], [6, 4]]) {
     spawnEnemy("prostitute", x, z, { wanderR: 0.8, wanderSpeed: 1.05 });
   }
-    makeWaterTower(64, 2, "TUSOUXROE", ["SOUTH SIDE"]);
+    // These two stood on what was the south end of the Tusouxroe strip. The town
+    // itself is 600 m north now (districts.js), so the strip is OrleaRouge and the
+    // towers say so.
+    makeWaterTower(64, 2, "ORLEAROUGE", ["NORTH SIDE"]);
   // Tusouxroe's welcome: redevelopment, and the neighbourhood's answer to it
   makeBillboard(ROAD_X - ROAD_HALF - 6, -38, 0.12,
     "LUXURY CONDOS", "COMING SOON", "WHERE WE SUPPOSED TO GO?");
@@ -2408,7 +2427,7 @@ async function buildLevel() {
   lot.position.set(ROAD_X, GROUND_Y.lot, -98);
   lot.receiveShadow = true;
   scene.add(lot);
-  makeWaterTower(52, -92, "TUSOUXROE", ["CITY LIMITS"]);
+  makeWaterTower(52, -92, "ORLEAROUGE", ["PARISH LINE"]);
 
   // ================= VEHICLES =================
   setLoadStage("towing in the cars…", 18);
@@ -2694,6 +2713,41 @@ async function buildLevel() {
     }
   }
 
+  // ---- TUSOUXROE: the metro. Monroe + West Monroe + Bastrop, split by the
+  // Tusoux River, with Keseme's neighbourhood on its south edge. Built AFTER
+  // actOne so the site() that reserves her street is checked against a set that
+  // already exists, and its own composer keeps the city out of it.
+  tusouxroe = createTusouxroe({
+    scene, camera, surface, addBlocker, flashObjective,
+    roadMaterial: () => asphalt.material(1, { envMapIntensity: 0.9 }),
+    addLitSpot: (spot) => litSpots.push(spot),
+    makeWaterTower, makeFence, makeBarrel, placeGlbLandmark, loadGLB,
+    // Act One drives Keseme INTO this district as its main beat, so the "welcome
+    // to Tusouxroe" card would land on top of her homecoming every time. It
+    // waits until the mission is not running.
+    storyBusy: () => !!(actOne && actOne.phase !== "idle" && actOne.phase !== "done"),
+  });
+  tusouxroe.buildSet();
+  NPC_POIS.push(...tusouxroe.pois);
+  // the riverfront levee walk and the Bastroux yard get POI rings of their own,
+  // the same way Lafourchette's market square does
+  for (const [zoneName, rect] of tusouxroe.zoneRects) {
+    const cx = (rect.x0 + rect.x1) / 2, cz = (rect.z0 + rect.z1) / 2;
+    NPC_POIS.push({ x: cx, z: cz, r: Math.min(rect.x1 - rect.x0, rect.z1 - rect.z0) / 4, label: zoneName });
+  }
+
+  // ---- CHATBORO: the village on the crossroads, north-central. Built after
+  // Tusouxroe only because it is the smaller job; the two share no ground.
+  chatboro = createChatboro({
+    scene, camera, surface, addBlocker, flashObjective,
+    roadMaterial: () => asphalt.material(1, { envMapIntensity: 0.9 }),
+    addLitSpot: (spot) => litSpots.push(spot),
+    makeWaterTower, makeFence, makeBarrel, makePallet, makeShed, placeGlbLandmark, loadGLB,
+    storyBusy: () => !!(actOne && actOne.phase !== "idle" && actOne.phase !== "done"),
+  });
+  chatboro.buildSet();
+  NPC_POIS.push(...chatboro.pois);
+
   // ---- North Tusouxroe: Commercial & Civic District (composed 6-stage lifecycle) ----
   tusouxroeNorth = createTusouxroeNorth({
     scene, camera, surface, addBlocker, flashObjective, addService,
@@ -2797,6 +2851,8 @@ async function buildLevel() {
         ...(orlea ? orlea.lanes : []),
         ...(westParish ? westParish.lanes : []),
         ...(eastBank ? eastBank.lanes : []),
+        ...(tusouxroe ? tusouxroe.lanes : []),
+        ...(chatboro ? chatboro.lanes : []),
         ...(tusouxroeNorth ? tusouxroeNorth.lanes : []),
         ...(stateWorld ? stateWorld.lanes : []),
       ];
@@ -4014,6 +4070,8 @@ function tick() {
     if (blueLight) blueLight.update(dt);
     if (westParish) westParish.update(dt, playerPos);
     if (eastBank) eastBank.update(dt, playerPos);
+    if (tusouxroe) tusouxroe.update(dt, playerPos);
+    if (chatboro) chatboro.update(dt, playerPos);
     if (tusouxroeNorth) tusouxroeNorth.update(dt, playerPos);
     if (stateWorld) stateWorld.update(dt, playerPos);
     hijacker.update(dt);
@@ -5070,6 +5128,8 @@ async function boot() {
     ...(syncCampaign ? syncCampaign.props : []),
     ...(westParish ? westParish.props : []),
     ...(eastBank ? eastBank.props : []),
+    ...(tusouxroe ? tusouxroe.props : []),
+    ...(chatboro ? chatboro.props : []),
     ...(tusouxroeNorth ? tusouxroeNorth.props : []),
     ...(stateWorld ? stateWorld.props : []),
   ]);
@@ -5080,6 +5140,8 @@ async function boot() {
   const cullGroups = new Set([
     ...(westParish ? westParish.props : []),
     ...(eastBank ? eastBank.props : []),
+    ...(tusouxroe ? tusouxroe.props : []),
+    ...(chatboro ? chatboro.props : []),
     ...(tusouxroeNorth ? tusouxroeNorth.props : []),
     ...(stateWorld ? stateWorld.props : []),
   ]);
@@ -5098,7 +5160,7 @@ async function boot() {
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
     get policeHelicopters() { return police.helicopters; },
-    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, get safehouses() { return safehouses; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; },
+    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, get safehouses() { return safehouses; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroe() { return tusouxroe; }, get chatboro() { return chatboro; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; },
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
       playerPos.set(x, 0, z);
@@ -5150,6 +5212,8 @@ async function boot() {
       water.push(...m.water);
       buildings.push(...m.buildings);
     }
+    if (chatboro) { const m = chatboro.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water || [])); }
+    if (tusouxroe) { const m = tusouxroe.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water || [])); }
     if (tusouxroeNorth) { const m = tusouxroeNorth.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water||[])); }
     if (stateWorld) { const m = stateWorld.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water||[])); }
     minimap.build({ roads, areas, water, buildings });

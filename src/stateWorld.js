@@ -20,6 +20,7 @@ import { buildPortCalypso as buildPortTown } from "./portcalypso.js";
 import { buildLakeshore as buildLakeshoreTown } from "./lakeshore.js";
 import { buildRedDust as buildRedDustTown } from "./reddust.js";
 import { buildCorridors } from "./corridors.js";
+import { inKeepout } from "./districts.js";
 import { placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeMaritimeCargo, placeOilDerrick, placeBillboard, placeBayouStiltHut, placeParkedCar, placeTruck, placeShopGLB, placeGasStation, placeSixTwelve, placeGunShop } from "./landmarks.js";
 
 export const STATE_BOUNDS = { minX: -1200, maxX: 1200, minZ: -1200, maxZ: 1200 };
@@ -135,7 +136,13 @@ export function createStateWorld(ctx) {
         const tx = b.x0 + Math.random() * (b.x1 - b.x0);
         const tz = b.z0 + Math.random() * (b.z1 - b.z0);
         if (Math.abs(tx) < 100 || Math.abs(tz) < 100) continue; // clear highways and city borders
-        if (held(tx, tz, 1)) continue;                                  // a composed district holds this ground
+        // These bands are scattered blind, one pine per ~600 m2 across a
+        // 600 x 700 m rect, so they need telling where the built world is.
+        // held() walks THIS file's composers; Chatboro and the Tusouxroe metro
+        // are built by main.js from their own modules and are not among them,
+        // so the north band would grow a forest through downtown, the bridges
+        // and Mama's front yard. Both checks, or one of the two is unprotected.
+        if (held(tx, tz, 1) || inKeepout(tx, tz, 8)) continue;
         trees.push([tx, tz, 0.8 + Math.random() * 0.8, Math.random() * 6]);
       }
       
@@ -144,7 +151,8 @@ export function createStateWorld(ctx) {
         const sx = b.x0 + 50 + Math.random() * (b.x1 - b.x0 - 100);
         const sz = b.z0 + 50 + Math.random() * (b.z1 - b.z0 - 100);
         if (Math.abs(sx) < 100 || Math.abs(sz) < 100) continue;
-        if (held(sx, sz, 9)) continue;
+        // a hut drags a 60 m pond in with it, so it needs the widest berth
+        if (held(sx, sz, 9) || inKeepout(sx, sz, 40)) continue;
         placeBayouStiltHut(ctx, sx, sz, Math.random() * Math.PI);
         pois.push({ x: sx, z: sz, r: 15, label: "Abandoned Bayou Shack" });
         

@@ -31,6 +31,12 @@ export const ZONE_MIX = Object.freeze({
   border_market: { hoodrat: 0.42, redneck: 0.43, prostitute: 0.15, border: true },
   residential: { redneck: 0.60, hoodrat: 0.08, hobo: 0.32 },
   market_row: { hoodrat: 0.25, redneck: 0.75 },
+  // Tusouxroe's two named areas (tusouxroe.js). A zone name with no entry here
+  // makes pickKind() return null, which is silence rather than an error: the
+  // levee park and the Bastroux yard would have been the only empty ground in
+  // the metro and nothing would have said why.
+  riverfront: { hoodrat: 0.3, redneck: 0.2, hobo: 0.2, gayman: 0.15, lesbian: 0.15 },
+  bastroux_yard: { redneck: 0.62, hobo: 0.22, hoodrat: 0.16 },
   rural: { redneck: 0.6, hoodrat: 0.15, hog: 0.25 },
   forest: { hog: 0.5, redneck: 0.5 },
   highway: null,
@@ -91,6 +97,8 @@ export const ZOMBIE_DENSITY = Object.freeze({
   border_strip: 1.1,
   border_market: 1.1,
   market_row: 1.0,
+  riverfront: 0.8,
+  bastroux_yard: 0.7,
   town: 0.9,
   residential: 0.8,
   corporate: 0.8,
@@ -145,6 +153,8 @@ export const WANDER = Object.freeze({
   border_market:{ r: 0.85, speed: 1.05 },
   residential:  { r: 1.0,  speed: 1.0 },
   market_row:   { r: 0.45, speed: 0.9 },
+  riverfront:   { r: 0.7,  speed: 0.95 },   // the levee walk: people out for a stroll
+  bastroux_yard:{ r: 1.1,  speed: 0.9 },
   rural:        { r: 1.6,  speed: 0.85 },
   forest:       { r: 1.6,  speed: 0.85 },
   highway:      null,
