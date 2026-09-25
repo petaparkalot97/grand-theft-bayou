@@ -102,6 +102,17 @@ name-classified materials so `batchStatic` folds them):
   (farms, trucks stops, trailers, churches, billboards, pole lines, forest); **Delta Road**, a dirt track
   from Port Calypso to Oyster Bay through the east forest.
 - Each town flashes its name on first entry; pause-menu pins point at the new landmarks.
+- **The chains (human request, 2026-09-26: "popeyes and 6twelve and also the gas stations in the new towns ...
+  a billy jeans or a happy hogs"):** every town's gateway now has a real **6twelve** and **GAS·N·GEAUX**
+  (main.js `makeGasStation`, the Chatboro builds — `townkit shops.brandGas`), and the corridors' gas stops
+  use them too. A **Popeyes** (`makePopeyes`, with its food counter) stands in Oyster Bay, Port Calypso, Red
+  Dust and Lakeshore and at each end-of-map US-167 truck stop (8 in all; the old "exactly two" rule in
+  main.js and `worldpass.mjs` is updated). **BILLY JEANS** (Oyster Bay, Lakeshore) and **HAPPY HOGS** (Port
+  Calypso, Red Dust) are franchise *frontages* — `townkit shops.club`: name and colours from the Crown Strip
+  venue, neon fascia, awning, glowing door, rope, a glove / pig on the roof. **Exterior only**: the
+  interiors, crowds and cutaway belong to the flagship venues in `tusouxroeNorth.js` (`buildVenue` is
+  bound to the North Ave 2 terrace, `CROWN` and its audits), so walk-in branches would mean generalising
+  that module first.
 
 **Bugs found and fixed on the way:**
 - `orlearouge.js` `inCity()` was bounded on two sides only, so everything south/east of OrleaRouge
@@ -128,7 +139,7 @@ checks (free roam now gives infinite ammo, so "32/16 rounds" can't hold). Not to
 - [ ] The four wilderness bands (east, west, and the flanks of the spine) are still random pines only.
       A Red Dust <-> Lakeshore track was tried and dropped: it must cross Parish Highway 9's blocker line
       at about (-660, -25) — needs a proper crossing gap. Candidates: hunting camps, fish ponds, more tracks.
-- [ ] No interiors; no brand landmarks (Popeyes/6twelve) in the new towns; side streets carry no traffic lanes.
+- [ ] No interiors (incl. the BILLY JEANS / HAPPY HOGS branches, see above); side streets carry no traffic lanes.
 - [ ] Ambient people are the generic zone mixes (Port = dockworkers/mechanics, Lakeshore = tourists);
       role-specific crowds (roadmap item) would sell the towns more.
 - [ ] Ground planes in the towns are flat tints — a texture would help.

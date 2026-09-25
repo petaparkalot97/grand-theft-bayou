@@ -69,6 +69,12 @@ pier, boat, pole line — plain boxes with named, cached materials, so
   stops, trailers, churches, billboards, pole lines and forest at country
   spacing (about half the slots left empty on purpose).
 
+The towns carry Chatboro's own chains: a 6twelve and a GAS·N·GEAUX on every gateway strip and
+corridor stop (`townkit` `shops.brandGas`, over main.js `makeGasStation`), a Popeyes in each town and
+at each end of US-167 (`shops.popeyes`, over `makePopeyes`), and franchise frontages of the Crown
+Strip's BILLY JEANS (Oyster Bay, Lakeshore) and HAPPY HOGS (Port Calypso, Red Dust) — exterior only
+(`shops.club`); the walk-in interiors stay at the flagships in Tusouxroe North.
+
 Every one is composed in `composer.js`'s stage order, registers its roads and
 buildings with the spawn-zone classifier (`stateWorld.zoneAt` asks each
 composer first), and adds its POIs, minimap shapes and traffic lanes.

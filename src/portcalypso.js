@@ -70,6 +70,8 @@ export function buildPortCalypso(R) {
   C.site("fire station", { x0: 862, x1: 898, z0: -592, z1: -566 });
   C.site("supply", { x0: 596, x1: 630, z0: -592, z1: -566 });
   C.site("spray", { x0: 943, x1: 957, z0: -628, z1: -609 });
+  C.site("popeyes", { x0: 638, x1: 664, z0: -592, z1: -566 });
+  C.site("happy hogs", { x0: 770, x1: 800, z0: -634, z1: -608 });
   C.site("green", { x0: 690, x1: 736, z0: -590, z1: -536 });
   C.site("quay", { x0: 640, x1: 1040, z0: BAY_Z + 2, z1: QUAY_Z + 12 });
   C.site("lighthouse", { x0: 1042, x1: 1124, z0: -960, z1: -944 });
@@ -77,12 +79,12 @@ export function buildPortCalypso(R) {
   // ---- 2 buildings
   const gateway = [
     shops.motel({ name: "TRUCKERS REST MOTEL" }),
-    shops.gasStop({ name: "DIESEL 24HR", band: 0xd4a028, sign: "#7a5a12" }),
+    shops.brandGas("6twelve"),
     shops.diner({ name: "SALTY DOG DINER" }),
-    shops.gasStop({ name: "PORT PETROL", band: 0x1f4a7a, sign: "#1f4a7a" }),
+    shops.brandGas("gng"),
   ];
   C.frontage("Port Highway", {
-    label: "gateway", setback: 16, spacing: 30, footprint: { w: 26, d: 14 }, startAt: S(392), endAt: HWY_LEN - S(500),
+    label: "gateway", setback: 17.5, spacing: 30, footprint: { w: 26, d: 22 }, startAt: S(392), endAt: HWY_LEN - S(500),
     build: (slot) => gateway[(slot.index + (slot.side > 0 ? 2 : 0)) % gateway.length](slot),
   });
   const sheds = [
@@ -109,7 +111,7 @@ export function buildPortCalypso(R) {
   C.frontage("Workers' Lane", { ...hood, startAt: 8, endAt: 8, label: "Workers' Lane houses", build: flats });
   C.frontage("Union Street", { ...hood, startAt: 8, endAt: 6, label: "Union Street houses", build: flats });
   const corner = shops.strip({ names: CORNER, bgs: ["#5a2a2a", "#2a4a3a", "#1f4a7a"] });
-  C.frontage("Port Highway", { stage: "sideStreets", sides: [1], setback: 13, spacing: 14, footprint: { w: 12, d: 13 }, startAt: S(636), endAt: HWY_LEN - S(690), label: "corner shops", build: corner });
+  C.frontage("Port Highway", { stage: "sideStreets", sides: [1], setback: 13, spacing: 14, footprint: { w: 12, d: 13 }, startAt: S(668), endAt: HWY_LEN - S(690), label: "corner shops", build: corner });
 
   // ---- 4 open areas
   // the whole port is hardstanding, not grass
@@ -156,6 +158,14 @@ export function buildPortCalypso(R) {
   C.landmark("spray", (r, c) => {
     ctx.buildPayNSpray && ctx.buildPayNSpray(c.x, -621, 0, "Port Calypso Pay 'n' Spray");
     R.pois.push({ x: c.x, z: -604, r: 6, label: "Port Calypso Pay 'n' Spray" });
+  });
+  C.landmark("popeyes", (r, c) => {
+    kit.shops.popeyes()({ x: 651, z: -581, rot: Math.PI, index: 0, side: 1 });
+    R.pois.push({ x: 651, z: -604, r: 8, label: "Popeyes" });
+  });
+  C.landmark("happy hogs", (r, c) => {
+    kit.shops.club("hogs")({ x: 785, z: -620, rot: 0, index: 0, side: -1 });
+    R.pois.push({ x: 785, z: -604, r: 8, label: "HAPPY HOGS" });
   });
   C.landmark("supply", (r, c) => {
     placeCityBuilding(ctx, "market", c.x, c.z, Math.PI);

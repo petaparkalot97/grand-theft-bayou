@@ -47,16 +47,18 @@ export function buildLakeshore(R) {
   C.site("Gator Road", { x0: -700 - 4, x1: -700 + 4, z0: 560, z1: CW_Z - 7.6 });
   C.site("landing", { x0: -740, x1: -660, z0: 520, z1: 556 });
   C.site("lodge", { x0: -718, x1: -682, z0: 484, z1: 516 });
+  C.site("popeyes", { x0: -846, x1: -822, z0: 716, z1: 743 });
+  C.site("billy jeans", { x0: -932, x1: -906, z0: 720, z1: 742 });
 
   // ---- 2 buildings
   const gateway = [
     shops.motel({ name: "BAYOU VIEW MOTEL" }),
-    shops.gasStop({ name: "LAKESHORE GAS", band: 0x1f6a3a, sign: "#1f6a3a" }),
+    shops.brandGas("6twelve"),
     shops.diner({ name: "GATOR GRILL" }),
-    shops.gasStop({ name: "BAIT 'N' GO", band: 0xd4a028, sign: "#7a5a12" }),
+    shops.brandGas("gng"),
   ];
   C.frontage("Lakeshore Causeway", {
-    label: "gateway", setback: 15, spacing: 30, footprint: { w: 26, d: 14 }, startAt: S(-392), endAt: CW_LEN - S(-520),
+    label: "gateway", setback: 17.5, spacing: 30, footprint: { w: 26, d: 22 }, startAt: S(-392), endAt: CW_LEN - S(-520),
     build: (slot) => gateway[(slot.index + (slot.side > 0 ? 2 : 0)) % gateway.length](slot),
   });
   const bait = shops.strip({ names: SHOPS, bgs: ["#1f4a3a", "#7a5a12", "#1f4a7a", "#5a2a2a"] });
@@ -108,6 +110,14 @@ export function buildLakeshore(R) {
   veg({ x0: -960, x1: -520, z0: 1092, z1: 1100 }, 10);
 
   // ---- 6 landmark
+  C.landmark("popeyes", (r, c) => {
+    kit.shops.popeyes()({ x: -834, z: 730, rot: 0, index: 0, side: 1 });
+    R.pois.push({ x: -834, z: 752, r: 8, label: "Popeyes" });
+  });
+  C.landmark("billy jeans", (r, c) => {
+    kit.shops.club("billy")({ x: -919, z: 730, rot: 0, index: 0, side: 1 });
+    R.pois.push({ x: -919, z: 752, r: 8, label: "BILLY JEANS" });
+  });
   C.landmark("lodge", (r, c) => {
     houses.farmhouse({ x: c.x, z: 506, rot: 0, index: 0, s: 0, x0: 0 });
     R.pois.push({ x: c.x, z: 522, r: 10, label: "Bayou Lodge" });

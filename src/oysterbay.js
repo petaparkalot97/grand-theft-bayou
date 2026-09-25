@@ -61,6 +61,8 @@ export function buildOysterBay(R) {
   C.site("burgerpiz", { x0: 674, x1: 708, z0: 574, z1: 592 });
   C.site("parking", { x0: 590, x1: 630, z0: 608, z1: 632 });
   C.site("spray", { x0: 643, x1: 657, z0: 607, z1: 626 });
+  C.site("popeyes", { x0: 767, x1: 796, z0: 566, z1: 594 });
+  C.site("billy jeans", { x0: 662, x1: 690, z0: 607, z1: 628 });
   C.site("cemetery", { x0: 900, x1: 1010, z0: 470, z1: 566 });
   C.site("harbor", { x0: 690, x1: 750, z0: 888, z1: 940 });
 
@@ -68,12 +70,12 @@ export function buildOysterBay(R) {
   // the gateway: the first things you meet coming in from the interstate side
   const gateway = [
     shops.motel({ name: "BAYOU BREEZE MOTEL" }),
-    shops.gasStop({ name: "GAS & GO", band: 0xc0392b, sign: "#c0392b" }),
+    shops.brandGas("6twelve"),
     shops.diner({ name: "PELICAN DINER" }),
-    shops.gasStop({ name: "OYSTER OIL", band: 0x1f6a3a, sign: "#1f6a3a" }),
+    shops.brandGas("gng"),
   ];
   C.frontage("Oyster Highway", {
-    label: "gateway", setback: 15, spacing: 30, footprint: { w: 26, d: 14 }, startAt: S(392), endAt: HWY_LEN - S(500),
+    label: "gateway", setback: 17.5, spacing: 30, footprint: { w: 26, d: 22 }, startAt: S(392), endAt: HWY_LEN - S(500),
     build: (slot) => gateway[(slot.index + (slot.side > 0 ? 2 : 0)) % gateway.length](slot),
   });
   // Front Street: brick blocks and storefronts, both sides
@@ -148,6 +150,14 @@ export function buildOysterBay(R) {
   C.landmark("spray", (r, c) => {
     ctx.buildPayNSpray && ctx.buildPayNSpray(c.x, 619, Math.PI, "Oyster Bay Pay 'n' Spray");
     R.pois.push({ x: c.x, z: 604, r: 6, label: "Oyster Bay Pay 'n' Spray" });
+  });
+  C.landmark("popeyes", (r, c) => {
+    kit.shops.popeyes()({ x: 778, z: 581, rot: 0, index: 0, side: 1 });
+    R.pois.push({ x: 778, z: 604, r: 8, label: "Popeyes" });
+  });
+  C.landmark("billy jeans", (r, c) => {
+    kit.shops.club("billy")({ x: 676, z: 618, rot: Math.PI, index: 0, side: 1 });
+    R.pois.push({ x: 676, z: 604, r: 8, label: "BILLY JEANS" });
   });
   C.landmark("burgerpiz", (r, c) => {
     placeBurgerPiz(ctx, c.x, 584, 0);

@@ -69,7 +69,7 @@ export function buildCorridors(R) {
     avoid: [{ at: -600, r: 34 }],
     profile: {
       mix: [[4, "farm"], [2, "bungalow"], [2, "trailer"], [2, "stand"], [1, "gas"], [1, "church"], [1, "cabin"]], density: 0.5, spacing: 44, footprint: { w: 30, d: 28 },
-      forced: [{ at: -760, side: 1, kind: "gas" }, { at: -760, side: -1, kind: "diner" }, { at: -940, side: 1, kind: "motel" }],
+      forced: [{ at: -760, side: 1, kind: "gas" }, { at: -760, side: -1, kind: "diner" }, { at: -940, side: 1, kind: "motel" }, { at: -1040, side: -1, kind: "popeyes" }],
       billboards: [
         { at: -520, side: 1, ry: 0, headline: "PORT CALYPSO", sub: "Next right · Now hiring" },
         { at: -700, side: -1, ry: Math.PI, headline: "TUSOUXROE", sub: "Home of the potholes", graffiti: "FIX THEM" },
@@ -86,7 +86,7 @@ export function buildCorridors(R) {
     avoid: [{ at: 600, r: 34 }, { at: 750, r: 34 }],
     profile: {
       mix: [[3, "cabin"], [3, "stilt"], [2, "trailer"], [2, "stand"], [1, "gas"], [1, "church"], [1, "cottage"]], density: 0.5, spacing: 44, footprint: { w: 30, d: 28 },
-      forced: [{ at: 900, side: -1, kind: "gas" }, { at: 900, side: 1, kind: "diner" }],
+      forced: [{ at: 900, side: -1, kind: "gas" }, { at: 900, side: 1, kind: "diner" }, { at: 1040, side: 1, kind: "popeyes" }],
       billboards: [
         { at: 500, side: 1, ry: Math.PI, headline: "OYSTER BAY", sub: "Right at the light · Shrimp Fest", graffiti: "NO" },
         { at: 690, side: -1, ry: 0, headline: "LAKESHORE", sub: "Bait · Beer · Bad ideas" },

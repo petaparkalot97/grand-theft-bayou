@@ -25,7 +25,8 @@ function catalogue(kit, ctx) {
   const stand = shops.strip({ names: NAMES, bgs: ["#7a1f12", "#1f4a7a", "#1f6a3a", "#7a5a12"] });
   const tire = shops.strip({ names: ["TIRES & LUBE", "AUTO PARTS", "TRANSMISSION", "BODY SHOP"], bgs: ["#2a2a2a", "#7a1f12"] });
   const motel = shops.motel({ name: "ROADSIDE MOTEL" }), diner = shops.diner({ name: "MAMA JEAN'S" });
-  const gas = [shops.gasStop({ name: "GAS & GO", band: 0xc0392b, sign: "#c0392b" }), shops.gasStop({ name: "PIT STOP", band: 0x1f6a3a, sign: "#1f6a3a" }), shops.gasStop({ name: "FUEL 24", band: 0x1f4a7a, sign: "#1f4a7a" })];
+  // the chains, as at Chatboro: 6twelve and GAS·N·GEAUX (an independent PIT STOP now and then)
+  const gas = [shops.brandGas("6twelve"), shops.brandGas("gng"), shops.brandGas("6twelve"), shops.brandGas("gng"), shops.gasStop({ name: "PIT STOP", band: 0x1f6a3a, sign: "#1f6a3a" })];
   const church = shops.church({ name: "Roadside Chapel" });
   const shed = shops.warehouse({ tone: 0x8a8f96, w: 20, d: 14, h: 5.5 });
   return {
@@ -36,6 +37,7 @@ function catalogue(kit, ctx) {
     },
     bungalow: houses.bungalow, cottage: houses.cottage, trailer: houses.trailer, cabin: houses.cabin, stilt: houses.stilt, shotgun: houses.shotgun,
     stand, tire, motel, diner, church, shed,
+    popeyes: shops.popeyes(),
     gas: (slot) => gas[Math.floor(kit.hash(slot.x, slot.z, 83) * gas.length)](slot),
   };
 }

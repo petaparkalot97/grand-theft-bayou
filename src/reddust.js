@@ -56,17 +56,19 @@ export function buildRedDust(R) {
   C.site("cemetery", { x0: -900, x1: -830, z0: -690, z1: -630 });
   C.site("water tower", { x0: -650, x1: -632, z0: -574, z1: -556 });
   C.site("watchtower", { x0: -952, x1: -930, z0: -706, z1: -684 });
+  C.site("popeyes", { x0: -654, x1: -630, z0: -634, z1: -606 });
+  C.site("happy hogs", { x0: -790, x1: -762, z0: -594, z1: -574 });
 
   // ---- 2 buildings
   const gateway = [
     shops.motel({ name: "RED DUST MOTEL" }),
-    shops.gasStop({ name: "6/12 OUTPOST", band: 0xc0392b, sign: "#c0392b", tone: 0xe8dcc0 }),
+    shops.brandGas("6twelve"),
     shops.diner({ name: "TUMBLEWEED DINER" }),
-    shops.gasStop({ name: "DUST & DIESEL", band: 0x7a5a12, sign: "#7a5a12" }),
+    shops.brandGas("gng"),
   ];
   kit.withSiding(kit.palettes.weathered, () => {
     C.frontage("Red Dust Pass", {
-      label: "gateway", setback: 15, spacing: 30, footprint: { w: 26, d: 14 }, startAt: S(-392), endAt: LEN - S(-500),
+      label: "gateway", setback: 17.5, spacing: 30, footprint: { w: 26, d: 22 }, startAt: S(-392), endAt: LEN - S(-500),
       build: (slot) => gateway[(slot.index + (slot.side > 0 ? 2 : 0)) % gateway.length](slot),
     });
     const main = kit.shops.brickBlock({ names: OLD_WEST, bgs: ["#4a2a1a", "#2a3a2a", "#4a3a1a", "#3a2a3a"] }), strip = shops.strip({ names: OLD_WEST, bgs: ["#4a2a1a", "#2a3a2a", "#4a3a1a"] });
@@ -115,6 +117,14 @@ export function buildRedDust(R) {
     placeCityBuilding(ctx, "school", c.x, -731, 0);
     R.addOccluder(c.x, -731, 24, 18, 9);
     R.pois.push({ x: c.x, z: -712, r: 12, label: "Ruined Schoolhouse" });
+  });
+  C.landmark("popeyes", (r, c) => {
+    kit.shops.popeyes()({ x: -642, z: -618, rot: 0, index: 0, side: 1 });
+    R.pois.push({ x: -642, z: -598, r: 8, label: "Popeyes" });
+  });
+  C.landmark("happy hogs", (r, c) => {
+    kit.shops.club("hogs")({ x: -776, z: -584, rot: Math.PI, index: 0, side: -1 });
+    R.pois.push({ x: -776, z: -598, r: 8, label: "HAPPY HOGS" });
   });
   C.landmark("church", (r, c) => {
     makeChurch(ctx, { x: c.x, z: -726, rot: 0, length: 14, name: "Red Dust Chapel" });

@@ -44,8 +44,12 @@ async function tests(page, log) {
   const pop = await js(`const p = g.popeyesPlaced;
     return { count: p.length, places: p.map((q) => [Math.round(q.x), Math.round(q.z)]), apart: p.length === 2 ? Math.round(Math.hypot(p[0].x - p[1].x, p[0].z - p[1].z)) : null,
       inCity: p.map((q) => g.orlea.inCity(q.x, q.z)), locations: g.POPEYES_LOCATIONS.map((l) => l.name) };`);
-  pass("exactly two Popeyes, a region apart (one on the strip, one in OrleaRouge)",
-    pop.count === 2 && pop.apart > 120 && pop.inCity.filter(Boolean).length === 1, pop);
+  // eight: the strip, OrleaRouge, one in each state town (Oyster Bay, Port Calypso, Red Dust, Lakeshore) and a truck stop on each end of US-167
+  const minApart = await js(`const p = g.popeyesPlaced; let m = Infinity;
+    for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) m = Math.min(m, Math.hypot(p[i].x - p[j].x, p[i].z - p[j].z));
+    return Math.round(m);`);
+  pass("eight Popeyes, all well apart (strip, OrleaRouge, four towns, two truck stops); only one in OrleaRouge",
+    pop.count === 8 && minApart > 120 && pop.inCity.filter(Boolean).length === 1, { ...pop, minApart });
   await js(`g.teleport(8, 214); g.camCtl.addYaw((Math.PI / 2 - Math.PI) - g.camCtl.yaw); return true;`);
   await page.waitForTimeout(2500);
   await page.screenshot({ path: `${out}-1-popeyes-orlearouge.png` });

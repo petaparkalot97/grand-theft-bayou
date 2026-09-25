@@ -100,10 +100,14 @@ const LANDMARKS = [
 ];
 const landmarkPos = (side, z) => [ROAD_X + side * LOT_X, z];
 
-// Popeyes are landmarks, not a building type that repeats: exactly these two, a
-// region apart. #1 is a lot on the US-167 strip at the Chatboro end (its entry in
+// Popeyes: #1 is a lot on the US-167 strip at the Chatboro end (its entry in
 // LANDMARKS builds it); #2 stands on the OrleaRouge boulevard, reached by driving
-// south over the causeway. Nothing else may call makePopeyes.
+// south over the causeway. Since TASK-084 (human request, 2026-09-26: "we need
+// popeyes and 6twelve ... in the new towns") each state town has one too — Oyster
+// Bay, Port Calypso, Red Dust and Lakeshore call makePopeyes from their own
+// composer landmark stage (see townkit.js shops.popeyes), so this list is the
+// original pair only, and `popeyesPlaced` records all eight (the truck stops at
+// each end of US-167 have one as well: corridors.js).
 const POPEYES_LOCATIONS = [
   { name: "Popeyes #1 · US-167 strip, Chatboro end", lot: { side: +1, z: 84 } },
   { name: "Popeyes #2 · OrleaRouge boulevard", x: ROAD_X + LOT_X, z: 230, rot: -Math.PI / 2 },
@@ -2723,7 +2727,7 @@ async function buildLevel() {
     // nothing while this ctx lacked them (TASK-084): no parked car, pickup or
     // van ever appeared anywhere in the state
     loadDsCar, loadVehicle,
-    makeWaterTower, makeBillboard, makeBarrel, makePallet, makeFence, makeShed, makeGasStation,
+    makeWaterTower, makeBillboard, makeBarrel, makePallet, makeFence, makeShed, makeGasStation, makePopeyes,
     buildPayNSpray: (x, z, rot, name) => services.buildPayNSpray(x, z, rot, name),
   });
   stateWorld.buildSet();

@@ -485,6 +485,80 @@ export function createTownKit(ctx) {
     return true;
   };
 
+  // ------------------------------------------------------------ the chains (Chatboro's own brands)
+  /** The strip's own gas stations, built by main.js's makeGasStation: `6twelve` or `GAS·N·GEAUX`. Falls back to gasStop. */
+  const GNG = { name: "GAS·N·GEAUX", wall: 0xdedac9, trim: 0x2b6fb0, bg: "#f2efe2", band: "#c62b23", ink: "#1d4e8c" };
+  shops.brandGas = (brand = "6twelve") => (slot) => {
+    if (!ctx.makeGasStation) return shops.gasStop({ name: brand.toUpperCase() })(slot);
+    // origin so the pumps and pylon (local z 0..13) sit at the front of a 22 m deep slot
+    const [x, z] = at(slot, 0, -2.4);
+    ctx.makeGasStation(x, z, slot.rot, brand === "6twelve" ? {} : GNG);
+    return true;
+  };
+  /** Popeyes (main.js makePopeyes): the same building, pylon sign and food counter as the Chatboro one. */
+  shops.popeyes = () => (slot) => {
+    if (!ctx.makePopeyes) return false;
+    const [x, z] = at(slot, 0, -6);
+    ctx.makePopeyes(x, z, slot.rot);
+    return true;
+  };
+
+  /**
+   * A franchise of a Crown Strip venue: the same name, colours and roof prop on a compact frontage —
+   * neon fascia, awning, glowing door, rope and posts. `billy` = BILLY JEANS (the lounge: white, denim,
+   * ice-blue, a glove), `hogs` = HAPPY HOGS (the show bar: pink, a pig). Exterior only: the interiors,
+   * crowds and cutaways are the flagship's, on North Ave 2 in Tusouxroe North.
+   */
+  const CLUBS = {
+    billy: { name: "BILLY JEANS", sub: "LOUNGE & STAGE", wall: 0x141a24, trim: 0xcfd8e6, neon: 0x9ad6ff, ink: "#dff2ff", bg: "#141a24", awning: 0xf0f2f6, rope: 0xd94a3d, spill: 0x9ad6ff },
+    hogs: { name: "HAPPY HOGS", sub: "SHOW BAR", wall: 0x1c0f1a, trim: 0xff4fb3, neon: 0xff4fb3, ink: "#ff8ad0", bg: "#1c0f1a", awning: 0xff4fb3, rope: 0xff2e6b, spill: 0xff4fb3 },
+  };
+  shops.club = (kind = "billy") => (slot) => {
+    const C = CLUBS[kind], g = group(slot);
+    const w = 24, d = 14, h = 8.6;
+    const wall = mat(C.wall, "club wall paint", 0.7), trim = mat(C.trim, "club trim paint", 0.35, { metalness: 0.5 });
+    const glow = new THREE.MeshStandardMaterial({ color: C.neon, emissive: C.neon, emissiveIntensity: 1.3, roughness: 0.4, name: "neon tube" });
+    glow.userData.gtbRealized = true;
+    box(g, w, h, d, wall, 0, h / 2, 0);
+    box(g, w + 0.8, 0.5, d + 0.8, mat(0x26282c, "roof plate", 0.8), 0, h + 0.25, 0);            // a dark roof...
+    for (const [ex, ez, ew, ed] of [[0, d / 2 + 0.4, w + 0.8, 0.3], [0, -d / 2 - 0.4, w + 0.8, 0.3], [w / 2 + 0.4, 0, 0.3, d + 0.8], [-w / 2 - 0.4, 0, 0.3, d + 0.8]]) box(g, ew, 0.5, ed, trim, ex, h + 0.7, ez);   // ...with a bright coping
+    // the door: a lit slot with a glazed shopfront either side
+    box(g, 3.2, 3.4, 0.12, lamp(), 0, 1.8, d / 2 + 0.04);
+    for (const s of [-1, 1]) box(g, 6.6, 3.2, 0.1, mat(0x1e2b37, "window glass", 0.2, { transparent: true, opacity: 0.6 }), s * 7.6, 2, d / 2 + 0.04);
+    // fascia sign, and the smaller line under it
+    box(g, 17, 3.4, 0.3, mat(0x0c0c10, "sign board back", 0.7), 0, h - 2.4, d / 2 + 0.15);
+    sign(g, 16.4, 3, C.name, 0, h - 2.4, d / 2 + 0.3, C.ink, C.bg, "#" + C.neon.toString(16).padStart(6, "0"));
+    sign(g, 9, 1.2, C.sub, 0, 4.7, d / 2 + 0.3, C.ink, C.bg);
+    // the awning over the door, neon chevrons either side, and the tube round the top
+    box(g, 9, 0.2, 3.6, mat(C.awning, "awning canvas", 0.8), 0, 4.1, d / 2 + 1.8).rotation.x = 0.12;
+    for (const s of [-1, 1]) { const a = box(g, 0.25, 1.8, 0.25, glow, s * 5.2, 3.3, d / 2 + 0.3); a.rotation.z = s * 0.35; }
+    box(g, w + 0.9, 0.16, 0.16, glow, 0, h + 0.65, d / 2 + 0.4);
+    // guest rope: posts and a run of rope in the club's own colour
+    const post = mat(0xb8bcc0, "chrome post", 0.25, { metalness: 0.9 }), rope = mat(C.rope, "velvet rope fabric", 0.9);
+    for (let i = 0; i < 4; i++) cyl(g, 0.07, 1, post, 5.4 + i * 1.8, 0.5, d / 2 + 3.4, 6);
+    box(g, 5.4, 0.06, 0.06, rope, 8.1, 0.85, d / 2 + 3.4);
+    // the roof prop: a glove, or a pig's head, big enough to read from the road
+    const prop = new THREE.Group();
+    prop.position.set(w / 2 - 3.5, h + 1.4, 0);
+    if (kind === "billy") {
+      const white = mat(0xf4f4f6, "glove fabric", 0.8);
+      const palm = new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8), white); palm.scale.set(1, 1.2, 0.5); prop.add(palm);
+      for (let i = 0; i < 4; i++) { const f = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.14, 1.1, 6), white); f.position.set(-0.6 + i * 0.4, 1.4, 0); prop.add(f); }
+      const th = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.15, 0.9, 6), white); th.position.set(1.2, 0.4, 0); th.rotation.z = -0.9; prop.add(th);
+      const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.4, 10), mat(C.neon, "glove sequin cuff", 0.3)); cuff.position.y = -1.3; prop.add(cuff);
+    } else {
+      const pink = mat(0xf2a0c0, "hog skin", 0.8);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(1.5, 12, 10), pink); prop.add(head);
+      const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.7, 0.7, 10), mat(0xe58aae, "hog skin snout", 0.8)); snout.rotation.x = Math.PI / 2; snout.position.z = 1.4; prop.add(snout);
+      for (const s of [-1, 1]) { const ear = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1, 5), pink); ear.position.set(s * 1.1, 1.3, 0); ear.rotation.z = -s * 0.5; prop.add(ear); }
+    }
+    g.add(prop);
+    scene.add(g);
+    block(slot, w, d);
+    ctx.addLitSpot({ x: at(slot, 0, d / 2 + 3)[0], y: 5, z: at(slot, 0, d / 2 + 3)[1], warm: C.spill, power: 140, range: 26 });
+    return true;
+  };
+
   /** A little white church, via church.js. */
   shops.church = ({ name = "church" } = {}) => (slot) => {
     const [x, z] = at(slot, 0, 4);
