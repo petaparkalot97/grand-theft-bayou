@@ -98,12 +98,20 @@ export function createSafehouses(ctx) {
   });
 
   return {
-    /** Returns true if (x, z) is inside any safehouse radius */
-    insideSafehouse: (x, z) => {
+    /** Returns true if (x, z) is inside any safehouse radius (+ optional margin) */
+    insideSafehouse: (x, z, margin = 0) => {
       for (const sh of safehouses) {
-        if (Math.hypot(x - sh.x, z - sh.z) < sh.r) return true;
+        if (Math.hypot(x - sh.x, z - sh.z) < sh.r + margin) return true;
       }
       return false;
+    },
+
+    /** The safehouse whose radius contains (x, z), or null */
+    safehouseAt: (x, z) => {
+      for (const sh of safehouses) {
+        if (Math.hypot(x - sh.x, z - sh.z) < sh.r) return sh;
+      }
+      return null;
     },
     
     /** Returns the closest safehouse object, or null */

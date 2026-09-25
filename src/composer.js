@@ -138,6 +138,16 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
     STAGES,
     tiled, plane, rand, rng,
 
+    /** Run `build` and gather what it adds to the scene into a culled cluster (billboards, pole lines, yards: things no frontage/openArea owns). */
+    cluster,
+    /** The grid's value at a point: is it free ground? (townkit's roadside scatter asks before it drops a farmstead.) */
+    isFreeAt: (x, z) => valueAt(x, z) === FREE,
+    /** True when something (road, building, water, site, tree) holds this point. False outside the grid: this composer has no say there. */
+    occupiedAt: (x, z) => valueAt(x, z) > FREE,
+    /** Claim a rectangle so nothing else lands on it. */
+    claim: (rect, v = BUILDING) => fill(rect, v),
+    isFree,
+
     /** Hold ground for something built in a later stage (a side street, a lot, the landmark). */
     site(siteName, rect) {
       if (!isFree(rect)) console.warn(`[composer] ${name}: site "${siteName}" overlaps something already placed`);
@@ -261,7 +271,7 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
     },
 
     /** Trees on whatever is still empty inside `rect`, instanced per chunk so each chunk culls. */
-    vegetation(rect, { spacing = 9, jitter = 3, clearance = 3, chunk = 96, trunk, foliage }) {
+    vegetation(rect, { spacing = 9, jitter = 3, clearance = 3, chunk = 96, trunk, foliage, shape = null }) {
       const entry = enter("vegetation");
       const chunks = new Map();
       for (let z = rect.z0 + spacing / 2; z < rect.z1; z += spacing) {
@@ -275,8 +285,10 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
           chunks.get(key).push([tx, tz, rand(0.85, 1.45), rand(0, 6)]);
         }
       }
-      const trunkGeo = new THREE.CylinderGeometry(0.18, 0.32, 3.4, 8);
-      const leafGeo = new THREE.ConeGeometry(1.9, 4.6, 10);
+      // `shape` swaps the pine for another tree: { trunkGeo, leafGeo, trunkY, leafY } (per unit scale)
+      const trunkGeo = shape ? shape.trunkGeo : new THREE.CylinderGeometry(0.18, 0.32, 3.4, 8);
+      const leafGeo = shape ? shape.leafGeo : new THREE.ConeGeometry(1.9, 4.6, 10);
+      const trunkY = shape ? shape.trunkY : 1.7, leafY = shape ? shape.leafY : 4.6;
       const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
       for (const [key, list] of chunks) {
         const tr = new THREE.InstancedMesh(trunkGeo, trunk, list.length);
@@ -285,8 +297,8 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
         list.forEach(([x, z, h, a], i) => {
           q.setFromAxisAngle(up, a);
           sc.set(h, h, h);
-          tr.setMatrixAt(i, m.compose(p.set(x, 1.7 * h, z), q, sc));
-          lf.setMatrixAt(i, m.compose(p.set(x, 4.6 * h, z), q, sc));
+          tr.setMatrixAt(i, m.compose(p.set(x, trunkY * h, z), q, sc));
+          lf.setMatrixAt(i, m.compose(p.set(x, leafY * h, z), q, sc));
           ctx.addBlocker(x, z, 0.7 * h);
         });
         tr.computeBoundingSphere();

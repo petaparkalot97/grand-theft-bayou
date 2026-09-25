@@ -36,11 +36,44 @@
 
 ## Current expansion
 
-`src/stateWorld.js` expands the map into a massive 5km x 5km state containing connected regions:
-- Port Calypso & Docks: Industrial port connected to US-167 via Port Highway. Includes a lighthouse, container yard, fire station, supply depot, and newly added apartments, diner, and port authority tower.
-- Cypress Hills & Red Dust Badlands: Off-road canyon and quarry connected via Red Dust Pass. Includes oil derricks, hilltop cabins, a radio tower, and a ruined schoolhouse and badlands motel.
-- Lakeshore Marsh & Causeway: Swamp outskirts connected via Lakeshore Causeway. Includes stilt huts, fishing outposts, airboat tours, an abandoned diner, and a swamp edge market and apartments.
-- Oyster Bay: Coastal town connected to US-167 via Oyster Highway. Includes a hospital, farmer's market, apartments, school, and seafood diner.
+`src/stateWorld.js` expands the map into a 2.4 km x 2.4 km state. Its four
+corner districts used to be five hand-placed buildings each, a kilometre of
+empty road apart; since TASK-084 each is a composed town built from one shared
+procedural kit (`src/townkit.js`: houses, shopfronts, motel, diner, gas stop,
+warehouse, barn, stilt house, container yard, tank farm, crane, ship, quarry,
+pier, boat, pole line — plain boxes with named, cached materials, so
+`batchStatic` folds them):
+
+- **Oyster Bay** (`src/oysterbay.js`, south-east, Oyster Highway z 600): a
+  coastal town — gateway motel/diner/gas, Front Street's brick blocks and
+  storefronts, four streets north (hospital, high school, church at the end),
+  five south down to a harbour with a pier, boats and dock sheds, a town green,
+  a cemetery of above-ground tombs, a water tower, BurgerPiz and Bayou Arsenal.
+- **Port Calypso** (`src/portcalypso.js`, north-east, Port Highway z -600): a
+  working container port — three container yards, a tank farm, warehouse rows
+  down Dockside / Terminal / Quay Roads, a quay with gantry cranes and a ship
+  alongside, the Port Authority tower and HQ, dockworkers' houses on Workers'
+  Lane, and the lighthouse on its jetty.
+- **Red Dust** (`src/reddust.js`, north-west, Red Dust Pass z -600): a sun-bleached
+  badlands mining town — dirt Main Street with false fronts and a saloon, side
+  streets of trailers and cabins, homesteads with barns, a quarry, a derrick
+  field, red-rock mesas, the ruined schoolhouse, a chapel, the summit radio
+  tower, and a red-dust ground instead of black grass.
+- **Lakeshore Marsh** (`src/lakeshore.js`, south-west, Lakeshore Causeway z 750):
+  swamp tourism — bait shops and airboat tours on the causeway, a lake with four
+  boardwalk streets lined with houses on piles, Gator Road north into the
+  cypress marsh to a tour landing and the Bayou Lodge, marsh pools.
+- **The roads between** (`src/roadside.js`, profiles in `src/corridors.js`):
+  US-167 north (farmland, a truck stop, billboards) and south (bayou), and the
+  four connector highways, each a composer district of farmsteads, roadside
+  stops, trailers, churches, billboards, pole lines and forest at country
+  spacing (about half the slots left empty on purpose).
+
+Every one is composed in `composer.js`'s stage order, registers its roads and
+buildings with the spawn-zone classifier (`stateWorld.zoneAt` asks each
+composer first), and adds its POIs, minimap shapes and traffic lanes.
+`tools/qa/fill_check.mjs` audits it: every road drivable end to end, classified
+as road, and each region above a mesh-density floor.
 
 `src/eastbank.js` adds a connected East Bank beyond the original OrleaRouge
 edge:
@@ -70,6 +103,7 @@ edge:
 - [ ] Add a dedicated ambient pedestrian pool distinct from hostile enemies.
 - [ ] Add interiors selectively (cafe, garage, fire station) after navigation
   and collision playtesting.
+- [x] Fill the state map: the four corner districts as composed towns, the roads between them (TASK-084).
 - [ ] Add additional bayou/dock shortcuts and a bridge activity encounter.
 - [ ] Run the external Playwright QA harness and capture East Bank screenshots /
   draw-call measurements on a real browser.

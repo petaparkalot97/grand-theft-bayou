@@ -128,8 +128,10 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
     setState(e, "flee", rand(4, 7));
   }
 
-  function noise(x, z, r = 22) {
-    events.push({ x, z, r, t: now });
+  // `loud`: a Screamer's wail — answered by every zombie in range, even ones
+  // whose archetype ignores ordinary distant noise (see the zombie branch)
+  function noise(x, z, r = 22, loud = false) {
+    events.push({ x, z, r, t: now, loud });
     if (events.length > 32) events.shift();
   }
 
@@ -182,13 +184,26 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
     // a shooting spree does. Handled entirely separately from the rest of
     // decide() so it skips flee/provoke/calm-down, none of which apply to it.
     if (e.type === "zombie") {
+      // Safehouses (safehouses.js, TASK-082): a zombie that finds itself inside
+      // one drops whatever it was doing and wanders back out, so the radius is
+      // a real exclusion zone, not just a spawn filter. `env.safehouseAt` is
+      // absent outside main.js's env (tests), where this is simply skipped.
+      const sh = env.safehouseAt && env.safehouseAt(p.x, p.z);
+      if (sh) {
+        const ox = p.x - sh.x, oz = p.z - sh.z, od = Math.hypot(ox, oz) || 1;
+        setState(e, "wander", 0);
+        e.goal.set(sh.x + (ox / od) * (sh.r + 6), 0, sh.z + (oz / od) * (sh.r + 6));
+        return;
+      }
       if (e.state === "hostile") {
         // the only way a zombie drops its target: the target is actually dead
         if (e.rivalTarget && (e.rivalTarget.dead || e.rivalTarget.state === "dead")) e.rivalTarget = null;
+        // ...or the player has ducked into a safehouse and it was hunting them
+        if (!e.rivalTarget && env.playerSafe) setState(e, "idle", rand(1, 3));
         return;
       }
       let bestD = e.T.aggro, target = null;
-      if (dist < bestD) bestD = dist;
+      if (dist < bestD && !env.playerSafe) bestD = dist;
       for (const o of env.others) {
         if (o === e || o.dead || o.state === "dead" || o.type === "zombie") continue;
         const d = Math.hypot(o.spr.position.x - p.x, o.spr.position.z - p.z);
@@ -199,7 +214,16 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
         // rest-flee split as being provoked by the player, just aimed at the
         // zombie instead. Skipped if the zombie itself failed to go hostile
         // (the shared hostile budget is full) — no bite landed, no reaction.
-        if (becomeHostile(e, target) && target && target.state !== "hostile" && target.state !== "flee" && !target.dead) {
+        const hostile = becomeHostile(e, target);
+        // Screamer (zombies.js): the first time it goes hostile it wails, and
+        // every idle zombie in earshot converges on it. Once per life.
+        const scream = e.T.zombieFlags && e.T.zombieFlags.screamOnHostile;
+        if (hostile && scream && !e.screamed) {
+          e.screamed = true;
+          noise(p.x, p.z, scream.r, true);
+          if (env.onScream) env.onScream(p.x, p.z);
+        }
+        if (hostile && target && target.state !== "hostile" && target.state !== "flee" && !target.dead) {
           if (target.mood === "timid" || target.mood === "skittish") flee(target, p.x, p.z);
           else becomeHostile(target, e);
         }
@@ -208,8 +232,13 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
       // nothing in biting range: shamble toward the last thing that made noise
       // (gunfire, a kill, a fight) — the horde is drawn to a shooting spree —
       // otherwise wander like anyone else waiting to notice something
+      // (an archetype's noiseResponse caps how far it will be drawn: the Brute
+      // lumbers on past a gunshot two blocks over)
       const ev = recentViolence(p);
-      if (ev) { setState(e, "wander", 0); e.goal.set(ev.x, 0, ev.z); return; }
+      const hearRange = e.T.aggro * ((e.T.zombieFlags && e.T.zombieFlags.noiseResponse) || 1);
+      if (ev && (ev.loud || (ev.x - p.x) ** 2 + (ev.z - p.z) ** 2 <= hearRange * hearRange)) {
+        setState(e, "wander", 0); e.goal.set(ev.x, 0, ev.z); return;
+      }
       if (e.state === "wander") {
         if ((e.goal.x - p.x) ** 2 + (e.goal.z - p.z) ** 2 < 1.5 || e.stateT < -14) setState(e, "idle", rand(0.5, 3));
         return;

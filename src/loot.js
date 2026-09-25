@@ -27,6 +27,35 @@ export const LOOT_TABLES = Object.freeze({
   // sometimes still is
   zombie: { cash: 0, weapon: 0, ammo: 0.12 },
 });
+// ---------------------------------------------------------------------------
+// LOCATION_LOOT (TASK-080): what searching a *place* turns up, as opposed to
+// LOOT_TABLES above (what a body drops). Same shape — a 0..1 chance per drop
+// category, each rolled independently — and the same three categories: no
+// food/water, since no survival-resource system has been approved (TODO.md ->
+// Blockers). Where a `food` / `medical` category would plug in later: add the
+// key to the entry, add its branch to dropAtLocation() below, add a pickup
+// kind to createLoot's pool — nothing else here changes.
+//
+// Only kinds backed by real built geometry (nothing is speced for a building
+// that doesn't exist — no police station or hardware store is built anywhere):
+//   gas_station    main.js LANDMARKS "gasstation" (Gas_station.fbx) and the
+//                  6twelve ("sixtwelve", makeSixtwelve); stateWorld.js:325
+//   restaurant     main.js LANDMARKS "burgerpiz" / "taco" / "popeyes"
+//                  (POPEYES_LOCATIONS)
+//   hospital       tusouxroeNorth.js Harborlight Hospital, orlearouge.js
+//                  OrleaRouge Public Hospital (both register a "hospital"
+//                  service), stateWorld.js placeCityBuilding "hospital"
+//   general_store  westparish.js Bayou Noir General Store (placeGlbLandmark)
+//   residential    any ordinary house/trailer lot (spawnzones.js "residential")
+// ---------------------------------------------------------------------------
+export const LOCATION_LOOT = Object.freeze({
+  gas_station:   { cash: 0.5,  weapon: 0.05, ammo: 0.2 },    // the till; a shotgun under the counter, sometimes
+  restaurant:    { cash: 0.55, weapon: 0.02, ammo: 0.05 },   // the till, and not much else
+  hospital:      { cash: 0.15, weapon: 0.02, ammo: 0.08 },   // a security guard's leftovers; the real prize is medical, later
+  general_store: { cash: 0.45, weapon: 0.12, ammo: 0.45 },   // rural: guns and shells are on the shelves
+  residential:   { cash: 0.3,  weapon: 0.1,  ammo: 0.25 },   // a drawer, a closet, a bedside table
+});
+
 export const CASH_NOTES = Object.freeze([[5, 40], [10, 30], [20, 20], [50, 10]]);   // [amount, weight]
 const MAX_ACTIVE = 24;
 const LIFETIME = 90;
@@ -149,6 +178,7 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
 
   return {
     LOOT_TABLES,
+    LOCATION_LOOT,
     get active() { return active; },
 
     /** Roll an NPC's loot table where it fell. Returns what dropped. */
@@ -159,6 +189,22 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
       if (rng() < table.cash) out.push(spawn("cash", p.x + (rng() - 0.5), p.z + (rng() - 0.5), { amount: weighted(CASH_NOTES, rng) }));
       if (rng() < table.weapon) out.push(spawn("weapon", p.x + (rng() - 0.5) * 1.6, p.z + (rng() - 0.5) * 1.6, rollWeapon()));
       if (rng() < table.ammo) out.push(spawn("ammo", p.x + (rng() - 0.5) * 1.2, p.z + (rng() - 0.5) * 1.2, { rounds: 16 }));
+      return out;
+    },
+
+    /**
+     * Search a place: roll LOCATION_LOOT[kind] around (x, z). Returns what
+     * dropped (empty for an unknown kind). Interface contract for tagging a
+     * building: give its spawn/search point `{ kind: "gas_station", x, z }`
+     * and call this once per search — that tagging is a district/main.js job.
+     */
+    dropAtLocation(kind, x, z) {
+      const table = LOCATION_LOOT[kind];
+      if (!table) return [];
+      const out = [];
+      if (rng() < table.cash) out.push(spawn("cash", x + (rng() - 0.5) * 1.5, z + (rng() - 0.5) * 1.5, { amount: weighted(CASH_NOTES, rng) }));
+      if (rng() < table.weapon) out.push(spawn("weapon", x + (rng() - 0.5) * 2, z + (rng() - 0.5) * 2, rollWeapon()));
+      if (rng() < table.ammo) out.push(spawn("ammo", x + (rng() - 0.5) * 1.5, z + (rng() - 0.5) * 1.5, { rounds: 16 }));
       return out;
     },
 

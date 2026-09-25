@@ -42,11 +42,21 @@ const LANDMARK_PINS = [
   { name: "Honeysuckle", x: -40, z: -299, icon: "🍸", category: "Bars", region: "Crown Strip" },
   { name: "The Brass Alligator", x: 26, z: -299, icon: "🍸", category: "Bars", region: "Crown Strip" },
   { name: "Causeway Overpass Camp", x: 0, z: 165, icon: "⛺", category: "Outskirts", region: "Causeway" },
-  { name: "Port Calypso Shipping Docks", x: 750, z: -710, icon: "⚓", category: "Docks", region: "Port Calypso" },
-  { name: "Port Calypso Lighthouse", x: 1020, z: -980, icon: "🚨", category: "Landmark", region: "Port Calypso" },
+  // the four state districts, rebuilt as towns (TASK-084): oysterbay.js, portcalypso.js, reddust.js, lakeshore.js
+  { name: "Port Calypso Container Quay", x: 860, z: -940, icon: "⚓", category: "Docks", region: "Port Calypso" },
+  { name: "Port Authority Tower", x: 846, z: -866, icon: "🏢", category: "Commercial", region: "Port Calypso" },
+  { name: "Port Calypso Lighthouse", x: 1110, z: -952, icon: "🚨", category: "Landmark", region: "Port Calypso" },
+  { name: "Port Fire Station", x: 880, z: -579, icon: "🚒", category: "Civic", region: "Port Calypso" },
   { name: "Cypress Summit Radio Tower", x: -1020, z: -950, icon: "📡", category: "Landmark", region: "Cypress Hills" },
-  { name: "Red Dust Badlands Ridge", x: -750, z: -850, icon: "⛰️", category: "Outdoors", region: "Cypress Hills" },
-  { name: "Captain Thibodeaux Shacks", x: -680, z: 820, icon: "🚤", category: "Swamp", region: "Lakeshore Marsh" },
+  { name: "Red Dust Main Street", x: -650, z: -600, icon: "🤠", category: "Shops", region: "Cypress Hills" },
+  { name: "Cypress Quarry", x: -975, z: -768, icon: "⛏️", category: "Outdoors", region: "Cypress Hills" },
+  { name: "Red Dust Chapel", x: -780, z: -726, icon: "⛪", category: "Landmark", region: "Cypress Hills" },
+  { name: "Swamp Tour Landing", x: -700, z: 538, icon: "🚤", category: "Swamp", region: "Lakeshore Marsh" },
+  { name: "Heron Walk Boardwalks", x: -690, z: 900, icon: "🏚️", category: "Swamp", region: "Lakeshore Marsh" },
+  { name: "Oyster Bay Medical", x: 555, z: 501, icon: "🏥", category: "Civic", region: "Oyster Bay" },
+  { name: "Oyster Bay Harbor", x: 720, z: 915, icon: "⚓", category: "Docks", region: "Oyster Bay" },
+  { name: "Our Lady of the Bay", x: 760, z: 470, icon: "⛪", category: "Landmark", region: "Oyster Bay" },
+  { name: "Bayou Arsenal", x: 730, z: 585, icon: "🔫", category: "Shops", region: "Oyster Bay" },
 ];
 
 export function createPauseMenu({ MAP, state, getPlayerPos, minimap, arsenal, kills = {} }) {

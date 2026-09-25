@@ -11,7 +11,7 @@ import { BlockerGrid } from "./spatial.js";
 import { createSoundtrack } from "./music.js";
 import { createRadio } from "./radio.js";
 import { batchStatic } from "./merge.js";
-import { initAudio, createCarAudio, resumeAudio } from "./audio.js";
+import { initAudio, createCarAudio, resumeAudio, startZombieAmbience, stopZombieAmbience, playZombieScream } from "./audio.js";
 import { initWeapons3D, updateWeapon3D, playFireAnim3D, notifyReload3D, getWeaponMuzzle, RemoteWeaponRig } from "./weapons_3d.js";
 import { createNpcSystem, MAX_HOSTILE } from "./npc.js";
 import { bumpLine, fightLine } from "./pedestrianChatter.js";
@@ -48,6 +48,7 @@ import { createNolantis } from "./nolantis.js";
 import { createWelcomeBack } from "./welcomeback.js";
 import { ROUTE_EAST, CRASH } from "./prologue.js";
 import { createSpawnZones, zombieDensityAtSpawn } from "./spawnzones.js";
+import { pickArchetype, resolveArchetype } from "./zombies.js";
 import { createFactionWar } from "./factions.js";
 import { createKlan } from "./klan.js";
 import { createNewton } from "./newton.js";
@@ -2101,6 +2102,12 @@ const npcEnv = {
   others: enemies,
   // a turf fight's loser (npc.js hitRival) drops loot but isn't the player's kill
   killEnemy: (e) => killEnemy(e, { turf: true }),
+  // Zombie-mode safehouses (safehouses.js, declared just below; both are only
+  // read lazily, at NPC think time): zombies can't enter one, and lose the
+  // player while they stand in one
+  get playerSafe() { return state.zombieMode && safehouses.insideSafehouse(playerPos.x, playerPos.z); },
+  safehouseAt: (x, z) => (state.zombieMode ? safehouses.safehouseAt(x, z) : null),
+  onScream: playZombieScream,   // a Screamer (zombies.js) going hostile
 };
 // What spawns where comes from the world context (spawnzones.js): no hogs in
 // town or on the highway, an occasional one in the woods.
@@ -2151,7 +2158,12 @@ const klan = createKlan({
 });
 
 function spawnEnemy(typeName, x, z, spot = null) {
-  const T = ENEMY_TYPES[typeName];
+  let T = ENEMY_TYPES[typeName];
+  // A zombie archetype (zombies.js) is still type "zombie" — every kill,
+  // dawn-clear and loot check keys off that — with its own stats layered on
+  // the base and the archetype name kept on the record.
+  const archetype = typeName === "zombie" && spot && spot.archetype;
+  if (archetype) T = { ...T, ...resolveArchetype(archetype) };
   let view;
   if (T.kind === "hog") {
     view = buildHog();
@@ -2187,6 +2199,7 @@ function spawnEnemy(typeName, x, z, spot = null) {
     type: typeName, T, spr: view, hp: T.hp, t: rand(0, 3),
     atkCd: 0, dead: false, fade: 1, charge: 0, chargeCd: 0,
   };
+  if (archetype) rec.archetype = archetype;
   // Hobos spawned at the tent camp belong there. A soft leash keeps them near
   // the tents instead of wandering into the trailer rows or being culled as
   // "too far away" while the player explores the rest of the map.
@@ -2702,10 +2715,16 @@ async function buildLevel() {
   }, { x: -132 + 9, z: -320 + 11, ry: 0 });
   // ---- State-Wide Expansion: Port Calypso Docks, Cypress Badlands, Lakeshore Marsh ----
   stateWorld = createStateWorld({
-    scene, camera, surface, addBlocker, flashObjective,
+    scene, camera, surface, addBlocker, flashObjective, addService, shopParts,
     roadMaterial: () => asphalt.material(1, { envMapIntensity: 0.9 }),
     addLitSpot: (spot) => litSpots.push(spot),
     placeGlbLandmark, loadGLB,
+    // landmarks.js's placeParkedCar / placeTruck call these, and quietly did
+    // nothing while this ctx lacked them (TASK-084): no parked car, pickup or
+    // van ever appeared anywhere in the state
+    loadDsCar, loadVehicle,
+    makeWaterTower, makeBillboard, makeBarrel, makePallet, makeFence, makeShed, makeGasStation,
+    buildPayNSpray: (x, z, rot, name) => services.buildPayNSpray(x, z, rot, name),
   });
   stateWorld.buildSet();
   NPC_POIS.push(...stateWorld.pois);
@@ -2871,12 +2890,21 @@ function updateEnemyPopulation(dt) {
 // valid targets for it, not just the player (npc.js's zombie branch in
 // decide()). Runs only in state.zombieMode; the horde clears out at dawn.
 let zombieRespawnCd = 0;
+function nearbyZombieCount() {
+  let n = 0;
+  for (const e of enemies) {
+    if (e.dead || e.type !== "zombie") continue;
+    if (Math.hypot(e.spr.position.x - playerPos.x, e.spr.position.z - playerPos.z) < 60) n++;
+  }
+  return n;
+}
 function updateZombiePopulation(dt) {
   // Ordinary Story/Free Roam/Multiplayer games never set state.zombieMode, so
   // this is a single boolean check for them, forever — not a per-frame scan
   // of `enemies` for a type that can never appear.
   if (!state.zombieMode) return;
   if (!worldTime.isNight()) {
+    stopZombieAmbience();
     // the sun's up: nobody's left standing come morning
     for (const e of enemies) {
       if (e.type === "zombie" && !e.dead) { npcs.release(e); scene.remove(e.spr); e.dead = "gone"; }
@@ -2886,6 +2914,9 @@ function updateZombiePopulation(dt) {
     }
     return;
   }
+  // occasional distant groans, thicker the more zombies are close (audio.js;
+  // idempotent, and silent until the audio context is unlocked)
+  startZombieAmbience(() => playerPos, nearbyZombieCount);
   let alive = 0;
   for (const e of enemies) if (!e.dead && e.type === "zombie") alive++;
   
@@ -2922,6 +2953,8 @@ function updateZombiePopulation(dt) {
 
   const d = zombieDensityAtSpawn(spawnZones, spot.x, spot.z);
   if (Math.random() >= d) return;
+  // never drop a horde on a safehouse's doorstep (radius + the cluster's own spread)
+  if (safehouses.insideSafehouse(spot.x, spot.z, 20)) return;
 
   // A horde, not a queue: one at a time out of sight reads as a trickle no
   // matter how low the cap is set. Drop a knot of them at the same spot.
@@ -2929,7 +2962,7 @@ function updateZombiePopulation(dt) {
   const clusterN = Math.min(currentCap - alive, 4 + ((Math.random() * maxCluster) | 0));
   for (let i = 0; i < clusterN; i++) {
     const a = Math.random() * Math.PI * 2, r = Math.random() * Math.min(15, 5 + zKills * 0.1);
-    spawnEnemy("zombie", spot.x + Math.cos(a) * r, spot.z + Math.sin(a) * r, spot);
+    spawnEnemy("zombie", spot.x + Math.cos(a) * r, spot.z + Math.sin(a) * r, { ...spot, archetype: pickArchetype() });
   }
 }
 

@@ -68,6 +68,73 @@ dependencies and acceptance criteria.
 
 # 🔒 ACTIVE TASKS
 
+### TASK-084 — Fill the map: bring the rest of the world up to Chatboro's standard (human request, 2026-09-25)
+
+**Status:** `REVIEW` (headless-verified only — **needs a real-GPU look**, TASK-010) ·
+**Agent:** Claude · **Files:** `src/townkit.js`, `src/roadside.js`, `src/corridors.js`,
+`src/oysterbay.js`, `src/portcalypso.js`, `src/reddust.js`, `src/lakeshore.js` (all new);
+`src/stateWorld.js`, `src/composer.js` (`cluster`/`claim`/`isFree`/`occupiedAt` exposed,
+`vegetation` takes a `shape`), `src/main.js` (stateWorld ctx only), `src/pauseMenu.js` (pins),
+`src/orlearouge.js` (`inCity` bug, below); `tools/qa/` (fill_check, heatmap, aerial, pop_check, run_pw)
+
+**The ask (verbatim):** "What we really need is for you to fill up the map, but
+it needs to be filled properly. The spawn point (Chatboro) is done nicely; it
+would be nice if more of the map was filled out nicely like Chatboro is."
+
+**Audit (measured with `tools/qa/heatmap.mjs`, not eyeballed):** all the content sat in
+one blob, x -500..500 / z -400..400. The four state regions (Port Calypso NE, Red Dust NW,
+Lakeshore SW, Oyster Bay SE) were 5-8 hand-placed buildings each, 100-200 m apart along a
+1 km road, and US-167 beyond the core was bare road for 800 m each way. Aerial shots agreed:
+Chatboro reads as a place; Oyster Bay was a road through black.
+
+**What now exists** (details in `docs/WORLD_BUILDING.md`): each region is a composed town
+(composer.js stage order, one shared procedural kit `townkit.js` — cheap boxes with cached,
+name-classified materials so `batchStatic` folds them):
+- **Oyster Bay** — coastal town: gateway strip, Front Street, 5 streets south to a harbour
+  with pier and boats, hospital + high school + church, green, cemetery, Pay 'n' Spray, BurgerPiz, gun shop.
+- **Port Calypso** — working container port: 3 container yards, tank farm, warehouse rows, quay with
+  gantry cranes + a ship, Port Authority tower, dockworker housing, lighthouse on a jetty, Pay 'n' Spray.
+- **Red Dust** — badlands mining town: dirt Main Street, saloon/false fronts, quarry, derricks, mesas,
+  homesteads with barns, chapel, ruined schoolhouse, red-dust ground.
+- **Lakeshore** — swamp tourism: bait shops, four boardwalk streets of stilt houses on a lake, Gator Road
+  north into the cypress marsh, tour landing with airboats, marsh pools.
+- **The roads between** — `roadside.js` + `corridors.js`: US-167 north/south and the four connectors
+  (farms, trucks stops, trailers, churches, billboards, pole lines, forest); **Delta Road**, a dirt track
+  from Port Calypso to Oyster Bay through the east forest.
+- Each town flashes its name on first entry; pause-menu pins point at the new landmarks.
+
+**Bugs found and fixed on the way:**
+- `orlearouge.js` `inCity()` was bounded on two sides only, so everything south/east of OrleaRouge
+  counted as the city: **no NPC had ever spawned in Oyster Bay or on US-167 south**, and the
+  "EXT. ORLEAROUGE" card fired in Oyster Bay. Now bounded on all four.
+- `stateWorld`'s ctx never passed `loadDsCar` / `loadVehicle`, so every `placeParkedCar` / `placeTruck`
+  in the state was a silent no-op. Now passed (plus `makeWaterTower`, `makeBillboard`, `addService`, ...).
+- Its buildings sat outside any composer cluster and never distance-culled.
+- `factions_test` had stale spawn-mix assertions (fixed).
+
+**Verified (headless SwiftShader):** `tools/qa/fill_check.mjs` — every road in all four towns and the
+corridors drivable end to end (no static blocker on the line) and classified as road, each region above
+a mesh-density floor, 0 page errors. `pop_check.mjs` — spawn picks land in every district, ~0-2 % inside a
+blocker, none in water. `gameplay.mjs` re-run: identical to HEAD (hp 100, 0 hostile, same draw calls at
+Chatboro). Draw calls at a 110-150 m aerial camera: 350-1,060 in the new towns vs 2,207 at Chatboro.
+Boot ~28 -> 33 s in SwiftShader; scene meshes 19.4k -> 21.8k (5.5k batches after batching); blockers 7.4k -> 20k.
+`roads.mjs` / `eastbank.mjs` / `worldpass.mjs` have failures that are **identical at HEAD** (checked by
+stashing my changes): stale `Red Dust Pass A/B` road-surface audit, three eastbank checks, and worldpass's loot
+checks (free roam now gives infinite ammo, so "32/16 rounds" can't hold). Not touched.
+
+**Still to do / handoff:**
+- [ ] Real-GPU pass (TASK-010): the headless night look makes ground and roofs hard to judge; check
+      lighting, the lawn/hardstanding/red-dust ground planes, sign legibility, boat/ship/crane shapes.
+- [ ] The four wilderness bands (east, west, and the flanks of the spine) are still random pines only.
+      A Red Dust <-> Lakeshore track was tried and dropped: it must cross Parish Highway 9's blocker line
+      at about (-660, -25) — needs a proper crossing gap. Candidates: hunting camps, fish ponds, more tracks.
+- [ ] No interiors; no brand landmarks (Popeyes/6twelve) in the new towns; side streets carry no traffic lanes.
+- [ ] Ambient people are the generic zone mixes (Port = dockworkers/mechanics, Lakeshore = tourists);
+      role-specific crowds (roadmap item) would sell the towns more.
+- [ ] Ground planes in the towns are flat tints — a texture would help.
+
+---
+
 ### TASK-078 — Zombie archetypes: Shambler / Runner / Brute / Crawler / Screamer
 
 **Status:** `COMPLETE` · **Agent:** Freebuff, reviewed by Claude (2026-09-23)
@@ -140,9 +207,22 @@ state machine:
 **Out of scope:** Wiring the table into the game. New art/animations (this is
 reskins/data only, per the human's own TASK-077 decision).
 
-**Integration notes (for Claude):** _(fill in when done)_
+**Integration notes (for Claude):** **Wired (2026-09-25, Claude), with one
+deliberate deviation from the module's own notes.** Archetypes are *not* new
+`ENEMY_TYPES` entries: every kill, dawn-clear, loot and zombify check in
+`main.js`/`npc.js` keys off `type === "zombie"`, so separate type names would
+have silently broken all of them. Instead `spawnEnemy("zombie", …, { archetype })`
+layers `resolveArchetype()` over the base (`rec.T`) and stores `rec.archetype`;
+`updateZombiePopulation` rolls `pickArchetype()` per zombie. `npc.js` zombie
+branch: the `noiseResponse` cap and the Screamer's once-per-life wail
+(`noise(..., r, loud=true)` — a `loud` event bypasses the hear-range cap, or a
+Shambler 40 m off would never answer a 55 m scream; that was a latent conflict
+in the module's own spec). Checked live: archetype mix spawns with the right
+stats, 0 console errors. `tools/qa/zombie_test.mjs` 12/12.
 
-**Notes:** _(progress, the Crawler recommendation, anything surprising)_
+**Notes:** Crawler: recommendation (c) stands — skipped. Still no per-archetype
+art (all reskins of `randomZombie`); cheapest differentiator if wanted is a
+view scale (brute 1.15×, runner 0.92×) in `spawnEnemy`.
 
 ---
 
@@ -198,18 +278,24 @@ water is a bug, not atmosphere). Also export a small helper,
 
 **Out of scope:** Changing `updateZombiePopulation` itself, or `ZONE_MIX`.
 
-**Integration notes (for Claude):** _(fill in when done)_
+**Integration notes (for Claude):** Already wired before this pass
+(`zombieDensityAtSpawn` in `updateZombiePopulation`).
 
-**Notes:** _(your reasoning for the numbers you picked)_
+**Notes:** reasoning is in the comment block above `ZOMBIE_DENSITY`.
 
 ---
 
 ### TASK-080 — Contextual loot by location type
 
-**Status:** `READY` · **Agent:** UNASSIGNED (Freebuff's session crashed
-2026-09-23 before starting this one — checked `src/loot.js`, no
-`LOCATION_LOOT` or any related change exists; unlike TASK-078/079, this claim
-was stale, not just unreported. Released back to the pool.)
+**Status:** `REVIEW` · **Agent:** Claude (2026-09-25; picked up after Freebuff's
+session crashed before starting). Additive only: `LOCATION_LOOT` +
+`dropAtLocation(kind, x, z)` in `src/loot.js`; `LOOT_TABLES`/`dropFor`
+untouched. Kinds are the five in the brief, each cited to real geometry in the
+comment block above the table. **Searched and found no** police station,
+hardware store, or Market Row / East Bank hospital anywhere in `src/` — none
+speced. `node --check` passes. **Nothing calls `dropAtLocation` yet** — that
+needs buildings tagged with `{ kind, x, z }` (a district/`main.js` job, see the
+Out-of-scope note); the search interaction itself is undecided.
 **Files / subsystem:**
 - `src/loot.js` (edit — additive export only; don't touch the existing
   `LOOT_TABLES`/`dropFor`)
@@ -257,9 +343,18 @@ Claude wires the actual tagging.
 
 ### TASK-081 — Ambient audio layer for zombie mode
 
-**Status:** `READY` · **Agent:** UNASSIGNED (Freebuff's session crashed
-2026-09-23 before starting this one — checked `src/audio.js`, no zombie
-references of any kind exist. Released back to the pool.)
+**Status:** `REVIEW` — **not heard by a human** (headless, so the AudioContext
+never runs; the synth voices are unauditioned) · **Agent:** Claude (2026-09-25)
+`startZombieAmbience(getPlayerPos, getNearbyZombieCount)` /
+`stopZombieAmbience()` / `playZombieScream(x, z)` in `src/audio.js`, wired in
+`main.js` (`updateZombiePopulation`: start at night, stop at dawn; the Screamer
+calls it via `npcEnv.onScream`). **No zombie SFX exist in `assets/`**
+(car / radio / voice / theme only), so groans and the wail are *synthesised*
+with WebAudio (detuned saws through a moving formant filter + vibrato). Drop
+recorded files into `ZOMBIE_SFX` in `audio.js` to replace the ordinary groan.
+Groans are gapped 4–22 s (denser and louder with more zombies within 60 m),
+silence in between, never throws. **Needs an ear:** if the synth reads badly,
+tune `synthVoice`'s params or supply real audio.
 **Files / subsystem:**
 - `src/audio.js` (edit — additive export only)
 
@@ -346,6 +441,12 @@ Strip, the Bayou Noir general store, Port Mercer's fenced service yard
 safehouse — that's a one-line consumer of this module's query API, written
 by Claude once this and TASK-079 both land. Document the exact function
 signature you'd want called, in Integration notes.
+
+**Zombie exclusion (Claude, 2026-09-25):** now enforced — no horde spawns
+within radius + 20 m of a safehouse; a zombie found inside one wanders back
+out (`env.safehouseAt` in npc.js); and zombies lose a player who is inside
+one (`env.playerSafe`), dropping any hunt on them (a hunt on another NPC
+continues). Zombie mode only. Unit-tested; not watched live at a safehouse.
 
 **Integration notes (for Claude):** Already wired (the earlier, out-of-process
 `main.js` edit — see the rejected review below — is being kept as-is since
@@ -5199,10 +5300,10 @@ TASK-011, TASK-018, TASK-021, TASK-020, TASK-035, TASK-036, TASK-038 — indepen
 | `src/composer.js` | Claude | TASK-041 (REVIEW) — road options | Available |
 | `tools/qa/roads.mjs` (new), `tools/qa/worldpass.mjs`, `tools/qa/eastbank.mjs` | Claude | TASK-041 | Available |
 | `tools/qa/traffic_test.mjs` | Freebuff | TASK-039 | Locked |
-| `src/zombies.js` (new) | Freebuff | TASK-078 | Locked |
-| `src/spawnzones.js` | Freebuff | TASK-079 — additive export only (`ZOMBIE_DENSITY` + helpers); extends the TASK-070 lock | Locked |
-| `src/loot.js` | Freebuff | TASK-080 — additive export only (`LOCATION_LOOT`); takes over the TASK-036 row above | Locked |
-| `src/audio.js` | Freebuff | TASK-081 — additive exports only (zombie ambience); extends the TASK-040 row above | Locked |
+| `src/zombies.js` (new) | — | TASK-078 (COMPLETE, wired) | Available |
+| `src/spawnzones.js` | Freebuff | TASK-079 — additive export only (`ZOMBIE_DENSITY` + helpers); COMPLETE | Available |
+| `src/loot.js` | Freebuff | TASK-080 — Claude — `LOCATION_LOOT` (REVIEW) | Available |
+| `src/audio.js` | Freebuff | TASK-081 — Claude — zombie ambience (REVIEW) | Available |
 
 
 ### Lock rules

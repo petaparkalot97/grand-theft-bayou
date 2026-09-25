@@ -23,6 +23,32 @@ goes stale, add a new one saying why; don't rewrite history.
   ### Finding
   What you discovered.
   
+## 2026-09-25 — Claude
+
+**Type:** DISCOVERY + DECISION · **Task:** TASK-084 (fill the map)
+
+### Finding
+A mesh-density heat map (`tools/qa/heatmap.mjs`) showed the 2.4 km map was one built blob with four empty
+corners: the state districts were 5-8 hand-placed buildings each along a bare kilometre of highway. Two
+latent bugs made them worse than they looked: `stateWorld`'s ctx lacked `loadDsCar`/`loadVehicle` (all its
+parked cars and trucks were silent no-ops), and `orlearouge.js` `inCity()` had no upper bounds, so the whole
+south-east quadrant counted as OrleaRouge — **no NPC had ever spawned in Oyster Bay or on US-167 south**.
+
+### Action
+Replaced hand-scattering with a shared procedural kit (`src/townkit.js`) driving `composer.js`'s stage order,
+one module per district (`oysterbay.js`, `portcalypso.js`, `reddust.js`, `lakeshore.js`) and a generic
+`roadside.js` + `corridors.js` for the roads between. Fixed both bugs. See TASK-084 in `TODO.md` for the
+verification numbers and the handoff list. Left `roads.mjs`/`eastbank.mjs`/`worldpass.mjs` failures alone:
+they are identical at HEAD (checked by stashing).
+
+### Lesson for next time
+Cross-composer conflicts: two composers don't see each other's grids. A road that crosses another composer's
+bounds must be planned there as a `site()` (Red Dust/Lakeshore/Oyster all reserve ground for a road that
+enters from outside), and stateWorld's `regions` list is first-match-wins in `zoneAt` — corridors are
+`unshift`ed so their road cells win where bounds overlap a town.
+
+---
+
 ## 2026-09-23 — Claude
 
 **Type:** DECISION · **Task:** TASK-083 (accepted, wired in)

@@ -737,7 +737,11 @@ export function createOrleaRouge(ctx) {
     get entered() { return entered; },
     /** Keep trees and scattered decor out. */
     contains(x, z) { return z > CAUSEWAY.minZ; },
-    inCity(x, z) { return z > CITY.minZ && x >= CITY.minX - 2; },   // the rural parish lies west of the city
+    // The rural parish lies west of the city. It used to be bounded on those two sides only, which was
+    // right while the map ended here; with the state around it, everything south and east of OrleaRouge
+    // (Oyster Bay, US-167 south, the Lakeshore road) counted as the city too: no NPC ever spawned
+    // there (the city spawns at its own POIs) and the "EXT. ORLEAROUGE" card fired in Oyster Bay.
+    inCity(x, z) { return z > CITY.minZ && z < CITY.maxZ + 8 && x >= CITY.minX - 2 && x <= CITY.maxX + 2; },
 
     /** Traffic lanes for two cross streets (both directions), for createTraffic. */
     lanes: [
