@@ -70,9 +70,13 @@ export function buildCorridors(R) {
     profile: {
       mix: [[4, "farm"], [2, "bungalow"], [2, "trailer"], [2, "stand"], [1, "gas"], [1, "church"], [1, "cabin"]], density: 0.5, spacing: 44, footprint: { w: 30, d: 28 },
       forced: [{ at: -760, side: 1, kind: "gas" }, { at: -760, side: -1, kind: "diner" }, { at: -940, side: 1, kind: "motel" }, { at: -1040, side: -1, kind: "popeyes" }],
+      // -520 and -700 were inside Chatboro (z -720..-500), where roadside.js now
+      // refuses to place anything. Moved onto the approaches either side of the
+      // village, which is where a highway sign belongs anyway: you read them on
+      // the way in and on the way out.
       billboards: [
-        { at: -520, side: 1, ry: 0, headline: "PORT CALYPSO", sub: "Next right · Now hiring" },
-        { at: -700, side: -1, ry: Math.PI, headline: "TUSOUXROE", sub: "Home of the potholes", graffiti: "FIX THEM" },
+        { at: -470, side: 1, ry: 0, headline: "PORT CALYPSO", sub: "Next right at Chatboro · Now hiring" },
+        { at: -810, side: -1, ry: Math.PI, headline: "TUSOUXROE", sub: "Home of the potholes", graffiti: "FIX THEM" },
         { at: -880, side: 1, ry: 0, headline: "BIG SAM'S", sub: "Truck stop · Showers · Pie" },
         { at: -1100, side: -1, ry: 0, headline: "LEAVING DIXIE", sub: "Y'all come back now", graffiti: "PLEASE" },
       ],

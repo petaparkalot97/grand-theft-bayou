@@ -15,6 +15,7 @@
 // ---------------------------------------------------------------------------
 
 import { createComposer } from "./composer.js";
+import { KEEPOUTS } from "./districts.js";
 
 const NAMES = ["PRODUCE", "FIREWORKS", "ANTIQUES & JUNK", "BOILED PEANUTS", "LIVE BAIT", "USED TIRES", "HUNTING SUPPLY", "PECANS", "SNOWBALLS", "FEED & SEED"];
 
@@ -70,10 +71,37 @@ export function buildRoadside(R, { name, seed, bounds, road, junctions = [], avo
   const coord = (slot) => (alongX ? slot.x : slot.z);
   const total = profile.mix.reduce((a, [w]) => a + w, 0);
 
+  // THE TOWNS COME FIRST. districts.js's settlements are composed by main.js
+  // from their own modules, so this corridor's grid has never heard of them —
+  // and US-167 north runs the length of Chatboro (x -70..60, z -1200..-424
+  // against the village's x -102..42, z -720..-500). Without this the village
+  // gets a roadside motel through Chatboro Main and pines through the
+  // churchyard, because a composer only refuses ground IT has filled.
+  //
+  // Claimed before the road, the frontage, the billboards and the forest, so
+  // every one of them treats the town as occupied. Any district added to
+  // KEEPOUTS later is protected by the same lines, on every corridor.
+  const townGround = [];
+  for (const k of KEEPOUTS) {
+    if (k.x1 <= bounds.x0 || k.x0 >= bounds.x1 || k.z1 <= bounds.z0 || k.z0 >= bounds.z1) continue;
+    const r = {
+      x0: Math.max(k.x0, bounds.x0), x1: Math.min(k.x1, bounds.x1),
+      z0: Math.max(k.z0, bounds.z0), z1: Math.min(k.z1, bounds.z1),
+    };
+    townGround.push(r);
+    C.claim(r);
+  }
+  const inTown = (x, z) => townGround.some((r) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1);
+
   // a dirt track is laid here (its own surface); the highways already have theirs
   const dirtRoad = road.dirt ? { paved: true, material: () => kit.mat(0x9a7448, "packed dirt", 1), y: 0.022 } : { paved: false };
   C.road(road.name, road.points, { width: road.width, sidewalk: 0, centreLine: false, ...dirtRoad });
   for (const j of junctions) C.road(j.name, j.points, { width: j.width, sidewalk: 0, centreLine: false, paved: false });
+  // C.road overwrites whatever it crosses, so the highway has just cut its own
+  // corridor back out of the town. That is correct — the road does run through
+  // Chatboro — but everything OFF the carriageway has to go back to being the
+  // town's, or the frontage fills in beside it again.
+  for (const r of townGround) C.claim(r);
 
   const near = (slot, at, r) => Math.abs(coord(slot) - at) < r;
   C.frontage(road.name, {
@@ -94,6 +122,9 @@ export function buildRoadside(R, { name, seed, bounds, road, junctions = [], avo
   C.cluster("roadside props", () => {
     for (const b of profile.billboards || []) {
       const x = alongX ? b.at : ax + b.side * off, z = alongX ? az + b.side * off : b.at;
+      // a billboard is placed straight into the scene, so the grid claim above
+      // cannot stop it — it needs asking directly
+      if (inTown(x, z)) continue;
       ctx.makeBillboard && ctx.makeBillboard(x, z, b.ry ?? 0, b.headline, b.sub || "", b.graffiti);
     }
     if (poles) {

@@ -144,6 +144,21 @@ export default async function run(page) {
   ok("open road between Chatboro and Tusouxroe", log.spacing.gapEastToTusouxroe > 20, { gap: log.spacing.gapEastToTusouxroe });
   ok("open road between Chatboro and the strip", log.spacing.gapSouthToStrip < -40, { gap: log.spacing.gapSouthToStrip });
 
+  // Nothing from the state-scale layer may be inside the village. US-167's
+  // roadside corridor (corridors.js) covers x -70..60, z -1200..-424, which
+  // contains most of Chatboro: before roadside.js claimed the districts'
+  // KEEPOUTS, it put a motel through Chatboro Main and pines in the churchyard.
+  log.trespass = await inPage(page, `
+    const g = window.__game, V = g.chatboro.BOUNDS;
+    const inside = (r) => r.x1 > V.x0 && r.x0 < V.x1 && r.z1 > V.z0 && r.z0 < V.z1;
+    const sw = g.stateWorld ? g.stateWorld.minimap.buildings.filter(inside) : [];
+    // and the corridor's own pines, which are blockers, not minimap rects: count
+    // every blocker in the village that Chatboro did not put there
+    const mine = new Set(g.chatboro.minimap.buildings.map((r) => Math.round(r.x0) + "," + Math.round(r.z0)));
+    return { stateWorldBuildings: sw.length, examples: sw.slice(0, 4), villageBuildings: mine.size };
+  `);
+  ok("no state-scale building is inside the village", log.trespass.stateWorldBuildings === 0, log.trespass);
+
   // And the crowd: a zone with no ZONE_MIX entry spawns nobody, silently.
   log.zones = await inPage(page, `
     const g = window.__game, V = g.chatboro, B = V.BOUNDS;

@@ -206,6 +206,18 @@ export default async function run(page) {
   ok("you cannot drive off the bank into the river", log.river.intoWater.ok === false, log.river.intoWater);
   for (const a of log.river.across) ok(`you can drive over the ${a.name} bridge`, a.r.ok === true, a.r);
 
+  // Nothing from the state-scale layer may be inside the metro. The Port
+  // approach corridor (corridors.js) covers x 60..392, z -670..-530, which
+  // overlaps the city's southern edge; roadside.js claims districts.js's
+  // KEEPOUTS so it stops at the line.
+  log.trespass = await inPage(page, `
+    const g = window.__game, B = g.tusouxroe.BOUNDS;
+    const inside = (r) => r.x1 > B.x0 && r.x0 < B.x1 && r.z1 > B.z0 && r.z0 < B.z1;
+    const sw = g.stateWorld ? g.stateWorld.minimap.buildings.filter(inside) : [];
+    return { stateWorldBuildings: sw.length, examples: sw.slice(0, 4) };
+  `);
+  ok("no state-scale building is inside the metro", log.trespass.stateWorldBuildings === 0, log.trespass);
+
   // ---- D & E: the city connects ------------------------------------------
   log.drive = await inPage(page, `
     ${FILL}

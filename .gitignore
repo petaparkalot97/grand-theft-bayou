@@ -57,3 +57,15 @@ tools/upload-log.txt
 # loose reference/scratch video dropped at the repo root — not game source,
 # keep it local only (same rationale as the loose audio masters above).
 /*.mp4
+
+# QA screenshots. tools/qa/*.mjs write <prefix>-<n>-<name>.png into the working
+# directory (SHOT_PREFIX, default "act1" / "nol" / ...), so a `git add -A` after
+# a regression run sweeps ~20 MB of them into the commit. They are regenerable:
+# re-run the script. Project artwork (cover.png, og*.png, Orlearouge.png, ...) is
+# NOT matched by these patterns.
+act1-*.png
+nol-*.png
+klan-*.png
+cem-*.png
+newton-*.png
+look-*.png
