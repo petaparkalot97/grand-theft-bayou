@@ -634,54 +634,74 @@ function buildTrees() {
   scene.add(trunks, foliage);
 }
 
+// The "new" trees (zombie mode): a swamp tree stands in its own puddle, can be chopped down
+// ("cleansed"), and is what the horde rises from in the wild — updateZombiePopulation only spawns
+// zombies in wilderness zones next to a live one. They used to stand only inside the original
+// 272 m square; the map is 2.4 km now, so the rest of the state's wilderness gets them too
+// (human request, 2026-09-26: "zombies spawn anywhere there are the new trees"). One
+// InstancedMesh trio per 160 m chunk, so a chunk culls as a unit and cleansing a tree is a
+// zero-scale matrix, not a scene removal (a removed mesh had already been baked into a static batch).
+const SWAMP_CHUNK = 160;
 function buildSwampTrees() {
   const trunkGeo = new THREE.CylinderGeometry(0.2, 0.4, 3.8, 10);
   const foliageGeo = new THREE.ConeGeometry(2.2, 5.0, 12);
   const waterGeo = new THREE.PlaneGeometry(5, 5).rotateX(-Math.PI / 2);
-  
+
   const trunkMat = surface("dirt", 512).material(2, { color: 0x3a2f24, envMapIntensity: 0.6 });
   const foliageMat = surface("grass", 512).material(3, { color: 0x4a5a30, envMapIntensity: 0.7 });
   const waterMat = new THREE.MeshStandardMaterial({ color: 0x1a2a1a, transparent: true, opacity: 0.85, roughness: 0.1 });
-  
-  const N = 800; // Scattered across the entire map
-  let placed = 0;
-  for (let i = 0; i < N; i++) {
+
+  const spots = [];
+  // the original square: dense, as before
+  for (let i = 0; i < 800; i++) {
     const x = rand(-WORLD + 10, WORLD - 10);
     const z = rand(-WORLD + 10, WORLD - 10);
     if (Math.hypot(x, z - 100) < 12) continue; // clear spawn
     if (inKeepout(x, z)) continue; // keep roads and cities clear
-    
     // extra filtering to ensure it really is wilderness (rural/forest/water/none)
     const zZone = spawnZones.zoneAt(x, z);
     if (zZone && !["rural", "forest", "water"].includes(zZone)) continue;
-
-    const h = rand(0.9, 1.4);
-    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * 6);
-    
-    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-    trunk.position.set(0, 1.9 * h, 0);
-    trunk.scale.set(h, h, h);
-    trunk.quaternion.copy(q);
-    
-    const fol = new THREE.Mesh(foliageGeo, foliageMat);
-    fol.position.set(0, 4.8 * h, 0);
-    fol.scale.set(h, h, h);
-    fol.quaternion.copy(q);
-    
-    const water = new THREE.Mesh(waterGeo, waterMat);
-    water.position.set(0, 0.05, 0);
-    water.scale.set(h, 1, h); // Scale the puddle too
-
-    const mesh = new THREE.Group();
-    mesh.add(trunk, fol, water);
-    mesh.position.set(x, 0, z);
-    
-    scene.add(mesh);
-    addBlocker(x, z, 0.7 * h); // keep collision
-    
-    swampTrees.push({ x, z, hp: 100, mesh, dead: false });
-    placed++;
+    spots.push([x, z]);
   }
+  // the rest of the state: wilderness only — not on a road, in a town, a lake, or ground a
+  // composed district holds
+  for (let i = 0; i < 3600; i++) {
+    const x = rand(MAP.minX + 24, MAP.maxX - 24), z = rand(MAP.minZ + 24, MAP.maxZ - 24);
+    if (Math.abs(x) < WORLD + 4 && Math.abs(z) < WORLD + 4) continue;    // the original square has its own pass
+    const zZone = spawnZones.zoneAt(x, z);
+    if (zZone !== "rural" && zZone !== "forest") continue;
+    if (stateWorld && stateWorld.heldAt(x, z, 4)) continue;
+    spots.push([x, z]);
+  }
+
+  const chunks = new Map();
+  for (const [x, z] of spots) {
+    const key = Math.floor(x / SWAMP_CHUNK) + "," + Math.floor(z / SWAMP_CHUNK);
+    if (!chunks.has(key)) chunks.set(key, []);
+    chunks.get(key).push([x, z]);
+  }
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  for (const list of chunks.values()) {
+    const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, list.length);
+    const foliage = new THREE.InstancedMesh(foliageGeo, foliageMat, list.length);
+    const puddles = new THREE.InstancedMesh(waterGeo, waterMat, list.length);
+    const chunk = { trunks, foliage, puddles };
+    list.forEach(([x, z], i) => {
+      const h = rand(0.9, 1.4);
+      q.setFromAxisAngle(up, rng() * 6);
+      trunks.setMatrixAt(i, m.compose(p.set(x, 1.9 * h, z), q, sc.set(h, h, h)));
+      foliage.setMatrixAt(i, m.compose(p.set(x, 4.8 * h, z), q, sc.set(h, h, h)));
+      puddles.setMatrixAt(i, m.compose(p.set(x, 0.05, z), new THREE.Quaternion(), sc.set(h, 1, h)));
+      addBlocker(x, z, 0.7 * h);
+      swampTrees.push({ x, z, hp: 100, dead: false, chunk, i });
+    });
+    for (const im of [trunks, foliage, puddles]) { im.computeBoundingSphere(); scene.add(im); }
+  }
+}
+/** Chop a swamp tree down: its three instances shrink to nothing. */
+const _zero = new THREE.Matrix4().makeScale(0, 0, 0);
+function removeSwampTree(t) {
+  for (const im of [t.chunk.trunks, t.chunk.foliage, t.chunk.puddles]) { im.setMatrixAt(t.i, _zero); im.instanceMatrix.needsUpdate = true; }
 }
 
 // ---------------------------------------------------------------- kit loading
@@ -3837,7 +3857,7 @@ function fire() {
       t.hp -= dmg;
       if (t.hp <= 0) {
         t.dead = true;
-        scene.remove(t.mesh);
+        removeSwampTree(t);
         npcs.noise(t.x, t.z, 20); // loud cracking sound radius
         // Use explosion sfx as a placeholder for a loud crash
         if (Math.hypot(t.x - playerPos.x, t.z - playerPos.z) < 50) cine.sfx("explosion"); 
@@ -5081,11 +5101,11 @@ async function boot() {
   setLoadStage("planting the swamp…", 62);
   await paint();
   buildTrees();
-  buildSwampTrees();
 
   setLoadStage("building the parish…", 72);
   await paint();
   await buildLevel();
+  buildSwampTrees();      // after the level: it needs the state's zones and the composed districts' ground
   alternate = createAlternateCampaign({
     scene, cine, state, playerPos, getPlayer: () => player,
     makeActor: (id) => createPlayerCharacter(id, {
@@ -5187,7 +5207,7 @@ async function boot() {
   camera.lookAt(playerPos);
   syncHUD();
 
-  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs,
+  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs, swampTrees,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
     get policeHelicopters() { return police.helicopters; },

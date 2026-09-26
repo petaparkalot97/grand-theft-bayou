@@ -81,5 +81,24 @@ check([...seen].every((n) => n in ZOMBIE_ARCHETYPES) && seen.size === Object.key
   check(fresh.state !== "hostile", "a zombie won't notice a player standing in a safehouse");
 }
 
+// ---- the horde is outside the hostile budget, and drifts toward the player ----
+{
+  const crowd = [];
+  for (let i = 0; i < 40; i++) crowd.push(zombie(10 + (i % 8), i * 0.5));   // 40 zombies, all inside aggro; the budget is 20
+  const env = mkEnv({ others: crowd });
+  for (const z of crowd) think(z, env, 0, 0);
+  check(crowd.every((z) => z.state === "hostile"), "all 40 zombies go hostile despite a hostile budget of 20 (they used to stand there)");
+  check(npcs.hostileCount <= 20, "zombie hostility does not eat the civilians' hostile budget (" + npcs.hostileCount + ")");
+  const far = zombie(0, 70);                                                  // 70 m off: past aggro (30), inside scent (100)
+  think(far, mkEnv({ others: [far] }), 0, 0);
+  check(far.state === "wander" && Math.hypot(far.goal.x, far.goal.z) < 5, "an idle zombie 70 m away shambles toward the player");
+  const gone = zombie(0, 100 * 1.5);
+  think(gone, mkEnv({ others: [gone] }), 0, 0);
+  check(!(gone.state === "wander" && Math.hypot(gone.goal.x, gone.goal.z) < 5), "...but not one 150 m away");
+  const safe = zombie(0, 70);
+  think(safe, mkEnv({ others: [safe], playerSafe: true }), 0, 0);
+  check(!(safe.state === "wander" && Math.hypot(safe.goal.x, safe.goal.z) < 5), "...nor toward a player in a safehouse");
+}
+
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log("\nAll zombie checks passed");

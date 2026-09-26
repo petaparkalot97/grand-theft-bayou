@@ -52,6 +52,12 @@ export function createStateWorld(ctx) {
     });
   }
 
+  const BANDS = [
+    { x0: -350, x1: 350, z0: -1050, z1: -450 }, // North
+    { x0: -350, x1: 350, z0: 400, z1: 1050 },   // South
+    { x0: -1050, x1: -450, z0: -350, z1: 350 }, // West
+    { x0: 400, x1: 1050, z0: -350, z1: 350 }    // East
+  ];
   const ANNOUNCE = [
     { x0: 420, x1: 1040, z0: 540, z1: 880, text: "OYSTER BAY · pop. 3,208. The Shrimp Fest is in June. It is always June." },
     { x0: 420, x1: 1040, z0: -940, z1: -440, text: "PORT CALYPSO · The cranes never stop. Neither does the union." },
@@ -114,12 +120,7 @@ export function createStateWorld(ctx) {
     const leavesMat = new THREE.MeshStandardMaterial({ color: 0x1f3b1d, roughness: 0.9 });
     leavesMat.userData.gtbRealized = true;
 
-    const bands = [
-      { x0: -350, x1: 350, z0: -1050, z1: -450 }, // North
-      { x0: -350, x1: 350, z0: 400, z1: 1050 },   // South
-      { x0: -1050, x1: -450, z0: -350, z1: 350 }, // West
-      { x0: 400, x1: 1050, z0: -350, z1: 350 }    // East
-    ];
+    const bands = BANDS;
 
     minimapLayers.areas.push(
       { x0: -350, x1: 350, z0: -1050, z1: -450, color: "#22351a" },
@@ -228,6 +229,8 @@ export function createStateWorld(ctx) {
     },
 
     lanes,
+    /** True when a composed district holds this ground (± margin): a road, lot, building, water. */
+    heldAt: (x, z, m = 1) => held(x, z, m),
     minimap: minimapLayers,
     zoneAt(x, z) {
       // a composed region knows its own roads, buildings, water and open areas
@@ -237,6 +240,12 @@ export function createStateWorld(ctx) {
         if (v === "forest") return wildAs || v;
         if (v === "highway" || v === "water" || v === "building") return v;
         return v && v !== "town" ? v : (v === "town" ? zone : outside || zone);
+      }
+      // the wilderness bands are pine forest (buildWildernessBands scatters them clear of the
+      // highways and city borders): hog country. Without this the northern bands fell through to
+      // spawnzones' default and read as "town" — hoodrats in the woods, no hogs.
+      for (const b of BANDS) {
+        if (x >= b.x0 && x < b.x1 && z >= b.z0 && z < b.z1 && Math.abs(x) >= 100 && Math.abs(z) >= 100) return "forest";
       }
       if (x > 380 && z < -380) return "industrial";  // Port Calypso Docks
       if (x < -380 && z < -380) return "industrial"; // Cypress Hills Badlands (Quarry)

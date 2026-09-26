@@ -21,6 +21,7 @@ import { vehicleRight } from "./vehicles.js";
 
 const rand = (lo, hi) => lo + (hi - lo) * Math.random();
 const NEAR = 55, FAR = 110;
+const ZOMBIE_SCENT = 100;      // metres: an idle zombie inside this drifts toward the player (just under FAR, where NPCs freeze)
 export const MAX_HOSTILE = 7;      // never let the whole map pile onto the player
 // Market Row keeps Saturday hours: bustling trade 09:00–18:00, but only from
 // day 2 on — the game opens at 18:30 on day 1, so the first evening is quiet.
@@ -68,12 +69,17 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
     return h >= MARKET_OPEN && h < MARKET_CLOSE && d >= 2;
   }
 
+  // The hostile budget (maxHostile) keeps a street fight readable: only so many civilians turn on
+  // you at once. A zombie horde is not a street fight — with 60-300 of them out and the budget at
+  // 20, everyone past the twentieth just stood there (human report, 2026-09-26) — so zombies
+  // are outside it: they neither count against it nor are refused by it.
+  const budgeted = (e) => e.type !== "zombie";
   function setState(e, s, time) {
     if (e.state === "hostile" && s !== "hostile") {
-      hostiles--;
+      if (budgeted(e)) hostiles--;
       e.rivalTarget = null;
     }
-    if (s === "hostile" && e.state !== "hostile") hostiles++;
+    if (s === "hostile" && e.state !== "hostile" && budgeted(e)) hostiles++;
     e.state = s;
     e.stateT = time != null ? time : rand(2, 5);
   }
@@ -116,7 +122,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
       if (rivalTarget && (!e.rivalTarget || e.rivalTarget.dead)) e.rivalTarget = rivalTarget;
       return true;
     }
-    if (!force && hostiles >= maxHostile()) return false;
+    if (!force && budgeted(e) && hostiles >= maxHostile()) return false;
     e.rivalTarget = rivalTarget || null;
     setState(e, "hostile", 0);
     e.calm = 0;
@@ -136,7 +142,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
   }
 
   function release(e) {
-    if (e.state === "hostile") hostiles--;
+    if (e.state === "hostile" && budgeted(e)) hostiles--;
     if (e.solicitVeh) {
       if (e.solicitVeh.seats && e.solicitVeh.seats[1] && e.solicitVeh.seats[1].occupant === e) {
         e.solicitVeh.seats[1].occupant = null;
@@ -238,6 +244,18 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
       const hearRange = e.T.aggro * ((e.T.zombieFlags && e.T.zombieFlags.noiseResponse) || 1);
       if (ev && (ev.loud || (ev.x - p.x) ** 2 + (ev.z - p.z) ** 2 <= hearRange * hearRange)) {
         setState(e, "wander", 0); e.goal.set(ev.x, 0, ev.z); return;
+      }
+      // The player's scent: out of biting range, a zombie is still drawn toward a player within
+      // ZOMBIE_SCENT metres — the horde converges on you rather than milling about where it rose.
+      // (Not when the player is in a safehouse.) It reads as a shamble, not a charge: the wander
+      // speed, with a jitter so a crowd spreads out.
+      if (dist < ZOMBIE_SCENT && !env.playerSafe) {
+        if (e.state !== "wander" || e.stateT <= 0 || (e.goal.x - p.x) ** 2 + (e.goal.z - p.z) ** 2 < 4) {
+          setState(e, "wander", rand(2, 4));
+          const a = Math.random() * Math.PI * 2, r = rand(0, 3);
+          e.goal.set(env.player.x + Math.cos(a) * r, 0, env.player.z + Math.sin(a) * r);
+        }
+        return;
       }
       if (e.state === "wander") {
         if ((e.goal.x - p.x) ** 2 + (e.goal.z - p.z) ** 2 < 1.5 || e.stateT < -14) setState(e, "idle", rand(0.5, 3));

@@ -55,7 +55,7 @@ export const ZONE_MIX = Object.freeze({
   entertainment: { tuxedo: 0.2, tourist: 0.16, hoodrat: 0.16, highendescort: 0.12, prostitute: 0.12,
                    gayman: 0.08, lesbian: 0.08, suit: 0.08 }
 });
-export const HOG_CAP = 4;
+export const HOG_CAP = 12;      // was 4 while the woods were one 272 m square; the state has pine country by the km
 
 // ---------------------------------------------------------------------------
 // ZOMBIE_DENSITY — how eagerly the zombie-mode horde fills each zone

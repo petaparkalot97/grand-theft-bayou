@@ -146,6 +146,20 @@ checks (free roam now gives infinite ammo, so "32/16 rounds" can't hold). Not to
 
 ---
 
+### Zombie & hog spawning fixes (human reports, 2026-09-26) — Claude, `REVIEW`
+- **"Some zombies just stand there":** zombie hostility was drawing on the shared hostile budget
+  (`ZOMBIE_MAX_HOSTILE` 20), so with 60-300 out, everyone past the 20th never engaged. Zombies are now
+  outside the budget (`npc.js` `budgeted()`), and an idle zombie within 100 m drifts toward the player
+  ("scent") instead of milling. `tools/qa/zombie_test.mjs` covers both (40 zombies all hostile; 70 m shamble; not into a safehouse).
+- **"Zombies wherever the new trees are":** the swamp trees only stood in the original 272 m square. They now
+  scatter across the whole state's wilderness (~1,900; instanced per 160 m chunk, cleansing = zero-scale
+  matrix — the old `scene.remove` did nothing once the group had been batched), built after the level so
+  they avoid roads/towns/composed ground. The existing rule (wilderness zombies spawn beside a live swamp tree) does the rest.
+- **"Hogs wherever there are lots of pines":** the four wilderness bands (the pine forest) now classify as `forest`
+  (they fell through to "town" in the north: hoodrats in the woods, no hogs), and `HOG_CAP` 4 -> 12.
+
+---
+
 ### TASK-078 — Zombie archetypes: Shambler / Runner / Brute / Crawler / Screamer
 
 **Status:** `COMPLETE` · **Agent:** Freebuff, reviewed by Claude (2026-09-23)
