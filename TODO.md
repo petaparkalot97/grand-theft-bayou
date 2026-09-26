@@ -21,9 +21,10 @@
 
 ## 🚨 DEPLOY / CI STATUS (2026-09-26) — read first
 
-- **Live site = Cloudflare Pages project `grand-theft-bayou` on the *friend's* account, git-connected to
+- **Live site = https://grand-theft-bayou-c2l.pages.dev (Cloudflare Pages, *friend's* account), git-connected to
   `petaparkalot97/grand-theft-bayou` (`origin`).** Pushing to `origin/main` is what deploys. `npm run deploy`
-  (wrangler direct upload) goes to whatever account is logged in locally — that is NOT the live site. Don't use it.
+  (wrangler direct upload) goes to the *local* Cloudflare login — that is the separate, stale `grand-theft-bayou.pages.dev`,
+  NOT the live site. Don't use it.
 - **Every Pages build from `218423a` on failed** -> the live site was stuck on `d2ea9ac`. Cause (reproduced locally):
   `218423a` added `puppeteer` to `package.json` without updating `package-lock.json`, and Pages installs with
   `npm ci`, which refuses an out-of-sync lockfile ("Missing: puppeteer@23.11.1 from lock file"). Fixed by syncing the
@@ -34,8 +35,7 @@
 - **CI (`ci.yml`) had failed on every push since it was added:** `tools/qa/lib/three_math.mjs` patched the real
   `three` that CI installs (it is only meant for the local stub). Now split: `three_math.mjs` imports
   `three_math_stub.mjs` only when `three` is the stub. Verified: `npm test` green on both stub and real `three@0.160.0`.
-- [ ] Confirm the newest commit shows green for both **CI** and **Cloudflare Pages** on GitHub, then load the live site
-  and check the toned-down screen blood (`7f08c5e`) is there.
+- [x] Verified 2026-09-26 on `65715f9`: CI + Cloudflare Pages green, live site serves the new code (toned-down blood included).
 
 ## 🌆 WORLD-BUILDING ROADMAP
 
