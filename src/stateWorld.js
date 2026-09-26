@@ -15,6 +15,7 @@
 import * as THREE from "three";
 import { createComposer } from "./composer.js";
 import { createTownKit } from "./townkit.js";
+import { createLouisianaKit } from "./louisianakit.js";
 import { buildOysterBay as buildOysterBayTown } from "./oysterbay.js";
 import { buildPortCalypso as buildPortTown } from "./portcalypso.js";
 import { buildLakeshore as buildLakeshoreTown } from "./lakeshore.js";
@@ -67,11 +68,12 @@ export function createStateWorld(ctx) {
 
   // What a region builder needs from this module (oysterbay.js, ...): one shared kit,
   // and the places to report lanes, POIs, occluders and minimap shapes.
-  let kit = null;
+  let kit = null, la = null;
   const R = {
     ctx, composers, lanes, pois, addOccluder, regions,
     minimap: minimapLayers,
     get kit() { return kit || (kit = createTownKit(ctx)); },
+    get la() { return la || (la = createLouisianaKit(R.kit, ctx)); },
   };
 
   // ================= 1. PORT CALYPSO (Northeast: x 400..1100, z -1000..-400) =================

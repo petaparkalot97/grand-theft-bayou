@@ -55,7 +55,9 @@ export function buildOysterBay(R) {
   for (const [n, x, zEnd] of SOUTH) C.site(n, { x0: x - (n === "Harbor Road" ? 6 : 5.5), x1: x + (n === "Harbor Road" ? 6 : 5.5), z0: HWY_Z + 5.6, z1: zEnd + 2 });
   C.site("hospital", { x0: 539, x1: 571, z0: 486, z1: 509 });
   C.site("school", { x0: 836, x1: 864, z0: 486, z1: 509 });
-  C.site("church", { x0: 748, x1: 772, z0: 444, z1: 476 });
+  C.site("church", { x0: 743, x1: 777, z0: 438, z1: 476 });
+  C.site("steamboat", { x0: 570, x1: 640, z0: 906, z1: 940 });
+  C.site("float den", { x0: 596, x1: 656, z0: 812, z1: 866 });
   C.site("water tower", { x0: 505, x1: 525, z0: 566, z1: 586 });
   C.site("green", { x0: 608, x1: 664, z0: 556, z1: 592 });
   C.site("burgerpiz", { x0: 674, x1: 708, z0: 574, z1: 592 });
@@ -79,10 +81,10 @@ export function buildOysterBay(R) {
     build: (slot) => gateway[(slot.index + (slot.side > 0 ? 2 : 0)) % gateway.length](slot),
   });
   // Front Street: brick blocks and storefronts, both sides
-  const block = shops.brickBlock({ names: SHOPS }), strip = shops.strip({ names: SHOPS });
+  const block = shops.brickBlock({ names: SHOPS }), strip = shops.strip({ names: SHOPS }), gallery = R.la.gallery();
   C.frontage("Oyster Highway", {
     label: "Front Street", setback: 13, spacing: 14, footprint: { w: 12, d: 13 }, startAt: S(500), endAt: HWY_LEN - S(890),
-    build: (slot) => (kit.hash(slot.x, slot.z, 30) < 0.55 ? block(slot) : strip(slot)),
+    build: (slot) => { const r = kit.hash(slot.x, slot.z, 30); return r < 0.32 ? gallery(slot) : r < 0.6 ? block(slot) : strip(slot); },   // French Quarter galleries, brick blocks, storefronts
   });
   // the quiet east end: a few shops among the houses
   const eastHouse = houses.mixed(["bungalow", "cottage", "shotgun"]);
@@ -121,7 +123,10 @@ export function buildOysterBay(R) {
   C.openArea("cemetery", { color: "#8a8a82", build: areas.cemetery(C) });
   const swamp = new THREE.MeshPhysicalMaterial({ color: 0x0a1c22, roughness: 0.18, metalness: 0, transparent: true, opacity: 0.7, envMapIntensity: 0.4, name: "bay water" });
   swamp.userData.gtbRealized = true;
-  C.water({ x0: 400, x1: 712, z0: BAY_Z, z1: 1140 }, swamp);
+  // the bay, with a gap (no shore blockers) where the steamboat lies, so the gangway can be walked
+  C.water({ x0: 400, x1: 574, z0: BAY_Z, z1: 1140 }, swamp);
+  C.water({ x0: 646, x1: 712, z0: BAY_Z, z1: 1140 }, swamp);
+  C.cluster("steamboat water", () => C.plane(72, 235, swamp, 610, 0.035, 1022));
   C.water({ x0: 728, x1: 1140, z0: BAY_Z, z1: 1140 }, swamp);
 
   // ---- 5 vegetation
@@ -144,8 +149,35 @@ export function buildOysterBay(R) {
     R.pois.push({ x: c.x, z: 516, r: 14, label: "Oyster Bay High" });
   });
   C.landmark("church", (r, c) => {
-    makeChurch(ctx, { x: c.x, z: 472, rot: 0, length: 16, name: "Our Lady of the Bay" });
-    R.pois.push({ x: c.x, z: 482, r: 8, label: "Our Lady of the Bay" });
+    // a three-spired cathedral at the head of Magnolia Street, and the square it looks across
+    R.la.cathedral({ x: c.x, z: 456, rot: 0, index: 0, side: 1 }, { name: "St. Louis Cathedral" });
+    R.pois.push({ x: c.x, z: 482, r: 10, label: "Our Lady of the Bay" });
+  });
+  C.landmark("steamboat", (r, c) => {
+    const g = new THREE.Group(); scene.add(g);
+    R.la.steamboat(g, 605, 930, { name: "BELLE OF THE BAYOU" });
+    props.pier(g, 590, 900, 590, 924, 5);                        // the gangway, from the shore to the boat
+    for (const x of [582, 598, 614, 630]) kit.cyl(g, 0.3, 1.2, kit.mat(0x2a2a2a, "steel post", 0.6), x, 0.6, 907, 8);
+    ctx.addLitSpot({ x: 605, y: 8, z: 926, warm: 0xffe0b0, power: 220, range: 40 });
+    R.pois.push({ x: 590, z: 906, r: 10, label: "Steamboat Belle of the Bayou" });
+  });
+  C.landmark("float den", (r, c) => {
+    // the krewe's den: a warehouse, and the floats parked out in the yard in purple, green and gold
+    const g = new THREE.Group(); scene.add(g);
+    kit.shops.warehouse({ tone: 0x8a6a9a, w: 22, d: 12, h: 8 })({ x: 626, z: 858, rot: Math.PI, index: 0, side: -1 });    // its doors face the yard (north)
+    C.plane(56, 44, kit.mat(0x54575a, "yard hardstanding", 0.95), 626, 0.02, 838);
+    [["gator", 606, 830, 0.1], ["crown", 638, 826, -0.05], ["mask", 606, 846, 0.05], ["fleur", 640, 844, 0]].forEach(([k, x, z, ry]) => R.la.float(g, x, z, ry, k));
+    const board = new THREE.Group(); board.position.set(626, 0, 852.4); board.rotation.y = Math.PI; g.add(board);
+    kit.box(board, 11, 1.6, 0.3, kit.mat(0x0c0c10, "sign board back", 0.7), 0, 8.4, 0);
+    kit.sign(board, 10.6, 1.4, "KREWE OF ORPHEUS BAY · FLOAT DEN", 0, 8.4, 0.16, "#ffd27a", "#3a1a5a");
+    R.pois.push({ x: 626, z: 826, r: 10, label: "Mardi Gras float den" });
+  });
+  C.cluster("jackson square", () => {
+    // the general on his horse in the middle of the green, and the café that only sells beignets
+    const g = new THREE.Group(); scene.add(g);
+    R.la.statue(g, 636, 574);
+    R.la.cafe({ x: 636, z: 582, rot: 0, index: 0, side: 1 });
+    R.pois.push({ x: 636, z: 580, r: 12, label: "Oyster Square" });
   });
   C.landmark("spray", (r, c) => {
     ctx.buildPayNSpray && ctx.buildPayNSpray(c.x, 619, Math.PI, "Oyster Bay Pay 'n' Spray");
