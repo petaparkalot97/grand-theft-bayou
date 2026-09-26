@@ -36,6 +36,9 @@ export const ZONE_MIX = Object.freeze({
   // levee park and the Bastroux yard would have been the only empty ground in
   // the metro and nothing would have said why.
   riverfront: { hoodrat: 0.3, redneck: 0.2, hobo: 0.2, gayman: 0.15, lesbian: 0.15 },
+  // Shruston's two campuses (shruston.js). Young, mixed and out in numbers —
+  // which is the point of a college town and the reason the district exists.
+  campus: { hoodrat: 0.34, prostitute: 0.06, gayman: 0.16, lesbian: 0.16, redneck: 0.14, tourist: 0.14 },
   bastroux_yard: { redneck: 0.62, hobo: 0.22, hoodrat: 0.16 },
   rural: { redneck: 0.6, hoodrat: 0.15, hog: 0.25 },
   forest: { hog: 0.5, redneck: 0.5 },
@@ -98,6 +101,7 @@ export const ZOMBIE_DENSITY = Object.freeze({
   border_market: 1.1,
   market_row: 1.0,
   riverfront: 0.8,
+  campus: 1.15,
   bastroux_yard: 0.7,
   town: 0.9,
   residential: 0.8,
@@ -154,6 +158,7 @@ export const WANDER = Object.freeze({
   residential:  { r: 1.0,  speed: 1.0 },
   market_row:   { r: 0.45, speed: 0.9 },
   riverfront:   { r: 0.7,  speed: 0.95 },   // the levee walk: people out for a stroll
+  campus:       { r: 0.5,  speed: 1.15 },   // short hops between buildings, and briskly
   bastroux_yard:{ r: 1.1,  speed: 0.9 },
   rural:        { r: 1.6,  speed: 0.85 },
   forest:       { r: 1.6,  speed: 0.85 },

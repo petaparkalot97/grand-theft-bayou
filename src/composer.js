@@ -63,6 +63,7 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
   // console warning at load is a thing nobody reads: counted here so a district's
   // own QA can assert on it (see tools/qa/tusouxroe.mjs).
   let siteOverlaps = 0;
+  const siteOverlapNames = [];
 
   function enter(s) {
     const i = STAGES.indexOf(s);
@@ -156,6 +157,7 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
     site(siteName, rect) {
       if (!isFree(rect)) {
         siteOverlaps++;
+        siteOverlapNames.push(siteName);
         console.warn(`[composer] ${name}: site "${siteName}" overlaps something already placed`);
       }
       fill(rect, SITE);
@@ -351,7 +353,7 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
     get drawn() { return clusters.filter((c) => c.group.visible).length + " / " + clusters.length; },
 
     report() {
-      return { name, stages: log.map((e) => ({ ...e })), built, rejected, trees, siteOverlaps, clusters: clusters.length, focal };
+      return { name, stages: log.map((e) => ({ ...e })), built, rejected, trees, siteOverlaps, siteOverlapNames: [...siteOverlapNames], clusters: clusters.length, focal };
     },
 
     update(dt, eye) {

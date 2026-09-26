@@ -46,6 +46,8 @@ import { createWeather } from "./weather.js";
 import { createEastBank, EAST_MAX_X } from "./eastbank.js";
 import { createTusouxroe } from "./tusouxroe.js";
 import { createChatboro } from "./chatboro.js";
+import { createShruston } from "./shruston.js";
+import { createCharsoufre } from "./charsoufre.js";
 import { createNolantis } from "./nolantis.js";
 import { createWelcomeBack } from "./welcomeback.js";
 import { ROUTE_EAST, CRASH } from "./prologue.js";
@@ -1411,6 +1413,8 @@ let westParish = null;         // Parish Highway 9 and the rural west (westparis
 let eastBank = null;           // Lafourchette, the east bank (eastbank.js, laid out by composer.js)
 let tusouxroe = null;          // the Tusouxroe metro: downtown, West Tusouxroe, Bastroux (tusouxroe.js)
 let chatboro = null;           // the village on the US-167 / Port Highway crossroads (chatboro.js)
+let shruston = null;           // Shreveport + Ruston: campuses, casinos, Legends Walk (shruston.js)
+let charsoufre = null;         // Lake Charles + Sulphur, either side of I-10 (charsoufre.js)
 let tusouxroeNorth = null;     // North Tusouxroe, composed district
 let stateWorld = null;         // State-Wide Expansion (stateWorld.js)
 let nolantis = null;           // Act One continued underground: Nirbayou Nolantis (nolantis.js)          // a story chapter can catch WASTED / BUSTED and respawn instead
@@ -2134,7 +2138,7 @@ const npcEnv = {
 const spawnZones = createSpawnZones({
   MAP, ROAD_X, ROAD_HALF, LOT_X, getOrlea: () => orlea,
   residential: [{ x: -48, z: 116, r: 24 }, { x: 48, z: 100, r: 20 }],   // trailer park, junkyard
-  extraZone: (x, z) => (stateWorld && stateWorld.zoneAt(x, z)) || (tusouxroe && tusouxroe.zoneAt(x, z)) || (chatboro && chatboro.zoneAt(x, z)) || (tusouxroeNorth && tusouxroeNorth.zoneAt(x, z)) || (westParish && westParish.zoneAt(x, z)) || (eastBank && eastBank.zoneAt(x, z)) || null,   // Hwy 9, Bayou Noir, Lafourchette, the Tusouxroe metro
+  extraZone: (x, z) => (stateWorld && stateWorld.zoneAt(x, z)) || (tusouxroe && tusouxroe.zoneAt(x, z)) || (chatboro && chatboro.zoneAt(x, z)) || (shruston && shruston.zoneAt(x, z)) || (charsoufre && charsoufre.zoneAt(x, z)) || (tusouxroeNorth && tusouxroeNorth.zoneAt(x, z)) || (westParish && westParish.zoneAt(x, z)) || (eastBank && eastBank.zoneAt(x, z)) || null,   // Hwy 9, Bayou Noir, Lafourchette, the Tusouxroe metro
   coreMinX: -WORLD - 4,                                                   // town / city zones end at the old west edge
   worldTime,
   // crowd sinks pull spawns onto small busy places the sample ring would miss
@@ -2748,6 +2752,25 @@ async function buildLevel() {
   chatboro.buildSet();
   NPC_POIS.push(...chatboro.pois);
 
+  // ---- SHRUSTON: Shreveport + Ruston, north-west on I-20. Two campuses, the
+  // casinos on Lake Caddo, and the Legends Walk. ----
+  const districtCtx = () => ({
+    scene, camera, surface, addBlocker, flashObjective,
+    roadMaterial: () => asphalt.material(1, { envMapIntensity: 0.9 }),
+    addLitSpot: (spot) => litSpots.push(spot),
+    makeWaterTower, makeFence, makeBarrel, makePallet, makeShed, makeBillboard,
+    placeGlbLandmark, loadGLB, loadDsCar,
+    storyBusy: () => !!(actOne && actOne.phase !== "idle" && actOne.phase !== "done"),
+  });
+  shruston = createShruston(districtCtx());
+  shruston.buildSet();
+  NPC_POIS.push(...shruston.pois);
+
+  // ---- CHARSOUFRE: Lake Charles + Sulphur, south-west on I-10. ----
+  charsoufre = createCharsoufre(districtCtx());
+  charsoufre.buildSet();
+  NPC_POIS.push(...charsoufre.pois);
+
   // ---- North Tusouxroe: Commercial & Civic District (composed 6-stage lifecycle) ----
   tusouxroeNorth = createTusouxroeNorth({
     scene, camera, surface, addBlocker, flashObjective, addService,
@@ -2853,6 +2876,8 @@ async function buildLevel() {
         ...(eastBank ? eastBank.lanes : []),
         ...(tusouxroe ? tusouxroe.lanes : []),
         ...(chatboro ? chatboro.lanes : []),
+        ...(shruston ? shruston.lanes : []),
+        ...(charsoufre ? charsoufre.lanes : []),
         ...(tusouxroeNorth ? tusouxroeNorth.lanes : []),
         ...(stateWorld ? stateWorld.lanes : []),
       ];
@@ -4072,6 +4097,8 @@ function tick() {
     if (eastBank) eastBank.update(dt, playerPos);
     if (tusouxroe) tusouxroe.update(dt, playerPos);
     if (chatboro) chatboro.update(dt, playerPos);
+    if (shruston) shruston.update(dt, playerPos);
+    if (charsoufre) charsoufre.update(dt, playerPos);
     if (tusouxroeNorth) tusouxroeNorth.update(dt, playerPos);
     if (stateWorld) stateWorld.update(dt, playerPos);
     hijacker.update(dt);
@@ -5130,6 +5157,8 @@ async function boot() {
     ...(eastBank ? eastBank.props : []),
     ...(tusouxroe ? tusouxroe.props : []),
     ...(chatboro ? chatboro.props : []),
+    ...(shruston ? shruston.props : []),
+    ...(charsoufre ? charsoufre.props : []),
     ...(tusouxroeNorth ? tusouxroeNorth.props : []),
     ...(stateWorld ? stateWorld.props : []),
   ]);
@@ -5142,6 +5171,8 @@ async function boot() {
     ...(eastBank ? eastBank.props : []),
     ...(tusouxroe ? tusouxroe.props : []),
     ...(chatboro ? chatboro.props : []),
+    ...(shruston ? shruston.props : []),
+    ...(charsoufre ? charsoufre.props : []),
     ...(tusouxroeNorth ? tusouxroeNorth.props : []),
     ...(stateWorld ? stateWorld.props : []),
   ]);
@@ -5160,7 +5191,7 @@ async function boot() {
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
     get policeHelicopters() { return police.helicopters; },
-    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, get safehouses() { return safehouses; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroe() { return tusouxroe; }, get chatboro() { return chatboro; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; },
+    get player() { return player; }, get prologue() { return prologue; }, get alternate() { return alternate; }, get greedoCampaign() { return greedoCampaign; }, get syncCampaign() { return syncCampaign; }, get safehouses() { return safehouses; }, mapEditor, get currentCharacter() { return getPlayerCharacter(state.selectedCharacter); }, get actOne() { return actOne; }, get orlea() { return orlea; }, get potholes() { return potholes; }, get blueLight() { return blueLight; }, get westParish() { return westParish; }, get eastBank() { return eastBank; }, get tusouxroe() { return tusouxroe; }, get chatboro() { return chatboro; }, get shruston() { return shruston; }, get charsoufre() { return charsoufre; }, get tusouxroeNorth() { return tusouxroeNorth; }, get stateWorld() { return stateWorld; },
     teleport: (x, z) => {                // QA: move the player on foot
       if (state.veh) { state.veh.speed = 0; state.veh = null; }
       playerPos.set(x, 0, z);
@@ -5212,6 +5243,8 @@ async function boot() {
       water.push(...m.water);
       buildings.push(...m.buildings);
     }
+    if (shruston) { const m = shruston.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water || [])); }
+    if (charsoufre) { const m = charsoufre.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water || [])); }
     if (chatboro) { const m = chatboro.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water || [])); }
     if (tusouxroe) { const m = tusouxroe.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water || [])); }
     if (tusouxroeNorth) { const m = tusouxroeNorth.minimap; roads.push(...m.roads); areas.push(...m.areas); buildings.push(...m.buildings); water.push(...(m.water||[])); }

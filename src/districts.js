@@ -4,26 +4,41 @@
 // Bayou Dixie is Louisiana with the names filed off, and the three settlements
 // map onto three real ones:
 //
-//   Chatboro    ← Chatham, LA      north-CENTRAL (Jackson Parish)
-//   Tusouxroe   ← Monroe, LA       north-EAST, on the river (Ouachita Parish)
-//   OrleaRouge  ← New Orleans      south-EAST
+//   Chatboro    ← Chatham, LA               north-CENTRAL (Jackson Parish)
+//   Tusouxroe   ← Monroe, LA                north-EAST, on the river
+//   Shruston    ← Shreveport + Ruston       north-WEST, on I-20
+//   Charsoufre  ← Lake Charles + Sulphur    south-WEST, on I-10
+//   OrleaRouge  ← New Orleans               south-EAST
 //
-// and that is the layout: Chatboro in the middle of the north, Tusouxroe
-// north-east of it, OrleaRouge away to the south-east of both. Driving the
-// length of US-167 should feel like driving the length of the state.
+// and that is the layout. Chatboro sits in the middle of the north with
+// Tusouxroe north-east of it and Shruston north-west; Charsoufre is away down
+// the south-west coast, and OrleaRouge holds the south-east. Driving the length
+// of US-167 should feel like driving the length of the state, and the two
+// east-west highways are the interstates: the Red Dust Pass is I-20 through
+// Shruston, the Lakeshore Causeway is I-10 through Charsoufre. Shreveport,
+// Ruston and Monroe really are strung along I-20 like that.
 //
 // AS BUILT, and how little room is left. The map is 2400 m square and most of it
 // is already claimed, so the two northern towns are wedged between things that
 // were there first:
 //
 //   OrleaRouge   the whole centre, plus the US-167 strip north to z -440
-//   Chatboro     x -102 .. 42,  z -720 .. -500      31,680 m2   (chatboro.js)
-//   Tusouxroe    x   85 .. 387, z -1152 .. -592    169,120 m2   (tusouxroe.js)
-//   Port Calypso x  380 .. 1150 — its own content starts at x 450
+//   Chatboro     x -102 .. 42,  z  -720 .. -500     31,680 m2  (chatboro.js)
+//   Tusouxroe    x   85 .. 387, z -1152 .. -592    169,120 m2  (tusouxroe.js)
+//   Shruston     x -370 ..-110, z -1080 .. -470    158,600 m2  (shruston.js)
+//   Charsoufre   x -360 ..-100, z   600 ..  900     78,000 m2  (charsoufre.js)
 //
-// The gaps are 43 m between Chatboro and Tusouxroe, 60 m between Chatboro and
-// the strip, and 63 m between Tusouxroe and the docks. Those are the numbers a
-// town has to grow into, and tools/qa/chatboro.mjs asserts the first two.
+// and the four corner regions, which were there first and set the walls:
+//
+//   Port Calypso  x  380 .. 1150, z -1100 .. -380  (content starts at x 450)
+//   Red Dust      x -1150 ..-380, z -1100 .. -380
+//   Lakeshore     x -1150 ..-380, z   380 .. 1150
+//   Oyster Bay    x  380 .. 1150, z   380 .. 1150
+//
+// The gaps: 43 m Chatboro–Tusouxroe, 60 m Chatboro–the strip, 63 m
+// Tusouxroe–the docks, 10 m Shruston–Red Dust and 20 m Charsoufre–Lakeshore.
+// Those are the numbers a town has to grow into, and the QA scripts in
+// tools/qa/ assert them.
 //
 // WHY THIS FILE EXISTS
 // --------------------
@@ -65,6 +80,17 @@ export const DISTRICTS = {
   // relationship Chatham actually has with Monroe.
   chatboro: { x: -6, z: -600, label: "Chatboro" },
 
+  // Shreveport + Ruston: the north-west, on I-20 (the Red Dust Pass, world
+  // z -600 — it crosses local z 180). Louisiana's third city and its college
+  // town are an hour apart on that road in real life; here they are one place.
+  // West of Chatboro and clear of the Red Dust badlands at x -380.
+  shruston: { x: -240, z: -780, label: "Shruston" },
+
+  // Lake Charles + Sulphur: the south-west, on I-10 (the Lakeshore Causeway,
+  // world z 750 — local z 0, which is the seam between the two halves). Ten
+  // miles apart in real life and joined at the hip; the origin is the join.
+  charsoufre: { x: -230, z: 750, label: "Charsoufre" },
+
   // Monroe: north-east, and a long way up. The drive from OrleaRouge to Mama's
   // door is meant to be a drive.
   //
@@ -97,6 +123,12 @@ export const KEEPOUTS = [
   // Its west end reaches x -86, where the north band does scatter pines (the
   // band only spares the highway corridor, |x| < 100).
   { x0: -106, x1: 46, z0: -724, z1: -496, label: "Chatboro" },
+  // Shruston, and the Red Dust approach corridor runs straight through it at
+  // z -600: roadside.js claims this rect, which is what keeps I-20's motels and
+  // pines out of the campuses.
+  { x0: -376, x1: -104, z0: -1086, z1: -464, label: "Shruston" },
+  // Charsoufre, with the Lakeshore approach corridor through it at z 750.
+  { x0: -366, x1: -94, z0: 594, z1: 906, label: "Charsoufre" },
 ];
 
 /** True if (x, z) falls inside a district's claimed ground. `pad` widens every rect. */
