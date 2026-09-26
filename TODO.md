@@ -19,6 +19,22 @@
 - `COMPLETE` — reviewed and tested
 - `CANCELLED` — intentionally abandoned
 
+## 🚨 DEPLOY / CI STATUS (2026-09-26) — read first
+
+- **Live site = Cloudflare Pages project `grand-theft-bayou` on the *friend's* account, git-connected to
+  `petaparkalot97/grand-theft-bayou` (`origin`).** Pushing to `origin/main` is what deploys. `npm run deploy`
+  (wrangler direct upload) goes to whatever account is logged in locally — that is NOT the live site. Don't use it.
+- **Every Pages build from `218423a` on failed** -> the live site was stuck on `d2ea9ac`. Cause (inferred; the
+  friend's build logs aren't visible from here): `218423a` added `puppeteer` as a devDependency, the lockfile has no
+  entry for it, so Pages' `npm install` tried to download Chromium. Fix: `.puppeteerrc.cjs` sets `skipDownload` on
+  `CF_PAGES`/`CI`. **If the next Pages build still fails, get the log from the friend's dashboard** (GitHub commit ->
+  Cloudflare Pages check -> View logs) and put it here.
+- **CI (`ci.yml`) had failed on every push since it was added:** `tools/qa/lib/three_math.mjs` patched the real
+  `three` that CI installs (it is only meant for the local stub). Now split: `three_math.mjs` imports
+  `three_math_stub.mjs` only when `three` is the stub. Verified: `npm test` green on both stub and real `three@0.160.0`.
+- [ ] Confirm the newest commit shows green for both **CI** and **Cloudflare Pages** on GitHub, then load the live site
+  and check the toned-down screen blood (`7f08c5e`) is there.
+
 ## 🌆 WORLD-BUILDING ROADMAP
 
 - [x] East Bank connected expansion: Cypress Heights, Market Row, Port Mercer
