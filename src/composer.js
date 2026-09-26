@@ -362,7 +362,13 @@ export function createComposer(ctx, { name, bounds, zones = {}, cell = 2, seed =
       cullTimer = 0.4;
       for (const c of clusters) {
         const show = Math.hypot(c.x - eye.x, c.z - eye.z) - c.r < DRAW_DISTANCE;
-        if (c.group.visible !== show) c.group.visible = show;
+        if (c.group.visible !== show) {
+          c.group.visible = show;
+          // a hidden cluster is skipped by the per-frame scene.updateMatrixWorld() walk (tens of thousands of objects); when it comes back
+          // its world matrices are refreshed once, and its own auto-updating movers carry on
+          c.group.matrixWorldAutoUpdate = show;
+          if (show) c.group.updateMatrixWorld(true);
+        }
       }
     },
   };

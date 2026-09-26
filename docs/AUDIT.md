@@ -29,6 +29,13 @@ games work. See `TODO.md`.
 
 ---
 
+## 0b. Performance audit (2026-09-26 — see TASK-086 in TODO.md for the full list)
+
+Measured in headless Chromium, so counts not milliseconds. Draw calls per frame in view: Chatboro ~4.0k, Tusouxroe ~3.9k, OrleaRouge ~4.1k (before), of which the
+shadow pass repeats every caster. The lag is **GPU / draw-call bound; game JS is < 0.2 % of sampled CPU** (`tools/qa/cpu_profile.mjs`). Fixed: 3,260 invisible collider meshes
+(drawn + shadow-casting), 21 -> 11-15 point lights, un-batched district clusters, hidden clusters walked every frame, the hog's shadow meshes. Open: ~2,300 shelf-stock meshes
+that will not batch, small-mesh culling, default tier by GPU, shadow cost, swamp-tree puddles, shader-compile hitches. Tools: `tools/qa/perf_audit.mjs`, `tools/qa/cpu_profile.mjs`.
+
 ## 1. Easy fixes — under an hour each
 
 > **Status after the second pass (2026-09-26, TASK-085):** ✅ done — 1 (deploy: `npm run deploy` builds `dist/` from `git ls-files`),

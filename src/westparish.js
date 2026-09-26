@@ -571,7 +571,11 @@ export function createWestParish(ctx) {
       const eye = ctx.camera ? ctx.camera.position : playerPos;
       for (const c of clusters) {
         const show = Math.hypot(c.x - eye.x, c.z - eye.z) - c.r < DRAW_DISTANCE;
-        if (c.group.visible !== show) c.group.visible = show;
+        if (c.group.visible !== show) {
+          c.group.visible = show;
+          c.group.matrixWorldAutoUpdate = show;         // hidden clusters are skipped by the per-frame matrix walk (see composer.js)
+          if (show) c.group.updateMatrixWorld(true);
+        }
       }
     },
   };

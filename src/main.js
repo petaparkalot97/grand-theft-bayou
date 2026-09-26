@@ -500,7 +500,9 @@ for (let i = 0; i < 9; i++) {
 // nearest the camera. Anything further away still reads, via emissive bulbs.
 const litSpots = [];
 const lightPool = [];
-function initLightPool(n = 8) {
+// Every light in the scene is evaluated for every lit fragment (three.js forward rendering), even at intensity 0, so the pool is sized by tier.
+const LIGHT_POOL = { low: 4, medium: 6, high: 8, ultra: 8 };
+function initLightPool(n = LIGHT_POOL[GFX.tier] || 8) {
   for (let i = 0; i < n; i++) {
     const l = new THREE.PointLight(0xffc27a, 0, 40, 2);
     scene.add(l);
@@ -819,6 +821,10 @@ const glbCache = new Map();
 // In a world with its own sky and horizon they read as a grey ceiling over the
 // town. Dropped on load, from every pack, whatever else the caller asks for.
 const BACKDROP_RE = /^(background|backdrop|skybox|sky_?dome|trees_background)/i;
+// The crayon building packs ship hundreds of invisible "collider" boxes (material `crayon-collider-invisible`: opacity 0, but still drawn as
+// transparent meshes, sorted back to front, and CASTING SHADOWS). Nothing here reads them: collision comes from addBlocker. Performance audit
+// 2026-09-26: ~3,200 of them in the scene, ~2,200 drawn per frame at Chatboro — over half of all draw calls.
+const COLLIDER_RE = /collider/i;
 
 function loadGLB(path, cullRe, keepRe) {
   const key = path + (cullRe ? "|c" + cullRe.source : "") + (keepRe ? "|k" + keepRe.source : "");
@@ -832,6 +838,7 @@ function loadGLB(path, cullRe, keepRe) {
           // packs name the card on the mesh or only on its material
           const matNm = (o.material && !Array.isArray(o.material) && o.material.name) || "";
           if (BACKDROP_RE.test(nm) || BACKDROP_RE.test(matNm)) { doomed.push(o); return; }
+          if (COLLIDER_RE.test(matNm) || COLLIDER_RE.test(nm)) { doomed.push(o); return; }
           if (keepRe && !keepRe.test(nm)) { doomed.push(o); return; }
           if (cullRe && cullRe.test(nm)) { doomed.push(o); return; }
           o.castShadow = true; o.receiveShadow = true;
@@ -1653,6 +1660,7 @@ const services = createServices({
   scene, state, playerPos, arsenal, flashObjective, addBlocker,
   priceMul: () => (state.stats ? state.stats.mods.priceMul() : 1),     // Barter / Speech / Charisma
   healMul: () => (state.stats ? state.stats.mods.healMul() : 1),       // Medicine
+  addLitSpot: (spot) => litSpots.push(spot),                          // the spray-booth lights ride the light pool
   get cine() { return cine; },
   syncHUD: () => syncHUD(),
   stopVehicleFire: (v) => stopVehicleFire(v),
@@ -2282,7 +2290,7 @@ function buildHog() {
     g.add(m); return m;
   };
   add(P.torso, hide, 0, 0.88, 0, { shadow: true });
-  add(P.hump, hide, 0, 1.12, 0.55, { shadow: true });
+  add(P.hump, hide, 0, 1.12, 0.55);
   add(P.rump, hide, 0, 0.9, -0.75);
   add(P.belly, belly, 0, 0.62, 0.05);
   for (let i = 0; i < 9; i++) add(P.bristle, M.dark, 0, 1.4 - Math.abs(i - 3) * 0.05, 0.95 - i * 0.24, { rx: -0.35 });   // the mane, hackles up
@@ -2297,7 +2305,7 @@ function buildHog() {
   const tail = add(P.tail, hide, 0, 1.15, -1.22, { ry: Math.PI / 2 });
   const legs = [];
   for (const [lx, lz] of [[0.34, 0.68], [-0.34, 0.68], [0.34, -0.7], [-0.34, -0.7]]) {
-    const l = add(P.leg, hide, lx, 0.35, lz, { shadow: true });
+    const l = add(P.leg, hide, lx, 0.35, lz);
     const h = new THREE.Mesh(P.hoof, M.dark); h.position.y = -0.36; l.add(h);
     legs.push(l);
   }
@@ -4176,7 +4184,7 @@ function fire() {
 const muzzleLight = new THREE.PointLight(0xffd070, 0, 12, 2);
 const wreckLight = new THREE.PointLight(0xff6a1e, 0, 16, 2);
 const beaconLights = [new THREE.PointLight(0x3366ff, 0, 18, 2), new THREE.PointLight(0xff2233, 0, 18, 2)];
-const fireLights = Array(4).fill(0).map(() => new THREE.PointLight(0xff5a1e, 0, 9, 2));
+const fireLights = Array(3).fill(0).map(() => new THREE.PointLight(0xff5a1e, 0, 9, 2));
 scene.add(muzzleLight, wreckLight, ...beaconLights, ...fireLights);
 function muzzleFlash(from) {
   muzzleLight.position.copy(from);
@@ -5473,6 +5481,8 @@ async function boot() {
   // already upgraded carries a gtbRealized tag and is skipped, and shadow flags
   // are left exactly as each builder set them.
   initLightPool();
+  // safety net: any collider mesh that came in some other way (a kit loaded outside loadGLB) goes too
+  { const gone = []; scene.traverse((o) => { if (o.isMesh && o.material && !Array.isArray(o.material) && COLLIDER_RE.test(o.material.name || "")) gone.push(o); }); for (const o of gone) if (o.parent) o.parent.remove(o); }
   // shafts, pools and halos under every lamp (and poles for the lot lights) —
   // before the sweep below, so the new poles get a proper steel surface
   for (const sp of litSpots) if (sp.fx !== false) lampFx.push(addLamp(scene, sp));
@@ -5510,14 +5520,10 @@ async function boot() {
     ...(alternate ? alternate.props : []),
     ...(greedoCampaign ? greedoCampaign.props : []),
     ...(syncCampaign ? syncCampaign.props : []),
-    ...(westParish ? westParish.props : []),
-    ...(eastBank ? eastBank.props : []),
-    ...(tusouxroe ? tusouxroe.props : []),
-    ...(chatboro ? chatboro.props : []),
-    ...(shruston ? shruston.props : []),
-    ...(charsoufre ? charsoufre.props : []),
+    // (the composer districts — West Parish, Lafourchette, Tusouxroe, Chatboro, Shruston, Charsoufre and the state map — are NOT here: their cluster
+    // groups are batched INSIDE, see cullGroups below. They were listed here too, which excluded every cluster root and left all that scenery
+    // drawing one mesh at a time. Only the Crown Strip stays out: its venue cutaways move.)
     ...(tusouxroeNorth ? tusouxroeNorth.props : []),
-    ...(stateWorld ? stateWorld.props : []),
   ]);
   // The districts' culling groups are boundaries, not exclusions: batch *inside* each
   // cluster, never across them. A cluster hides itself by going invisible, so a batch
@@ -5533,10 +5539,16 @@ async function boot() {
     ...(tusouxroeNorth ? tusouxroeNorth.props : []),
     ...(stateWorld ? stateWorld.props : []),
   ]);
+  // A cluster that the distance cull has hidden by now (everything far from the spawn) is skipped by the batcher, which ignores invisible
+  // objects: so every district you had not yet been near stayed a pile of separate meshes — the general stores' shelf stock alone was ~1,500
+  // draw calls in view. Show them all for the merge, then put them back.
+  const hiddenClusters = [];
+  for (const g of cullGroups) if (g && g.visible === false) { g.visible = true; hiddenClusters.push(g); }
   const batch = batchStatic(scene, {
     exclude: (root) => moving.has(root),
     boundary: (o) => cullGroups.has(o),
   });
+  for (const g of hiddenClusters) { g.visible = false; g.matrixWorldAutoUpdate = false; }
   console.info(`[gfx] static batching: ${batch.meshes} meshes -> ${batch.meshes - batch.removed} (${batch.batches} batches)`);
   updateGfxLabel();
 

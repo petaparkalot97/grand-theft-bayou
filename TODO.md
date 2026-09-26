@@ -68,6 +68,51 @@ dependencies and acceptance criteria.
 
 # 🔒 ACTIVE TASKS
 
+### TASK-086 — People, performance audit, and loose ends (human requests, 2026-09-26)
+
+**Status:** `REVIEW` (headless-verified; **needs a real-GPU look and a real-hands play**) · **Agent:** Claude
+
+**Done and pushed**
+- **Population:** far-behind NPCs no longer hold the spawn cap (no hogs/zombies in the woods was this); zombies thin to a quarter by day instead of vanishing at dawn;
+  forest behind every corridor road is hog country (50 % of spawns), hog cap 18; hogs are a real boar model.
+- **Controls:** E = use / enter car, F = torch, Q/E camera turn only while Right Shift is held (sprint is Left Shift only); Popeyes sells ammo (no guns), gun counters sell both.
+- **People:** redneck/dockworker/mechanic/suit/tourist are 3D actors (no more pixel-art redneck); the rider you jack or shoot off a bike/scooter is the same body;
+  walk->run gait, three death falls that rest on the ground, wardrobe (sleeves, tie, hi-vis, hard hat, shades); hoodrats/rednecks/thugs no longer run from gunfire.
+  Research + sources: `docs/CHARACTER_CRAFT.md`; lab: `tools/qa/actor_lab.mjs`.
+- **Performance audit (first pass, all measured in headless Chromium: read the COUNTS).** Findings and what was changed:
+  1. **~3,260 invisible `crayon-collider-invisible` meshes** (opacity 0, still drawn as transparent meshes AND casting shadows; ~2,200 in view at Chatboro) — removed in `loadGLB`
+     plus a safety-net sweep. The single biggest win: draw calls at Chatboro ~4.0k -> ~3.4k (after the other fixes below), transparent meshes 1,138 -> ~400.
+  2. **Point lights: 21 -> 11-15.** Every light is evaluated per lit fragment, even at intensity 0. The pooled lights are now sized by tier (4/6/8/8), the per-garage spray-booth
+     lamps ride the pool, one fire light fewer.
+  3. **District batching:** the composer districts were in `batchStatic`'s `moving` (exclude) list, so their cluster roots were never batched. Removed (the Crown Strip stays out: its cutaways
+     move); clusters hidden at batch time are shown for the merge. Tusouxroe view 3.9k -> 2.5k calls.
+  4. Hidden clusters no longer cost the per-frame `scene.updateMatrixWorld()` walk (`matrixWorldAutoUpdate`, composer.js + westparish.js).
+  5. The hog no longer casts 5 shadow-meshes per animal.
+  6. **JS is not the problem:** a CPU profile shows game code at <0.2 % of sampled JS; the lag is GPU/draw-call bound (`tools/qa/cpu_profile.mjs`, `tools/qa/perf_audit.mjs`).
+
+**Still to do (perf) — in priority order**
+- [ ] **~2,300 shelf-stock meshes (`Foods_*`, `Shelf_*`, `cardboard_boxes`: the general-store / rest-stop interiors) are `batchable` yet still unbatched** (they appear 3x: `parish:rest-stop`,
+      `Chatboro:crossroads lot`, and a bare `Group<Group<Scene`). Find why `batchStatic` leaves them (probe: `perf_audit.mjs` topMaterials; check `matSignature`/`root.visible`/`exclude`
+      for the third, scene-root copy) — this is ~1,500 draw calls in the worst views. Interiors also need distance culling (walls hide them).
+- [ ] Small-mesh distance culling inside clusters (a mesh under ~0.5 m radius is < 5 px past ~100 m).
+- [ ] **HIGH is the default tier on most desktops** (`autoTier`: >=1800 px and >=6 cores): GTAO + bloom + SMAA + 2048 shadows. Pick by GPU string (WEBGL_debug_renderer_info: Intel/UHD -> BALANCED)
+      and make the governor react at < 45 fps, not < 32.
+- [ ] Shadows: 2,000-2,500 casters per frame; give small props `castShadow = false`, shrink the shadow box (70 m half-size) on BALANCED/PERFORMANCE, or update it every 2nd frame.
+- [ ] Swamp-tree puddles (a transparent 5x5 plane per tree, 7,500) — hide beyond ~120 m; 887 instanced chunk draws near Chatboro.
+- [ ] Shader compile hitches (80-116 programs): `renderer.compileAsync` after the build, and prewarm the light-count variants.
+- [ ] Real-GPU numbers (frame ms per pass) — headless SwiftShader cannot give them.
+
+**Not done: the gun assets.** `Desktop\SHOTGUN (first person view)\w0_a.png / w0_b.png` (two first-person shotgun views on white — need alpha-keying; `w0_a` looks like the aim/fire frame,
+`w0_b` the carry frame) and `Desktop\Guns.blend` (no Blender here: `pip install bpy` in a venv, export GLB, then hook into `weapons_3d.js` `createViewmodel`). Copied to
+`z:\github\_ASSETS\3D\Weapons-Tech\Guns-firstperson\`; not yet integrated (INDEX.md there not yet updated).
+
+**Loose ends**
+- `weapon_hold_test` has 2 failures identical at HEAD (arm solver 5.7 cm error; melee state) — not caused by this work.
+- `roads.mjs` / `eastbank.mjs` / `worldpass.mjs` are stale (see TASK-085).
+- Bike rider fix: verified with a hijack on a traffic bike (the ejected NPC *is* the rider mesh); shooting a rider off uses the same `dismountRider` but was not run.
+
+---
+
 ### TASK-085 — Stance, stealth, jumping, the Pip-Boy character system, scarce ammo, four Louisiana set pieces, and the audit's easy list (human request, 2026-09-26)
 
 **Status:** `REVIEW` (headless-verified — **needs a real-GPU / real-hands playtest**: jump feel, stealth ranges, the Pip-Boy layout) ·

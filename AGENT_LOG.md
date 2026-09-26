@@ -23,6 +23,23 @@ goes stale, add a new one saying why; don't rewrite history.
   ### Finding
   What you discovered.
   
+## 2026-09-26 (perf) — Claude
+
+**Type:** DISCOVERY · **Task:** TASK-086
+
+### Finding
+`crayon-collider-invisible` (opacity-0 transparent) collider meshes shipped inside the building GLBs: ~3,260 in the scene, drawn and shadow-casting. `batchStatic`'s `moving` set contained
+every composer district's cluster groups, so none of them was ever batched. Every PointLight costs every lit fragment even at intensity 0. Headless runs ~1 fps, so the districts' distance cull has
+not caught up after a teleport — a probe must call each district's `update()` itself or it measures the wrong clusters (one run showed 2,300 extra meshes for that reason).
+
+### Action
+See TASK-086. Open thread: ~2,300 `Foods_*`/`Shelf_*` shelf-stock meshes are `batchable` by every test in `batchStatic` yet remain separate (three copies each, one at the scene root).
+
+### Lesson for next time
+Measure with forced culling and read the per-material census before guessing; JS profile first (it was 0.2 %), then draw calls, then lights.
+
+---
+
 ## 2026-09-26 (later) — Claude
 
 **Type:** DISCOVERY · **Task:** TASK-085 follow-up (human report: no hogs or zombies in wooded areas)

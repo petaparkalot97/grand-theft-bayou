@@ -182,12 +182,11 @@ export function createServices(ctx) {
     door.position.set(0, doorH, D / 2 - 0.1);
     door.scale.y = 0.02;
     g.add(door);
-    // spray-booth lights inside, so the bay reads at night
-    const lamp = new THREE.PointLight(0xd8f0ff, 22, 14, 2);
-    lamp.position.set(0, H - 0.6, 0);
-    g.add(lamp);
     // walls are solid; the front is open
     g.updateMatrixWorld(true);
+    // spray-booth light inside, so the bay reads at night: a pooled light (main.js), not one of its own — every PointLight in the scene is
+    // evaluated for every lit fragment on screen, whether it is near or not
+    if (ctx.addLitSpot) { const lp = new THREE.Vector3(0, H - 0.6, 0).applyMatrix4(g.matrixWorld); ctx.addLitSpot({ x: lp.x, y: lp.y, z: lp.z, warm: 0xd8f0ff, power: 22, range: 14, fx: false }); }
     const wpt = (lx, lz) => new THREE.Vector3(lx, 0, lz).applyMatrix4(g.matrixWorld);
     for (let lz = -D / 2; lz <= D / 2; lz += 1.4) {
       for (const lx of [-W / 2, W / 2]) { const p = wpt(lx, lz); ctx.addBlocker(p.x, p.z, 0.55); }
