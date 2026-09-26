@@ -306,8 +306,9 @@ Then hit **Start the story**.
 | **V** | first person <-> the old third-person orbit camera |
 | **F** | get in / out of a car · use whatever you are standing at: a slot machine, the bar, the stage, a Pay 'n' Spray, a hospital, a food counter |
 | **Shift** | sprint on foot · handbrake in a car |
-| **Space** | jump · the DeLorean hovers: **Space** hops it |
-| **C** | crouch |
+| **Space** | jump — high, and it costs stamina · the DeLorean hovers: **Space** hops it |
+| **Tab** | the Pip-Boy (zombie mode): S.P.E.C.I.A.L., skills, perks, traits — spend level-up points here |
+| **C** | crouch (the sneak: slower, quieter, harder for the dead to notice) · **C C** quickly: prone (the crawl: slowest, the most stealth) · **C** again stands · sprinting stands you up |
 | **K** | mute the car radio on its own (or click 📻 next to the ♪ button) |
 | **Q / E** | turn the view (secondary) |
 | **F3** | frame-time / draw-call readout |
@@ -317,22 +318,31 @@ Then hit **Start the story**.
 ## Layout
 
 ```
-game/
-  index.html        menu + HUD
-  serve.mjs         tiny zero-dependency static server
-  src/
-    main.js         everything — world build, driving, enemies, wanted system
-    graphics.js     PBR material pass + HDR render pipeline (see below)
-    sprite.js       billboard sprite / atlas animation
-  assets/
-    sprites/        pixel-art atlases (built by tools/slice_*.py)
-    models/         gltf / glb / fbx landmarks, vehicles, kit
-    audio/ cover.png
+index.html            menu + HUD
+serve.mjs             tiny static server (dev)   ·   server/  multiplayer + map-editor server (Node, ws)
+src/
+  main.js             the game loop and everything that is not a module below: boot, driving, combat, HUD, wiring
+  — the world —
+  composer.js         staged district builder (road > buildings > side streets > open areas > vegetation > landmark)
+                      on an occupancy grid; townkit.js / louisianakit.js are its procedural building kits
+  stateWorld.js       the whole state outside the three original towns: regions, corridors, ambient zones
+  tusouxroe / eastbank / westparish / chatboro / shruston / charsoufre / orlearouge / oysterbay /
+  portcalypso / reddust / lakeshore / roadside / corridors / nolantis .js    the districts and roads
+  — the people —
+  npc.js  zombies.js  crowd.js  factions.js  police.js  traffic.js  spawnzones.js  safehouses.js  hijack.js
+  — the player —
+  camera.js  fpsview.js  weapons.js  weapons_3d.js  gore.js  loot.js  services.js  stats.js  pipboy.js
+  — story —  prologue.js  actone.js  klan.js  newton.js  cinema.js  ...Campaign.js  pedestrianChatter.js
+  graphics.js         PBR material pass + HDR render pipeline (see above)
+  fx.js daycycle.js weather.js worldtime.js     atmosphere and time
+assets/
+  vendor/three/       three.js r160 (module + only the addons the game imports), vendored — no CDN
+  sprites/ models/ audio/ ...
 tools/
-    slice_sprites.py   APIgqp.jpg / S4KKpl.jpg  -> redneck / oldman atlases
-    slice_swamp.py     Dead Swamp sheets        -> shroom / torch atlases
-    inspect_models.py   dump gltf/glb structure
-TODO.md               working notes / roadmap
+  build-site.mjs      builds dist/ (the deployable game only)      qa/   headless QA and unit tests (npm test)
+  pedestrian-voiceover-gen.mjs   Fish Audio bark generator (--check: CI coverage test)
+docs/                 AUDIT.md, WORLD_BUILDING.md, ZOMBIE_TRANSFORMATION_PLAN.md
+TODO.md               the task board and hand-off notes        AGENT_LOG.md   decisions and test history
 ```
 
 ## Assets

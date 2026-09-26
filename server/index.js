@@ -45,10 +45,22 @@ function slotFile(name) {
   if (!safe) return null;
   return path.join(SLOTS_DIR, `${safe}.json`);
 }
-function cors(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+// CORS is an allow-list, not "*": the game's own origin(s) (localhost for dev, EDITOR_ORIGINS, comma separated,
+// for a deployed site). The map editor's mutating and AI endpoints also need the shared secret when EDITOR_TOKEN
+// is set (an `x-editor-token` header, or localStorage "gtbEditorToken" on the editor page) — and with no token
+// configured they only answer loopback callers, so a deployed server never hands out the OpenRouter key.
+const EDITOR_ORIGINS = String(env.EDITOR_ORIGINS || "").split(",").map((o) => o.trim()).filter(Boolean);
+const originAllowed = (o) => !!o && (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o) || EDITOR_ORIGINS.includes(o));
+function cors(res, req) {
+  const origin = req && req.headers.origin;
+  if (originAllowed(origin)) { res.setHeader("Access-Control-Allow-Origin", origin); res.setHeader("Vary", "Origin"); }
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Editor-Token");
+}
+function editorAllowed(req) {
+  if (env.EDITOR_TOKEN) return req.headers["x-editor-token"] === env.EDITOR_TOKEN;
+  const a = req.socket.remoteAddress || "";
+  return a === "127.0.0.1" || a === "::1" || a === "::ffff:127.0.0.1";
 }
 function readBody(req, max = 256 * 1024) {
   return new Promise((resolve, reject) => {
@@ -74,7 +86,8 @@ const server = http.createServer((req, res) => {
   if (p === "/health") { sendJson(res, 200, { ok: true, rooms: rooms.size }); return; }
   
   if (p === "/rooms" && req.method === "GET") {
-    cors(res);
+    cors(res, req);
+    res.setHeader("Access-Control-Allow-Origin", "*");      // the public room list is public data
     const list = [...rooms.values()].filter(r => r.visibility === "PUBLIC").map(r => ({
       code: r.code,
       name: r.name || r.code,
@@ -88,11 +101,11 @@ const server = http.createServer((req, res) => {
   }
 
   if ((p === "/editor/save" || p === "/editor/load" || p === "/editor/slots" || p === "/editor/delete-slot" || p === "/editor/ai" || p === "/editor/ai-duplicate") && req.method === "OPTIONS") {
-    cors(res); res.writeHead(204); res.end(); return;
+    cors(res, req); res.writeHead(204); res.end(); return;
   }
 
   if (p === "/editor/load" && req.method === "GET") {
-    cors(res);
+    cors(res, req);
     const slot = url.searchParams.get("slot");
     const file = slot ? slotFile(slot) : EDITOR_FILE;
     if (slot && !file) { sendJson(res, 400, { placements: [], error: "bad slot name" }); return; }
@@ -102,7 +115,8 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (p === "/editor/save" && req.method === "POST") {
-    cors(res);
+    cors(res, req);
+    if (!editorAllowed(req)) { sendJson(res, 403, { ok: false, error: "editor token required" }); return; }
     const slot = url.searchParams.get("slot");
     const file = slot ? slotFile(slot) : EDITOR_FILE;
     if (slot && !file) { sendJson(res, 400, { ok: false, error: "bad slot name" }); return; }
@@ -120,7 +134,7 @@ const server = http.createServer((req, res) => {
   }
   // Every saved slot name, newest first — the map editor's "Load" list.
   if (p === "/editor/slots" && req.method === "GET") {
-    cors(res);
+    cors(res, req);
     readdir(SLOTS_DIR)
       .then((files) => Promise.all(files.filter((f) => f.endsWith(".json")).map((f) =>
         readFile(path.join(SLOTS_DIR, f), "utf8")
@@ -131,7 +145,8 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (p === "/editor/delete-slot" && req.method === "POST") {
-    cors(res);
+    cors(res, req);
+    if (!editorAllowed(req)) { sendJson(res, 403, { ok: false, error: "editor token required" }); return; }
     const slot = url.searchParams.get("slot");
     const file = slot ? slotFile(slot) : null;
     if (!file) { sendJson(res, 400, { ok: false, error: "bad slot name" }); return; }
@@ -141,14 +156,16 @@ const server = http.createServer((req, res) => {
   // Natural-language placement (the map editor's "Ask AI" box) — proxied
   // server-side so the OpenRouter key never reaches the browser.
   if (p === "/editor/ai" && req.method === "POST") {
-    cors(res);
+    cors(res, req);
+    if (!editorAllowed(req)) { sendJson(res, 403, { ok: false, error: "editor token required" }); return; }
     readBody(req).then((raw) => placeWithAI(JSON.parse(raw), env))
       .then((result) => sendJson(res, result.ok ? 200 : 400, result))
       .catch((err) => sendJson(res, 400, { ok: false, error: String(err.message || err) }));
     return;
   }
   if (p === "/editor/ai-duplicate" && req.method === "POST") {
-    cors(res);
+    cors(res, req);
+    if (!editorAllowed(req)) { sendJson(res, 403, { ok: false, error: "editor token required" }); return; }
     readBody(req).then((raw) => duplicateWithAI(JSON.parse(raw), env))
       .then((result) => sendJson(res, result.ok ? 200 : 400, result))
       .catch((err) => sendJson(res, 400, { ok: false, error: String(err.message || err) }));

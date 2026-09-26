@@ -475,6 +475,18 @@
         </div>
       </div>
       <div class="opt-row">
+        <div class="opt-label">Mouse sensitivity</div>
+        <input type="range" id="mouseSens" class="menu-item" min="25" max="250" value="100" />
+      </div>
+      <div class="opt-row">
+        <div class="opt-label">Field of view</div>
+        <input type="range" id="fovSlider" class="menu-item" min="60" max="105" value="76" />
+      </div>
+      <div class="opt-row">
+        <div class="opt-label">Invert look Y</div>
+        <button class="menu-item opt-toggle off" id="invertY">Off</button>
+      </div>
+      <div class="opt-row">
         <div class="opt-label">Music volume</div>
         <input type="range" id="musicVolume" class="menu-item" min="0" max="100" value="55" />
       </div>
@@ -592,8 +604,8 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    "three": "./assets/vendor/three/build/three.module.js",
+    "three/addons/": "./assets/vendor/three/examples/jsm/"
   }
 }
 </script>

@@ -1,5 +1,7 @@
 {
-  // Cloudflare Pages: this is a plain static site — serve the repo root as-is.
+  // Cloudflare Pages: a plain static site. A git-connected build serves the repo root as-is (.env is gitignored).
+  // For a DIRECT upload never use "." — `npm run deploy` builds dist/ (tools/build-site.mjs: only the game, from
+  // `git ls-files`) and uploads that, so .env, .git/, server/, tools/ and the local asset archives can't go out.
   "name": "grand-theft-bayou",
   "pages_build_output_dir": "."
 }

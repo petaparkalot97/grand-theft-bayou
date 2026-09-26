@@ -114,7 +114,10 @@ export function createEastBank(ctx) {
     // ---- 1 road: Lafourche Road, and the plan for everything after it
     C.road("Lafourche Road", [[121.5, MAIN_Z], [ROAD_END_X, MAIN_Z]], { width: 8, lampEvery: 32, y: 0.024 });
     for (const [, x] of SIDE_STREETS) C.site("street " + x, { x0: x - 5.5, x1: x + 5.5, z0: MAIN_Z + 5.6, z1: SIDE_END_Z + 2 });
-    C.site("Cane Street", { x0: SIDE_STREETS[0][1], x1: SIDE_STREETS[2][1], z0: CROSS_Z - 5.5, z1: CROSS_Z + 5.5 });
+    // Cane Street crosses the three side streets: hold only the gaps between them (their own sites already hold the crossings)
+    for (let i = 0; i < SIDE_STREETS.length - 1; i++) {
+      C.site("Cane Street " + (i + 1), { x0: SIDE_STREETS[i][1] + 5.5, x1: SIDE_STREETS[i + 1][1] - 5.5, z0: CROSS_Z - 5.5, z1: CROSS_Z + 5.5 });
+    }
     C.site("water tower", { x0: 130, x1: 148, z0: MAIN_Z + 7, z1: MAIN_Z + 25 });
     C.site("parking", { x0: 192, x1: 220, z0: MAIN_Z + 7, z1: MAIN_Z + 31 });
     C.site("market", { x0: 316, x1: 348, z0: MAIN_Z + 7, z1: MAIN_Z + 33 });

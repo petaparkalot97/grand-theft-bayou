@@ -129,6 +129,19 @@ export const KEEPOUTS = [
   { x0: -376, x1: -104, z0: -1086, z1: -464, label: "Shruston" },
   // Charsoufre, with the Lakeshore approach corridor through it at z 750.
   { x0: -366, x1: -94, z0: 594, z1: 906, label: "Charsoufre" },
+  // wonders.js: four set pieces off Delta Road (Belle Plantation and its oak alley, the Hot Bayou Pepper Works, Pelican
+  // Petrochemical, the Bayou State Penitentiary and its rodeo), with their spurs. Delta Road's farmsteads and pines
+  // keep out of them; the spurs' mouths are inside the rects.
+  // Each is two rects, one either side of its spur: Delta's composer claims a keepout AFTER laying its roads, so a rect
+  // across the spur (and Delta's own carriageway) would turn them into "building" ground. The spurs themselves are
+  // registered with Delta as junctions instead (wonders.js SPURS).
+  { x0: 470, x1: 746, z0: -312, z1: -264, label: "Belle Plantation" },
+  { x0: 470, x1: 746, z0: -256, z1: -208, label: "Belle Plantation" },
+  { x0: 809, x1: 1048, z0: 96, z1: 146, label: "Hot Bayou Pepper Works" },
+  { x0: 809, x1: 1048, z0: 154, z1: 208, label: "Hot Bayou Pepper Works" },
+  { x0: 809, x1: 1048, z0: -238, z1: -45, label: "Pelican Petrochemical" },
+  { x0: 542, x1: 801, z0: 230, z1: 296, label: "Bayou State Penitentiary" },
+  { x0: 542, x1: 801, z0: 304, z1: 372, label: "Bayou State Penitentiary" },
 ];
 
 /** True if (x, z) falls inside a district's claimed ground. `pad` widens every rect. */

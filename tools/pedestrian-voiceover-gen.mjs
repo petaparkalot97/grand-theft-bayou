@@ -19,6 +19,7 @@
 //   --force              regenerate every line, even ones already cached on disk
 //   --character=WHO       only lines for voice key WHO (case-insensitive, e.g. --character=REDNECK)
 //   --dry-run             print what would be generated/skipped; no API calls, no writes
+//   --check               like --dry-run, but exits 1 if any line has no recording (CI: needs no API key)
 // ---------------------------------------------------------------------------
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
@@ -99,6 +100,7 @@ function parseArgs(argv) {
   for (const arg of argv) {
     if (arg === "--force") opts.force = true;
     else if (arg === "--dry-run") opts.dryRun = true;
+    else if (arg === "--check") { opts.dryRun = true; opts.check = true; }
     else if (arg.startsWith("--character=")) opts.character = arg.slice("--character=".length).toUpperCase();
   }
   return opts;
@@ -107,7 +109,7 @@ function parseArgs(argv) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
 
-  if (!API_KEY) {
+  if (!API_KEY && !opts.dryRun) {
     console.error("FISH_AUDIO_API_KEY is not set (checked .env and the environment). Aborting.");
     process.exitCode = 1;
     return;
@@ -144,6 +146,7 @@ async function main() {
 
     if (opts.dryRun) {
       console.log(`${alreadyCached ? "[FORCE]" : "[GEN]  "} ${label}`);
+      if (!alreadyCached) failed++;                       // a line with no recording (only meaningful for --check)
       continue;
     }
 
@@ -179,7 +182,7 @@ async function main() {
     console.log("");
     console.log(`Skipped (no voice cast yet in src/voiceCast.js): ${[...skippedVoices].sort().join(", ")}`);
   }
-  if (failed > 0) process.exitCode = 1;
+  if (failed > 0 && (opts.check || !opts.dryRun)) process.exitCode = 1;
 }
 
 main();

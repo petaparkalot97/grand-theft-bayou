@@ -25,7 +25,6 @@ export const DEFAULT_BINDINGS = Object.freeze({
   jump: ["Space"],
   crouch: ["KeyC"],
   mute: ["KeyM"],
-  nextTrack: ["KeyN"],
   // M mutes the soundtrack; K silences the in-car radio (radio.js) on its own,
   // so you can keep the music and lose the DJ.
   radio: ["KeyK"],
@@ -40,13 +39,14 @@ export const DEFAULT_BINDINGS = Object.freeze({
   holster: ["KeyX"],
   equipBat: ["Digit1"],
   equipPistol: ["Digit2"], equipTec9: ["Digit3"], equipShotgun: ["Digit4"], equipRifle: ["Digit5"],   // weapon slots
-  flashlight: ["KeyT"],                // first person: the torch on your gun
+  flashlight: ["KeyT"],
+  pipboy: ["Tab"],                     // the character screen (zombie mode)                // first person: the torch on your gun
   viewToggle: ["KeyV"],                // first person <-> third person
   horn: ["KeyH"],                      // honk / call a prostitute to the passenger door
 });
 
 // keys the browser must not act on (scrolling, find bar, …)
-const SWALLOW = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "F3", "F4"]);
+const SWALLOW = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "F3", "F4", "Tab"]);
 
 export function createInput({ bindings = DEFAULT_BINDINGS, target = window } = {}) {
   const held = new Set();                  // key codes currently down

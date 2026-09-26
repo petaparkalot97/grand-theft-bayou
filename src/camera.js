@@ -56,7 +56,10 @@ export function createCameraController({ camera, dom, canCapture }) {
   // nothing of the third-person orbit — recentring, zoom, collision pull-in — applies.
   let fps = false, fpsPitch = 0, fpsKick = 0, bobT = 0, bobAmt = 0;
   const baseFov = camera.fov;
-  const FPS_FOV = 76, EYE_HEIGHT = 1.62;
+  const EYE_HEIGHT = 1.62;
+  // the player's own settings (Options): mouse sensitivity, first-person field of view, invert-Y
+  const settings = { sens: 1, fov: 76, invertY: false };
+  let eyeWant = EYE_HEIGHT, eyeNow = EYE_HEIGHT;                 // crouching and going prone lower the head
   let lastMouse = -1e9;
   let locked = false;
   let dragging = false, lastX = 0, lastY = 0;
@@ -88,13 +91,13 @@ export function createCameraController({ camera, dom, canCapture }) {
     if (fps) {
       // mouse up = look up; no smoothing, so the crosshair never lags the hand
       const k = aiming ? 0.55 : 1;                       // down the sights the hand is steadier
-      yaw -= dx * C.cameraOrbitSensitivity.x * k; targetYaw = yaw;
-      fpsPitch = THREE.MathUtils.clamp(fpsPitch - dy * C.cameraOrbitSensitivity.y * k, -1.35, 1.35);
+      yaw -= dx * C.cameraOrbitSensitivity.x * k * settings.sens; targetYaw = yaw;
+      fpsPitch = THREE.MathUtils.clamp(fpsPitch - dy * C.cameraOrbitSensitivity.y * k * settings.sens * (settings.invertY ? -1 : 1), -1.35, 1.35);
       lastMouse = performance.now() / 1000;
       return;
     }
-    targetYaw -= dx * C.cameraOrbitSensitivity.x;
-    targetPitch = THREE.MathUtils.clamp(targetPitch + dy * C.cameraOrbitSensitivity.y, C.cameraPitchMin, C.cameraPitchMax);
+    targetYaw -= dx * C.cameraOrbitSensitivity.x * settings.sens;
+    targetPitch = THREE.MathUtils.clamp(targetPitch + dy * C.cameraOrbitSensitivity.y * settings.sens, C.cameraPitchMin, C.cameraPitchMax);
     lastMouse = performance.now() / 1000;
   }
 
@@ -133,12 +136,17 @@ export function createCameraController({ camera, dom, canCapture }) {
       on = !!on;
       if (on === fps) return;
       fps = on;
-      if (on) { fpsPitch = 0; camera.fov = FPS_FOV; }
+      if (on) { fpsPitch = 0; camera.fov = settings.fov; }
       else { camera.fov = baseFov; targetYaw = yaw; }
       camera.updateProjectionMatrix();
     },
+    /** Player settings: { sens (multiplier), fov (first person, degrees), invertY }. Change in place, then call applySettings(). */
+    settings,
+    applySettings() { if (fps) { camera.fov = settings.fov; camera.updateProjectionMatrix(); } },
     /** Look pitch in first person, radians above the horizon. */
     get fpsPitch() { return fpsPitch; },
+    /** Where the head is, in metres above the feet (eased): 1.62 standing, ~1.05 crouched, ~0.42 prone. */
+    setEye(h) { eyeWant = h; },
     /** Recoil: the muzzle climbs. Eased back down by update(), so a burst walks the view up. */
     kick(rad) { fpsKick = Math.min(0.12, fpsKick + rad); fpsPitch = THREE.MathUtils.clamp(fpsPitch + rad * 0.5, -1.35, 1.35); },
     get pitch() { return pitch; },
@@ -183,7 +191,8 @@ export function createCameraController({ camera, dom, canCapture }) {
         fpsKick *= Math.exp(-9 * dt);
         fpsPitch -= fpsKick * dt * 2.2;
         const cp = Math.cos(fpsPitch), fx = -Math.sin(yaw), fz = -Math.cos(yaw);
-        const eye = EYE_HEIGHT + Math.abs(Math.sin(bobT)) * 0.045 * bobAmt - (aiming ? 0.03 : 0);
+        eyeNow += (eyeWant - eyeNow) * (1 - Math.exp(-11 * dt));
+        const eye = eyeNow + Math.abs(Math.sin(bobT)) * 0.045 * bobAmt * (eyeNow / EYE_HEIGHT) - (aiming ? 0.03 : 0);
         camera.position.set(target.x, target.y + eye, target.z);
         look.set(target.x + fx * cp, target.y + eye + Math.sin(fpsPitch), target.z + fz * cp);
         camera.lookAt(look);

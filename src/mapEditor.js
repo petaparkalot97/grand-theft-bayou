@@ -1633,10 +1633,17 @@ export function createMapEditor(ctx) {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       fetch(`${httpBase}/editor/save`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: editorHeaders(),
         body: JSON.stringify({ placements: serialize() }),
       }).catch(() => {});   // best-effort — see the file header
     }, 500);
+  }
+  // the server wants a shared secret when EDITOR_TOKEN is set there: stash it once with
+  // localStorage.setItem("gtbEditorToken", "...") on the editor page
+  function editorHeaders() {
+    const h = { "Content-Type": "application/json" };
+    try { const t = localStorage.getItem("gtbEditorToken"); if (t) h["X-Editor-Token"] = t; } catch (e) { /* storage blocked */ }
+    return h;
   }
   async function loadRemote() {
     if (!httpBase) return null;
@@ -1676,7 +1683,7 @@ export function createMapEditor(ctx) {
     if (!httpBase) { setSlotStatus("no server reachable — slots need it"); return; }
     try {
       const res = await fetch(`${httpBase}/editor/save?slot=${encodeURIComponent(name)}`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: editorHeaders(),
         body: JSON.stringify({ placements: serialize() }),
       });
       const data = await res.json();
@@ -1704,7 +1711,7 @@ export function createMapEditor(ctx) {
     if (!name) { setSlotStatus("pick a slot to delete"); return; }
     if (!httpBase) { setSlotStatus("no server reachable — slots need it"); return; }
     try {
-      await fetch(`${httpBase}/editor/delete-slot?slot=${encodeURIComponent(name)}`, { method: "POST" });
+      await fetch(`${httpBase}/editor/delete-slot?slot=${encodeURIComponent(name)}`, { method: "POST", headers: editorHeaders() });
       setSlotStatus(`deleted "${name}"`);
       refreshSlots();
     } catch (err) { setSlotStatus(`delete failed: ${err.message || err}`); }
@@ -1742,7 +1749,7 @@ export function createMapEditor(ctx) {
     aiStatus.textContent = "thinking…";
     try {
       const res = await fetch(`${httpBase}/editor/ai`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: editorHeaders(),
         body: JSON.stringify({ prompt, anchor, nearby, catalog }),
       });
       const data = await res.json();
@@ -1788,7 +1795,7 @@ export function createMapEditor(ctx) {
     selectStatus.style.display = "block";
     try {
       const res = await fetch(`${httpBase}/editor/ai-duplicate`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: editorHeaders(),
         body: JSON.stringify({ selection, anchor: center, prompt, catalog }),
       });
       const data = await res.json();

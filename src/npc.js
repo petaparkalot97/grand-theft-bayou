@@ -219,21 +219,30 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
         e.goal.set(sh.x + (ox / od) * (sh.r + 6), 0, sh.z + (oz / od) * (sh.r + 6));
         return;
       }
+      const st = env.stealth != null ? env.stealth : 1;      // see below
       if (e.state === "hostile") {
         // the only way a zombie drops its target: the target is actually dead
         if (e.rivalTarget && (e.rivalTarget.dead || e.rivalTarget.state === "dead")) e.rivalTarget = null;
         // ...or the player has ducked into a safehouse and it was hunting them
         if (!e.rivalTarget && env.playerSafe) setState(e, "idle", rand(1, 3));
+        // ...or you have slipped away: crawling through the dark, far enough out, for long enough
+        else if (!e.rivalTarget && st < 0.7 && dist > e.T.aggro * st * 2.4) {
+          e.calm += interval;
+          if (e.calm > 5) { setState(e, "idle", rand(1, 3)); e.calm = 0; }
+        } else e.calm = 0;
         return;
       }
-      let bestD = e.T.aggro, target = null;
+      // How far the dead notice you is the zombie's own range scaled by your stealth (crouching, crawling,
+      // standing still, Sneak, a torch, a gunshot — main.js computes it); 1 when nothing supplies one.
+      const aggro = e.T.aggro * st;
+      let bestD = aggro, target = null;
       if (dist < bestD && !env.playerSafe) bestD = dist;
       for (const o of env.others) {
         if (o === e || o.dead || o.state === "dead" || o.type === "zombie") continue;
         const d = Math.hypot(o.spr.position.x - p.x, o.spr.position.z - p.z);
         if (d < bestD) { bestD = d; target = o; }
       }
-      if (bestD < e.T.aggro) {
+      if (bestD < aggro) {
         // whoever just got bitten reacts in character — the same brave-fights,
         // rest-flee split as being provoked by the player, just aimed at the
         // zombie instead. Skipped if the zombie itself failed to go hostile
@@ -267,7 +276,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
       // ZOMBIE_SCENT metres — the horde converges on you rather than milling about where it rose.
       // (Not when the player is in a safehouse.) It reads as a shamble, not a charge: the wander
       // speed, with a jitter so a crowd spreads out.
-      if (dist < ZOMBIE_SCENT && !env.playerSafe) {
+      if (dist < ZOMBIE_SCENT * st && !env.playerSafe) {
         if (e.state !== "wander" || e.stateT <= 0 || (e.goal.x - p.x) ** 2 + (e.goal.z - p.z) ** 2 < 4) {
           setState(e, "wander", rand(2, 4));
           const a = Math.random() * Math.PI * 2, r = rand(0, 3);

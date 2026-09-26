@@ -78,7 +78,7 @@ function weighted(pairs, rnd) {
  * @param {Function} o.flashObjective
  * @param {Function} o.rng           () => [0, 1)
  */
-export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flashObjective, rng = Math.random }) {
+export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flashObjective, rng = Math.random, lootMul = () => 1, tableFor = () => null, ammoTarget = () => null }) {
   const active = [];
   const pool = { cash: [], weapon: [], ammo: [] };
   let t = 0;
@@ -183,12 +183,13 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
 
     /** Roll an NPC's loot table where it fell. Returns what dropped. */
     dropFor(npc) {
-      const table = LOOT_TABLES[npc.type];
+      const table = tableFor(npc.type) || LOOT_TABLES[npc.type];
       if (!table) return [];
       const p = npc.spr.position, out = [];
-      if (rng() < table.cash) out.push(spawn("cash", p.x + (rng() - 0.5), p.z + (rng() - 0.5), { amount: weighted(CASH_NOTES, rng) }));
-      if (rng() < table.weapon) out.push(spawn("weapon", p.x + (rng() - 0.5) * 1.6, p.z + (rng() - 0.5) * 1.6, rollWeapon()));
-      if (rng() < table.ammo) out.push(spawn("ammo", p.x + (rng() - 0.5) * 1.2, p.z + (rng() - 0.5) * 1.2, { rounds: 16 }));
+      const lm = lootMul();
+      if (rng() < table.cash * lm) out.push(spawn("cash", p.x + (rng() - 0.5), p.z + (rng() - 0.5), { amount: weighted(CASH_NOTES, rng) }));
+      if (rng() < table.weapon * lm) out.push(spawn("weapon", p.x + (rng() - 0.5) * 1.6, p.z + (rng() - 0.5) * 1.6, rollWeapon()));
+      if (rng() < table.ammo * lm) out.push(spawn("ammo", p.x + (rng() - 0.5) * 1.2, p.z + (rng() - 0.5) * 1.2, { rounds: 16 }));
       return out;
     },
 
@@ -234,8 +235,10 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
             syncHUD();
             flashObjective(`Recycled ammo scrap for +$10 cash`);
           } else {
-            arsenal.addReserve(cur.id, it.rounds);
-            flashObjective(`Picked up ${it.rounds} ${cur.name} rounds`);
+            // scarce-ammo modes top up whichever gun is running lowest, not just the one in your hands
+            const tgt = WEAPONS[ammoTarget() || cur.id] || cur;
+            arsenal.addReserve(tgt.id, it.rounds);
+            flashObjective(`Picked up ${it.rounds} ${tgt.name} rounds`);
           }
         } else {
           const w = WEAPONS[it.id];

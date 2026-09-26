@@ -21,6 +21,7 @@ import { buildPortCalypso as buildPortTown } from "./portcalypso.js";
 import { buildLakeshore as buildLakeshoreTown } from "./lakeshore.js";
 import { buildRedDust as buildRedDustTown } from "./reddust.js";
 import { buildCorridors } from "./corridors.js";
+import { buildWonders } from "./wonders.js";
 import { inKeepout } from "./districts.js";
 import { placeCityBuilding, makeDecorativeFence, placeOfficeClutter, placeStreetClutter, placeMaritimeCargo, placeOilDerrick, placeBillboard, placeBayouStiltHut, placeParkedCar, placeTruck, placeShopGLB, placeGasStation, placeSixTwelve, placeGunShop } from "./landmarks.js";
 
@@ -64,6 +65,10 @@ export function createStateWorld(ctx) {
     { x0: 420, x1: 1040, z0: -940, z1: -440, text: "PORT CALYPSO · The cranes never stop. Neither does the union." },
     { x0: -870, x1: -420, z0: -790, z1: -490, text: "RED DUST · pop. 190 and falling. The saloon's still open." },
     { x0: -1000, x1: -420, z0: 700, z1: 1000, text: "LAKESHORE · Bait, beer and airboats. Mind the gators." },
+    { x0: 470, x1: 756, z0: -312, z1: -208, text: "BELLE PLANTATION · Tours on the hour. Ghost tours after dark." },
+    { x0: 803, x1: 1048, z0: 96, z1: 208, text: "HOT BAYOU PEPPER WORKS · Free samples. Keep milk handy." },
+    { x0: 803, x1: 1048, z0: -238, z1: -32, text: "PELICAN PETROCHEMICAL · River Road. Don't breathe deep." },
+    { x0: 542, x1: 808, z0: 230, z1: 372, text: "BAYOU STATE PENITENTIARY · Visitors check in at the gate. The rodeo is Sundays." },
   ];
 
   // What a region builder needs from this module (oysterbay.js, ...): one shared kit,
@@ -205,6 +210,7 @@ export function createStateWorld(ctx) {
     buildLakeshoreMarsh();
     buildOysterBay();
     buildCorridors(R);                 // US-167 beyond the core, and the four connector highways
+    buildWonders(R);                   // Belle Plantation, the Pepper Works, the refinery and the penitentiary, off Delta Road
     buildWildernessBands();
   }
 

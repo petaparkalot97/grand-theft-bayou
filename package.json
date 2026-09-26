@@ -6,6 +6,9 @@
   "description": "Joke GTA-style Three.js game set in north Louisiana (Chatham / Monroe / Ruston)",
   "scripts": {
     "build": "node tools/music-playlist.mjs",
+    "build:site": "node tools/build-site.mjs",
+    "deploy": "node tools/build-site.mjs && wrangler pages deploy dist",
+    "test": "node --experimental-detect-module tools/qa/factions_test.mjs && node --experimental-detect-module tools/qa/weapons_test.mjs && node --experimental-detect-module tools/qa/police_test.mjs && node --experimental-detect-module tools/qa/traffic_test.mjs && node --experimental-detect-module tools/qa/pausemenu_test.mjs && node --experimental-detect-module tools/qa/zombie_test.mjs && node --experimental-detect-module tools/qa/stats_test.mjs",
     "start": "node serve.mjs 8899",
     "server": "node server/index.js",
     "dev:server": "node server/index.js",
@@ -13,6 +16,9 @@
   },
   "dependencies": {
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "puppeteer": "^23.0.0"
   },
   "license": "UNLICENSED"
 }

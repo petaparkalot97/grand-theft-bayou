@@ -68,6 +68,82 @@ dependencies and acceptance criteria.
 
 # 🔒 ACTIVE TASKS
 
+### TASK-085 — Stance, stealth, jumping, the Pip-Boy character system, scarce ammo, four Louisiana set pieces, and the audit's easy list (human request, 2026-09-26)
+
+**Status:** `REVIEW` (headless-verified — **needs a real-GPU / real-hands playtest**: jump feel, stealth ranges, the Pip-Boy layout) ·
+**Agent:** Claude · **Files:** `src/stats.js`, `src/pipboy.js`, `src/wonders.js` (new); `src/main.js`, `src/camera.js`, `src/input.js`,
+`src/npc.js`, `src/loot.js`, `src/services.js`, `src/safehouses.js`, `src/orlearouge.js`, `src/districts.js`, `src/corridors.js`,
+`src/stateWorld.js`, `src/pauseMenu.js`, `src/eastbank.js`, `src/mapEditor.js`, `server/index.js`, `index.html`; tools + CI (below)
+
+**The ask (verbatim, abridged):** "the cutscenes themselves should not be in first person ... add jumping and crouching ... make the jump
+height quite high ... take up Stamina ... zombie mode not have infinite ammo, but start off with a pistol and a shotgun ... add stealth ...
+crouching will be like the sneak ... double crouch to prone. Prone will have like the maximum stealth ... a stat system ... exactly how the
+Fallout New Vegas system works and displays ... speech, barter, stealth, strength, dexterity ... [and] Zomboid's allocated points, with minus
+points that give more points ... knock off all the easy fixes and improvements in the latest audit ... keep expanding and adding great detail
+to the current locations and creating new locations on the map."
+
+**What now exists**
+- **Stance (all modes).** `C` crouches (the sneak: half speed, 0.5x noticing range, the eye drops to ~1.1 m), `C C` within 0.4 s goes prone
+  (a fifth of speed, ~0.22x, eye ~0.45 m; the body flattens in third person), `C` again stands, sprinting or jumping stands you up.
+  `state.stance` 0/1/2. Stealth = stance x motion (still 0.6, walking 1, sprinting 1.7) x airborne x torch-at-night x "you just fired"
+  (2.2x for 4 s) x the character's Sneak skill; `env.stealth` scales how far the dead notice you (npc.js zombie branch), and a stealth read-out
+  (STANDING / CROUCHED / PRONE - HIDDEN / CAUTION / EXPOSED) sits above the hotbar in zombie mode. An unaware target hit from a crouch takes a
+  sneak-attack multiplier (x2, more with Sneak).
+- **Jumping (all modes).** `Space`: peak height 3 m (`JUMP_HEIGHT`), costs 22 stamina (`JUMP_COST`, less with Athletics/Endurance), needs 14+ stamina;
+  gravity 24 m/s^2, first-person eye follows. Not in Nolantis (its floor is flat by design) or in a car (Space hops the DeLorean as before).
+- **Zombie mode ammo.** No more free roam's infinite ammo: you start with the **9mm (12 loaded, 48 reserve)** and the **sawn-off (20 reserve)**;
+  zombies drop a little cash and 16-round boxes (22 %), a pickup tops up whichever gun is *lowest* (`loot.js` `ammoTarget`), the Bayou Arsenal
+  and Warden's Surplus sell more. Luck / Scavenger raise drop rates (`loot.js` `lootMul`, `tableFor`).
+- **Character (zombie mode only) — `stats.js` + `pipboy.js`.** Fallout: New Vegas' S.P.E.C.I.A.L. (7 attributes, 1-10, 5 average) drive 9
+  skills (Guns, Melee, Sneak, Speech, Barter, Medicine, Survival, Athletics, Driving; each `2 + 2 x attribute + Luck/2`, tag three
+  for +15), 6 backgrounds (Trapper, Deputy, Medic, Dockhand, Hustler, Wheelman), 13 perks earned every second level (with skill/attribute requirements), XP from kills (Intelligence and traits scale it), levels
+  to 30 (`10 + INT/2` skill points a level). **Zomboid's point economy** on top: 5 attribute points to spend over 5s; taking an attribute *below*
+  5 gives one back; each of the 19 **traits** costs or pays points (Quiet -5, Athletic -6, Lucky -4 ...; Glass Jaw +5, Clumsy +4, Sickly +6 ...), so bad traits fund good ones
+  (`creationBudget()` / `validateBuild()` — both screens refuse an unbalanced build). `createCharacter()` exposes `mods.*` multipliers (gun/melee
+  damage, damage taken, crit chance, stamina, jump, speed, prices, heal, torch, stealth, loot, XP) and the game reads only those.
+  The **creation screen** opens from the zombie button; **Tab** is the in-game Pip-Boy (STATUS / SPECIAL / SKILLS / PERKS / TRAITS), pauses the
+  world, spends points; HUD shows name, level and an XP bar that pulses while points are unspent. Barter/Speech/Charisma move every price
+  (`services.js`), Medicine moves what food heals.
+- **Cutscenes are never first person.** First person is gated on `!cine.hasCamera && !state.cinematic` (both the eye and the hidden-body
+  rule); the story's cameras are untouched.
+- **Four new places, off Delta Road (`wonders.js`, composed with composer.js from the kits; ground reserved in `districts.js` KEEPOUTS; the spurs
+  are junctions in Delta's grid, `SPURS`):**
+  - **Belle Plantation** (x 470-750, z -312..-208): a quarter-kilometre **Oak Alley** (14 live oaks with moss) down a gravel lane to a white-columned
+    Greek Revival big house (24-column gallery, hip roof, dormers, belvedere, chimneys), parterre gardens with a fountain, a pond and gazebo, the
+    sugar kettles, carriage house, plantation store, visitor lot, road sign.
+  - **Hot Bayou Pepper Works** (x 803-1048, z 96-208): two tilled pepper fields (~2,700 instanced plants, ~5,400 pods, scarecrows), the brick factory
+    and stack, a **giant red sauce bottle**, a barrel house, and a **tasting room** that is a food service (Medicine heals more; own dish text).
+  - **Pelican Petrochemical** (x 809-1048, z -238..-32): fenced refinery — distillation columns with platforms and beacons, spheres on legs, bullet
+    tanks, heater and stack, cooling tower, two pipe racks, a **flare stack with a lit flame**, a tank farm south of River Road, "0 DAYS SINCE LAST
+    INCIDENT".
+  - **Bayou State Penitentiary & Prison Rodeo** (x 548-800, z 236-366; east of OrleaRouge's last avenue): walled compound, four guard towers with
+    searchlights, gatehouses and sign, three cell blocks (instanced slit windows), chapel, kitchen, court, water tower — **a safehouse in zombie
+    mode** (`safehouses.add`) — Warden's Surplus gun shop outside the gate, and across Rodeo Road the **Prison Rodeo**: ring, chutes, six-row bleachers,
+    announcer's stand, bulls, light towers, a lot.
+  Announce cards, pause-menu pins, minimap, fill_check routes/regions and pois are all in.
+- **Audit easy list (`docs/AUDIT.md` §1):** deploy leak (`npm run deploy` -> `tools/build-site.mjs` builds `dist/` from `git ls-files`); editor
+  server auth + CORS allow-list (`EDITOR_TOKEN`, loopback-only when unset; `/rooms` stays public); three.js **vendored** (`assets/vendor/three`, no CDN);
+  **CI** (`.github/workflows/ci.yml`: syntax check, unit tests, voice-manifest coverage, site build); `npm test`; puppeteer devDependency;
+  `pedestrian-voiceover-gen.mjs --check`; hoisted the per-shot `Raycaster`; Cane Street site warning fixed (eastbank.js); README layout; dead N (next
+  track) input removed; **look settings** (mouse sensitivity, first-person FOV, invert-Y in Options, saved to localStorage); and a bug found on the
+  way — **the "EXT. ORLEAROUGE" card fired anywhere south-east of the city** (Oyster Bay, the prison): `entered` had no upper bounds.
+
+**Verified (headless):** `stats_test` (economy, mods, perks, XP), `zombie_test` (stealth/scent/safehouse), factions, weapons, police, traffic,
+pausemenu unit tests pass; a puppeteer run of zombie mode: creation -> BEGIN -> pistol 12/48 + sawn-off 20, crouch/prone/stand (eye 1.62 / 1.1 / 0.48 m),
+jump (peak, stamina 100 -> 80, lands), Tab opens/closes the Pip-Boy and pauses, 0 page errors; `fill_check.mjs` — every spur and Delta Road drivable
+end to end and classified as road, all four wonders above their density floor, 0 page errors.
+
+**Still to do / handoff**
+- [ ] Real-hands playtest: jump 3 m / 22 stamina and the 0.4 s double-tap window are guesses; stealth multipliers are unit-tested, not felt.
+- [ ] Pip-Boy: no controller/keyboard navigation (mouse only); no perk *descriptions* beyond the tooltip line; no save of the character (there is no save game — audit §2.2).
+- [ ] The wonders' interiors: none (exteriors only). The prison has no inmates (its ground is a "building" zone); the rodeo has no crowd.
+- [ ] `roads.mjs` / `eastbank.mjs` / `worldpass.mjs` are still red (stale audits: Red Dust Pass "2 surfaces" is a false positive — the scene has one
+      plane there; eastbank's spawn/perf/drive checks and worldpass's loot numbers predate free-roam infinite ammo). Do not read a red run as a regression.
+- [ ] The rest of `docs/AUDIT.md` §2-4 (planar hit detection, save game, nav grid, draw calls while driving, ...).
+- [ ] West band (x -1050..-450, z -350..350) is still empty pines: no road reaches it. A spur off Parish Highway 9 or the Red Dust Pass would.
+
+---
+
 ### TASK-084 — Fill the map: bring the rest of the world up to Chatboro's standard (human request, 2026-09-25)
 
 **Status:** `REVIEW` (headless-verified only — **needs a real-GPU look**, TASK-010) ·

@@ -55,6 +55,11 @@ function iconTexture(icon, color) {
  *   syncHUD(), clearWanted(), addBlocker(x, z, r), setCameraYaw(yaw)?
  */
 export function createServices(ctx) {
+  // the character's Barter / Speech / Charisma (zombie mode) move every price; Medicine moves what food heals
+  const scaled = (n) => Math.max(1, Math.round(n * (ctx.priceMul ? ctx.priceMul() : 1)));
+  const price = (k) => scaled(PRICES[k]);
+  const heal = () => (ctx.healMul ? ctx.healMul() : 1);
+
   const { scene, state, playerPos } = ctx;
   const flash = (t) => ctx.flashObjective(t);
   const list = [];
@@ -216,8 +221,8 @@ export function createServices(ctx) {
   async function respray(s) {
     const v = state.veh;
     if (!v || busy) return;
-    if (state.cash < PRICES.spray) {
-      flash(`Pay 'n' Spray: $${PRICES.spray} a job. You've got $${state.cash}. Go make some money.`);
+    if (state.cash < price("spray")) {
+      flash(`Pay 'n' Spray: $${price("spray")} a job. You've got $${state.cash}. Go make some money.`);
       s.cool = true;
       return;
     }
@@ -242,7 +247,7 @@ export function createServices(ctx) {
       await c.wait(1.0);
     });
     s.door.scale.y = 0.02; s.doorF = 0.02;
-    state.cash -= PRICES.spray;
+    state.cash -= price("spray");
     if (v.hpMax) v.hp = v.hpMax;
     ctx.stopVehicleFire(v);
     repaint(v);
@@ -252,14 +257,14 @@ export function createServices(ctx) {
     busy = false;
     s.cool = true;
     flash(wanted
-      ? `New paint, engine fixed, and the Sheriff's looking for some other car now. -$${PRICES.spray}`
-      : `New paint and the engine's fixed. -$${PRICES.spray}`);
+      ? `New paint, engine fixed, and the Sheriff's looking for some other car now. -$${price("spray")}`
+      : `New paint and the engine's fixed. -$${price("spray")}`);
   }
 
   async function treat(s) {
     if (state.hp >= 100) { flash(`${s.name}: "You're fine, baby. Next!"`); return; }
-    const paying = state.cash >= PRICES.hospital;
-    if (!paying && state.hp >= CHARITY_HP) { flash(`${s.name}: $${PRICES.hospital} to be seen. The charity ward only takes you under ${CHARITY_HP} HP.`); return; }
+    const paying = state.cash >= price("hospital");
+    if (!paying && state.hp >= CHARITY_HP) { flash(`${s.name}: $${price("hospital")} to be seen. The charity ward only takes you under ${CHARITY_HP} HP.`); return; }
     busy = true;
     state.cinematic = true;
     await ctx.cine.scene(async (c) => {
@@ -267,30 +272,31 @@ export function createServices(ctx) {
       await c.caption(paying ? "Stitches, a tetanus shot, and a bill." : "The charity ward. Long wait, cold hands.", 1.6);
       await c.black(false, 0.45);
     });
-    if (paying) { state.cash -= PRICES.hospital; state.hp = 100; }
+    if (paying) { state.cash -= price("hospital"); state.hp = 100; }
     else state.hp = Math.max(state.hp, CHARITY_HP);
     ctx.syncHUD();
     state.cinematic = false;
     busy = false;
-    flash(paying ? `${s.name}: patched up. Full health. -$${PRICES.hospital}` : `${s.name}: charity ward. Back to ${CHARITY_HP} HP. It's something.`);
+    flash(paying ? `${s.name}: patched up. Full health. -$${price("hospital")}` : `${s.name}: charity ward. Back to ${CHARITY_HP} HP. It's something.`);
   }
 
   function eat(s) {
-    if (state.cash < PRICES.food) { flash(`Popeyes: a 3-piece is $${PRICES.food}. You've got $${state.cash}.`); return; }
-    if (state.hp >= 100) { flash("Popeyes: you're already full. Come back hungry."); return; }
-    state.cash -= PRICES.food;
-    state.hp = Math.min(100, state.hp + FOOD_HP);
+    const who = s.dish ? s.name : "Popeyes", dish = s.dish || "Popeyes 3-piece spicy combo";     // a service can sell its own dish (extra: { dish })
+    if (state.cash < price("food")) { flash(`${who}: ${s.dish ? "that" : "a 3-piece"} is $${price("food")}. You've got $${state.cash}.`); return; }
+    if (state.hp >= 100) { flash(`${who}: you're already full. Come back hungry.`); return; }
+    state.cash -= price("food");
+    state.hp = Math.min(100, state.hp + Math.round(FOOD_HP * heal()));
     ctx.syncHUD();
     ctx.cine.sfx("chime", 0.4);
-    flash(`Popeyes 3-piece spicy combo. +${FOOD_HP} HP, -$${PRICES.food}`);
+    flash(`${dish}. +${Math.round(FOOD_HP * heal())} HP, -$${price("food")}`);
   }
 
   // ---------------------------------------------------------------- gun counter
   let menu = null;              // { s, sel }
   function menuItems() {
-    const items = GUN_PRICES.map(([id, price]) => ({ id, price, label: WEAPONS[id].name }));
+    const items = GUN_price("map")(([id, price]) => ({ id, price, label: WEAPONS[id].name }));
     const w = WEAPONS[state.weapon];
-    if (w && !w.melee) items.push({ ammo: true, id: state.weapon, price: PRICES.ammo, label: `Ammo: ${w.name} (+${w.clip * 2})` });
+    if (w && !w.melee) items.push({ ammo: true, id: state.weapon, price: price("ammo"), label: `Ammo: ${w.name} (+${w.clip * 2})` });
     return items;
   }
   function renderMenu() {
@@ -343,8 +349,8 @@ export function createServices(ctx) {
   // ---------------------------------------------------------------- per frame
   function describe(s) {
     if (s.kind === "gun") return `<b>F</b> · ${s.name}: guns & ammo`;
-    if (s.kind === "hospital") return `<b>F</b> · ${s.name}: full health, $${PRICES.hospital}`;
-    if (s.kind === "food") return `<b>F</b> · Popeyes 3-piece spicy combo: $${PRICES.food}, +${FOOD_HP} HP`;
+    if (s.kind === "hospital") return `<b>F</b> · ${s.name}: full health, $${price("hospital")}`;
+    if (s.kind === "food") return `<b>F</b> · ${s.dish || "Popeyes 3-piece spicy combo"}: $${price("food")}, +${Math.round(FOOD_HP * heal())} HP`;
     return "";
   }
 
@@ -369,7 +375,7 @@ export function createServices(ctx) {
       if (s.kind === "spray") {
         if (state.veh && d < s.r && state.veh.sheriff) { flash("Pay 'n' Spray won't touch a Sheriff cruiser. Bring something you stole from a civilian."); s.cool = true; }
         else if (state.veh && d < s.r && Math.abs(state.veh.speed || 0) < 9) respray(s);
-        else if (!state.veh && d < s.r) prompt = { s, text: `${s.name}: drive a car in. $${PRICES.spray} — new paint, repairs, wanted level gone.` };
+        else if (!state.veh && d < s.r) prompt = { s, text: `${s.name}: drive a car in. $${price("spray")} — new paint, repairs, wanted level gone.` };
         continue;
       }
       if (!state.veh && d < s.r) prompt = { s, text: describe(s) };

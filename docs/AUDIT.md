@@ -31,6 +31,14 @@ games work. See `TODO.md`.
 
 ## 1. Easy fixes — under an hour each
 
+> **Status after the second pass (2026-09-26, TASK-085):** ✅ done — 1 (deploy: `npm run deploy` builds `dist/` from `git ls-files`),
+> 2 (editor endpoints: `EDITOR_TOKEN` / loopback-only, CORS allow-list), 3 (three.js vendored in `assets/vendor/three`), 4 (CI),
+> 6 (puppeteer devDependency), 9 (Raycaster hoisted; the per-bark `Audio` element is still allocated), 10 (Cane Street), 11 (README layout),
+> 12 (mouse sensitivity, FOV, invert-Y — key rebinding still open), 13 (`--check`), 14 (N removed; M is the master mute).
+> **Still open:** 5 (the three stale QA scripts — `roads.mjs`'s "Red Dust Pass 2 surfaces" is a false positive, the scene holds one plane),
+> 7 (renormalise line endings — a one-off, whole-tree diff, do it alone), 8 (dead code / `LOCATION_LOOT`), 15 (assets weight).
+> A new bug found on the way: the "EXT. ORLEAROUGE" card fired anywhere south-east of the city (fixed, `orlearouge.js`).
+
 1. 🟠 **Deploy leak risk.** `wrangler.jsonc` sets `pages_build_output_dir: "."` — the whole repo root. A local
    `wrangler pages deploy` would upload `.env`, `.git/`, `server/`, `tools/`, `docs/`, `node_modules/`. A git-connected
    Pages build is fine (`.env` is gitignored), a direct upload is not. Give it a real output directory (or a build

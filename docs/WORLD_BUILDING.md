@@ -110,6 +110,24 @@ edge:
 - [ ] Add interiors selectively (cafe, garage, fire station) after navigation
   and collision playtesting.
 - [x] Fill the state map: the four corner districts as composed towns, the roads between them (TASK-084).
+- [x] Four Louisiana set pieces off Delta Road: Belle Plantation and its oak alley, the Hot Bayou Pepper Works, Pelican Petrochemical, the Bayou State Penitentiary and Prison Rodeo (`src/wonders.js`, TASK-085).
+- [ ] The west wilderness band (x -1050..-450, z -350..350) has no road into it yet: a spur off Parish Highway 9 or the Red Dust Pass, then the same treatment (a Cajun dance-hall crossroads, a sugar mill, a cypress-swamp airboat camp).
 - [ ] Add additional bayou/dock shortcuts and a bridge activity encounter.
 - [ ] Run the external Playwright QA harness and capture East Bank screenshots /
   draw-call measurements on a real browser.
+
+## Delta Road wonders (`src/wonders.js`)
+
+Four self-contained set pieces along the dirt track between Port Calypso and Oyster Bay, each a short spur off Delta Road, each composed
+with `composer.js` from `townkit.js` / `louisianakit.js` (one composer, "Wonders", bounds x 440..1060 / z -340..380):
+
+| Place | Ground | Reached by | What is there |
+|---|---|---|---|
+| Belle Plantation | x 470-750, z -312..-208 | Plantation Lane (gravel, from Delta at z -260) | oak alley (14 live oaks), big house, parterre, pond, gazebo, sugar kettles, store, lot |
+| Hot Bayou Pepper Works | x 803-1048, z 96-208 | Pepper Lane (gravel, z 150) | two pepper fields, factory + stack, giant bottle, barrel house, tasting room (food service) |
+| Pelican Petrochemical | x 809-1048, z -238..-32 | River Road (paved, z -40, east from Delta's jog) | columns, spheres, pipe racks, flare, tank farm |
+| Bayou State Penitentiary & Prison Rodeo | x 548-800, z 236-366 | Rodeo Road (paved, z 300) | walled compound + towers (a zombie-mode safehouse), Warden's Surplus, rodeo ring, bleachers, bulls, lot |
+
+Rules learned building them (also in `AGENT_LOG.md`): reserve the ground in `districts.js` KEEPOUTS as **two rects, one either side of the spur**
+(a keepout is re-claimed after the corridor's roads, so a rect across a road makes it "building" ground); register the spur with Delta's composer
+as a `junctions` entry (`SPURS`); and keep clear of OrleaRouge's grid (`CITY.maxX` 520) — the city cinematic and spawn rules key off it.

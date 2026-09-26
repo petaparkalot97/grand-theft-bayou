@@ -771,7 +771,7 @@ export function createOrleaRouge(ctx) {
         if (n.color) n.mat.color.copy(n.color).multiplyScalar(n.base * (1 - dip));
         else n.mat.emissiveIntensity = n.base * (1 - dip);
       }
-      if (!entered && ctx.playerPos.z > CITY.minZ + 6 && ctx.playerPos.x > CITY.minX - 2 && !ctx.state.cinematic) {
+      if (!entered && ctx.playerPos.z > CITY.minZ + 6 && ctx.playerPos.z < CITY.maxZ + 8 && ctx.playerPos.x > CITY.minX - 2 && ctx.playerPos.x < CITY.maxX + 2 && !ctx.state.cinematic) {   // inside the grid (not merely south-east of its corner: Oyster Bay, the prison...)
         entered = true;
         ctx.cine.scene(async (c) => {
           c.card("EXT.", "ORLEAROUGE", "Gorgeous and wounded");

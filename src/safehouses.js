@@ -98,6 +98,8 @@ export function createSafehouses(ctx) {
   });
 
   return {
+    /** Register a safehouse built elsewhere (a district module's own compound): zombies keep out of the circle. */
+    add: (x, z, r, name) => { safehouses.push({ x, z, r, name }); },
     /** Returns true if (x, z) is inside any safehouse radius (+ optional margin) */
     insideSafehouse: (x, z, margin = 0) => {
       for (const sh of safehouses) {

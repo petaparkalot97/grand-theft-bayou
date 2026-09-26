@@ -57,8 +57,8 @@ check([...seen].every((n) => n in ZOMBIE_ARCHETYPES) && seen.size === Object.key
 {
   const brute = zombie(0, 0, "brute"), shambler = zombie(0, 0, "shambler");
   npcs.noise(20, 0, 30);    // a gunshot 20 m away
-  think(brute, mkEnv({ others: [brute] }));
-  think(shambler, mkEnv({ others: [shambler] }));
+  think(brute, mkEnv({ others: [brute], stealth: 0.3 }));            // (a low stealth switches the player's scent off, so only the noise pulls)
+  think(shambler, mkEnv({ others: [shambler], stealth: 0.3 }));
   check(brute.state !== "wander" || brute.goal.x < 1, "brute ignores a gunshot 20 m off (hear range " + Math.round(brute.T.aggro * 0.35) + " m)");
   check(shambler.state === "wander" && Math.abs(shambler.goal.x - 20) < 1, "shambler is drawn to the same gunshot");
 }
@@ -119,6 +119,25 @@ check([...seen].every((n) => n in ZOMBIE_ARCHETYPES) && seen.size === Object.key
   check(hood.state !== "flee" || !hood.panic, "a hoodrat does not panic");
   check(red.state !== "flee" || !red.panic, "a redneck does not panic");
   check(tourist.stateT >= 8, "the run is long (" + tourist.stateT.toFixed(1) + " s)");
+}
+
+// ---- stealth: crouching and crawling shrink how far the dead notice you
+{
+  const near = (x) => zombie(x, 0);
+  const env = (st) => mkEnv({ stealth: st });
+  const a = near(20), b = near(20), c = near(20);
+  a.T = { ...a.T, aggro: 30 }; b.T = { ...b.T, aggro: 30 }; c.T = { ...c.T, aggro: 30 };
+  think(a, { ...env(1), others: [a] }, 0, 0);          // standing: 20 m is inside 30 m
+  think(b, { ...env(0.5), others: [b] }, 0, 0);        // crouched: 15 m: not noticed
+  think(c, { ...env(0.22), others: [c] }, 0, 0);       // prone: 6.6 m: not noticed
+  check(a.state === "hostile", "standing, a zombie 20 m away notices you");
+  check(b.state !== "hostile", "crouched, it does not");
+  check(c.state !== "hostile", "prone, it does not");
+  const d = near(4); think(d, { ...env(0.22), others: [d] }, 0, 0);
+  check(d.state === "hostile", "...until you are right on top of it (4 m, prone)");
+  const lost = near(60); lost.state = "hostile"; lost.calm = 0;
+  for (let i = 0; i < 40; i++) think(lost, { ...env(0.3), others: [lost] }, 0, 0);
+  check(lost.state !== "hostile", "a zombie chasing you loses you once you have crawled well out of its range");
 }
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }

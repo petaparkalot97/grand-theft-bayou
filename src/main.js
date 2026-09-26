@@ -19,6 +19,8 @@ import { pedestrianVoiceWho } from "./voiceCast.js";
 import { createCameraController } from "./camera.js";
 import { createFpsView } from "./fpsview.js";
 import { createGore } from "./gore.js";
+import { createCharacter } from "./stats.js";
+import { createPipboy } from "./pipboy.js";
 import { setParkVehicleHook } from "./landmarks.js";
 import { createTraffic } from "./traffic.js";
 import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian, randomTuxedo, randomHighEndEscort, randomKlansman, randomZombie } from "./characters.js";
@@ -35,7 +37,7 @@ import { VEHICLE_DEFS, vehicleDef, normalizeVehicleModel, createSeats, exitOffse
 import { createOrientationDebug, createCompass } from "./debug.js";
 import { createMinimap } from "./minimap.js";
 import { createHijacker } from "./hijack.js";
-import { createArsenal } from "./weapons.js";
+import { createArsenal, WEAPONS as WEAPONS_BY_ID } from "./weapons.js";
 import { createServices } from "./services.js";
 import { createNightlife } from "./nightlife.js";
 import { createCasinos } from "./casinos.js";
@@ -1310,6 +1312,11 @@ function goreHit(x, y, z, dist, killed, type) {
 // ---------------------------------------------------------------- game state
 const state = {
   running: false, over: false,
+  stance: 0,                // 0 standing, 1 crouched (sneaking), 2 prone: Space stands you up, sprinting stands you up
+  vy: 0,                    // vertical speed: jumping (playerPos.y is the height above the ground)
+  stealth: 1,               // how visible you are to the dead: 1 = a man standing in the road; less is better
+  lastShotT: -99,           // when you last fired (seconds): a shot makes you loud for a few seconds
+  stats: null,              // the character (stats.js) in zombie mode; null elsewhere
   firstPerson: false,       // the eye is the player's head (camera.js setFirstPerson, fpsview.js); every mode starts in it, V swaps
   flashlight: true,         // the torch (T) — first person only
   hp: 100, sp: 100, cash: 0,
@@ -1495,7 +1502,6 @@ const mapEditor = createMapEditor({
 // (tusouxroeNorth's Crown Strip was never asked, so its games answered "There are no vehicles nearby.")
 input.onPress("interact", () => { if (services.interact() || nightlife.interact() || casinos.interact() || (tusouxroeNorth && tusouxroeNorth.interact()) || (orlea && orlea.interact()) || (newton && newton.interact())) return; enterExitVehicle(); });
 input.onPress("mute", () => toggleMute());
-input.onPress("nextTrack", () => soundtrackReady.then((s) => s.next()));
 // [ / ] step the graphics tier down / up; once you touch it, the auto
 // governor stops overriding your choice.
 input.onPress("gfxDown", () => stepGfxTier(-1));
@@ -1544,6 +1550,20 @@ const camCtl = createCameraController({
   // without this the chase cam's click-to-lock and orbit fought it.
   canCapture: () => state.running && !state.over && !mapEditor.active,
 });
+// Player look settings (Options): mouse sensitivity, first-person FOV, invert-Y. Saved in localStorage.
+{
+  const sensEl = document.getElementById("mouseSens"), fovEl = document.getElementById("fovSlider"), invEl = document.getElementById("invertY");
+  const S = camCtl.settings, KEY = "gtbLookSettings";
+  try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) { /* no saved settings */ }
+  const clampNum = (v, lo, hi, d) => (Number.isFinite(+v) ? Math.min(hi, Math.max(lo, +v)) : d);
+  S.sens = clampNum(S.sens, 0.25, 2.5, 1); S.fov = clampNum(S.fov, 60, 105, 76); S.invertY = !!S.invertY;
+  const show = () => { sensEl.value = Math.round(S.sens * 100); fovEl.value = S.fov; invEl.textContent = S.invertY ? "On" : "Off"; invEl.classList.toggle("off", !S.invertY); };
+  const save = () => { camCtl.applySettings(); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* storage blocked */ } };
+  sensEl.addEventListener("input", () => { S.sens = clampNum(sensEl.value / 100, 0.25, 2.5, 1); save(); });
+  fovEl.addEventListener("input", () => { S.fov = clampNum(fovEl.value, 60, 105, 76); save(); });
+  invEl.addEventListener("click", () => { S.invertY = !S.invertY; show(); save(); });
+  show();
+}
 // F4: world axes and every system's idea of forward (debug.js); the HUD compass
 const orientDebug = createOrientationDebug({ scene });
 const compass = createCompass();
@@ -1565,10 +1585,26 @@ const arsenal = createArsenal({ state, flashObjective, onReload: (id, seconds) =
 const kills = { hog: 0, redneck: 0, hoodrat: 0, prostitute: 0 };
 const EMOJI = { hog: "🐗", redneck: "🧢", hoodrat: "🎧", prostitute: "💋" };
 const pauseMenu = createPauseMenu({ MAP, state, getPlayerPos: () => playerPos, minimap, arsenal, kills });
+// The Pip-Boy (pipboy.js): zombie mode's character creation and the Tab screen. The world holds still while it is open.
+const pipboy = createPipboy({
+  onOpen: () => { state.paused = true; },
+  onClose: () => { state.paused = false; },
+});
 const loot = createLoot({
   scene, state, arsenal, flashObjective,
   getPlayerPos: () => playerPos,
   syncHUD: () => syncHUD(),
+  // zombie mode: the dead carry ammo and a little cash (Luck / Scavenger / Survival make it more), and a
+  // pickup tops up whichever of your guns is running lowest — not only the one in your hands
+  lootMul: () => (state.stats ? state.stats.mods.lootMul() : 1),
+  tableFor: (type) => (state.zombieMode && type === "zombie" ? { cash: 0.14, weapon: 0.015, ammo: 0.22 } : null),
+  ammoTarget: () => {
+    const guns = Object.keys(state.reserve || {}).filter((id) => !WEAPONS_BY_ID[id].melee && Number.isFinite(state.reserve[id]) === true);
+    if (!guns.length) return state.freeRoam ? null : arsenal.current.melee ? null : arsenal.current.id;
+    const cur = arsenal.current;
+    if (!cur.melee && guns.includes(cur.id) && Math.random() < 0.5) return cur.id;
+    return guns.sort((a, b) => (state.reserve[a] / (WEAPONS_BY_ID[a].maxReserve || 100)) - (state.reserve[b] / (WEAPONS_BY_ID[b].maxReserve || 100)))[0];
+  },
 });
 // the one clock and the current weather (worldtime.js, weather.js)
 const worldTime = createWorldTime();
@@ -1614,6 +1650,8 @@ const playerPos = new THREE.Vector3(ROAD_X, 0, SPAWN_Z);
 // register their own spots through ctx.addService; the garages are built in boot().
 const services = createServices({
   scene, state, playerPos, arsenal, flashObjective, addBlocker,
+  priceMul: () => (state.stats ? state.stats.mods.priceMul() : 1),     // Barter / Speech / Charisma
+  healMul: () => (state.stats ? state.stats.mods.healMul() : 1),       // Medicine
   get cine() { return cine; },
   syncHUD: () => syncHUD(),
   stopVehicleFire: (v) => stopVehicleFire(v),
@@ -1730,6 +1768,12 @@ function confirmCharacter() {
     // instead of the player waiting through a daylight freeze first.
     if (pendingLaunch === "zombie") {
       state.zombieMode = true;
+      // Not free roam's endless ammo: a 9mm and a sawn-off, with what you can carry — the rest is out there
+      // on the dead. (Reserve is what is NOT in the gun; the weapon in hand starts loaded.)
+      state.freeRoam = false;
+      state.reserve = { pistol: 48, sawnoff: 20 };
+      state.weapon = "pistol";
+      state.ammo = 12;
       // worldTime.isNight() (worldtime.js) is what updateZombiePopulation
       // gates on, and its own night threshold is 22:00, not daycycle.js's
       // visual dusk — 21:00 reads dark already but isNight() would still say
@@ -1739,7 +1783,6 @@ function confirmCharacter() {
       // the gun is out and in your hands (V swaps back to the orbit camera).
       state.firstPerson = true;
       state.holstered = false;
-      state.weapon = "tec9";
       arsenal.render();
       try { const lock = renderer.domElement.requestPointerLock(); if (lock && lock.catch) lock.catch(() => {}); } catch (e) { /* the first click captures it instead */ }
       flashObjective("The Bayou is infected. Survive the night. · Mouse to aim, click to shoot, V for third person");
@@ -2127,6 +2170,19 @@ const _mv = new THREE.Vector3(), _step = new THREE.Vector3(), _aim = new THREE.V
 const _camFwd = new THREE.Vector3(), _camRight = new THREE.Vector3();
 let playerMoveHeading = null;   // heading the player is walking (null standing), for camera recentring
 let attackTimer = 0;
+// jumping (Space): high and it costs stamina (human request, 2026-09-26)
+const GRAVITY = 24, JUMP_HEIGHT = 3.0, JUMP_COST = 22;
+let jumpHeld = false;
+let lastCrouchTap = -9;
+// C: crouch (the sneak). Tap it twice quickly for prone (the crawl); from either, C stands.
+input.onPress("crouch", () => {
+  if (!state.running || state.veh || state.cinematic || playerPos.y > 0.05) return;
+  const t = performance.now() / 1000;
+  if (state.stance === 2) state.stance = 0;
+  else if (state.stance === 1 && t - lastCrouchTap < 0.4) state.stance = 2;
+  else state.stance = state.stance === 0 ? 1 : 0;
+  lastCrouchTap = t;
+});
 let bumpCd = 0;   // one pedestrian bark at a time, not a crowd shouting in unison
 
 // ---------------------------------------------------------------- enemies
@@ -2259,6 +2315,7 @@ const npcEnv = {
   // Zombie-mode safehouses (safehouses.js, declared just below; both are only
   // read lazily, at NPC think time): zombies can't enter one, and lose the
   // player while they stand in one
+  get stealth() { return state.zombieMode ? state.stealth : 1; },   // crouch / prone / Sneak (zombie noticing range)
   get playerSafe() { return state.zombieMode && safehouses.insideSafehouse(playerPos.x, playerPos.z); },
   safehouseAt: (x, z) => (state.zombieMode ? safehouses.safehouseAt(x, z) : null),
   onScream: playZombieScream,   // a Screamer (zombies.js) going hostile
@@ -2935,6 +2992,7 @@ async function buildLevel() {
     loadDsCar, loadVehicle,
     makeWaterTower, makeBillboard, makeBarrel, makePallet, makeFence, makeShed, makeGasStation, makePopeyes,
     buildPayNSpray: (x, z, rot, name) => services.buildPayNSpray(x, z, rot, name),
+    addSafehouse: (x, z, r, name) => safehouses.add(x, z, r, name),
   });
   stateWorld.buildSet();
   NPC_POIS.push(...stateWorld.pois);
@@ -3731,6 +3789,11 @@ function placeParked(obj, x, z, rot) {
 const WEAPON_SFX = { pistol: "pistolShot", tec9: "tec9Shot", sawnoff: "shotgun", deerRifle: "rifleShot" };
 const _tmpV = new THREE.Vector3();
 const _muzzleV = new THREE.Vector3();
+// reused across shots (the tec-9 fires at 460 rpm): no per-shot allocation
+const _ray = new THREE.Raycaster();
+const _crosshairNDC = new THREE.Vector2(0, 0);
+const _aim3D = new THREE.Vector3();
+const _target3D = new THREE.Vector3();
 function fire() {
   if (state.fireCd > 0 || state.over || state.cinematic) return;
   // Weapon away: left click is inert, in a car as much as on foot — "put it
@@ -3776,6 +3839,7 @@ function fire() {
     return;
   }
   state.fireCd = gun.cooldown;
+  state.lastShotT = performance.now() / 1000;                   // a shot makes you loud
   if (shotWitnessed()) crime(0.12);
   // Shots come out of the BARREL, not the player's navel. weapons_3d.js exposes
   // the muzzle node in world space; the chest-height point is only the fallback
@@ -3785,14 +3849,10 @@ function fire() {
   if (camCtl.firstPerson) { if (!fpsView.muzzle(origin)) origin.copy(camera.position); }     // out of the view model's barrel
   else if (!state.veh && getWeaponMuzzle(_muzzleV)) origin.copy(_muzzleV);
 
-  const _ray = new THREE.Raycaster();
-  const _crosshairNDC = new THREE.Vector2(0, 0);
-  const _aim3D = new THREE.Vector3();
-
   const isAiming = input.isDown("aim") || state.veh || camCtl.firstPerson;   // first person is always down the sights
   if (isAiming) {
     _ray.setFromCamera(_crosshairNDC, camera);
-    const target3D = _ray.ray.at(1000, new THREE.Vector3());
+    const target3D = _ray.ray.at(1000, _target3D);
     _aim3D.subVectors(target3D, origin).normalize();
     _aim.copy(_aim3D);
     _aim.y = 0;
@@ -3955,7 +4015,18 @@ function fire() {
   }
   for (const hit of hitTargets) {
     const { t, kind, d } = hit;
-    const dmg = state.weapon === "sawnoff" ? gun.damage * (1 - d / gun.range) : gun.damage;
+    let dmg = state.weapon === "sawnoff" ? gun.damage * (1 - d / gun.range) : gun.damage;
+    // the character's damage: Guns / Melee skill and traits, a sneak attack on someone who has not noticed you,
+    // and a Luck-driven critical (zombie mode)
+    if (state.stats && (kind === "enemy" || kind === "footCop" || kind === "crowd")) {
+      const SM = state.stats.mods;
+      dmg *= gun.melee ? SM.meleeMul() : SM.gunMul();
+      const unaware = kind === "enemy" && t.state !== "hostile" && t.state !== "flee";
+      if (state.stance > 0 && unaware) { dmg *= SM.sneakAttackMul(); flashObjective("Sneak attack!"); }
+      else if (Math.random() < SM.critChance()) { dmg *= SM.critMul(); flashObjective("Critical hit!"); }
+    } else if (state.stance > 0 && kind === "enemy" && t.state !== "hostile" && t.state !== "flee") {
+      dmg *= 2;                                                     // no character, still: creeping up pays
+    }
     if (multiplayerMode && multiplayer?.connected) {
        if (kind === "player") {
          multiplayer.send("DAMAGE", { id: t.id, amount: dmg });
@@ -4071,8 +4142,22 @@ function killEnemy(e, { turf = false, killer = null } = {}) {
   
   if (turf) return;
   kills[e.type] = (kills[e.type] || 0) + 1;
+  awardXp(e);
   flashObjective(`${e.T.label} down.  ${EMOJI.hog} ${kills.hog}   ${EMOJI.redneck} ${kills.redneck}   ${EMOJI.hoodrat} ${kills.hoodrat}`);
   checkHeatUp();
+}
+
+// XP for a kill (zombie mode's character: Fallout-style levels, skill points, a perk every second level).
+function awardXp(e) {
+  const S = state.stats;
+  if (!S) return;
+  S.noteKill();
+  const ups = S.addXp(Math.round(4 + ((e.T && e.T.hp) || 30) / 6));
+  if (ups) {
+    flashObjective(`LEVEL UP — ${S.level}! Tab: spend ${S.skillPoints} skill point${S.skillPoints === 1 ? "" : "s"}${S.perkPoints ? " and pick a perk" : ""}`);
+    cine.sfx("chime", 0.5);
+  }
+  syncHUD();
 }
 
 // ---------------------------------------------------------------- HUD
@@ -4084,6 +4169,7 @@ function syncHUD() {
   let s = "";
   if (copsActive()) for (let i = 0; i < 6; i++) s += `<span class="${i < state.wanted ? "on" : "off"}">★</span>`;
   starsEl.innerHTML = s;
+  pipboy.hud(state.zombieMode ? state.stats : null);
   if (state.zombieMode) {
     zombieKillsEl.hidden = false;
     zombieKillsEl.textContent = `🧟 ${kills.zombie || 0}`;
@@ -4285,9 +4371,10 @@ function tick() {
       camCtl.setAiming(isAimingCamera);
       // First person (zombie mode's default): the eye is the player's head. Not in a car, and
       // the character is hidden for it (restored the moment the view leaves first person).
-      const fpsOn = !!state.firstPerson && !state.veh;
+      const fpsOn = !!state.firstPerson && !state.veh && !state.cinematic;   // cutscenes are never first person
       camCtl.setFirstPerson(fpsOn);
       crosshair.style.display = fpsOn ? "block" : (isAimingCamera && !arsenal.current.melee ? "block" : "none");
+      camCtl.setEye(1.62 * [1, 0.66, 0.27][state.stance]);
       camCtl.update(dt, playerPos, state.veh, blockerGrid, playerMoveHeading);
       if (state.veh && state.veh.jolt > 0) {
         const j = state.veh.jolt;
@@ -4305,7 +4392,7 @@ function tick() {
       state.cinematic || (!!state.veh && !input.isDown("aim")) || state.holstered || camCtl.firstPerson, shooting);
     {
       const on = state.flashlight && camCtl.firstPerson && !cine.hasCamera && !state.cinematic;
-      torch.intensity = on ? 190 : 0;
+      torch.intensity = on ? 190 * (state.stats ? state.stats.mods.torchMul() : 1) : 0;
       if (on) {
         camera.getWorldDirection(_torchDir);
         torch.position.copy(camera.position).addScaledVector(_torchDir, 0.2);
@@ -4576,6 +4663,7 @@ function defaultObjective() {
 }
 
 function hitPlayer(dmg) {
+  if (state.stats) dmg *= state.stats.mods.damageTakenMul();      // Endurance, Toughness, Glass Jaw...
   state.hp -= dmg;
   state.hurtCd = 0.4;
   hurtFlash();
@@ -4606,16 +4694,50 @@ function onFootUpdate(dt) {
   const moving = mv.lengthSq() > 0;
   playerMoveHeading = moving ? headingFromVector(mv.x, mv.z) : null;
   const sprint = input.isDown("sprint");
-  let speed = 6.5;
-  if (sprint && state.sp > 1 && moving) { speed = 12.5; state.sp -= dt * 26; }
-  else state.sp = Math.min(100, state.sp + dt * 14);
+  const M = state.stats ? state.stats.mods : null;                 // the character's multipliers (zombie mode)
+  // ---- stance: sprinting stands you up; crouching is the sneak, prone the crawl (C, twice for prone)
+  if (sprint && moving && state.sp > 5 && state.stance > 0) state.stance = 0;
+  const grounded = playerPos.y <= 0.001 && state.vy <= 0;
+  // ---- jumping: high, and it costs stamina (Space)
+  const jumpDown = input.isDown("jump");
+  const jumpCost = JUMP_COST * (M ? M.jumpCostMul() / M.staminaMul() : 1);
+  if (jumpDown && !jumpHeld && grounded && state.sp >= Math.max(14, jumpCost * 0.7) && !(nolantis && nolantis.inside)) {
+    state.stance = 0;
+    state.vy = Math.sqrt(2 * GRAVITY * JUMP_HEIGHT * (M ? M.jumpMul() : 1));
+    state.sp = Math.max(0, state.sp - jumpCost);
+  }
+  jumpHeld = jumpDown;
+  if (!grounded || state.vy > 0) {
+    state.vy -= GRAVITY * dt;
+    playerPos.y = Math.max(0, playerPos.y + state.vy * dt);
+    if (playerPos.y <= 0) { playerPos.y = 0; state.vy = 0; }
+  }
+  const stanceMul = [1, 0.5, 0.2][state.stance];
+  let speed = 6.5 * (M ? M.speedMul() : 1) * stanceMul;
+  const runs = sprint && state.sp > 1 && moving && state.stance === 0;
+  if (runs) { speed = 12.5 * (M ? M.speedMul() : 1); state.sp -= dt * 26 * (M ? M.sprintCostMul() / M.staminaMul() : 1); }
+  else state.sp = Math.min(100, state.sp + dt * 14 * (M ? M.staminaRegenMul() : 1) * (state.stance > 0 && !moving ? 1.6 : 1));
+  // ---- how visible you are to the dead: stance x motion x torch x a recent shot x Sneak
+  {
+    const airborne = playerPos.y > 0.05;
+    let st = [1, 0.5, 0.22][state.stance];
+    st *= runs ? 1.7 : moving ? 1 : 0.6;
+    if (airborne) st *= 1.3;
+    if (state.flashlight && camCtl.firstPerson && worldTime.isNight()) st *= 1.3;
+    if (performance.now() / 1000 - state.lastShotT < 4) st *= 2.2;
+    state.stealth = st * (M ? M.stealthMul() : 1);
+    if (state.zombieMode) {
+      const s = state.stealth, lv = s < 0.45 ? "" : s < 1 ? "caution" : "danger";
+      pipboy.stealth(`${["STANDING", "CROUCHED", "PRONE"][state.stance]} · ${s < 0.45 ? "HIDDEN" : s < 1 ? "CAUTION" : "EXPOSED"}`, lv);
+    }
+  }
 
   if (moving) {
     mv.normalize();
     if (strafeIn !== 0) player.setFlip(strafeIn);
     playerFacing.copy(mv);
     const next = _step.copy(playerPos).addScaledVector(mv, speed * dt);
-    resolveCollision(playerPos, next, 0.6);
+    resolveCollision(playerPos, next, state.stance === 2 ? 0.45 : 0.6);
     checkPedestrianBump();
   }
   bumpCd = Math.max(0, bumpCd - dt);
@@ -4625,6 +4747,8 @@ function onFootUpdate(dt) {
   }
   player.position.copy(playerPos);
   player.visible = true;
+  // the body follows the stance (third person): crouched is shorter, prone is flat on the ground
+  { const sy = [1, 0.74, 0.34][state.stance]; player.scale.y += (sy - player.scale.y) * Math.min(1, dt * 12); }
 
   attackTimer = Math.max(0, attackTimer - dt);
   if (attackTimer <= 0) {
@@ -5360,7 +5484,7 @@ async function boot() {
   camera.lookAt(playerPos);
   syncHUD();
 
-  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs, swampTrees, fire, fpsView, gore,
+  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs, swampTrees, fire, fpsView, gore, playerPos, pipboy,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
     get policeHelicopters() { return police.helicopters; },
@@ -5442,7 +5566,13 @@ async function boot() {
   beginGame = begin;
   startBtn.onclick = () => openCharacterSelect("story");
   freeBtn.onclick = () => { pendingLaunch = "free"; selectionIndex = characterIds.indexOf("keseme"); confirmCharacter(); };
-  zombieBtn.onclick = () => { pendingLaunch = "zombie"; selectionIndex = characterIds.indexOf("keseme"); confirmCharacter(); };
+  zombieBtn.onclick = async () => {
+    // Zombie mode starts at the character screen: S.P.E.C.I.A.L., traits (Zomboid's points economy), three tagged skills
+    const build = await pipboy.create();
+    if (!build) return;
+    state.stats = createCharacter(build);
+    pendingLaunch = "zombie"; selectionIndex = characterIds.indexOf("keseme"); confirmCharacter();
+  };
 }
 
 // Loading screen: while boot() is loading assets, the menu (logo, Start/
@@ -5584,12 +5714,19 @@ input.onPress("viewToggle", () => {
   state.firstPerson = !state.firstPerson;
   flashObjective(state.firstPerson ? "First person — V for third person." : "Third person — V for first person.");
 });
+// Tab: the Pip-Boy (zombie mode's character screen); the game holds still while it is open
+input.onPress("pipboy", () => {
+  if (!state.running || !state.stats || state.cinematic && !pipboy.isOpen) return;
+  if (!pipboy.isOpen) camCtl.release();
+  pipboy.toggle(state.stats);
+});
 input.onPress("nextWeapon", () => { if (state.running) arsenal.cycleWeapon(1); });
 input.onPress("prevWeapon", () => { if (state.running) arsenal.cycleWeapon(-1); });
 input.onPress("horn", () => { if (state.running) honkHorn(); });
 
 window.addEventListener("keydown", (e) => {
   if (e.code === "Escape") {
+    if (pipboy.isOpen) { e.preventDefault(); pipboy.close(); return; }
     if (state.running && !state.cinematic && (!characterSelect || characterSelect.hidden)) {
       e.preventDefault();
       pauseMenu.toggle();

@@ -58,6 +58,12 @@ const ROUTES = JSON.parse(process.env.ROUTES || "null") || [
   ["Delta Road (south)", 805, 430, 805, -34],
   ["Delta Road (jog)", 800, -40, 756, -40],
   ["Delta Road (north)", 750, -46, 750, -415],
+  // wonders.js: the spurs off Delta Road (a car can drive each end to end), and the way through the prison gate
+  ["Plantation Lane", 750, -260, 608, -260],
+  ["River Road", 812, -40, 1036, -40],
+  ["Pepper Lane", 812, 150, 908, 150],
+  ["Rodeo Road", 798, 300, 714, 300],
+  ["Prison gate", 708, 300, 672, 300, true],     // the compound owns this ground
 ];
 // [name, x0, x1, z0, z1, minMeshes] — the density gate: a region this size must hold at least this many meshes
 const REGIONS = JSON.parse(process.env.REGIONS || "null") || [
@@ -72,6 +78,10 @@ const REGIONS = JSON.parse(process.env.REGIONS || "null") || [
   ["Red Dust approach", -392, -70, -670, -530, 40],
   ["Lakeshore approach", -392, -70, 680, 820, 40],
   ["Delta Road", 690, 870, -430, 436, 60],
+  ["Belle Plantation", 470, 760, -312, -208, 100],
+  ["Pepper Works", 803, 1048, 96, 208, 40],
+  ["Pelican Petrochemical", 803, 1048, -238, -32, 100],
+  ["Bayou State Penitentiary", 542, 808, 230, 372, 150],
 ];
 
 const browser = await puppeteer.launch({ args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader", "--mute-audio"] });

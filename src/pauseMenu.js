@@ -57,6 +57,14 @@ const LANDMARK_PINS = [
   { name: "Oyster Bay Harbor", x: 720, z: 915, icon: "⚓", category: "Docks", region: "Oyster Bay" },
   { name: "Our Lady of the Bay", x: 760, z: 470, icon: "⛪", category: "Landmark", region: "Oyster Bay" },
   { name: "Bayou Arsenal", x: 730, z: 585, icon: "🔫", category: "Shops", region: "Oyster Bay" },
+  // the four set pieces off Delta Road (wonders.js)
+  { name: "Belle Plantation", x: 548, z: -260, icon: "🏛️", category: "Landmark", region: "Delta Road" },
+  { name: "Hot Bayou Pepper Works", x: 985, z: 150, icon: "🌶️", category: "Landmark", region: "Delta Road" },
+  { name: "Hot Bayou Tasting Room", x: 936, z: 138, icon: "🍗", category: "Food & Dining", region: "Delta Road" },
+  { name: "Pelican Petrochemical", x: 940, z: -130, icon: "🏭", category: "Landmark", region: "Delta Road" },
+  { name: "Bayou State Penitentiary", x: 623, z: 300, icon: "⛓️", category: "Landmark", region: "Delta Road" },
+  { name: "Prison Rodeo", x: 748, z: 272, icon: "🐂", category: "Entertainment", region: "Delta Road" },
+  { name: "Warden's Surplus", x: 783, z: 323, icon: "🔫", category: "Shops", region: "Delta Road" },
 ];
 
 export function createPauseMenu({ MAP, state, getPlayerPos, minimap, arsenal, kills = {} }) {

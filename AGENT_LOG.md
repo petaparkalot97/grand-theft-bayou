@@ -23,6 +23,29 @@ goes stale, add a new one saying why; don't rewrite history.
   ### Finding
   What you discovered.
   
+## 2026-09-26 — Claude
+
+**Type:** DISCOVERY + DECISION · **Task:** TASK-085 (stance / stealth / stats / wonders / audit easy list)
+
+### Finding
+The "EXT. ORLEAROUGE" cinematic fired anywhere south-east of the city's north-west corner (its `entered` test had no upper
+bounds, the same bug `inCity()` had) — it showed up in Oyster Bay and, in this pass, at the new prison; found because the prison
+compound first overlapped the city's east edge (`CITY.maxX` is 520). Also: **a composer keepout is claimed AFTER the corridor's road**
+(`roadside.js` re-claims town ground once the roads are down), so a KEEPOUT rect that covers a spur or Delta Road's own carriageway silently
+turns the road into "building" ground (`fill_check`: 85/156 samples "not road"). Keepouts must sit either side of a road, and a road that
+enters a corridor's bounds must be registered with it as a junction (`wonders.js` `SPURS`).
+
+### Action
+Built stance / jump / stealth, the S.P.E.C.I.A.L. + trait-economy character (`stats.js`, `pipboy.js`), scarce-ammo zombie mode, four Louisiana
+set pieces (`wonders.js`) and the audit's easy list — see TASK-085 in `TODO.md`. Left `roads.mjs`/`eastbank.mjs`/`worldpass.mjs` red: the
+"Red Dust Pass A/B: 2 surfaces" result is a false positive (a scene query finds exactly one plane there), the others are stale.
+
+### Lesson for next time
+Headless frame rate is ~1 fps, so anything time-windowed (a 0.4 s double tap) must be driven with synchronous events, not `keyboard.press` calls;
+and `node_modules/three` here is a local shim with no `examples/jsm` — the vendored copy in `assets/vendor/three` is the real r160.
+
+---
+
 ## 2026-09-25 — Claude
 
 **Type:** DISCOVERY + DECISION · **Task:** TASK-084 (fill the map)

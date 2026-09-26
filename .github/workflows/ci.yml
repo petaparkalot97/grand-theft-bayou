@@ -1,0 +1,25 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Syntax-check every module
+        run: |
+          for f in src/*.js server/*.js serve.mjs tools/*.mjs; do node --experimental-detect-module --check "$f" || exit 1; done
+      - name: Unit tests (pure node, no browser)
+        run: |
+          npm install --no-save --omit=dev --ignore-scripts --no-audit --no-fund three@0.160.0
+          npm test
+      - name: Every pedestrian bark has a recording
+        run: node tools/pedestrian-voiceover-gen.mjs --check
+      - name: The deployable site builds without secrets or archives
+        run: |
+          node tools/build-site.mjs
+          test ! -e dist/.env && test ! -e dist/server && test ! -e dist/.git

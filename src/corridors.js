@@ -8,6 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { buildRoadside } from "./roadside.js";
+import { SPURS } from "./wonders.js";
 
 const PINES = (kit, ctx, spacing = 11) => ({
   spacing,
@@ -106,6 +107,7 @@ export function buildCorridors(R) {
     name: "Delta Road", seed: 63001, bounds: { x0: 690, x1: 870, z0: -430, z1: 436 },
     road: { name: "Delta Road", points: [[750, -420], [750, -40], [805, -40], [805, 436]], width: 6, dirt: true },
     poles: false,
+    junctions: SPURS.map((s) => ({ name: s.name + " (Delta junction)", points: s.points, width: s.width })),      // wonders.js: the spurs stay road in Delta's grid
     profile: {
       mix: [[3, "farm"], [3, "cabin"], [2, "trailer"], [2, "bungalow"], [1, "stand"], [1, "shed"]], density: 0.4, spacing: 46, setback: 16, footprint: { w: 24, d: 26 },
       startAt: 30, endAt: 30, forest: pines(11),
