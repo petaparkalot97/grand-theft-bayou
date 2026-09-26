@@ -59,6 +59,7 @@ export const ZOMBIE_ARCHETYPES = Object.freeze({
     label: "Runner",
     stats: { hp: 0.6, speed: 1.9, aggro: 1.4, melee: 1.0, dmg: 0.7, atkGap: 0.8 },
     flags: { noiseResponse: 1.5 },
+    look: { h: 0.93, skin: 0xc9d4b8, cloth: 0x7a3a30 },                 // gaunt, bone-pale, in bloodied red
     weight: 20,
   },
 
@@ -71,6 +72,7 @@ export const ZOMBIE_ARCHETYPES = Object.freeze({
     label: "Brute",
     stats: { hp: 3.0, speed: 0.55, aggro: 0.8, melee: 1.25, dmg: 1.8, atkGap: 1.5 },
     flags: { noiseResponse: 0.35 },
+    look: { h: 1.4, skin: 0xa8906e, cloth: 0x5a1a1a },                  // a head and a half taller than anyone: bloated, sallow, in maroon rags (dark greens vanish at night)
     weight: 12,
   },
 
@@ -83,6 +85,7 @@ export const ZOMBIE_ARCHETYPES = Object.freeze({
     label: "Screamer",
     stats: { hp: 0.8, speed: 1.1, aggro: 0.9, melee: 1.0, dmg: 0.3, atkGap: 1.0 },
     flags: { noiseResponse: 1.2, screamOnHostile: { r: 55 } },
+    look: { h: 1.0, skin: 0xe8e2c8, cloth: 0xe0b020 },                  // hazard-yellow: you see the one that is about to scream
     weight: 8,
   },
 
@@ -121,6 +124,7 @@ export function resolveArchetype(name, base = BASE_ZOMBIE) {
     dmg: Math.round(base.dmg * s.dmg),
     atkGap: +(base.atkGap * s.atkGap).toFixed(2),
     zombieFlags: { ...a.flags },
+    zombieLook: a.look ? { ...a.look } : null,
   };
 }
 
@@ -189,13 +193,9 @@ export function pickArchetype(rnd = Math.random) {
 //    updateZombiePopulation's dawn clear removes the enemy wholesale.
 //    Audio for the scream itself: TASK-081's surface, not this hook.
 //
-// Visual differentiation — NOT possible today without a characters.js change
-// (out of scope this wave): every archetype renders through randomZombie()
-// (main.js's spawnEnemy branch on typeName === "zombie"), and ENEMY_TYPES
-// `tint` is ignored for actor-kind views (only sprite-kind calls
-// view.setTint). Until the human asks for per-archetype art, hordes are
-// visually uniform and differentiated purely by behaviour — which is
-// exactly the TASK-077 "reskins/data only" decision. If a cheap differentiator
-// is wanted later: scale the view (brute 1.15x, runner 0.92x) in spawnEnemy —
-// one line, no new art.
+// Visual differentiation (2026-09-26): each archetype carries a `look` (height multiplier, skin,
+// clothes) that spawnEnemy hands to characters.js randomZombie — runners bone-pale in red,
+// brutes half again as tall and sallow in maroon, screamers hazard-yellow. Colours are chosen to
+// read at night (a dark green brute was invisible: a user reported "I didn't see any of the new
+// zombies"). Same rig, same animations.
 // ---------------------------------------------------------------------------

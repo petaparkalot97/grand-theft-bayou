@@ -2224,7 +2224,7 @@ function spawnEnemy(typeName, x, z, spot = null) {
   } else if (T.kind === "highendescort") {
     view = randomHighEndEscort(rng, T.h);
   } else if (typeName === "zombie") {
-    view = randomZombie(rng, T.h);
+    view = randomZombie(rng, T.h, T.zombieLook);
   } else if (T.kind === "cast") {
     view = makeCastMember(makeHoodrat, T.who);
   } else if (T.kind === "klansman") {

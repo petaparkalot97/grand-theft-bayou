@@ -1592,14 +1592,17 @@ const ZOMBIE_SKIN = [0x7c8f6e, 0x6f8560, 0x8a9878, 0x5e7454, 0x94a084];
 const ZOMBIE_CLOTH = [0x4a4438, 0x40453a, 0x3c3830, 0x454034];
 
 /** A random zombie: the Hoodrat rig under a corpse's palette. */
-export function randomZombie(rng = Math.random, height) {
-  const cloth = ZOMBIE_CLOTH[(rng() * ZOMBIE_CLOTH.length) | 0];
+// Archetype looks (zombies.js): each reads at a glance, at distance, on a dark street. `h` scales the
+// height, `skin`/`cloth` replace the corpse palette. Undefined = an ordinary shambler.
+export function randomZombie(rng = Math.random, height, look = null) {
+  const cloth = (look && look.cloth != null) ? look.cloth : ZOMBIE_CLOTH[(rng() * ZOMBIE_CLOTH.length) | 0];
+  if (look && look.h) height = height * look.h;
   return new Hoodrat({
     sex: rng() < 0.5 ? "f" : "m",
     crew: { cloth, chain: 0x4a4a46, shoe: 0x2c281f, legging: cloth },
     seed: (rng() * 1e9) | 0,
     yaw: rng() * Math.PI * 2,
-    skin: ZOMBIE_SKIN[(rng() * ZOMBIE_SKIN.length) | 0],
+    skin: (look && look.skin != null) ? look.skin : ZOMBIE_SKIN[(rng() * ZOMBIE_SKIN.length) | 0],
     top: cloth,
     denim: 0x353128,
     hair: 0x1c1a16,
