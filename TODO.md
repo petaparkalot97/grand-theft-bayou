@@ -42,6 +42,11 @@ Local: `npm i puppeteer three@0.160.0 ws --no-save` installed (the old hand-writ
 - [ ] Respawn: no hospital bill / weapon loss; sheriffs stand down because wanted=0. Multiplayer has its own server-driven respawn (`onRespawned`), untouched.
 - [ ] Not verified on a real GPU: the new outfits' look (only a distant headless screenshot), Options tab layout at other resolutions.
 
+### 🗒️ Design note (human, 2026-09-26) — NOT STARTED, do not implement until asked
+- [ ] **"Hot Coffee"-style mini-game for the sex workers** (GTA:SA mod inspiration): when the player takes up a prostitute/escort's offer, it becomes an interactive mini-game scene rather than a fade-to-black. Depends on: enterable interiors / a private-room scene, the on-foot solicitation lines already in (`solicit` in `pedestrianChatter.js`, `onSolicit` in main.js), and the car pick-up trade in `npc.js` (`approaching_car`).
+- [ ] **Lap-dance rooms out the back of HAPPY HOGS and BILLY JEANS** (the franchise frontages from TASK-084 are exterior-only today; the flagship venues live in `tusouxroeNorth.js`, `buildVenue`): the player hires a dancer — a hog-themed dancer at Happy Hogs, the **Billy Jeans** parody performer at Billy Jeans — for a private dance, with the same mini-game available if the player chooses to take it further.
+- Notes for whoever picks this up: keep every character an adult and fictional (the Billy Jeans venue uses the existing parody character; do not use a real person's name or likeness); gate it behind a clear mature-content opt-in in Options; keep it off by default; decide how explicit the presentation is (implied / stylised vs. explicit) before building, and check hosting/store content rules for the live site first.
+
 ## 🚨 DEPLOY / CI STATUS (2026-09-26) — read first
 
 - **Live site = https://grand-theft-bayou-c2l.pages.dev (Cloudflare Pages, *friend's* account), git-connected to
