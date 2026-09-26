@@ -664,14 +664,33 @@ function buildSwampTrees() {
     if (zZone && !["rural", "forest", "water"].includes(zZone)) continue;
     spots.push([x, z]);
   }
-  // the rest of the state: wilderness only — not on a road, in a town, a lake, or ground a
-  // composed district holds
-  for (let i = 0; i < 3600; i++) {
+  // the rest of the state — and the towns. "Scatter the swamp trees all over the map so there isn't anywhere
+  // that's safe" (human request, 2026-09-26): the wilds are thick with them (a zombie can rise within
+  // ~28 m of almost any spot), and they stand in the towns too, in yards, verges and open ground. What
+  // keeps them off roads and out of buildings is the same thing that keeps people from spawning
+  // there: spawnZones.zoneAt, which every composed district answers for its own roads, walls and
+  // water (highway / building / water), plus a clear-of-every-solid check. The OrleaRouge grid and
+  // the strips (commercial lots, the Crown Strip's forecourts, market squares) stay bare: their
+  // asphalt is not in any zone.
+  const WILD = new Set(["rural", "forest"]);
+  const TOWN = new Set(["town", "residential", "resort", "industrial"]);
+  const clearOfSolids = (x, z) => { let hit = false; blockerGrid.near(x, z, 6, (b) => { if (b._grid === "static" && Math.hypot(b.x - x, b.z - z) < b.r + 3.2) { hit = true; return true; } }); return !hit; };
+  for (let i = 0; i < 14000; i++) {
     const x = rand(MAP.minX + 24, MAP.maxX - 24), z = rand(MAP.minZ + 24, MAP.maxZ - 24);
     if (Math.abs(x) < WORLD + 4 && Math.abs(z) < WORLD + 4) continue;    // the original square has its own pass
     const zZone = spawnZones.zoneAt(x, z);
-    if (zZone !== "rural" && zZone !== "forest") continue;
-    if (stateWorld && stateWorld.heldAt(x, z, 4)) continue;
+    const wild = WILD.has(zZone);
+    if (!wild && !(TOWN.has(zZone) && rng() < 0.3)) continue;            // town ground: one candidate in three, so it is scattered, not planted
+    if (stateWorld && stateWorld.heldAt(x, z, 3)) continue;
+    if (!wild && !clearOfSolids(x, z)) continue;
+    spots.push([x, z]);
+  }
+  // the original square's towns (Chatboro, the trailer park, the junkyard's edges): same rule, a lighter hand
+  for (let i = 0; i < 700; i++) {
+    const x = rand(-WORLD + 10, WORLD - 10), z = rand(-WORLD + 10, WORLD - 10);
+    if (Math.hypot(x, z - 100) < 12 || inKeepout(x, z)) continue;
+    const zZone = spawnZones.zoneAt(x, z);
+    if (!TOWN.has(zZone) || rng() > 0.25 || !clearOfSolids(x, z)) continue;
     spots.push([x, z]);
   }
 
@@ -3058,7 +3077,7 @@ function updateZombiePopulation(dt) {
   if (isWilderness) {
     let nearSwamp = false;
     for (const t of swampTrees) {
-      if (!t.dead && Math.hypot(t.x - spot.x, t.z - spot.z) < 16) {
+      if (!t.dead && Math.hypot(t.x - spot.x, t.z - spot.z) < 28) {
         nearSwamp = true;
         break;
       }
