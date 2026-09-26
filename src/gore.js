@@ -123,16 +123,16 @@ export function createGore({ scene, camera, blockerGrid, spray = null, pool = nu
   const urls = canvases.map((c) => c.toDataURL());
   let live = 0;
   function screen(k = 1) {
-    const n = Math.max(1, Math.round(k * (2 + Math.random() * 2)));
-    for (let i = 0; i < n && live < 18; i++) {
+    const n = Math.max(1, Math.round(k * (1 + Math.random() * 1)));
+    for (let i = 0; i < n && live < 6; i++) {
       const el = document.createElement("div");
-      const size = rand(200, 520) * (0.7 + k * 0.4), x = rand(-0.05, 0.95) * innerWidth - size / 2, y = rand(0.02, 0.85) * innerHeight - size / 2;
+      const size = rand(150, 350) * (0.7 + k * 0.4), x = rand(-0.05, 0.95) * innerWidth - size / 2, y = rand(0.02, 0.85) * innerHeight - size / 2;
       el.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${size}px;height:${size}px;background:url(${urls[(Math.random() * urls.length) | 0]}) center/contain no-repeat;` +
-        `transform:rotate(${rand(0, 360)}deg);opacity:0.96;filter:drop-shadow(0 0 3px rgba(60,0,0,.6));transition:opacity 6.5s ease-in, top 6.5s ease-in;`;
+        `transform:rotate(${rand(0, 360)}deg);opacity:0.65;filter:drop-shadow(0 0 2px rgba(60,0,0,.4));transition:opacity 4.5s ease-in, top 4.5s ease-in;`;
       screenBox.appendChild(el);
       live++;
-      requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = "0"; el.style.top = (y + rand(60, 220)) + "px"; }));   // fade and run down the glass
-      setTimeout(() => { el.remove(); live--; }, 6800);
+      requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = "0"; el.style.top = (y + rand(40, 150)) + "px"; }));   // fade and run down the glass
+      setTimeout(() => { el.remove(); live--; }, 4800);
     }
   }
 
