@@ -123,6 +123,21 @@ const CHATTER = {
   },
 
   prostitute: {
+    // Calling out to the player on foot (npc.js -> main.js onSolicit). Deliberately NOT one of allVoiceLines()'s buckets yet:
+    // there is no recording for these, so they show as a caption only. Add "solicit" to that bucket list and run
+    // tools/pedestrian-voiceover-gen.mjs (Fish Audio) to give them a voice.
+    solicit: [
+      "Hey honey, you looking for a good time?",
+      "Ooh, hey there handsome — lonely tonight?",
+      "Come on over here, baby, I'll treat you right.",
+      "Looking for some company, sugar?",
+      "You got that look, honey. Wanna have some fun?",
+      "Psst — yeah, you. Don't be shy, I don't bite. Unless you ask.",
+      "Baby, you look like you need a little company.",
+      "Hey big spender, wanna make my night?",
+      "Need a date, cher? I'm real friendly.",
+      "Slow down, sweetheart. Let's get you a good time.",
+    ],
     bump: [
       "Careful sugar, that'll cost extra.",
       "Ooh, forward. I like forward. But watch it.",
@@ -368,6 +383,14 @@ export const voiceType = (type) => BORROWS[type] || type;
 export function bumpLine(type, label) {
   type = voiceType(type);
   const bucket = (CHATTER[type] && CHATTER[type].bump) || GENERIC.bump;
+  const text = pick(bucket);
+  return { text, display: `${label}: ${text}` };
+}
+
+/** A working girl calling out to the player on foot. Same `{ text, display }` shape as bumpLine(). */
+export function solicitLine(type, label) {
+  type = voiceType(type);
+  const bucket = (CHATTER[type] && CHATTER[type].solicit) || CHATTER.prostitute.solicit;
   const text = pick(bucket);
   return { text, display: `${label}: ${text}` };
 }

@@ -272,7 +272,7 @@
     color: #16210f; background: #e8a13a; border-color: #e8a13a; transform: none;
   }
   .opt-toggle.off { color: #ff8a7a; border-color: rgba(255, 90, 60, .5); }
-  #musicVolume { all: revert; width: 200px; accent-color: #e8a13a; pointer-events: auto; cursor: pointer; }
+  #musicVolume, #mouseSens, #fovSlider { all: revert; width: 200px; accent-color: #e8a13a; pointer-events: auto; cursor: pointer; }
 
   .menu-confirm { font: 700 clamp(18px, 2.2vw, 24px) Arial, sans-serif; color: #f4f0e2; }
   .menu-confirm-sub { font: 13px Arial, sans-serif; color: rgba(244, 240, 226, .6); margin-top: -6px; }
@@ -452,6 +452,7 @@
 
     <nav class="menu-list" id="menuRoot" data-panel="root">
       <button class="menu-item" data-menu="start">Start Game</button>
+      <button class="menu-item" data-menu="load">Load Game</button>
       <button class="menu-item" data-menu="options">Options</button>
       <button class="menu-item" data-menu="exit">Exit Game</button>
     </nav>
@@ -494,6 +495,13 @@
         <div class="opt-label">Sound</div>
         <button class="menu-item opt-toggle" id="muteToggle">On</button>
       </div>
+      <button class="menu-item menu-back" data-back="root">Back</button>
+    </div>
+
+    <div class="menu-panel" id="menuLoadPanel" data-panel="load" hidden>
+      <div class="menu-confirm">Load Game</div>
+      <div id="loadSlots" style="display:flex;flex-direction:column;gap:10px;"></div>
+      <div class="menu-confirm-sub">Free Roam and Zombie Survival saves. Save from the pause menu (Esc).</div>
       <button class="menu-item menu-back" data-back="root">Back</button>
     </div>
 

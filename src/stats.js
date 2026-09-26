@@ -227,6 +227,15 @@ export function createCharacter(build = {}) {
       torchMul: () => prod("torchMul") * (1 + (special.per - 5) * 0.06),
     },
     toJSON() { return { name, special, traits, tagged, background: bg.id, perks, invested, level, xp, skillPoints, perkPoints, kills }; },
+    /** Put back the progress part of a toJSON() snapshot (the build itself is given to createCharacter). */
+    restore(j = {}) {
+      level = clamp(j.level | 0 || 1, 1, 30); xp = Math.max(0, j.xp | 0); skillPoints = Math.max(0, j.skillPoints | 0);
+      perkPoints = Math.max(0, j.perkPoints | 0); kills = Math.max(0, j.kills | 0);
+      perks.length = 0; for (const id of j.perks || []) if (PERKS.some((p) => p.id === id)) perks.push(id);
+      for (const k of Object.keys(invested)) delete invested[k];
+      for (const [k, v] of Object.entries(j.invested || {})) if (SKILLS.some((sk) => sk.id === k)) invested[k] = Math.max(0, v | 0);
+      return api;
+    },
   };
   return api;
 }

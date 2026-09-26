@@ -134,17 +134,15 @@ assert(traffic.cars.length >= 0, "traffic system constructs with stub models");
     sbCar.s = sbCar.lane.length - 2;           // 2 m from the south end (z = +100)
     sbCar.speed = sbCar.cruise;
     const near = { x: -2.4, z: 92 };           // player right there
-    let parked = false, moved = false;
+    let parked = false, movedAt = -1;
     for (let i = 0; i < 300; i++) {
       traffic.update(dt, near, OBSTACLES, null);
       if (!sbCar.active) { parked = true; break; }
-      if (sbCar.lane.name !== "sb") { moved = true; break; }
+      if (sbCar.lane.name !== "sb") { movedAt = i * dt; break; }
     }
-    assert(!parked && !moved, "visible lane-end car neither vanishes nor teleports");
-    if (!parked && !moved) {
-      const d = Math.hypot(sbCar.obj.position.x + 2.4, sbCar.obj.position.z - 100);
-      assert(d < 8, `visible car holds at the lane end (${d.toFixed(1)} m from the end)`);
-    }
+    assert(!parked, "visible lane-end car never vanishes");
+    assert(movedAt > 1.0, `visible lane-end car pauses at the end before turning round (${movedAt.toFixed(1)} s)`);
+    assert(movedAt > 0 && movedAt < 8, "visible lane-end car U-turns instead of waiting forever");
   }
 }
 

@@ -23,7 +23,7 @@ export const ZONE_MIX = Object.freeze({
   // OrleaRouge is the state's neon crime capital: nightlife regulars, escorts,
   // street crews, and ordinary bar traffic share the same blocks. Keep everyone
   // civilian by default; NPC aggression still only starts after provocation.
-  urban: { hoodrat: 0.28, prostitute: 0.15, gayman: 0.09, lesbian: 0.09,
+  urban: { hoodrat: 0.26, prostitute: 0.22, gayman: 0.09, lesbian: 0.09,
            thug: 0.14, tuxedo: 0.12, highendescort: 0.1, redneck: 0.03 },
   town: { hoodrat: 0.56, redneck: 0.23, hobo: 0.13, gayman: 0.04, lesbian: 0.04 },
   commercial: { hoodrat: 0.32, redneck: 0.44, prostitute: 0.18, gayman: 0.03, lesbian: 0.03 },
@@ -52,7 +52,7 @@ export const ZONE_MIX = Object.freeze({
   // down North Ave 2, so the crowd is whoever a casino row draws — patrons in
   // jackets, tourists off the highway, escorts working the doors, and street
   // crews. Still civilian until provoked, exactly like OrleaRouge's blocks.
-  entertainment: { tuxedo: 0.2, tourist: 0.16, hoodrat: 0.16, highendescort: 0.12, prostitute: 0.12,
+  entertainment: { tuxedo: 0.2, tourist: 0.16, hoodrat: 0.16, highendescort: 0.14, prostitute: 0.2,
                    gayman: 0.08, lesbian: 0.08, suit: 0.08 }
 });
 export const HOG_CAP = 18;      // was 4 while the woods were one 272 m square; the state has pine country by the km

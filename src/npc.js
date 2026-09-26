@@ -107,6 +107,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
   // escorts, dockworkers, mechanics, hobos, the Frenchmen Street regulars — hears a shot from far
   // off and bolts, flat out and for a good while, directly away from it.
   const STANDS_GROUND = new Set(["hoodrat", "redneck", "thug", "klansman", "zombie", "hog", "mally", "bubba"]);
+  const AMBUSHERS = new Set(["hoodrat", "redneck", "hog"]);
   const PANIC_HEARING = 1.8;            // x the event's own radius: a pistol carries ~47 m, a shotgun ~72 m
   function panicEvent(p) {
     for (let i = events.length - 1; i >= 0; i--) {
@@ -350,6 +351,15 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
       return;
     }
 
+    // The locals who are actually dangerous: feral (territorial) hogs, and the hoodrats and rednecks who are not the timid sort, go for
+    // the player on sight — inside their own `aggro` range, shrunk by stealth and by being in a car — without waiting to be hurt first.
+    // (Everyone else stays a civilian; timid ones, and skittish hogs, still run.) The hostile budget (maxHostile) still caps the pile-on.
+    if (AMBUSHERS.has(e.type) && e.state !== "flee" && e.mood !== "timid" && e.mood !== "skittish" &&
+        !env.playerSafe && !(env.state && env.state.cinematic)) {
+      const reach = e.T.aggro * (env.stealth != null ? env.stealth : 1) * (env.veh ? 0.6 : 1);
+      if (dist < reach && becomeHostile(e)) return;
+    }
+
     // gunfire or a fight nearby: bystanders scatter, nobody joins in
     if (!STANDS_GROUND.has(e.type)) {
       const pev = panicEvent(p);
@@ -368,6 +378,20 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
       return;
     }
     // (the player merely being close is not a reason to do anything)
+
+    // Working girls call out to a player on foot: strut over, stop a few metres off, and make the offer (main.js speaks the line).
+    // Never while the player is in a car (that is the honk-and-pick-up trade) or in the middle of a fight / flight.
+    if ((e.type === "prostitute" || e.type === "highendescort") && !env.veh && !env.playerSafe && env.onSolicit &&
+        (e.state === "idle" || e.state === "wander" || e.state === "loiter") && dist < 16 && now >= (e.solicitAt || 0)) {
+      e.solicitAt = now + rand(16, 32);
+      if (dist > 3.2) {
+        setState(e, "wander", rand(4, 7));
+        const k = 2.4 / dist;
+        e.goal.set(env.player.x + (p.x - env.player.x) * k, 0, env.player.z + (p.z - env.player.z) * k);
+      }
+      env.onSolicit(e, dist);
+      return;
+    }
 
     if (e.state === "flee") {
       if (e.stateT <= 0) setState(e, "idle", rand(1, 3));

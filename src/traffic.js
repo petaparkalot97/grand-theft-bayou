@@ -155,6 +155,24 @@ export function createTraffic(o) {
   // resolve "next" names into lane objects so a car can hand itself over at the end
   const byName = new Map(lanes.map((l) => [l.name, l]));
   for (const l of lanes) if (l.next) l.next = byName.get(l.next) || null;
+  // Dead ends: a lane nobody continues gets a synthetic return lane — the same line run backwards, shifted one lane
+  // width to the car's own right — so the car U-turns at the end and drives back instead of parking there forever
+  // (a pile-up of stopped cars at every road that just stops). Real pairings above always win.
+  const LANE_W = 3.4;
+  for (const l of [...lanes]) {
+    if (l.next || l.length < 12) continue;
+    const back = l.pts.slice().reverse();
+    const pts = back.map((p, i) => {
+      const a = back[Math.max(0, i - 1)], b = back[Math.min(back.length - 1, i + 1)];
+      let dx = b.x - a.x, dz = b.y - a.y; const len = Math.hypot(dx, dz) || 1; dx /= len; dz /= len;
+      // right-hand side of the direction of travel (x = sin h, z = cos h): right = (dz, -dx)
+      return [p.x + dz * LANE_W, p.y - dx * LANE_W];
+    });
+    const ret = makeLane({ name: l.name + "~uturn", points: pts, cruise: l.cruise });
+    ret.next = l;                    // ...and round again: a circuit of its own
+    lanes.push(ret);
+    l.next = ret;
+  }
   const perLane = o.perLane || 4;
   const maxCars = o.maxCars || o.lanes.length * perLane;   // pool size
   const SPAWN_MIN = o.spawnMin || 75;
@@ -455,7 +473,10 @@ export function createTraffic(o) {
         // pulls up at the end and waits instead, which reads as a car paused at
         // the junction, not a glitch.
         if (car.s >= car.lane.length - 1) {
-          if (car.lane.next && dist > WRAP_HIDE) {
+          // hidden: swap at once. In view: pull up, wait a beat (a car "pausing at the junction"), then go — never wait forever.
+          car.endWait = (car.endWait || 0) + dt;
+          if (car.lane.next && (dist > WRAP_HIDE || car.endWait > 1.6)) {
+            car.endWait = 0;
             car.lane = car.lane.next;
             car.s = 1;                       // the return lane starts where this one ended
             car.think = 0;                   // re-decide speed for the new lane at once

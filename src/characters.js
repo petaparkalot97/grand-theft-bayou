@@ -435,8 +435,16 @@ class Hoodrat extends THREE.Object3D {
     this.hips = hips;
 
     // ---- torso ---------------------------------------------------------
-    const pelvis = add(hips, cyl(0.168 * bulk, 0.152 * bulk, 0.17, 12), female ? legging : denim, 0, -0.06, 0);
+    // opts.glam (female): bare legs, a mini skirt and heels — the street workers' and escorts' wardrobe (characters.js randomProstitute)
+    const glam = female && !!opts.glam;
+    const skirtMat = glam ? mat("lycra", opts.skirt != null ? opts.skirt : 0x111111) : null;
+    const pelvis = add(hips, cyl(0.168 * bulk, 0.152 * bulk, 0.17, 12), glam ? skirtMat : female ? legging : denim, 0, -0.06, 0);
     pelvis.scale.z = 0.84;
+    if (glam) {
+      // a short flared skirt: hem well above mid-thigh
+      const sk = add(hips, cyl(0.172 * bulk, 0.235 * bulk, 0.2, 16), skirtMat, 0, -0.16, 0);
+      sk.scale.z = 0.9;
+    }
 
     const torso = new THREE.Object3D();
     hips.add(torso);
@@ -455,7 +463,7 @@ class Hoodrat extends THREE.Object3D {
         strap.rotation.z = side * 0.2;
       }
       // high waistband of the leggings
-      const wb = add(torso, cyl(0.172 * bulk, 0.168 * bulk, 0.1, 12), legging, 0, -0.03, 0);
+      const wb = add(torso, cyl(0.172 * bulk, 0.168 * bulk, 0.1, 12), glam ? skirtMat : legging, 0, -0.03, 0);
       wb.scale.z = 0.86;
     } else {
       // ribbed tank straight down over the waist, belt at the hips
@@ -811,9 +819,15 @@ class Hoodrat extends THREE.Object3D {
       pivot.add(knee);
 
       if (female) {
-        // leggings: slim, continuous
-        add(pivot, cyl(0.132 * bulk, 0.092 * bulk, 0.46, 10), legging, 0, -0.22, 0);
-        add(knee, cyl(0.088 * bulk, 0.056 * bulk, 0.44, 10), legging, 0, -0.22, 0);
+        // leggings: slim, continuous (glam: bare skin, or thigh-high boots when opts.thighBoots)
+        const legM = glam ? skin : legging;
+        add(pivot, cyl(0.132 * bulk, 0.092 * bulk, 0.46, 10), legM, 0, -0.22, 0);
+        add(knee, cyl(0.088 * bulk, 0.056 * bulk, 0.44, 10), legM, 0, -0.22, 0);
+        if (glam && opts.thighBoots) {
+          const bm = mat("leather", opts.bootColor != null ? opts.bootColor : 0x0d0b0c);
+          add(pivot, cyl(0.137 * bulk, 0.096 * bulk, 0.3, 10), bm, 0, -0.32, 0);        // over the knee
+          add(knee, cyl(0.092 * bulk, 0.062 * bulk, 0.44, 10), bm, 0, -0.22, 0);
+        }
       } else {
         // baggy jeans: wide all the way down, stacked over the shoe
         // (opts.slim: trousers that fit — a suit — instead of the crew's baggy stacked jeans)
@@ -826,7 +840,13 @@ class Hoodrat extends THREE.Object3D {
       foot.position.y = -0.44;
       knee.add(foot);
       const shoe = opts.shoe || (!styled ? "classic" : female ? "high" : crew.maleShoe);
-      if (shoe === "boots") {
+      if (shoe === "heels") {
+        // stilettos: a strap-and-sole platform on a spike heel, the arch tipped toe-down
+        const hm = mat("leather", opts.heelColor != null ? opts.heelColor : crew.shoe);
+        add(foot, box(0.09, 0.03, 0.2), hm, 0, -0.03, 0.06).rotation.x = 0.28;
+        add(foot, box(0.085, 0.06, 0.08), hm, 0, 0.0, -0.04);                          // heel counter
+        add(foot, cyl(0.011, 0.017, 0.06, 6), hm, 0, -0.056, -0.05);                     // the spike
+      } else if (shoe === "boots") {
         // plain work boots: a taller leather shaft over a thick heel
         const bootMat = mat("leather", opts.bootColor != null ? opts.bootColor : 0x3d2b1c);
         add(foot, cyl(0.098, 0.11, 0.22, 10), bootMat, 0, 0.06, 0.01);   // shaft
@@ -1756,7 +1776,7 @@ export function makeDeputy(opts = {}) {
 }
 
 const PROSTITUTE_TOPS = [0xe62b7e, 0x9b27b0, 0xff5722, 0xe91e63, 0x00bcd4, 0xffeb3b];
-const PROSTITUTE_BOTTOMS = [0x111111, 0x881144, 0x221144, 0xcc2277];
+const PROSTITUTE_BOTTOMS = [0x111111, 0x881144, 0x221144, 0xcc2277, 0xe62b7e, 0xf2f2f2];
 
 /** A random prostitute walking the streets at night. */
 export function randomProstitute(rng = Math.random, height, opts = {}) {
@@ -1769,8 +1789,14 @@ export function randomProstitute(rng = Math.random, height, opts = {}) {
     skin: SKIN_TONES[(rng() * SKIN_TONES.length) | 0],
     top,
     denim,
-    headwear: "band",
+    headwear: "none",
     curly: rng() < 0.5,
+    glam: true,                                 // bare legs, a mini skirt, stilettos or thigh-high boots
+    skirt: denim,
+    thighBoots: rng() < 0.35,
+    bootColor: [0x0d0b0c, 0x7a1030, 0xe62b7e][(rng() * 3) | 0],
+    shoe: "heels",
+    heelColor: rng() < 0.5 ? 0x0d0b0c : top,
     crew: { cloth: top, chain: 0xd4af37, shoe: top, legging: denim },
     height,
     ...opts,
@@ -1781,6 +1807,9 @@ export function randomHighEndEscort(rng = Math.random, height = 1.82, opts = {})
   return randomProstitute(rng, height, {
     top: [0x17151f, 0x7f173d, 0x24314f][(rng() * 3) | 0],
     denim: 0x17151f,
+    skirt: [0x17151f, 0x7f173d, 0x24314f][(rng() * 3) | 0],   // a sleek short dress line rather than the street's neon
+    thighBoots: false,
+    heelColor: 0xd4af37,
     headwear: "none",
     crew: { cloth: 0x17151f, chain: 0xd4af37, shoe: 0xd4af37, legging: 0x17151f },
     ...opts,

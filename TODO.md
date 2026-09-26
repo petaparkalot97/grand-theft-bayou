@@ -19,6 +19,29 @@
 - `COMPLETE` — reviewed and tested
 - `CANCELLED` — intentionally abandoned
 
+## 📥 HUMAN REQUESTS 2026-09-26 (session ending: PC reboot) — read first
+
+**Done this session (pushed):** Pip-Boy recolour (violet/cyan/pink gradients) · dead-end traffic U-turns (traffic.js: synthetic return lanes, cars turn after a 1.6 s pause; test updated) ·
+hostile hogs/hoodrats/rednecks again (npc.js `AMBUSHERS`: territorial hogs + non-timid hoodrats/rednecks attack on sight within `aggro`, shrunk by stealth/car; the old code only fought back once hurt) ·
+Esc menu has an OPTIONS tab (start-menu options panel is re-parented in) and a SAVE / LOAD tab · WASTED/BUSTED now respawn outside the nearest hospital (main.js `respawnAtHospital`; no reload) ·
+save/load: 3 localStorage slots (`src/savegame.js`; main.js `snapshotGame/applySave/launchFromSave`), main-menu "Load Game", Free Roam + Zombie only (position, hp, cash, guns/ammo, kills, clock, Pip-Boy character) ·
+prostitutes/escorts: mini skirt, bare legs, stilettos/thigh boots (`glam` in characters.js), call out to a player on foot (`solicit` lines, caption only) · +26 pedestrians and more prostitutes in OrleaRouge/Crown Strip ·
+slider tracks fixed in Options · GPU-aware default tier, governor at <45 fps, puddle cull.
+Local: `npm i puppeteer three@0.160.0 ws --no-save` installed (the old hand-written `node_modules/three` stub is gone; tests pass on real three). Never commit `tools/qa/out/`.
+
+**NOT done — the big requests, in the human's words, none started beyond reading the code (each is its own multi-session task):**
+- [ ] **Empty areas near spawn**: fill undeveloped parts of the map close to Chatboro.
+- [ ] **Nothing on roads**: houses / trees / street lamps must never sit in a carriageway. Plan: every lane polyline in `traffic` lanes is a road centreline; write `tools/qa/road_clearance.mjs` (puppeteer; needs a mesh/blocker census within ~4 m of every lane) then fix the offenders per district.
+- [ ] **Terrain: hills and valleys** — the whole world is flat (y=0 everywhere: blockers, NPCs, vehicles, batching). Needs a height function `groundY(x,z)` used by ground/roads/vehicles/NPCs/camera before any hills.
+- [ ] **Highways/freeways**: elevated overpasses, tunnels through mountains, 2+ lanes each way (an unfinished one exists near spawn, connected to nothing). Depends on terrain above.
+- [ ] **Multi-lane roads everywhere** (traffic has 1 lane per direction and no lane changing; overtaking means the wrong lane). Needs parallel lanes + lane-change/overtake logic in traffic.js and wider road meshes/markings.
+- [ ] **Enter Happy Hogs / Billy Jeans branches, Popeyes, hospitals** (interiors; branch frontages are exterior-only, see TASK-084 note; `buildVenue` is bound to the Crown Strip, generalise it first).
+- [ ] **Better character models** ("designs for people look really cheap"): the human asked for research — see `docs/CHARACTER_CRAFT.md`; the rig is still procedural primitives. Needs real GLB characters (e.g. free CC0 sets) + skeletal animation, or a much richer procedural pass.
+- [ ] Prostitute/escort solicitation lines have no recorded voice: add `"solicit"` to `allVoiceLines()` buckets and run `tools/pedestrian-voiceover-gen.mjs` (Fish Audio key). Solicitation is banter only; no on-foot transaction.
+- [ ] Save/load: Story mode cannot be saved (scripted chapters, no resume points); vehicles, parked cars, world state, safehouse/loot state are not saved. A cross-mode load from the pause menu reloads the page (sessionStorage `gtb.autoload`) and starts via Load — untested in a real browser (audio needs a click).
+- [ ] Respawn: no hospital bill / weapon loss; sheriffs stand down because wanted=0. Multiplayer has its own server-driven respawn (`onRespawned`), untouched.
+- [ ] Not verified on a real GPU: the new outfits' look (only a distant headless screenshot), Options tab layout at other resolutions.
+
 ## 🚨 DEPLOY / CI STATUS (2026-09-26) — read first
 
 - **Live site = https://grand-theft-bayou-c2l.pages.dev (Cloudflare Pages, *friend's* account), git-connected to

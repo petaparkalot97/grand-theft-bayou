@@ -14,7 +14,7 @@ import { batchStatic } from "./merge.js";
 import { initAudio, createCarAudio, resumeAudio, startZombieAmbience, stopZombieAmbience, playZombieScream } from "./audio.js";
 import { initWeapons3D, updateWeapon3D, playFireAnim3D, notifyReload3D, getWeaponMuzzle, RemoteWeaponRig } from "./weapons_3d.js";
 import { createNpcSystem, MAX_HOSTILE } from "./npc.js";
-import { bumpLine, fightLine, voiceType } from "./pedestrianChatter.js";
+import { bumpLine, fightLine, solicitLine, voiceType } from "./pedestrianChatter.js";
 import { pedestrianVoiceWho } from "./voiceCast.js";
 import { createCameraController } from "./camera.js";
 import { createFpsView } from "./fpsview.js";
@@ -45,6 +45,7 @@ import { createTips } from "./tips.js";
 import { buildMotorbike, buildScooter, buildPushBike, buildLimo } from "./bikes.js";
 import { skyState } from "./daycycle.js";
 import { createPauseMenu } from "./pauseMenu.js";
+import { listSaves, getSave, putSave, deleteSave, describeSave, SAVE_SLOTS } from "./savegame.js";
 import { createLoot } from "./loot.js";
 import { createWorldTime } from "./worldtime.js";
 import { createWeather } from "./weather.js";
@@ -210,6 +211,7 @@ const menuPanels = {
   root: document.getElementById("menuRoot"),
   start: document.getElementById("menuStartSub"),
   options: document.getElementById("menuOptionsPanel"),
+  load: document.getElementById("menuLoadPanel"),
   exit: document.getElementById("menuExitPanel"),
 };
 const gfxChoices = document.getElementById("gfxChoices");
@@ -217,9 +219,25 @@ const musicVolumeInput = document.getElementById("musicVolume");
 const muteToggleBtn = document.getElementById("muteToggle");
 const exitYesBtn = document.getElementById("exitYes");
 
+// The main menu's Load Game: one row per slot; an empty slot is disabled. Saves are launched through launchFromSave (below).
+function renderLoadMenu() {
+  const box = document.getElementById("loadSlots");
+  if (!box) return;
+  box.innerHTML = "";
+  for (const { slot, save } of listSaves()) {
+    const b = document.createElement("button");
+    b.className = "menu-item";
+    b.disabled = !save || !beginGame;
+    b.textContent = `${slot + 1}. ${describeSave(save)}`;
+    b.style.fontSize = "clamp(14px, 1.6vw, 20px)";
+    b.onclick = () => launchFromSave(save);
+    box.appendChild(b);
+  }
+}
 function showMenuPanel(name) {
   for (const [key, el] of Object.entries(menuPanels)) el.hidden = key !== name;
   if (name === "options") syncGfxChoices();
+  if (name === "load") renderLoadMenu();
   const first = menuPanels[name].querySelector(".menu-item:not(:disabled)");
   if (first) first.focus();
 }
@@ -1605,7 +1623,7 @@ const arsenal = createArsenal({ state, flashObjective, onReload: (id, seconds) =
   initWeapons3D(scene);
 const kills = { hog: 0, redneck: 0, hoodrat: 0, prostitute: 0 };
 const EMOJI = { hog: "🐗", redneck: "🧢", hoodrat: "🎧", prostitute: "💋" };
-const pauseMenu = createPauseMenu({ MAP, state, getPlayerPos: () => playerPos, minimap, arsenal, kills });
+const pauseMenu = createPauseMenu({ MAP, state, getPlayerPos: () => playerPos, minimap, arsenal, kills, saves: { slots: () => saveApi.slots(), describe: (x) => saveApi.describe(x), save: (n) => saveApi.save(n), load: (n) => saveApi.load(n), remove: (n) => saveApi.remove(n), canSave: () => saveApi.canSave() } });
 // The Pip-Boy (pipboy.js): zombie mode's character creation and the Tab screen. The world holds still while it is open.
 const pipboy = createPipboy({
   onOpen: () => { state.paused = true; },
@@ -1896,8 +1914,8 @@ function openMultiplayer() {
       syncHUD();
       player.position.set(msg.x, msg.y, msg.z);
       playerPos.set(msg.x, msg.y, msg.z);
-      camCtl.reset();
-      camCtl.snap();
+      camCtl.reset?.();
+      camCtl.snap?.();
       player.visible = true;
       if (state.veh) {
         state.veh = null;
@@ -2388,7 +2406,14 @@ const npcEnv = {
   get playerSafe() { return state.zombieMode && safehouses.insideSafehouse(playerPos.x, playerPos.z); },
   safehouseAt: (x, z) => (state.zombieMode ? safehouses.safehouseAt(x, z) : null),
   onScream: playZombieScream,   // a Screamer (zombies.js) going hostile
+  // A prostitute or escort calling out to a player on foot (npc.js). One caller at a time, so a street of them is not a wall of text.
+  onSolicit: (e) => {
+    if (solicitCd > 0 || state.cinematic || state.over) return;
+    solicitCd = 5;
+    speakPedestrian(e, solicitLine(e.type, e.T.label));
+  },
 };
+let solicitCd = 0;
 // What spawns where comes from the world context (spawnzones.js): no hogs in
 // town or on the highway, an occasional one in the woods.
 const spawnZones = createSpawnZones({
@@ -3250,8 +3275,12 @@ function updateEnemyPopulation(dt) {
   let alive = 0;
   for (const e of enemies) if (!e.dead && e.type !== "zombie") alive++;
   enemyRespawnCd -= dt;
-  if (enemyRespawnCd > 0 || alive >= ENEMY_CAP) return;
-  enemyRespawnCd = alive < ENEMY_CAP * 0.5 ? 0.5 : 1.1;
+  // The nightlife (OrleaRouge's blocks, the Crown Strip) should be busy: more people on the pavements there, filled in faster
+  const zHere = spawnZones.zoneAt(playerPos.x, playerPos.z);
+  const busy = zHere === "urban" || zHere === "entertainment";
+  const cap = ENEMY_CAP + (busy ? 26 : 0);
+  if (enemyRespawnCd > 0 || alive >= cap) return;
+  enemyRespawnCd = alive < cap * 0.5 ? (busy ? 0.25 : 0.5) : (busy ? 0.6 : 1.1);
 
   // spawn out of sight; the zone decides who (spawnzones.js)
   const spot = spawnZones.pick(playerPos, enemies);
@@ -4314,19 +4343,139 @@ function scoreLine() {
     ${EMOJI.redneck}${kills.redneck} ${EMOJI.hoodrat}${kills.hoodrat}
     &nbsp;·&nbsp; ${state.wanted}★ at the line`;
 }
+// Dying or getting busted (free roam / zombie mode; a story chapter can still catch either through storyFail): a beat of
+// WASTED / BUSTED on screen, then you come to on the pavement outside the nearest hospital, patched up, on foot, with the law
+// called off. The game carries on — no reload.
+const HOSPITAL_FALLBACK = { x: 550, z: 513.6, face: 0, name: "Oyster Bay Medical" };   // if no hospital service is registered yet
+let respawning = false;
+function hospitalSpot() {
+  const h = (services && services.nearest("hospital", playerPos.x, playerPos.z)) || HOSPITAL_FALLBACK;
+  const f = h.face || 0, dx = Math.sin(f), dz = Math.cos(f);
+  const lx = dz, lz = -dx;                                   // along the frontage
+  for (const out of [7, 10, 13, 17]) for (const side of [0, 4, -4, 8, -8]) {
+    const x = h.x + dx * out + lx * side, z = h.z + dz * out + lz * side;
+    let hit = false;
+    blockerGrid.near(x, z, 6, (b) => { if (b._grid === "static" && Math.hypot(b.x - x, b.z - z) < b.r + 1.6) { hit = true; return true; } });
+    if (!hit) return { x, z, name: h.name, heading: Math.atan2(dx, dz) };
+  }
+  return { x: h.x + dx * 8, z: h.z + dz * 8, name: h.name, heading: Math.atan2(dx, dz) };
+}
+function respawnAtHospital(kind) {
+  if (respawning) return;
+  respawning = true;
+  state.over = true;                                          // the world holds still under the banner
+  const b = document.createElement("div");
+  b.style.cssText = "position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;" +
+    "background:radial-gradient(ellipse at center,rgba(8,16,10,.55),rgba(3,5,4,.9));pointer-events:none;transition:opacity .6s;";
+  b.innerHTML = kind === "busted"
+    ? `<h1 class="end"><span style="color:#2e6fff;font-style:italic">BUSTED</span></h1>`
+    : `<h1 class="end"><span style="color:#b8202a;font-style:italic">WASTED</span></h1>`;
+  document.body.appendChild(b);
+  setTimeout(() => {
+    const spot = hospitalSpot();
+    if (state.veh) { state.veh.speed = 0; state.veh = null; }
+    state.hp = 100; state.sp = 100; state.hurtCd = 1; state.bustCd = 0; state.vy = 0;
+    state.heat = 0; state.wanted = 0; state.crimeCd = 0;
+    police.clearPursuit();
+    if (kind === "busted") state.cash = Math.floor(state.cash * 0.9);      // bail
+    player.position.set(spot.x, 0, spot.z);
+    playerPos.set(spot.x, 0, spot.z);
+    if (player._last) player._last.copy(player.position);
+    player.visible = true;
+    camCtl.snap?.();
+    state.over = false;
+    respawning = false;
+    syncHUD();
+    flashObjective(kind === "busted" ? `Bailed out, dumped outside ${spot.name}.` : `You wake up outside ${spot.name}.`);
+    b.style.opacity = "0";
+    setTimeout(() => b.remove(), 700);
+  }, 2600);
+}
+function wasted() { lose(); }
 function lose() {
+  if (respawning) return;
   if (storyFail && storyFail("wasted")) return;   // a mission may respawn you instead
-  endScreen('<span style="color:#b8202a;font-style:italic">WASTED</span>',
-    `The swamp took you back.<br><br>${scoreLine()}`,
-    "Respawn");
+  respawnAtHospital("wasted");
 }
 function busted() {
+  if (respawning) return;
   if (storyFail && storyFail("busted")) return;
-  endScreen('<span style="color:#2e6fff;font-style:italic">BUSTED</span>',
-    `The Chatboro Sheriff's Office would like a word. Bail is more than you've got,
-     and Sheriff Mercer is smiling.<br><br>${scoreLine()}`,
-    "Make bail");
+  respawnAtHospital("busted");
 }
+
+// ---------------------------------------------------------------- save / load (savegame.js)
+// Free Roam and Zombie Survival can be saved: where you stand, health, cash, guns and ammo, kills, the clock and (zombie) the
+// Pip-Boy character. Story chapters are scripted set pieces with no resume point yet, so they cannot be saved.
+function currentPlaceName() {
+  const z = spawnZones && spawnZones.zoneAt(playerPos.x, playerPos.z);
+  const nice = { urban: "OrleaRouge", entertainment: "the Crown Strip", commercial: "Chatboro", rural: "the countryside", forest: "the pines", industrial: "the docks", resort: "the lakes" };
+  return (z && nice[z]) || "the Bayou";
+}
+function snapshotGame() {
+  const mode = state.zombieMode ? "zombie" : state.freeRoam ? "free" : null;
+  if (!mode || !state.running || state.cinematic) return null;
+  const at = state.veh ? state.veh.obj.position : playerPos;
+  return {
+    mode, character: state.selectedCharacter, place: currentPlaceName(),
+    x: at.x, z: at.z, hp: state.hp, sp: state.sp, cash: state.cash,
+    weapon: state.weapon, ammo: Number.isFinite(state.ammo) ? state.ammo : null,
+    reserve: mode === "zombie" ? { ...state.reserve } : null,     // free roam's ammo is endless: nothing to keep
+    kills: { ...kills }, hours: worldTime.hours, day: worldTime.day,
+    stats: mode === "zombie" && state.stats ? state.stats.toJSON() : null,
+  };
+}
+function saveToSlot(slot) {
+  const snap = snapshotGame();
+  if (!snap) { flashObjective("Cannot save here: only Free Roam and Zombie Survival can be saved."); return false; }
+  const ok = putSave(slot, snap);
+  flashObjective(ok ? `Game saved to slot ${slot + 1}.` : "Could not save (browser storage is blocked).");
+  return ok;
+}
+/** Put a save's contents into the running game (already in the right mode). */
+function applySave(d) {
+  if (state.veh) { state.veh.speed = 0; state.veh = null; }
+  teleportPlayer(d.x, d.z, 0);
+  player.visible = true;
+  state.hp = Math.max(1, d.hp || 100); state.sp = d.sp != null ? d.sp : 100; state.cash = d.cash || 0;
+  state.heat = 0; state.wanted = 0; state.crimeCd = 0; state.bustCd = 0; state.vy = 0;
+  police.clearPursuit();
+  for (const k of Object.keys(kills)) kills[k] = (d.kills && d.kills[k]) || 0;
+  worldTime.setTime(d.hours != null ? d.hours : 12, d.day);
+  if (d.mode === "zombie") {
+    if (d.stats && state.stats) state.stats.restore(d.stats);
+    if (d.reserve) state.reserve = { ...d.reserve };
+    if (d.weapon && arsenal.WEAPONS[d.weapon]) { state.weapon = d.weapon; state.ammo = d.ammo != null ? d.ammo : 0; }
+  } else if (d.weapon && arsenal.WEAPONS[d.weapon]) arsenal.selectWeapon(d.weapon);
+  arsenal.render();
+  camCtl.snap?.();
+  syncHUD();
+  flashObjective("Game loaded.");
+}
+/** From the main menu: start the save's mode, then apply it. */
+function launchFromSave(d) {
+  if (gameLaunched || !beginGame) return false;
+  pendingLaunch = d.mode === "zombie" ? "zombie" : "free";
+  if (d.mode === "zombie") {
+    try { state.stats = createCharacter({ name: d.stats.name, special: d.stats.special, traits: d.stats.traits, tagged: d.stats.tagged, background: d.stats.background }); }
+    catch (e) { flashObjective("That save's character is not valid."); return false; }
+  }
+  selectionIndex = Math.max(0, characterIds.indexOf(d.character || "keseme"));
+  confirmCharacter();
+  applySave(d);
+  return true;
+}
+/** In game: same mode -> apply now; other mode -> reload and let the boot pick it up (sessionStorage). */
+function loadFromSlot(slot) {
+  const d = getSave(slot);
+  if (!d) return false;
+  if (!gameLaunched) return launchFromSave(d);
+  const here = state.zombieMode ? "zombie" : state.freeRoam ? "free" : "story";
+  if (here === d.mode) { pauseMenu.close(); applySave(d); return true; }
+  try { sessionStorage.setItem("gtb.autoload", String(slot)); } catch (e) { flashObjective("Cannot switch mode (browser storage is blocked)."); return false; }
+  location.reload();
+  return true;
+}
+const saveApi = { slots: () => listSaves(), describe: describeSave, save: saveToSlot, load: loadFromSlot, remove: deleteSave, canSave: () => !!snapshotGame() };
 
 // ---------------------------------------------------------------- main loop
 const clock = new THREE.Clock();
@@ -4862,6 +5011,7 @@ function onFootUpdate(dt) {
     checkPedestrianBump();
   }
   bumpCd = Math.max(0, bumpCd - dt);
+  solicitCd = Math.max(0, solicitCd - dt);
   if (!(nolantis && nolantis.inside)) {
     playerPos.x = THREE.MathUtils.clamp(playerPos.x, MAP.minX + 4, MAP.maxX - 4);
     playerPos.z = THREE.MathUtils.clamp(playerPos.z, MAP.minZ + 4, MAP.maxZ - 4);
@@ -5701,6 +5851,15 @@ async function boot() {
     state.stats = createCharacter(build);
     pendingLaunch = "zombie"; selectionIndex = characterIds.indexOf("keseme"); confirmCharacter();
   };
+  // Loaded from the pause menu across modes: the page reloaded with the slot in sessionStorage - start straight into it.
+  try {
+    const slot = sessionStorage.getItem("gtb.autoload");
+    if (slot != null) {
+      sessionStorage.removeItem("gtb.autoload");
+      const d = getSave(Number(slot));
+      if (d) launchFromSave(d);
+    }
+  } catch (e) { /* no session storage: the player just uses Load Game */ }
 }
 
 // Loading screen: while boot() is loading assets, the menu (logo, Start/

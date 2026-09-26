@@ -67,7 +67,7 @@ const LANDMARK_PINS = [
   { name: "Warden's Surplus", x: 783, z: 323, icon: "🔫", category: "Shops", region: "Delta Road" },
 ];
 
-export function createPauseMenu({ MAP, state, getPlayerPos, minimap, arsenal, kills = {} }) {
+export function createPauseMenu({ MAP, state, getPlayerPos, minimap, arsenal, kills = {}, saves = null }) {
   let activeTab = "MAP";
   let isOpen = false;
 
@@ -98,7 +98,7 @@ export function createPauseMenu({ MAP, state, getPlayerPos, minimap, arsenal, ki
   const nav = document.createElement("div");
   nav.style.cssText = "display:flex;gap:12px;";
 
-  const tabs = ["MAP", "STATS", "WEAPONS", "RESUME"];
+  const tabs = saves ? ["MAP", "STATS", "WEAPONS", "SAVE / LOAD", "OPTIONS", "RESUME"] : ["MAP", "STATS", "WEAPONS", "OPTIONS", "RESUME"];
   const tabBtns = {};
 
   tabs.forEach((tab) => {
@@ -161,6 +161,65 @@ export function createPauseMenu({ MAP, state, getPlayerPos, minimap, arsenal, ki
   const weaponsPanel = document.createElement("div");
   weaponsPanel.style.cssText = "flex:1;padding:40px;display:none;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;overflow-y:auto;";
   content.appendChild(weaponsPanel);
+
+  // --- SAVE / LOAD VIEW PANEL --- (savegame slots; main.js supplies `saves`)
+  const savePanel = document.createElement("div");
+  savePanel.style.cssText = "flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;overflow-y:auto;";
+  content.appendChild(savePanel);
+  function renderSaves() {
+    savePanel.innerHTML = "";
+    if (!saves) return;
+    const note = document.createElement("div");
+    note.style.cssText = "font:600 13px system-ui,sans-serif;color:#8090a0;";
+    note.textContent = saves.canSave() ? "Free Roam and Zombie Survival can be saved to any slot." : "Saving is only available in Free Roam and Zombie Survival.";
+    savePanel.appendChild(note);
+    const btnCss = "border:1px solid #3a4a58;background:#16202a;color:#f4f1ea;font:700 13px system-ui,sans-serif;padding:8px 16px;border-radius:6px;cursor:pointer;";
+    for (const { slot, save } of saves.slots()) {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:10px;width:min(820px,94%);background:rgba(16,22,28,.9);border:1px solid #2a3540;border-radius:8px;padding:10px 14px;";
+      const label = document.createElement("div");
+      label.style.cssText = "flex:1;font:700 14px system-ui,sans-serif;";
+      label.textContent = `Slot ${slot + 1}: ${saves.describe(save)}`;
+      row.appendChild(label);
+      const mk = (text, fn, enabled) => {
+        const b = document.createElement("button");
+        b.style.cssText = btnCss + (enabled ? "" : "opacity:.35;cursor:default;");
+        b.textContent = text;
+        b.onclick = () => { if (enabled) fn(); };
+        row.appendChild(b);
+      };
+      mk("SAVE", () => { saves.save(slot); renderSaves(); }, saves.canSave());
+      mk("LOAD", () => { saves.load(slot); }, !!save);
+      mk("DELETE", () => { saves.remove(slot); renderSaves(); }, !!save);
+      savePanel.appendChild(row);
+    }
+  }
+
+  // --- OPTIONS VIEW PANEL ---
+  // The start menu's own options box (graphics, mouse, FOV, invert-Y, music, sound: index.html #menuOptionsPanel, wired in
+  // main.js by id) is moved in here while the tab is showing and put back after, so the in-game settings ARE the
+  // main-menu settings — one set of controls, one saved state.
+  const optionsPanel = document.createElement("div");
+  optionsPanel.style.cssText = "flex:1;display:none;align-items:center;justify-content:center;overflow-y:auto;padding:24px;";
+  content.appendChild(optionsPanel);
+  let optionsHome = null;
+  function mountOptions(on) {
+    const box = document.getElementById && document.getElementById("menuOptionsPanel");
+    if (!box) return;
+    if (on) {
+      if (!optionsHome) optionsHome = { parent: box.parentNode, next: box.nextSibling, hidden: box.hidden };
+      box.hidden = false;
+      const back = box.querySelector(".menu-back");
+      if (back) back.style.display = "none";
+      optionsPanel.appendChild(box);
+    } else if (optionsHome) {
+      const back = box.querySelector(".menu-back");
+      if (back) back.style.display = "";
+      box.hidden = true;
+      optionsHome.parent.insertBefore(box, optionsHome.next);
+      optionsHome = null;
+    }
+  }
 
   // Footer Bar
   const footer = document.createElement("div");
@@ -225,6 +284,10 @@ export function createPauseMenu({ MAP, state, getPlayerPos, minimap, arsenal, ki
     sidebar.style.display = tab === "MAP" ? "flex" : "none";
     statsPanel.style.display = tab === "STATS" ? "flex" : "none";
     weaponsPanel.style.display = tab === "WEAPONS" ? "grid" : "none";
+    savePanel.style.display = tab === "SAVE / LOAD" ? "flex" : "none";
+    if (tab === "SAVE / LOAD") renderSaves();
+    optionsPanel.style.display = tab === "OPTIONS" ? "flex" : "none";
+    mountOptions(tab === "OPTIONS");
 
     if (tab === "MAP") {
       resizeMap();
@@ -519,6 +582,7 @@ export function createPauseMenu({ MAP, state, getPlayerPos, minimap, arsenal, ki
   function close() {
     isOpen = false;
     state.paused = false;
+    mountOptions(false);
     overlay.style.display = "none";
   }
 
