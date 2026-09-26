@@ -24,11 +24,13 @@
 - **Live site = Cloudflare Pages project `grand-theft-bayou` on the *friend's* account, git-connected to
   `petaparkalot97/grand-theft-bayou` (`origin`).** Pushing to `origin/main` is what deploys. `npm run deploy`
   (wrangler direct upload) goes to whatever account is logged in locally — that is NOT the live site. Don't use it.
-- **Every Pages build from `218423a` on failed** -> the live site was stuck on `d2ea9ac`. Cause (inferred; the
-  friend's build logs aren't visible from here): `218423a` added `puppeteer` as a devDependency, the lockfile has no
-  entry for it, so Pages' `npm install` tried to download Chromium. Fix: `.puppeteerrc.cjs` sets `skipDownload` on
-  `CF_PAGES`/`CI`. **If the next Pages build still fails, get the log from the friend's dashboard** (GitHub commit ->
-  Cloudflare Pages check -> View logs) and put it here.
+- **Every Pages build from `218423a` on failed** -> the live site was stuck on `d2ea9ac`. Cause (reproduced locally):
+  `218423a` added `puppeteer` to `package.json` without updating `package-lock.json`, and Pages installs with
+  `npm ci`, which refuses an out-of-sync lockfile ("Missing: puppeteer@23.11.1 from lock file"). Fixed by syncing the
+  lockfile. **Whenever `package.json` dependencies change, run `npm install` and commit `package-lock.json` too.**
+  Also added `.puppeteerrc.cjs` so Pages/CI never download Chromium (would be slow/fail even with a synced lock).
+  If a Pages build still fails, get the log from the friend's dashboard (GitHub commit -> Cloudflare Pages check ->
+  View logs) and put it here.
 - **CI (`ci.yml`) had failed on every push since it was added:** `tools/qa/lib/three_math.mjs` patched the real
   `three` that CI installs (it is only meant for the local stub). Now split: `three_math.mjs` imports
   `three_math_stub.mjs` only when `three` is the stub. Verified: `npm test` green on both stub and real `three@0.160.0`.
