@@ -26,7 +26,7 @@ export function buildCorridors(R) {
     name: "Oyster approach", seed: 61001, bounds: { x0: 60, x1: 392, z0: 530, z1: 670 },
     road: { name: "Oyster Highway", points: [[70, 600], [392, 600]], width: 10 },
     profile: {
-      mix: [[3, "farm"], [2, "bungalow"], [2, "trailer"], [2, "stand"], [1, "gas"], [1, "church"], [1, "cottage"]], density: 0.5, spacing: 38,
+      mix: [[3, "farm"], [2, "bungalow"], [2, "trailer"], [2, "stand"], [1, "gas"], [1, "church"], [1, "cottage"], [1, "daiquiri"], [1, "crawfish"]], density: 0.5, spacing: 38,
       forced: [{ at: 120, side: 1, kind: "gas" }],
       billboards: [{ at: 150, side: -1, ry: -Math.PI / 2, headline: "OYSTER BAY", sub: "Fresh seafood · 12 miles", graffiti: "OVERRATED" }],
       forest: pines(12),
@@ -68,7 +68,7 @@ export function buildCorridors(R) {
     junctions: [{ name: "Port Highway stub", points: [[-6, -600], [60, -600]], width: 12 }, { name: "Red Dust stub", points: [[-6, -600], [-70, -600]], width: 9 }],
     avoid: [{ at: -600, r: 34 }],
     profile: {
-      mix: [[4, "farm"], [2, "bungalow"], [2, "trailer"], [2, "stand"], [1, "gas"], [1, "church"], [1, "cabin"]], density: 0.5, spacing: 44, footprint: { w: 30, d: 28 },
+      mix: [[4, "farm"], [2, "bungalow"], [2, "trailer"], [2, "stand"], [1, "gas"], [1, "church"], [1, "cabin"], [1, "danceHall"], [1, "daiquiri"], [1, "crawfish"]], density: 0.5, spacing: 44, footprint: { w: 30, d: 28 },
       forced: [{ at: -760, side: 1, kind: "gas" }, { at: -760, side: -1, kind: "diner" }, { at: -940, side: 1, kind: "motel" }, { at: -1040, side: -1, kind: "popeyes" }],
       // -520 and -700 were inside Chatboro (z -720..-500), where roadside.js now
       // refuses to place anything. Moved onto the approaches either side of the
@@ -89,7 +89,7 @@ export function buildCorridors(R) {
     junctions: [{ name: "Oyster Highway stub", points: [[-6, 600], [60, 600]], width: 10 }, { name: "Causeway stub", points: [[-6, 750], [-70, 750]], width: 12 }],
     avoid: [{ at: 600, r: 34 }, { at: 750, r: 34 }],
     profile: {
-      mix: [[3, "cabin"], [3, "stilt"], [2, "trailer"], [2, "stand"], [1, "gas"], [1, "church"], [1, "cottage"]], density: 0.5, spacing: 44, footprint: { w: 30, d: 28 },
+      mix: [[3, "cabin"], [3, "stilt"], [2, "trailer"], [2, "stand"], [1, "gas"], [1, "church"], [1, "cottage"], [2, "danceHall"], [1, "daiquiri"], [2, "crawfish"]], density: 0.5, spacing: 44, footprint: { w: 30, d: 28 },
       forced: [{ at: 900, side: -1, kind: "gas" }, { at: 900, side: 1, kind: "diner" }, { at: 1040, side: 1, kind: "popeyes" }],
       billboards: [
         { at: 500, side: 1, ry: Math.PI, headline: "OYSTER BAY", sub: "Right at the light · Shrimp Fest", graffiti: "NO" },

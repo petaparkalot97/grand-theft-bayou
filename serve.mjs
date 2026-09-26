@@ -31,6 +31,12 @@ createServer(async (req, res) => {
       res.end(JSON.stringify({ tracks }));
       return;
     }
+    // Never serve secrets or internals: this used to hand out .env (the Fish Audio and OpenRouter keys),
+    // .git/ and the server code to anyone who could reach the port (audit, 2026-09-26).
+    if (path.split("/").some((seg) => seg.startsWith(".") && seg !== "") || /^\/(server|node_modules|scratch_puppet)\//.test(path)) {
+      res.writeHead(404).end("404");
+      return;
+    }
     const full = normalize(join(ROOT, path));
     if (!full.startsWith(ROOT)) { res.writeHead(403).end("no"); return; }
     const info = await stat(full);

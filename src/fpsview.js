@@ -30,6 +30,7 @@ export function createFpsView({ scene, camera }) {
   holder.visible = false;
   holder.name = "fpsView";
   scene.add(holder);
+  let ads = 0;
   let id = null, vm = null, kick = 0, kickMax = 0.1, swing = 0, dip = 0, dipDur = 1, bob = 0;
   const q = new THREE.Quaternion(), turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
   const off = new THREE.Vector3(), pitchQ = new THREE.Quaternion(), rollQ = new THREE.Quaternion();
@@ -45,7 +46,7 @@ export function createFpsView({ scene, camera }) {
   }
 
   return {
-    update({ dt, active, weaponId, holstered = false, moving = false, sprinting = false }) {
+    update({ dt, active, weaponId, holstered = false, moving = false, sprinting = false, aiming = false }) {
       if (!active || holstered) { holder.visible = false; return; }
       select(weaponId);
       holder.visible = true;
@@ -56,9 +57,11 @@ export function createFpsView({ scene, camera }) {
       const amp = moving ? (sprinting ? 0.016 : 0.010) : 0.002;
       const pose = POSE[weaponId] || POSE.pistol;
       const melee = vm.def.type === "melee";
+      ads += ((aiming && !melee ? 1 : 0) - ads) * (1 - Math.exp(-14 * dt));
 
       // camera-space offset: rest pose + walk bob + recoil (pushed back toward the eye)
-      off.set(pose.p[0] + Math.sin(bob * 0.5) * amp, pose.p[1] + Math.abs(Math.sin(bob * 0.5)) * amp * 1.4, pose.p[2]);
+      const bobK = 1 - ads * 0.85;                       // down the sights it barely sways
+      off.set(pose.p[0] * (1 - ads * 0.92) + Math.sin(bob * 0.5) * amp * bobK, pose.p[1] + (-0.105 - pose.p[1]) * ads + Math.abs(Math.sin(bob * 0.5)) * amp * 1.4 * bobK, pose.p[2] + (-0.42 - pose.p[2]) * ads);
       off.z += kick * kickMax;
       off.y -= kick * kickMax * 0.25;
       let pitch = pose.pitch + kick * vm.def.recoil.pitch * 0.5;

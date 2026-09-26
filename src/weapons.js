@@ -236,6 +236,12 @@ export function createArsenal({ state, flashObjective, onReload }) {
       }
       render();
     },
+    /** Switch to weapon `id` (number keys), if it is owned. */
+    selectWeapon(id) {
+      if (state.weapon === id) return true;
+      for (let i = 0; i < 8 && state.weapon !== id; i++) this.cycleWeapon(1);
+      return state.weapon === id;
+    },
     enforceVehicle() {
       if (state.veh && state.weapon !== "pistol" && state.weapon !== "tec9") {
         if (state.reserve && state.reserve.tec9 > 0) {

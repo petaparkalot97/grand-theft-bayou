@@ -54,7 +54,7 @@ export function createCameraController({ camera, dom, canCapture }) {
   let aiming = false;
   // First person (zombie mode): the eye is the player's head, the mouse turns the head, and
   // nothing of the third-person orbit — recentring, zoom, collision pull-in — applies.
-  let fps = false, fpsPitch = 0;
+  let fps = false, fpsPitch = 0, fpsKick = 0, bobT = 0, bobAmt = 0;
   const baseFov = camera.fov;
   const FPS_FOV = 76, EYE_HEIGHT = 1.62;
   let lastMouse = -1e9;
@@ -87,8 +87,9 @@ export function createCameraController({ camera, dom, canCapture }) {
   function turn(dx, dy) {
     if (fps) {
       // mouse up = look up; no smoothing, so the crosshair never lags the hand
-      yaw -= dx * C.cameraOrbitSensitivity.x; targetYaw = yaw;
-      fpsPitch = THREE.MathUtils.clamp(fpsPitch - dy * C.cameraOrbitSensitivity.y, -1.35, 1.35);
+      const k = aiming ? 0.55 : 1;                       // down the sights the hand is steadier
+      yaw -= dx * C.cameraOrbitSensitivity.x * k; targetYaw = yaw;
+      fpsPitch = THREE.MathUtils.clamp(fpsPitch - dy * C.cameraOrbitSensitivity.y * k, -1.35, 1.35);
       lastMouse = performance.now() / 1000;
       return;
     }
@@ -138,6 +139,8 @@ export function createCameraController({ camera, dom, canCapture }) {
     },
     /** Look pitch in first person, radians above the horizon. */
     get fpsPitch() { return fpsPitch; },
+    /** Recoil: the muzzle climbs. Eased back down by update(), so a burst walks the view up. */
+    kick(rad) { fpsKick = Math.min(0.12, fpsKick + rad); fpsPitch = THREE.MathUtils.clamp(fpsPitch + rad * 0.5, -1.35, 1.35); },
     get pitch() { return pitch; },
     /** The heading the camera is looking along. */
     get heading() { return cameraYawToHeading(yaw); },
@@ -174,9 +177,15 @@ export function createCameraController({ camera, dom, canCapture }) {
         // (Q / E) still turns it; the mouse is handled in turn().
         yaw += wrap(targetYaw - yaw) * (1 - Math.exp(-C.yawSmoothing * dt)); targetYaw = yaw;
         focus.copy(target);
+        // walking: a small head bob; the recoil kick settles back
+        bobAmt += ((moveHeading != null ? 1 : 0) - bobAmt) * (1 - Math.exp(-8 * dt));
+        bobT += dt * 9 * bobAmt;
+        fpsKick *= Math.exp(-9 * dt);
+        fpsPitch -= fpsKick * dt * 2.2;
         const cp = Math.cos(fpsPitch), fx = -Math.sin(yaw), fz = -Math.cos(yaw);
-        camera.position.set(target.x, target.y + EYE_HEIGHT, target.z);
-        look.set(target.x + fx * cp, target.y + EYE_HEIGHT + Math.sin(fpsPitch), target.z + fz * cp);
+        const eye = EYE_HEIGHT + Math.abs(Math.sin(bobT)) * 0.045 * bobAmt - (aiming ? 0.03 : 0);
+        camera.position.set(target.x, target.y + eye, target.z);
+        look.set(target.x + fx * cp, target.y + eye + Math.sin(fpsPitch), target.z + fz * cp);
         camera.lookAt(look);
         return;
       }

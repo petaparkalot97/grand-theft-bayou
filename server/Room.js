@@ -64,7 +64,12 @@ export class Room {
   }
 
   damageEntity(player, payload) {
-    const { id, amount } = payload;
+    const id = payload && payload.id;
+    // the client reports its own hits, so the numbers are clamped here: no negative "damage" (a heal), no NaN,
+    // nothing bigger than a shotgun blast — and a message with a non-string id must not throw
+    if (typeof id !== "string") return;
+    const amount = clampNumber(payload.amount, 0, 40, 0);
+    if (amount <= 0) return;
     if (id.startsWith("player_")) {
       const target = this.players.get(id);
       if (target && target.health > 0) {

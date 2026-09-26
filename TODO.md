@@ -146,6 +146,27 @@ checks (free roam now gives infinite ammo, so "32/16 rounds" can't hold). Not to
 
 ---
 
+### Next-tasks list (human, 2026-09-26) — Claude, `REVIEW` (headless-verified; needs a real-GPU/ear pass)
+- **Radio on R, no other music:** the soundtrack no longer plays on foot (free roam and the story's `startMusic` are
+  no-ops); **R** toggles the radio while in a car or on a bike (reload on foot); K still works.
+- **First-person shooter:** every mode starts in first person with the weapon drawn (`V` swaps to the orbit camera);
+  ADS on right click (zoom, steadier hand, centred gun), recoil kick that walks the view up, head bob, hit markers,
+  a torch (`T`), weapon slots 1-5, mouse wheel cycles. Hidden character comes back for cutscenes and cars.
+- **Gore (`src/gore.js`):** every hit sprays and splats the floor and the nearest walls; a shotgun blast (or a close
+  rifle kill) explodes the body into chunks, limbs and a head that bounce and leave marks; blood on the lens
+  that runs down and fades. Pooled and capped (240 decals, 150 chunks). No gore SFX yet (audit item).
+- **Crown Strip games** (`tusouxroeNorth.interact()` was never wired into F, and only printed a blurb): slots,
+  roulette, blackjack, pool, bar, stage, VIP, DJ are playable; radar badges wired.
+- **The DeLorean is a hovercraft:** every parked DeLorean is a real vehicle now (`landmarks.js` `setParkVehicleHook`):
+  it floats, bobs, glows blue underneath, has no wheels, is fast and slippery, and **Space** hops it.
+- **Deep audit:** `docs/AUDIT.md` (easy fixes -> big jobs -> ideas), with the security/bug fixes it made.
+- **Louisiana icons (phase 8, `src/louisianakit.js`):** Oyster Bay now has a three-spired cathedral, a square with a
+  rearing-horse statue and a beignet café, French Quarter galleries, a steamboat, a Mardi Gras float den; Cajun dance
+  halls, daiquiri drive-thrus and crawfish stands line the roads. Kit-ready, not placed: Oak Alley, the pepper works,
+  the state pen, Chemical Row, the Atchafalaya bridge (see the audit's ideas).
+
+---
+
 ### Zombie mode is a first-person shooter; voices; panic (human requests, 2026-09-26) — Claude, `REVIEW`
 - **First person:** zombie mode launches in first person (`camera.js` `setFirstPerson`: eye at the head, mouse turns
   it, 76° lens; `fpsview.js`: the gun and hands in front of the camera, recoil/bob/reload dip, a swinging bat;

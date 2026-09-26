@@ -18,6 +18,8 @@ import { bumpLine, fightLine, voiceType } from "./pedestrianChatter.js";
 import { pedestrianVoiceWho } from "./voiceCast.js";
 import { createCameraController } from "./camera.js";
 import { createFpsView } from "./fpsview.js";
+import { createGore } from "./gore.js";
+import { setParkVehicleHook } from "./landmarks.js";
 import { createTraffic } from "./traffic.js";
 import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian, randomTuxedo, randomHighEndEscort, randomKlansman, randomZombie } from "./characters.js";
 import { createCinema } from "./cinema.js";
@@ -1288,10 +1290,28 @@ function updateBlood(dt) {
   for (const m of bloodPools) if (m.material.opacity < 1) m.material.opacity = Math.min(1, m.material.opacity + dt * 3);
 }
 
+// Gore (gore.js): splats on the lens, the walls and the floor, and bodies that come apart.
+const gore = createGore({ scene, camera, blockerGrid, spray: spawnBloodSpray, pool: spawnBloodPool });
+const _goreP = new THREE.Vector3();
+const GORE_SKIN = { zombie: 0x7c8f6e, hog: 0x6a4a3c };
+const GORE_SKINS = [0xc49a7a, 0xa87858, 0x8a5a40, 0xe0b898, 0x6a4530];
+/** A bullet (or a bat) lands on `who`; a shotgun kill turns them to pieces. Returns true if the body exploded. */
+function goreHit(x, y, z, dist, killed, type) {
+  const sg = state.weapon === "sawnoff", rifle = state.weapon === "deerRifle";
+  _goreP.set(x, y, z);
+  gore.hit(_goreP, _aim, { shotgun: sg, rifle, dist, killed });
+  if (killed && (sg || (rifle && dist < 6))) {
+    gore.explode(_goreP, _aim, { skin: GORE_SKIN[type] ?? GORE_SKINS[(Math.random() * GORE_SKINS.length) | 0], cloth: [0x3a3a44, 0x6a2a2a, 0x2a4a3a, 0x8a7a4a][(Math.random() * 4) | 0] });
+    return true;
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------- game state
 const state = {
   running: false, over: false,
-  firstPerson: false,       // zombie mode: the eye is the player's head (camera.js setFirstPerson, fpsview.js)
+  firstPerson: false,       // the eye is the player's head (camera.js setFirstPerson, fpsview.js); every mode starts in it, V swaps
+  flashlight: true,         // the torch (T) — first person only
   hp: 100, sp: 100, cash: 0,
   fireCd: 0, hurtCd: 0, dusk: 0, prostituteTrips: 0,
   selectedCharacter: "keseme", campaign: "main",   // Keseme Nadia, the story's protagonist, is the default pick
@@ -1335,7 +1355,7 @@ function toggleRadio() {
   if (radioOff) radio.stop();
   else if (state.veh) radio.play();
   if (radioBtn) radioBtn.classList.toggle("off", radioOff);
-  flashObjective(radioOff ? "Car radio off." : "Car radio on.");
+  flashObjective(radioOff ? "Radio off. (R)" : "Radio on. (R)");
 }
 if (radioBtn) radioBtn.onclick = () => toggleRadio();
 function toggleMute() {
@@ -1365,6 +1385,7 @@ function registerVehicle(obj, r = 1.8, opts = {}) {
     audio: createCarAudio(obj),
     obj, heading: obj.rotation.y, speed: 0, hp: opts.hp || 40, hpMax: opts.hp || 40,
     sheriff: !!opts.sheriff, blocker: { x: obj.position.x, z: obj.position.z, r },
+    baseY: obj.position.y, hoverT: Math.random() * 6, lift: 0,
     r, wob: 0, impact: 0,   // impact: set by collisionResponse on the first frame of a hard hit (crash damage)
     def: obj.userData.vehicleDef || null,          // vehicles.js definition (class, model forward)
     seats: createSeats(obj.userData.vehicleDef),   // driver first; see vehicles.js for hijacking
@@ -1375,6 +1396,55 @@ function registerVehicle(obj, r = 1.8, opts = {}) {
   }
   vehicles.push(v);
   return v;
+}
+
+// A parked DeLorean anywhere in the state is a real vehicle (landmarks.js hook).
+setParkVehicleHook((model, x, z, ry) => {
+  const v = placeParked(model, x, z, ry);
+  if (v) addHoverGlow(v);
+  return v;
+});
+// The DeLorean is a hovercraft: off the ground, bobbing, a blue glow under it, hopping on Space.
+let hoverGlowMat = null;
+function addHoverGlow(v) {
+  if (!hoverGlowMat) {
+    const c = document.createElement("canvas"); c.width = c.height = 128;
+    const g = c.getContext("2d"), gr = g.createRadialGradient(64, 64, 4, 64, 64, 62);
+    gr.addColorStop(0, "rgba(120,200,255,0.55)"); gr.addColorStop(0.45, "rgba(50,130,255,0.28)"); gr.addColorStop(1, "rgba(30,90,255,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    hoverGlowMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+    hoverGlowMat.userData.gtbRealized = true;
+  }
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(5, 5).rotateX(-Math.PI / 2), hoverGlowMat);
+  glow.position.y = 0.05;                                  // stays on the ground, under the car (re-posed each frame)
+  glow.renderOrder = 3;
+  scene.add(glow);
+  v.hoverGlow = glow;
+  // flatten the wheels: a hovercraft's wheels fold under (found by name; the model's own axes decide the fold)
+  v.obj.traverse((o) => { if (o.isMesh && /wheel|tire|tyre|axel|axle/i.test(o.name || "")) (v.wheelMeshes || (v.wheelMeshes = [])).push(o); });
+  if (v.wheelMeshes) for (const w of v.wheelMeshes) w.visible = false;      // no wheels: it floats (and the underglow is what you see under it)
+}
+function updateHover(dt) {
+  for (const v of vehicles) {
+    if (!v.def || !v.def.hover || v.dead) continue;
+    v.hoverT += dt;
+    const driven = v === state.veh;
+    const target = driven && input.isDown("jump") ? 1.6 : 0;                       // Space: a hop
+    v.lift += (target - v.lift) * (1 - Math.exp(-5 * dt));
+    const speed = Math.abs(v.speed || 0);
+    const bob = Math.sin(v.hoverT * 2.4) * 0.07 + Math.sin(v.hoverT * 5.3) * 0.025;
+    v.obj.position.y = v.baseY + 0.42 + bob + v.lift + Math.min(0.18, speed * 0.006);
+    // the nose lifts under acceleration, the body rolls a little in a turn
+    v.obj.rotation.z = Math.sin(v.hoverT * 1.7) * 0.012;
+    if (v.hoverGlow) {
+      v.hoverGlow.position.set(v.obj.position.x, 0.05, v.obj.position.z);
+      v.hoverGlow.rotation.y = v.obj.rotation.y;
+      const k = 0.85 + Math.sin(v.hoverT * 9) * 0.1 + Math.min(0.3, speed * 0.01);
+      v.hoverGlow.scale.set(k * (1 + v.lift * 0.4), 1, k * (1 + v.lift * 0.4));
+      v.hoverGlow.material.opacity = 1;
+    }
+  }
 }
 
 function crime(amount) {
@@ -1421,7 +1491,9 @@ const mapEditor = createMapEditor({
   removeLitSpot: (spot) => { const i = litSpots.indexOf(spot); if (i >= 0) litSpots.splice(i, 1); },
 });
 
-input.onPress("interact", () => { if (services.interact() || nightlife.interact() || casinos.interact() || (orlea && orlea.interact()) || (newton && newton.interact())) return; enterExitVehicle(); });
+// Every "F" belongs to whichever thing you are standing at; only if none claims it is it "get in the car".
+// (tusouxroeNorth's Crown Strip was never asked, so its games answered "There are no vehicles nearby.")
+input.onPress("interact", () => { if (services.interact() || nightlife.interact() || casinos.interact() || (tusouxroeNorth && tusouxroeNorth.interact()) || (orlea && orlea.interact()) || (newton && newton.interact())) return; enterExitVehicle(); });
 input.onPress("mute", () => toggleMute());
 input.onPress("nextTrack", () => soundtrackReady.then((s) => s.next()));
 // [ / ] step the graphics tier down / up; once you touch it, the auto
@@ -1481,6 +1553,12 @@ const minimap = createMinimap({ MAP });
 // onReload is the one seam between the weapon slot and how it is presented:
 // weapons.js says "this reload started and it takes this long" and weapons_3d.js
 // turns that into the dip-and-return. Neither has to know about the other.
+// The torch on your gun (T): a spotlight from the eye along the view, first person only. It is created
+// here, at boot, dark — a light added later would recompile every material in the world.
+const torch = new THREE.SpotLight(0xfff0d8, 0, 46, 0.5, 0.7, 1.5);
+torch.castShadow = false;
+scene.add(torch, torch.target);
+const _torchDir = new THREE.Vector3();
 const fpsView = createFpsView({ scene, camera });   // the gun in your hands, first-person zombie mode (fpsview.js)
 const arsenal = createArsenal({ state, flashObjective, onReload: (id, seconds) => { notifyReload3D(id, seconds); fpsView.reload(seconds); } });
   initWeapons3D(scene);
@@ -1519,6 +1597,7 @@ function minimapBlips() {
   for (const b of services.blips()) _blips.push(b);
   for (const b of nightlife.blips()) _blips.push(b);
   for (const b of casinos.blips()) _blips.push(b);
+  if (tusouxroeNorth) for (const b of tusouxroeNorth.blips()) _blips.push(b);
   for (const s of sheriffs) if (!s.dead) _blips.push({ kind: "cop", x: s.obj.position.x, z: s.obj.position.z });
   for (const e of enemies) if (!e.dead && e.state === "hostile") _blips.push({ kind: "hostile", x: e.spr.position.x, z: e.spr.position.z });
   return _blips;
@@ -1629,12 +1708,14 @@ function confirmCharacter() {
   gameLaunched = true;
   characterSelect.hidden = true;
   beginGame();
+  state.firstPerson = true;      // this is a first-person shooter: on foot the eye is the player's head (V for the old orbit camera)
+  state.holstered = false;      // ...with the gun already in hand
   if (cfg.campaign === "alternate") { prologue.skip(); alternate.start(); return; }
   if (cfg.campaign === "greedo") { prologue.skip(); greedoCampaign.start(); return; }
   if (cfg.campaign === "sync") { prologue.skip(); syncCampaign.start(); return; }
   if (pendingLaunch === "story") prologue.start();
   else {
-    prologue.skip(); music.volume = musicVolume; soundtrackReady.then((s) => s.play());
+    prologue.skip();      // no background music on foot: the only music is the car radio (human request, 2026-09-26)
     flashObjective("Click the game to look around with the mouse · Esc releases it");
     // Free Roam: every gun, no reload grind (human request, 2026-09-20).
     // weapons.js checks this flag itself so it survives weapon switches and
@@ -2504,7 +2585,7 @@ async function buildLevel() {
   placeWreck(landy, ROAD_X - ROAD_HALF - 3, 122, 2.6);   // by the spawn
   // the DeLorean, abandoned at the 6twelve pumps
   const gasSpot = landmarkPos(1, 100);
-  if (doclorean) placeParked(doclorean, gasSpot[0] - 8, gasSpot[1] + 4, 1.1);
+  if (doclorean) { const dv = placeParked(doclorean, gasSpot[0] - 8, gasSpot[1] + 4, 1.1); if (dv) addHoverGlow(dv); }
 
   const parkCars = [carR, carB, carY, van, pickup, beetle, landy, toyoyo].filter(Boolean);
   parkedCarSpots.forEach((s, i) => {
@@ -2551,10 +2632,7 @@ async function buildLevel() {
       state.veh = null;
       player.visible = true;
     },
-    startMusic: () => {
-      music.volume = musicVolume;
-      soundtrackReady.then((s) => s.play());
-    },
+    startMusic: () => { /* no soundtrack on foot: the car radio is the only music (R toggles it) */ },
     setPopulation: (on) => { populationOn = on; },
     onFinished: () => { if (actOne) actOne.start(); tips.story(); },
     models: { coupe: carB, bravado: carR, pickup },
@@ -2829,6 +2907,8 @@ async function buildLevel() {
     // the strip's crowd works a shift off this (crowd.js setShift): staff hold
     // the venues all day, the nightlife turns up after dark
     worldTime,
+    // the games, the bar and the stage on the strip are playable: cash and HP live in state
+    state, syncHUD,
   });
   tusouxroeNorth.buildSet();
   NPC_POIS.push(...tusouxroeNorth.pois);
@@ -3722,7 +3802,7 @@ function fire() {
     _aim3D.copy(_aim);
   }
 
-  if (camCtl.firstPerson) fpsView.fire(gun.melee);
+  if (camCtl.firstPerson) { fpsView.fire(gun.melee); if (!gun.melee) camCtl.kick(0.006 + (gun.damage || 1) * 0.004); }
   if (!state.veh) { 
     attackTimer = 0.42; 
     player.play(gun.melee ? (state.weapon === "bat" ? "swing_bat" : "attack") : "shoot", { fps: 12, loop: false, force: true }); 
@@ -3869,6 +3949,10 @@ function fire() {
   }
   arsenal.consume();
 
+  if (hitTargets.length && hitTargets.some((h) => h.kind !== "swampTree")) {          // a hit marker: the crosshair flares red
+    crosshair.classList.add("hit");
+    setTimeout(() => crosshair.classList.remove("hit"), 110);
+  }
   for (const hit of hitTargets) {
     const { t, kind, d } = hit;
     const dmg = state.weapon === "sawnoff" ? gun.damage * (1 - d / gun.range) : gun.damage;
@@ -3900,7 +3984,12 @@ function fire() {
       spawnBloodSpray(t.spr.position.clone().setY(t.type === "hog" ? 0.6 : 1.0), _aim3D);
       if (t.type !== "hog") { t.spr.play("hurt", { loop: false, force: true }); t.t = 0; }
       else t.spr.position.addScaledVector(t.spr.position.clone().sub(playerPos).setY(0).normalize(), 0.4);
-      if (t.hp <= 0) { killEnemy(t); if (t.type !== "hog") crime(1.2); }
+      const ep = t.spr.position, blown = goreHit(ep.x, t.type === "hog" ? 0.6 : 1.1, ep.z, d, t.hp <= 0, t.type);
+      if (t.hp <= 0) {
+        killEnemy(t);
+        if (blown) { scene.remove(t.spr); t.dead = "gone"; }            // nothing left to lie there
+        if (t.type !== "hog") crime(1.2);
+      }
       else if (freshFight) speakPedestrian(t, fightLine(t.type, t.T.label, t.mood));
     } else if (kind === "footCop") {
       t.hp -= dmg;
@@ -3914,6 +4003,7 @@ function fire() {
         spawnBloodSpray(t.spr.position.clone().setY(1.0), _aim3D, 14);
         spawnBloodPool(t.spr.position.x, t.spr.position.z);
         loot.dropFor(t);
+        if (goreHit(t.spr.position.x, 1.1, t.spr.position.z, d, true, "cop")) t.spr.visible = false;
         crime(2.0); // Killing a cop is a serious crime
         flashObjective(`Deputy down.  ${EMOJI.hog} ${kills.hog}   ${EMOJI.redneck} ${kills.redneck}   ${EMOJI.hoodrat} ${kills.hoodrat}`);
       } else {
@@ -3938,8 +4028,10 @@ function fire() {
         if (p.a.play) p.a.play("death", { loop: false, force: true });
         spawnBloodSpray(wp, _aim3D, 14);
         spawnBloodPool(t.x, t.z);
+        if (goreHit(wp.x, wp.y, wp.z, d, true, "crowd") && p.a) p.a.visible = false;
         crime(1.2);
       } else {
+        goreHit(wp.x, wp.y, wp.z, d, false, "crowd");
         crime(0.12);
       }
     }
@@ -4180,6 +4272,12 @@ function tick() {
       }
     }
     cine.update(dt);
+    // First person hides the character (and gives it back the moment the view leaves it, or a cutscene takes the camera)
+    {
+      const hide = !!state.firstPerson && !state.veh && !cine.hasCamera && !state.cinematic && !mapEditor.active;
+      if (hide) { if (player.visible) { player.visible = false; fpsHidPlayer = true; } }
+      else if (fpsHidPlayer) { fpsHidPlayer = false; if (!state.veh) player.visible = true; }
+    }
     if (!cine.hasCamera && mapEditor.active) {
       mapEditor.updateCamera(dt);
     } else if (!cine.hasCamera) {
@@ -4189,8 +4287,6 @@ function tick() {
       // the character is hidden for it (restored the moment the view leaves first person).
       const fpsOn = !!state.firstPerson && !state.veh;
       camCtl.setFirstPerson(fpsOn);
-      if (fpsOn) { if (player.visible) { player.visible = false; fpsHidPlayer = true; } }
-      else if (fpsHidPlayer) { fpsHidPlayer = false; if (!state.veh) player.visible = true; }
       crosshair.style.display = fpsOn ? "block" : (isAimingCamera && !arsenal.current.melee ? "block" : "none");
       camCtl.update(dt, playerPos, state.veh, blockerGrid, playerMoveHeading);
       if (state.veh && state.veh.jolt > 0) {
@@ -4207,8 +4303,18 @@ function tick() {
     const shooting = input.isDown("attack") && !arsenal.current.melee;
     updateWeapon3D(player, playerPos, _camFwd, state.weapon, dt, input.isDown("aim"),
       state.cinematic || (!!state.veh && !input.isDown("aim")) || state.holstered || camCtl.firstPerson, shooting);
+    {
+      const on = state.flashlight && camCtl.firstPerson && !cine.hasCamera && !state.cinematic;
+      torch.intensity = on ? 190 : 0;
+      if (on) {
+        camera.getWorldDirection(_torchDir);
+        torch.position.copy(camera.position).addScaledVector(_torchDir, 0.2);
+        torch.position.y -= 0.12;
+        torch.target.position.copy(camera.position).addScaledVector(_torchDir, 12);
+      }
+    }
     fpsView.update({
-      dt, active: camCtl.firstPerson && !state.cinematic, weaponId: state.weapon, holstered: state.holstered,
+      dt, active: camCtl.firstPerson && !state.cinematic && !cine.hasCamera, weaponId: state.weapon, holstered: state.holstered, aiming: input.isDown("aim"),
       moving: input.isDown("forward") || input.isDown("back") || input.isDown("left") || input.isDown("right"),
       sprinting: input.isDown("sprint"),
     });
@@ -4243,6 +4349,8 @@ function tick() {
     if (t.userData.life <= 0) { scene.remove(t); tracers.splice(i, 1); tracerPool.push(t); }
   }
   updateBlood(dt);
+  gore.update(dt);
+  updateHover(dt);
   if (muzzleLight) muzzleLight.intensity = Math.max(0, muzzleLight.intensity - dt * 240);
 
   // water ripple
@@ -4266,7 +4374,7 @@ function tick() {
   updateFx(dt);
   headlights.update(dt, state.veh);
   const rush = state.veh ? THREE.MathUtils.smoothstep(Math.abs(state.veh.speed), 12, 30) : 0;
-  const fov = THREE.MathUtils.damp(camera.fov, camCtl.firstPerson ? 76 + rush * 6 : 52 + rush * 8, 3, dt);   // first person: a wider lens
+  const fov = THREE.MathUtils.damp(camera.fov, camCtl.firstPerson ? (input.isDown("aim") && !arsenal.current.melee ? (state.weapon === "deerRifle" ? 42 : 58) : 76 + rush * 6) : 52 + rush * 8, camCtl.firstPerson ? 12 : 3, dt);   // first person: a wider lens
   if (Math.abs(fov - camera.fov) > 1e-3) {
     camera.fov = fov;
     camera.updateProjectionMatrix();
@@ -5252,7 +5360,7 @@ async function boot() {
   camera.lookAt(playerPos);
   syncHUD();
 
-  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs, swampTrees, fire, fpsView,
+  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs, swampTrees, fire, fpsView, gore,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
     get policeHelicopters() { return police.helicopters; },
@@ -5455,7 +5563,8 @@ function honkHorn() {
 // could not shoot or swing at all. Found while testing the cemetery's reaction
 // to a gunshot (cemetery.js), which is how it finally showed up.
 input.onPress("attack", () => { if (state.running) fire(); });
-input.onPress("reload", () => { if (state.running) arsenal.reload(); });
+// R: reload on foot; in a car or on a bike it is the radio switch (K works everywhere)
+input.onPress("reload", () => { if (!state.running) return; if (state.veh) toggleRadio(); else arsenal.reload(); });
 input.onPress("radio", () => { if (state.running) toggleRadio(); });
 input.onPress("holster", () => {
   if (!state.running || state.cinematic) return;
@@ -5466,8 +5575,12 @@ input.onPress("holster", () => {
     : `Drew the ${arsenal.stats(!!state.veh).name}. Hold right click to aim, left click to use it.`);
 });
 input.onPress("equipBat", () => { if (state.running) arsenal.give("bat"); });
+for (const [action, id] of [["equipPistol", "pistol"], ["equipTec9", "tec9"], ["equipShotgun", "sawnoff"], ["equipRifle", "deerRifle"]]) {
+  input.onPress(action, () => { if (state.running && !state.cinematic) { arsenal.selectWeapon(id); state.holstered = false; } });
+}
+input.onPress("flashlight", () => { if (state.running) { state.flashlight = !state.flashlight; flashObjective(state.flashlight ? "Torch on." : "Torch off."); } });
 input.onPress("viewToggle", () => {
-  if (!state.running || state.cinematic || !state.zombieMode) return;
+  if (!state.running || state.cinematic) return;
   state.firstPerson = !state.firstPerson;
   flashObjective(state.firstPerson ? "First person — V for third person." : "Third person — V for first person.");
 });

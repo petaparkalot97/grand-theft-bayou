@@ -40,7 +40,10 @@ export const VEHICLE_DEFS = Object.freeze({
   Truck_1: kenney("Truck_1", "utility"),
   Beatall: dsoup("Beatall", "civilian"),
   Landyroamer: dsoup("Landyroamer", "utility"),
-  docLorean: dsoup("docLorean", "special"),
+  // The DeLorean is a hovercraft: it floats a little off the ground, bobs, glows blue underneath, and
+  // is fast and slippery (main.js updateHover). Space hops it.
+  docLorean: { ...dsoup("docLorean", "special"), hover: true,
+    handling: { accel: 30, maxForward: 46, maxReverse: 14, drag: 0.22, grip: 2.3, brakeGrip: 3.4, fullSteerSpeed: 9 } },
   "Tristar Racer": dsoup("Tristar Racer", "sports"),
   "Toyoyo Highlight": dsoup("Toyoyo Highlight", "civilian"),
   fallback: { name: "fallback", pack: "procedural", class: "civilian", modelForward: "+Z", length: 4.4 },

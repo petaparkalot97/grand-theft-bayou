@@ -79,7 +79,7 @@ const server = http.createServer((req, res) => {
       code: r.code,
       name: r.name || r.code,
       players: r.players.size,
-      maxPlayers: require("./protocol.js").MAX_PLAYERS,
+      maxPlayers: MAX_PLAYERS,
       phase: r.phase,
       zombie: r.zombie
     }));

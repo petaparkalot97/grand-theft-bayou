@@ -48,12 +48,12 @@ const ROUTES = JSON.parse(process.env.ROUTES || "null") || [
   ["Well Street", -720, -594, -720, -488],
   ["Tumble Street", -820, -594, -820, -504],
   ["Derrick Road", -834, -770, -562, -770],
-  ["US-167 north", -6, -440, -6, -1180],
+  ["US-167 north", -6, -730, -6, -1180],     // (Chatboro, z -720..-500, owns its own stretch)
   ["US-167 south", -6, 440, -6, 1180],
   ["Oyster approach", 80, 600, 385, 600],
-  ["Port approach", 80, -600, 385, -600],
-  ["Red Dust approach", -80, -600, -385, -600],
-  ["Lakeshore approach", -80, 750, -385, 750],
+  ["Port approach", 80, -600, 385, -600, true],     // Tusouxroe owns the ground it crosses
+  ["Red Dust approach", -80, -600, -385, -600, true],   // Shruston does
+  ["Lakeshore approach", -80, 750, -385, 750, true],   // Charsoufre does
   ["Delta Street", 805, 596, 805, 446],
   ["Delta Road (south)", 805, 430, 805, -34],
   ["Delta Road (jog)", 800, -40, 756, -40],
@@ -86,7 +86,7 @@ await page.waitForSelector("#startBtn:not([disabled])", { timeout: 180000 });
 const res = await page.evaluate((ROUTES, REGIONS) => {
   const g = window.__game, out = { routes: [], regions: [] };
   const grid = g.blockerGrid;
-  for (const [name, x0, z0, x1, z1] of ROUTES) {
+  for (const [name, x0, z0, x1, z1, skipZone] of ROUTES) {
     const len = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(len / 3);
     let hits = 0, first = null, off = 0;
     for (let i = 0; i <= n; i++) {
@@ -95,7 +95,7 @@ const res = await page.evaluate((ROUTES, REGIONS) => {
       grid.near(x, z, 1.6, (b) => { if (b._grid === "static" && Math.hypot(b.x - x, b.z - z) < b.r + 1.2) { hit = true; return true; } });   // static only: traffic and parked-in-motion cars come and go
       if (hit) { hits++; if (!first) first = [Math.round(x), Math.round(z)]; }
       const zone = g.spawnZones.zoneAt(x, z);
-      if (zone !== "highway" && zone !== null) off++;   // road cells classify as "highway"; null = outside the composer's grid
+      if (!skipZone && zone !== "highway" && zone !== null) off++;   // road cells classify as "highway"; null = outside the composer's grid
     }
     out.routes.push({ name, samples: n + 1, blocked: hits, first, notRoad: off });
   }

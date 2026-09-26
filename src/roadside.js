@@ -20,7 +20,7 @@ import { KEEPOUTS } from "./districts.js";
 const NAMES = ["PRODUCE", "FIREWORKS", "ANTIQUES & JUNK", "BOILED PEANUTS", "LIVE BAIT", "USED TIRES", "HUNTING SUPPLY", "PECANS", "SNOWBALLS", "FEED & SEED"];
 
 /** The catalogue of roadside things a profile can weight. Each takes a composer slot. */
-function catalogue(kit, ctx) {
+function catalogue(kit, ctx, R) {
   const { houses, shops } = kit;
   const barn = shops.barn();
   const stand = shops.strip({ names: NAMES, bgs: ["#7a1f12", "#1f4a7a", "#1f6a3a", "#7a5a12"] });
@@ -39,6 +39,9 @@ function catalogue(kit, ctx) {
     bungalow: houses.bungalow, cottage: houses.cottage, trailer: houses.trailer, cabin: houses.cabin, stilt: houses.stilt, shotgun: houses.shotgun,
     stand, tire, motel, diner, church, shed,
     popeyes: shops.popeyes(),
+    // Louisiana roadside (louisianakit.js): a Cajun dance hall, a daiquiri drive-thru, a crawfish-boil stand
+    danceHall: R.la.danceHall(), daiquiri: R.la.daiquiri(),
+    crawfish: shops.strip({ names: ["CRAWFISH BOIL", "BOUDIN & CRACKLINS", "PO-BOYS", "BOILED PEANUTS", "SNOWBALLS"], bgs: ["#b0281c", "#7a5a12", "#1f6a3a"] }),
     gas: (slot) => gas[Math.floor(kit.hash(slot.x, slot.z, 83) * gas.length)](slot),
   };
 }
@@ -65,7 +68,7 @@ export function buildRoadside(R, { name, seed, bounds, road, junctions = [], avo
   const { ctx, kit } = R;
   const C = createComposer(ctx, { name, bounds, zones: { wild: bounds }, seed });
   R.composers.push(C);
-  const kinds = catalogue(kit, ctx);
+  const kinds = catalogue(kit, ctx, R);
   const [[ax, az], [bx, bz]] = [road.points[0], road.points[road.points.length - 1]];
   const alongX = az === bz;
   const coord = (slot) => (alongX ? slot.x : slot.z);

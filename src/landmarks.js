@@ -343,8 +343,17 @@ const CAR_FILES = {
   tristar: "Tristar Racer"
 };
 
+// main.js installs this: it turns a parked DeLorean into a real, drivable (hovering) vehicle.
+// Only the DeLorean is taken over — every other parked car here is scenery.
+let parkVehicleHook = null;
+export function setParkVehicleHook(fn) { parkVehicleHook = fn; }
+
 export function placeParkedCar(ctx, carType, x, z, ry = 0) {
   const { scene, addBlocker, loadDsCar } = ctx;
+  if (carType === "doclorean" && parkVehicleHook && loadDsCar) {
+    loadDsCar("docLorean").then((obj) => { if (obj) parkVehicleHook(obj.clone(true), x, z, ry); });
+    return null;
+  }
   if (!loadDsCar) return;
   const name = CAR_FILES[carType] || "docLorean";
   const g = new THREE.Group();

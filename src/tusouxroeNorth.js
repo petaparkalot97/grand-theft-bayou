@@ -510,7 +510,60 @@ export function createTusouxroeNorth(ctx) {
   const crownRecs = [];                 // { v, g, roof, walls, sign, fixed, neon, stations, inside }
   const crownService = [];              // where each venue's back-of-house pocket landed, in world space
   let crownShift = null;                // "day" | "dusk" | "night" — what the crowd is staffed for
-  let crownPrompt = null;               // { v, text } — the venue you are at, and the line F prints
+  let crownPrompt = null;               // { v, text, kind? } — the venue you are at, and the line F prints
+  /**
+   * The Crown Strip's stations, playable. Same stakes and tone as casinos.js / nightlife.js:
+   * cash comes off state.cash, wins pay out, drinks and shows heal. Returns false when the
+   * station has nothing to play (the vault, the cashier) so F just reads its line.
+   */
+  function playStation(kind, label) {
+    const s = ctx.state, say = (t) => ctx.flashObjective && ctx.flashObjective(t), sync = () => ctx.syncHUD && ctx.syncHUD();
+    if (!s) return false;
+    const pay = (amt) => { if ((s.cash || 0) < amt) { say(`${label.split(" — ")[0]}: you need $${amt}. Come back when you've got it.`); return false; } s.cash -= amt; return true; };
+    const heal = (n) => { s.hp = Math.min(100, (s.hp || 100) + n); };
+    const pickOne = (a) => a[(Math.random() * a.length) | 0];
+    if (kind === "slots") {
+      if (!pay(10)) return true;
+      const sym = ["🍒", "🍋", "🔔", "💎", "7️⃣", "🐊"], r = [pickOne(sym), pickOne(sym), pickOne(sym)];
+      const three = r[0] === r[1] && r[1] === r[2], two = !three && (r[0] === r[1] || r[1] === r[2] || r[0] === r[2]);
+      const win = three ? 200 : two ? 20 : 0; s.cash += win; sync();
+      say(`Slots  ${r.join(" ")}  ${three ? `JACKPOT! +$${win}` : two ? `Two of a kind. +$${win}` : "Nothing. -$10"}`);
+    } else if (kind === "roulette") {
+      if (!pay(25)) return true;
+      const n = (Math.random() * 37) | 0, red = n !== 0 && [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36].includes(n);
+      const win = red; if (win) s.cash += 50; sync();
+      say(`Roulette: the ball lands on ${n} ${n === 0 ? "green" : red ? "red" : "black"}. ${win ? "You bet red: +$25." : "You bet red: -$25."}`);
+    } else if (kind === "cards") {
+      if (!pay(25)) return true;
+      const hand = () => { let t = 0, a = 0; const c = 2 + ((Math.random() * 2) | 0); for (let i = 0; i < c; i++) { const v = Math.min(10, 1 + ((Math.random() * 13) | 0)); if (v === 1) a++; t += v === 1 ? 11 : v; } while (t > 21 && a-- > 0) t -= 10; return t; };
+      let me = hand(), dealer = hand();
+      while (me < 17) me += 2 + ((Math.random() * 9) | 0); while (dealer < 17) dealer += 2 + ((Math.random() * 9) | 0);
+      const bust = me > 21, dbust = dealer > 21, win = !bust && (dbust || me > dealer), push = !bust && me === dealer;
+      if (win) s.cash += 50; else if (push) s.cash += 25; sync();
+      say(`Blackjack: you ${bust ? `bust on ${me}` : me}, dealer ${dealer > 21 ? `busts on ${dealer}` : dealer}. ${win ? "You win $25." : push ? "Push." : "The house takes it."}`);
+    } else if (kind === "pool") {
+      if (!pay(5)) return true;
+      const win = Math.random() < 0.45; if (win) s.cash += 15; sync();
+      say(win ? "You run the table. +$10." : "You scratch on the eight. -$5.");
+    } else if (kind === "bar") {
+      if (!pay(8)) return true;
+      heal(12); sync();
+      say(pickOne(["A bourbon, neat. +12 HP (-$8).", "A Sazerac. The bartender approves. +12 HP (-$8).", "Something with a cherry in it. +12 HP (-$8)."]));
+    } else if (kind === "stage") {
+      if (!pay(10)) return true;
+      heal(15); sync();
+      say("You make it rain at the rail. The house loves you. +15 HP (-$10).");
+    } else if (kind === "vip") {
+      if (!pay(40)) return true;
+      heal(45); sync();
+      say("The rope lifts. A private dance. +45 HP (-$40).");
+    } else if (kind === "dj") {
+      if (!pay(20)) return true;
+      say(pickOne(["The DJ nods and drops your request. Floor's going off. (-$20)", "'Bet.' The bass comes up. (-$20)"]));
+      sync();
+    } else return false;
+    return true;
+  }
   let crownPromptEl = null;             // its DOM chip, made once in buildCrownStrip()
   const WALL_DROP = 0.22;               // walls cut to this fraction while the player is inside
   const STATION_REACH = 3.4;            // how close counts as "at" a game, a bar, a stage
@@ -1461,6 +1514,10 @@ export function createTusouxroeNorth(ctx) {
      */
     interact() {
       if (!crownPrompt) return false;
+      // Inside, F plays the station you are standing at (the games, the bar, the stage...); at the
+      // door it just prints the venue's line. (It only ever printed the line, and was not even wired
+      // into main.js's F key — so F fell through to "There are no vehicles nearby.")
+      if (crownPrompt.kind && playStation(crownPrompt.kind, crownPrompt.text)) return true;
       if (ctx.flashObjective) ctx.flashObjective(crownPrompt.text);
       return true;
     },
@@ -1538,7 +1595,7 @@ export function createTusouxroeNorth(ctx) {
           // the bar, the stage) wins over the door line
           for (const st of r.stations) {
             const d = Math.hypot(playerPos.x - st.x, playerPos.z - st.z);
-            if (d < nearD) { nearD = d; near = { v, text: st.label }; }
+            if (d < nearD) { nearD = d; near = { v, text: st.label, kind: st.kind }; }
           }
         } else if (Math.abs(l.x) < v.door / 2 + 1.6 && Math.abs(l.z - v.d / 2) < 5) {
           crownPrompt = { v, text: `${v.name} — ${v.blurb}` };
