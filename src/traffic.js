@@ -302,6 +302,7 @@ export function createTraffic(o) {
       // attached would double them up: a standing "ghost" glued to the seat
       // behind the player for the rest of the vehicle's life.
       car.obj.remove(car.rider);
+      car.v.riderView = car.rider;          // main.js dismounts THIS rider (same face, same clothes) when the bike is jacked or shot
       car.rider = null;
     }
   }

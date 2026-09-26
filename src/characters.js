@@ -73,6 +73,8 @@ const SURFACES = {
   leather: { roughness: 0.48, metalness: 0, env: 1.1,  micro: 16, nScale: 0.6 },
   rubber:  { roughness: 0.95, metalness: 0, env: 0.45, micro: 24, nScale: 1.0 },
   metal:   { roughness: 0.24, metalness: 0.95, env: 2.0, micro: 8, nScale: 0.3 },
+  plastic: { roughness: 0.34, metalness: 0, env: 1.0, micro: 12, nScale: 0.1 },      // hard hats
+  glass:   { roughness: 0.08, metalness: 0, env: 1.8, micro: 12, nScale: 0.05 },     // sunglasses
 };
 
 const matCache = new Map();
@@ -463,6 +465,28 @@ class Hoodrat extends THREE.Object3D {
         const strap = add(torso, box(0.05, 0.18, 0.032), white, side * 0.115 * bulk, 0.5, 0.015);
         strap.rotation.z = side * 0.17;
       }
+      // a collared shirt and a tie under the jacket (opts.shirt / opts.tie): the suit must read as a suit, not a black column
+      if (opts.shirt != null) {
+        const shirtM = mat("cloth", opts.shirt);
+        add(torso, box(0.1 * bulk, 0.36, 0.022), shirtM, 0, 0.36, 0.158 * bulk);
+        for (const side of [-1, 1]) {
+          const lapel = add(torso, box(0.05, 0.3, 0.02), white, side * 0.075 * bulk, 0.37, 0.16 * bulk);
+          lapel.rotation.z = side * -0.22;
+          const collar = add(torso, box(0.05, 0.04, 0.03), shirtM, side * 0.035, 0.53, 0.1);
+          collar.rotation.z = side * 0.5;
+        }
+        if (opts.tie != null) {
+          const tieM = mat("cloth", opts.tie);
+          add(torso, box(0.036, 0.3, 0.014), tieM, 0, 0.34, 0.172 * bulk);
+          add(torso, box(0.046, 0.04, 0.02), tieM, 0, 0.5, 0.168 * bulk);
+        }
+      }
+      // hi-vis: two bands of reflective tape round the chest and braces over the shoulders (opts.reflective)
+      if (opts.reflective) {
+        const tape = mat("cloth", 0xe6f23a);
+        for (const y of [0.16, 0.4]) { const b = add(torso, cyl(0.206 * bulk, 0.19 * bulk, 0.04, 12), tape, 0, y, 0); b.scale.z = 0.8; }
+        for (const side of [-1, 1]) { const b = add(torso, box(0.03, 0.18, 0.034), tape, side * 0.115 * bulk, 0.5, 0.017); b.rotation.z = side * 0.17; }
+      }
       // the reference belts are plain leather with a silver buckle
       const belt = add(torso, cyl(0.19 * bulk, 0.19 * bulk, 0.07, 12), styled ? mat("leather", crew.belt) : band, 0, -0.02, 0);
       belt.scale.z = 0.74;
@@ -708,6 +732,19 @@ class Hoodrat extends THREE.Object3D {
       tail.rotation.y = Math.PI / 2;
     }
 
+    if (headwear === "hardhat") {
+      // a site hard hat: a taller crown, a ridge along the top, and a brim all the way round
+      const hatM = mat("plastic", opts.capColor != null ? opts.capColor : 0xf2c230);
+      const dome = add(head, capGeo(0.132, 1.3), hatM, 0, 0.06, 0);
+      dome.scale.set(1.04, 1.08, 1.08);
+      add(head, cyl(0.158, 0.158, 0.014, 16), hatM, 0, 0.078, 0.01).scale.z = 1.12;
+      add(head, box(0.03, 0.02, 0.24), hatM, 0, 0.212, 0);
+    }
+    if (opts.shades) {
+      const lens = mat("glass", 0x0c0c10);
+      add(head, box(0.19, 0.034, 0.02), lens, 0, 0.066, 0.108);
+      for (const side of [-1, 1]) add(head, box(0.012, 0.012, 0.11), lens, side * 0.098, 0.068, 0.05);
+    }
     if (headwear === "cap") {
       // redneck-styled trucker/baseball cap: a rounded crown and a flat brim
       // over the front only (unlike "hat"'s full 360° brim)
@@ -728,13 +765,17 @@ class Hoodrat extends THREE.Object3D {
       const pivot = new THREE.Object3D();
       pivot.position.set(side * shoulder * bulk, 0.47, 0);
       torso.add(pivot);
-      const upper = add(pivot, cyl(0.052 * bulk, 0.045 * bulk, 0.26, 8), inked || skin, 0, -0.13, 0);
+      // sleeves: long (opts.sleeves: a jacket, a work shirt, coveralls) or short (opts.shortSleeves: the shirt's own colour over the upper arm)
+      const sleeveM = opts.sleeves != null ? mat("cloth", opts.sleeves) : null;
+      const shortM = opts.shortSleeves && opts.top != null && typeof opts.top === "number" ? mat("cloth", opts.top) : null;
+      const upper = add(pivot, cyl(0.052 * bulk * (sleeveM || shortM ? 1.16 : 1), 0.045 * bulk * (sleeveM || shortM ? 1.16 : 1), 0.26, 8), sleeveM || shortM || inked || skin, 0, -0.13, 0);
       const delt = add(pivot, sph(0.072 * bulk), skin, 0, 0.012, 0);   // deltoid
       delt.scale.set(1, 1.15, 1);
       const elbow = new THREE.Object3D();
       elbow.position.y = -0.26;
       pivot.add(elbow);
-      add(elbow, cyl(0.042 * bulk, 0.036 * bulk, 0.24, 8), inked || skin, 0, -0.12, 0);
+      add(elbow, cyl(0.042 * bulk * (sleeveM ? 1.16 : 1), 0.036 * bulk * (sleeveM ? 1.16 : 1), 0.24, 8), sleeveM || inked || skin, 0, -0.12, 0);
+      if (sleeveM && opts.shirt != null) add(elbow, cyl(0.046 * bulk, 0.046 * bulk, 0.03, 8), mat("cloth", opts.shirt), 0, -0.235, 0);   // a white cuff showing at the wrist
       // `opts.glove` puts the white one on the RIGHT hand (side -1) — the gun
       // hand, which is the hand an act holds the mic in, and the hand the
       // Crown Strip's stage prop is about (makeStar, below). A material swap on
@@ -775,8 +816,10 @@ class Hoodrat extends THREE.Object3D {
         add(knee, cyl(0.088 * bulk, 0.056 * bulk, 0.44, 10), legging, 0, -0.22, 0);
       } else {
         // baggy jeans: wide all the way down, stacked over the shoe
-        add(pivot, cyl(0.118 * bulk, 0.126 * bulk, 0.46, 10), denim, 0, -0.22, 0);
-        add(knee, cyl(0.126 * bulk, 0.134 * bulk, 0.46, 10), denim, 0, -0.22, 0);
+        // (opts.slim: trousers that fit — a suit — instead of the crew's baggy stacked jeans)
+        const fit = opts.slim ? 0.72 : 1;
+        add(pivot, cyl(0.118 * bulk * fit, 0.126 * bulk * fit, 0.46, 10), denim, 0, -0.22, 0);
+        add(knee, cyl(0.126 * bulk * fit, 0.134 * bulk * fit, 0.46, 10), denim, 0, -0.22, 0);
       }
 
       const foot = new THREE.Object3D();
@@ -937,6 +980,7 @@ class Hoodrat extends THREE.Object3D {
     this.loop = loop;
     this.time = 0;
     this.finished = false;
+    if (anim === "death") this._deathKind = undefined;
   }
 
   update(dt) {
@@ -983,15 +1027,45 @@ class Hoodrat extends THREE.Object3D {
     const A = this.arms, L = this.legs;
 
     if (this.anim === "death") {
-      // fold at the hips and topple; `finished` gates the fade in updateEnemy
-      const t = Math.min(1, this.time / 0.75);
-      const e = t * t * (3 - 2 * t);
-      this.rotation.z = e * (Math.PI / 2) * 0.95;
+      // Nobody falls the same way twice: onto a side, backwards, or forwards onto the face — chosen once per body from its
+      // own seed, and mirrored for the side fall. `finished` gates the fade in updateEnemy.
+      // A hit lands first (the torso snaps back for a tenth of a second), the fall accelerates (ease-in, like a body, not a
+      // door), the impact overshoots a hair and settles, and the corpse RESTS on the ground: the body pivots about its feet,
+      // so it is lifted by its own thickness or it lies half under the floor.
+      if (this._deathKind === undefined) {
+        const r1 = (this.phase * 7.31) % 1, r2 = (this.phase * 3.17) % 1;
+        this._deathKind = Math.floor(Math.abs(r1) * 3) % 3;
+        this._deathSide = r2 < 0.5 ? 1 : -1;
+      }
+      const kind = this._deathKind, sd = this._deathSide;
+      const tt = Math.min(1, this.time / 0.85);
+      const fall = tt * tt * (3 - 2 * tt) * (0.35 + 0.65 * tt);                   // slow start, quick finish
+      const settle = Math.sin(Math.min(1, Math.max(0, (this.time - 0.8) / 0.3)) * Math.PI) * 0.045;   // the bounce on impact
+      const e = Math.min(1, fall) ;
+      const flinch = Math.sin(Math.min(1, this.time / 0.12) * Math.PI) * (1 - e);
       this.rotation.y = this._yaw;
-      this.hips.position.y = 0.92 - e * 0.42;
-      for (const l of L) { l.pivot.rotation.x = -e * 0.7; l.knee.rotation.x = e * 1.5; }
-      for (const a of A) { a.pivot.rotation.x = e * 1.1; a.elbow.rotation.x = -e * 0.5; }
-      if (t >= 1) this.finished = true;
+      this.rotation.order = kind === 0 ? "XYZ" : "YXZ";
+      this.rotation.x = 0; this.rotation.z = 0;
+      const ang = (Math.PI / 2) * 0.97 * e + settle;
+      if (kind === 0) this.rotation.z = sd * ang;
+      else this.rotation.x = (kind === 1 ? -1 : 1) * ang;
+      this.position.y = (this.baseY || 0) + 0.15 * e;
+      this.hips.position.y = 0.92 - e * 0.12;
+      this.hips.rotation.set(0, 0, 0);
+      this.torso.rotation.set(-flinch * 0.5 + (kind === 0 ? 0 : 0), e * 0.35 * sd, 0);
+      L.forEach((l, i) => {
+        const bent = i === (sd > 0 ? 0 : 1) ? 1 : 0.35;                             // one knee drawn up, the other trailing
+        l.pivot.rotation.x = -e * (kind === 2 ? 0.1 : 0.55) * (i ? 0.7 : 1);
+        l.pivot.rotation.z = (i ? 1 : -1) * e * 0.14;
+        l.knee.rotation.x = e * (0.25 + 1.1 * bent);
+        l.foot.rotation.x = 0;
+      });
+      A.forEach((a, i) => {
+        if (kind === 1) { a.pivot.rotation.x = -e * 0.5; a.pivot.rotation.z = a.side * e * (0.7 + 0.25 * i); a.elbow.rotation.x = -e * 0.4; }   // sprawled on the back, palms up
+        else if (kind === 2) { a.pivot.rotation.x = -e * (2.3 - 0.5 * i); a.pivot.rotation.z = a.side * e * 0.25; a.elbow.rotation.x = -e * 0.3; }   // reaching out ahead of the face
+        else { a.pivot.rotation.x = e * (i === (sd > 0 ? 0 : 1) ? 1.1 : -0.7); a.pivot.rotation.z = a.side * e * 0.3; a.elbow.rotation.x = -e * 0.55; }
+      });
+      if (tt >= 1 && this.time > 1.05) this.finished = true;
       return;
     }
 
@@ -1003,6 +1077,7 @@ class Hoodrat extends THREE.Object3D {
     if (this.anim === "allfours") {
       const t = Math.min(1, this.time / 0.5);
       const e = t * t * (3 - 2 * t);
+      this.rotation.order = "YXZ";
       this.rotation.x = e * 1.2;
       this.rotation.y = this._yaw;
       this.rotation.z = 0;
@@ -1027,9 +1102,11 @@ class Hoodrat extends THREE.Object3D {
       return;
     }
 
+    this.rotation.order = "XYZ";
     this.rotation.x = 0;
     this.rotation.z = 0;
     this.rotation.y = this._yaw;
+    this.torso.rotation.z = 0;
     this.hips.position.y = 0.92;
     this.hips.rotation.set(0, 0, 0);       // only the dance clips below tip the pelvis
     this.head.rotation.set(0, 0, 0);
@@ -1143,26 +1220,40 @@ class Hoodrat extends THREE.Object3D {
       this.phase += dt * rate;
       const s = Math.sin(this.phase);
       const c = Math.cos(this.phase);
-      const amp = THREE.MathUtils.clamp(this._speed * 0.13, 0.18, 0.62);
+      // A walk and a run are different gaits, not one clip played faster: as the ground speed climbs past ~3.6 m/s the body
+      // pitches forward into it, the knees drive up, the elbows fold to ~90 degrees and the arms pump, the hips roll and the
+      // shoulders counter-rotate, and the bounce gets bigger (`run` eases 0..1 so the change of gait is a lean, not a pop).
+      const runT = THREE.MathUtils.clamp((this._speed - 3.6) / 3.4, 0, 1);
+      this._run = (this._run || 0) + (runT - (this._run || 0)) * Math.min(1, dt * 6);
+      const run = this._run;
+      const amp = THREE.MathUtils.clamp(this._speed * 0.13, 0.18, 0.62) * (1 + run * 0.22);
 
       L.forEach((l, i) => {
         const d = i ? s : -s;
         l.pivot.rotation.x = d * amp;
-        l.knee.rotation.x = Math.max(0, (i ? -c : c) * amp * 1.15) + 0.05;
+        l.knee.rotation.x = Math.max(0, (i ? -c : c) * amp * (1.15 + run * 1.15)) + 0.05 + run * 0.12;
         l.foot.rotation.x = -l.knee.rotation.x * 0.45;
       });
       A.forEach((a, i) => {
         const d = i ? -s : s;
-        a.pivot.rotation.x = d * amp * 0.75;
-        a.pivot.rotation.z = a.side * 0.16;
-        a.elbow.rotation.x = -0.3 - Math.max(0, d) * 0.45;
+        a.pivot.rotation.x = d * amp * (0.75 + run * 0.55);
+        a.pivot.rotation.z = a.side * (0.16 - run * 0.07);
+        a.elbow.rotation.x = -0.3 - run * 0.95 - Math.max(0, d) * (0.45 + run * 0.35);
       });
-      this.torso.rotation.y = -s * 0.1;
+      // weight: the hips roll over the planted foot (half the bob's frequency), the chest answers against them, and the body
+      // sinks a touch at each footfall and rises through the passing pose
+      this.hips.rotation.z = s * 0.045 * (1 - run * 0.4);
+      this.hips.rotation.y = -s * 0.07 * (1 + run);
+      this.torso.rotation.z = -this.hips.rotation.z * 1.15;
+      this.torso.rotation.y = -s * 0.1 * (1 + run * 0.6) - this.hips.rotation.y * 0.5;
+      this.torso.rotation.x = 0.03 + run * 0.24;
+      this.hips.position.y = 0.92 - (1 - Math.abs(c)) * 0.02 * (1 + run * 1.5);
       // `baseY` is the floor this actor stands on (0 = the ground); story
       // scenes set it for rooms that aren't at ground level
-      this.position.y = (this.baseY || 0) + Math.abs(Math.sin(this.phase * 2)) * 0.022;
+      this.position.y = (this.baseY || 0) + Math.abs(c) * (0.012 + run * 0.03);
       return;
     }
+    this._run = 0;
 
     // idle: slow breathing sway, arms loose, the reference's folded-arm stance
     const b = Math.sin(this.time * 1.6 + this.phase);
@@ -1497,7 +1588,9 @@ function danceClip(r, dt) {
     // from the bike's definition), knees up to the pegs, hands on the bars
     r.hips.position.y = r.rideHip || 0.9;
     for (const l of r.legs) { l.pivot.rotation.x = -1.05; l.knee.rotation.x = 1.25; l.foot.rotation.x = -0.2; }
-    r.torso.rotation.x = r.rideLean != null ? r.rideLean : 0.3;
+    r.torso.rotation.x = (r.rideLean != null ? r.rideLean : 0.3) + Math.sin(t * 1.9 + r.phase) * 0.012;
+    r.torso.rotation.z = Math.sin(t * 0.8 + r.phase) * 0.02;
+    r.hips.position.y += Math.sin(t * 3.1 + r.phase) * 0.004;
     A.forEach((a) => { a.pivot.rotation.x = -1.2 - (r.rideLean || 0) * 0.6; a.pivot.rotation.z = a.side * 0.16; a.elbow.rotation.x = -0.35; });
     return;
   }

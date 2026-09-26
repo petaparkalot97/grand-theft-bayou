@@ -116,8 +116,8 @@ check([...seen].every((n) => n in ZOMBIE_ARCHETYPES) && seen.size === Object.key
   check(tourist.state === "flee" && tourist.panic === true, "a tourist 35 m from a pistol shot panics (26 m radius x 1.8)");
   check(suit.state === "flee" && suit.panic, "a suit 40 m away panics");
   check(far.state !== "flee", "...but not one 60 m away");
-  check(hood.state !== "flee" || !hood.panic, "a hoodrat does not panic");
-  check(red.state !== "flee" || !red.panic, "a redneck does not panic");
+  check(hood.state !== "flee", "a hoodrat 10 m from the shot does not run");
+  check(red.state !== "flee", "a redneck 10 m from the shot does not run");
   check(tourist.stateT >= 8, "the run is long (" + tourist.stateT.toFixed(1) + " s)");
 }
 

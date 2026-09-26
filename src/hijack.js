@@ -33,7 +33,7 @@ const LINES = [
 
 /**
  * @param {object} ctx from main.js: state, getPlayerPos(), getPlayer(),
- *   releaseFromTraffic(v), spawnDriver(x, z) → NPC record, provoke(npc),
+ *   releaseFromTraffic(v), spawnDriver(x, z, v) → NPC record (v: so a bike's own rider comes off it), provoke(npc),
  *   enterVehicle(v), flashObjective(text), crime(amount)
  */
 export function createHijacker(ctx) {
@@ -100,7 +100,7 @@ export function createHijacker(ctx) {
         if (!job.driver && job.t >= HIJACK.yank) {
           job.driverFrom = doorPoint(v, 0.8);
           job.driverTo = doorPoint(v, 4.2);
-          job.driver = lastDriver = ctx.spawnDriver(job.driverFrom.x, job.driverFrom.z);
+          job.driver = lastDriver = ctx.spawnDriver(job.driverFrom.x, job.driverFrom.z, v);
           const seat = driverSeat(v);
           if (seat) seat.occupant = null;
           if (job.driver && job.driver.spr.play) job.driver.spr.play("hurt", { loop: false, force: true });

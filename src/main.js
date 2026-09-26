@@ -23,7 +23,7 @@ import { createCharacter } from "./stats.js";
 import { createPipboy } from "./pipboy.js";
 import { setParkVehicleHook } from "./landmarks.js";
 import { createTraffic } from "./traffic.js";
-import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian, randomTuxedo, randomHighEndEscort, randomKlansman, randomZombie } from "./characters.js";
+import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian, randomTuxedo, randomHighEndEscort, randomKlansman, randomZombie, randomRedneck } from "./characters.js";
 import { createCinema } from "./cinema.js";
 import { createPrologue, makeCastMember, PROLOGUE_KEEPOUT } from "./prologue.js";
 import { createMissionClinic } from "./missionClinic.js";   // unused: see missionClinic below
@@ -1617,7 +1617,7 @@ const hijacker = createHijacker({
   getPlayerPos: () => playerPos,
   getPlayer: () => player,
   releaseFromTraffic: (v) => { if (traffic) traffic.releaseVehicle(v); },
-  spawnDriver: (x, z) => { spawnEnemy(Math.random() < 0.55 ? "hoodrat" : "redneck", x, z); return enemies[enemies.length - 1]; },
+  spawnDriver: (x, z, v) => dismountRider(v, x, z),
   provoke: (e) => npcs.provoke(e),
   enterVehicle: (v) => { state.veh = v; if (v) { arsenal.enforceVehicle(); if (multiplayerMode && multiplayer?.connected && v.netId) { multiplayer.send("VEHICLE_ENTER", { id: v.netId }); } } playerPos.copy(v.obj.position); player.visible = false; },
   flashObjective,
@@ -2194,7 +2194,7 @@ const atlases = {};   // name -> loaded atlas
 
 
 const ENEMY_TYPES = {
-  redneck: { label: "Redneck", kind: "sprite", atlas: "redneck", tint: 0xd6402a,
+  redneck: { label: "Redneck", kind: "redneck", tint: 0xd6402a,
              h: 2.0, hp: 5, speed: 3.9, aggro: 22, melee: 1.9, dmg: 11, atkGap: 1.1 },
   hoodrat: { label: "Hoodrat", kind: "actor", tint: 0x6d95d6,
              h: 1.92, hp: 4, speed: 4.7, aggro: 24, melee: 1.8, dmg: 8, atkGap: 0.85 },
@@ -2206,13 +2206,13 @@ const ENEMY_TYPES = {
              h: 1.0, hp: 6, speed: 2.3, aggro: 18, melee: 1.7, dmg: 20, atkGap: 1.6 },
              
   // New NPCS
-  dockworker: { label: "Dockworker", kind: "sprite", atlas: "redneck", tint: 0xffa500, // orange vest
+  dockworker: { label: "Dockworker", kind: "dockworker", tint: 0xffa500, // orange vest
                 h: 2.05, hp: 7, speed: 3.5, aggro: 22, melee: 2.0, dmg: 14, atkGap: 1.3 },
-  mechanic: { label: "Mechanic", kind: "sprite", atlas: "redneck", tint: 0x444488, // blue overalls
+  mechanic: { label: "Mechanic", kind: "mechanic", tint: 0x444488, // blue overalls
               h: 1.95, hp: 5, speed: 4.0, aggro: 23, melee: 1.9, dmg: 10, atkGap: 1.1 },
-  suit: { label: "Suit", kind: "sprite", atlas: "redneck", tint: 0x222222, // dark suit
+  suit: { label: "Suit", kind: "suit", tint: 0x222222, // dark suit
           h: 1.9, hp: 4, speed: 4.2, aggro: 22, melee: 1.8, dmg: 7, atkGap: 1.2 },
-  tourist: { label: "Tourist", kind: "sprite", atlas: "oldman", tint: 0x88ccff, // bright shirt
+  tourist: { label: "Tourist", kind: "tourist", tint: 0x88ccff, // bright shirt
              h: 1.85, hp: 3, speed: 3.6, aggro: 20, melee: 1.8, dmg: 4, atkGap: 1.4 },
   thug: { label: "Thug", kind: "actor", tint: 0x333333, // dark hoodrat 3D actor
           h: 1.98, hp: 8, speed: 4.5, aggro: 25, melee: 2.0, dmg: 12, atkGap: 0.9 },
@@ -2400,6 +2400,30 @@ const klan = createKlan({
   setCameraYaw: (yaw) => camCtl.addYaw(yaw - camCtl.yaw),
 });
 
+// The people who used to be tinted copies of the 2D pixel-art redneck, now the same 3D rig as everyone else (characters.js):
+// a redneck's build with a different wardrobe. Palette overrides beat randomRedneck's defaults.
+const TOURIST_SHIRTS = [0x66c8ee, 0xf0a0c0, 0xe8d24a, 0x8ad6a0, 0xf08a5a];
+const WORKER_LOOKS = {
+  dockworker: () => ({ plaid: false, top: 0xe8862a, reflective: true, sleeves: 0x3a4048, denim: 0x2c3038, headwear: "hardhat", bootColor: 0x2a2018 }),   // hi-vis orange vest with tape over a work shirt, hard hat
+  mechanic:   () => ({ plaid: false, top: 0x3a4f8a, sleeves: 0x3a4f8a, denim: 0x3a4f8a, headwear: "cap", bootColor: 0x2a2018 }),                            // blue coveralls, long sleeved
+  suit:       (r) => ({ sex: "m", plaid: false, top: 0x24262c, sleeves: 0x24262c, shirt: 0xf2f2ee, tie: [0x8a1f2a, 0x1f3a6a, 0x2a2a2a, 0x6a2a7a][(r() * 4) | 0], denim: 0x1a1b20, slim: true, headwear: "none", bootColor: 0x0e0e10 }),   // dark suit, white shirt, tie, black shoes
+  tourist:    (r) => ({ plaid: false, top: TOURIST_SHIRTS[(r() * TOURIST_SHIRTS.length) | 0], shortSleeves: true, shades: r() < 0.65, denim: 0xc4b494, headwear: r() < 0.5 ? "cap" : "none", bootColor: 0xd8d2c4 }),   // loud short-sleeved shirt, shades, khakis, white sneakers
+};
+
+// Whoever comes off a vehicle. A bike or scooter carries a visible rider (traffic.js buildCar); that same rider mesh becomes
+// the NPC, so the person you jack or shoot off a bike is the person who was on it (it used to be a fresh random hoodrat or
+// redneck, a different face and outfit from the one you saw). Cars have no visible driver: anyone will do.
+function dismountRider(v, x, z) {
+  const view = v && v.riderView;
+  if (v) v.riderView = null;
+  if (!view) { spawnEnemy(Math.random() < 0.55 ? "hoodrat" : "redneck", x, z); return enemies[enemies.length - 1]; }
+  view.rotation.set(0, 0, 0); view.scale.setScalar(1);
+  delete view.rideHip; delete view.rideLean;
+  view.play?.("idle", { force: true });
+  spawnEnemy("hoodrat", x, z, { view });
+  return enemies[enemies.length - 1];
+}
+
 function spawnEnemy(typeName, x, z, spot = null) {
   let T = ENEMY_TYPES[typeName];
   // A zombie archetype (zombies.js) is still type "zombie" — every kill,
@@ -2408,8 +2432,14 @@ function spawnEnemy(typeName, x, z, spot = null) {
   const archetype = typeName === "zombie" && spot && spot.archetype;
   if (archetype) T = { ...T, ...resolveArchetype(archetype) };
   let view;
-  if (T.kind === "hog") {
+  if (spot && spot.view) {
+    view = spot.view;                       // an existing body: a rider coming off a bike (dismountRider)
+  } else if (T.kind === "hog") {
     view = buildHog();
+  } else if (T.kind === "redneck") {
+    view = randomRedneck(rng, T.h);
+  } else if (T.kind === "dockworker" || T.kind === "mechanic" || T.kind === "suit" || T.kind === "tourist") {
+    view = randomRedneck(rng, T.h, WORKER_LOOKS[T.kind](rng));
   } else if (typeName === "prostitute") {
     view = randomProstitute(rng, T.h);
   } else if (T.kind === "hobo") {
@@ -2703,8 +2733,7 @@ async function buildLevel() {
     registerVehicle, spawnEnemy, killEnemy, npcs, makeHoodrat, surface, hitPlayer,
     spawnTracer, muzzleFlash, flashObjective,
     makeThief: () => {
-      const t = new AnimatedSprite(atlases.redneck, 1.9);
-      t.setTint(0x9aa3ab);
+      const t = randomRedneck(rng, 1.9, { sex: "m", plaid: false, top: 0x9aa3ab, headwear: "cap" });      // the same 3D rig as everyone else
       t.play("idle", { fps: 5 });
       return t;
     },
@@ -5301,8 +5330,7 @@ function damageVehicle(v, amount) {
   if (v.def && v.def.bike && v.seats && v.seats[0] && v.seats[0].occupant === "npc") {
     if (traffic) traffic.releaseVehicle(v);
     v.seats[0].occupant = null;
-    spawnEnemy(Math.random() < 0.55 ? "hoodrat" : "redneck", v.obj.position.x, v.obj.position.z);
-    const e = enemies[enemies.length - 1];
+    const e = dismountRider(v, v.obj.position.x, v.obj.position.z);
     e.hp -= amount; 
     const freshFight = e.state !== "hostile" && e.state !== "flee";
     npcs.provoke(e);
@@ -5516,7 +5544,7 @@ async function boot() {
   camera.lookAt(playerPos);
   syncHUD();
 
-  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs, swampTrees, fire, fpsView, gore, playerPos, pipboy, updateEnemyPopulation, updateZombiePopulation,
+  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs, THREE, swampTrees, fire, fpsView, gore, playerPos, pipboy, updateEnemyPopulation, updateZombiePopulation,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
     get policeHelicopters() { return police.helicopters; },

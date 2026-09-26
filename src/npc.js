@@ -360,7 +360,9 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
         return;
       }
     }
-    const ev = recentViolence(p);
+    // (the fighters never take this exit either: a shot or a brawl beside a hoodrat, redneck or thug is not a reason to leave;
+    // it was only the panic branch above that spared them, so they still ran from anything within the noise radius)
+    const ev = STANDS_GROUND.has(e.type) ? null : recentViolence(p);
     if (ev && e.state !== "flee") {
       flee(e, ev.x, ev.z);
       return;
