@@ -197,6 +197,7 @@ export function createCharacter(build = {}) {
     mods: {
       // damage
       gunMul: () => prod("gunMul") * (1 + (skill("guns") - 30) / 250),
+      recoilMul: () => clamp(1.2 - skill("guns") / 125, 0.4, 1.2),
       meleeMul: () => prod("meleeMul") * (1 + (skill("melee") - 30) / 250) * (1 + (special.str - 5) * 0.06),
       damageTakenMul: () => clamp(prod("damageTakenMul") * (1 - (special.end - 5) * 0.045), 0.35, 2),
       critChance: () => clamp(0.03 + luck() * 0.012, 0, 0.3),
@@ -205,12 +206,16 @@ export function createCharacter(build = {}) {
       // body
       staminaMul: () => prod("staminaMul") * (1 + (special.end - 5) * 0.06),
       staminaRegenMul: () => (1 + (special.end - 5) * 0.07) * (1 + skill("survival") / 200),
+      explosionDamageMul: () => clamp(1 - skill("survival") / 100, 0.2, 1.2),
       sprintCostMul: () => prod("sprintCostMul") * (1 - skill("athletics") / 250),
+      fallDamageMul: () => clamp(1 - skill("athletics") / 100, 0, 1.2),
       jumpCostMul: () => 1 - skill("athletics") / 300,
       jumpMul: () => prod("jumpMul") * (1 + (special.str - 5) * 0.03) * (1 + skill("athletics") / 400),
       speedMul: () => 1 + (special.agi - 5) * 0.025 + skill("athletics") / 1000,
       healMul: () => prod("healMul") * (1 + skill("medicine") / 150),
+      medDropChance: () => skill("medicine") / 250,
       driveMul: () => 1 + skill("driving") / 500,
+      vehDamageTakenMul: () => clamp(1 - skill("driving") / 150, 0.2, 1.0),
       // people
       priceMul: () => clamp(prod("priceMul") * (1.2 - skill("barter") / 250 - skill("speech") / 700 - (special.cha - 5) * 0.02), 0.5, 1.6),
       calmChance: () => clamp(skill("speech") / 220 + (special.cha - 5) * 0.03, 0, 0.6),      // a provoked bystander might just... not
@@ -218,6 +223,7 @@ export function createCharacter(build = {}) {
       xpMul: () => prod("xpMul"),
       // senses
       stealthMul: () => clamp(prod("stealthMul") * (1 - skill("sneak") / 220), 0.3, 1.6),
+      invisibleToHeli: () => skill("sneak") > 50,
       torchMul: () => prod("torchMul") * (1 + (special.per - 5) * 0.06),
     },
     toJSON() { return { name, special, traits, tagged, background: bg.id, perks, invested, level, xp, skillPoints, perkPoints, kills }; },

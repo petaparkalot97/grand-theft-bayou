@@ -78,9 +78,9 @@ function weighted(pairs, rnd) {
  * @param {Function} o.flashObjective
  * @param {Function} o.rng           () => [0, 1)
  */
-export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flashObjective, rng = Math.random, lootMul = () => 1, tableFor = () => null, ammoTarget = () => null }) {
+export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flashObjective, rng = Math.random, lootMul = () => 1, tableFor = () => null, ammoTarget = () => null, medDropChance = () => 0 }) {
   const active = [];
-  const pool = { cash: [], weapon: [], ammo: [] };
+  const pool = { cash: [], weapon: [], ammo: [], health: [] };
   let t = 0;
 
   const unlit = (color, opts = {}) => {
@@ -124,6 +124,16 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
     g.add(box, band, glow);
     return g;
   }
+  function makeHealth() {
+    const g = new THREE.Group();
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 }));
+    const cross = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.25, 0.32), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+    const cross2 = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.1, 0.32), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xff4f6d, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glow.scale.setScalar(1.2);
+    g.add(box, cross, cross2, glow);
+    return g;
+  }
   function makeWeapon() {
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.12, 0.1), gunMat);
@@ -149,7 +159,7 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
 
   function spawn(kind, x, z, payload) {
     if (active.length >= MAX_ACTIVE) release(active[0]);
-    const obj = pool[kind].pop() || (kind === "cash" ? makeCash() : kind === "ammo" ? makeAmmo() : makeWeapon());
+    const obj = pool[kind].pop() || (kind === "cash" ? makeCash() : kind === "ammo" ? makeAmmo() : kind === "health" ? makeHealth() : makeWeapon());
     if (kind === "weapon") {
       const rarity = WEAPONS[payload.id].rarity;
       obj.userData.ring.material = ringMat(rarity);
@@ -190,6 +200,7 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
       if (rng() < table.cash * lm) out.push(spawn("cash", p.x + (rng() - 0.5), p.z + (rng() - 0.5), { amount: weighted(CASH_NOTES, rng) }));
       if (rng() < table.weapon * lm) out.push(spawn("weapon", p.x + (rng() - 0.5) * 1.6, p.z + (rng() - 0.5) * 1.6, rollWeapon()));
       if (rng() < table.ammo * lm) out.push(spawn("ammo", p.x + (rng() - 0.5) * 1.2, p.z + (rng() - 0.5) * 1.2, { rounds: 16 }));
+      if (rng() < medDropChance()) out.push(spawn("health", p.x + (rng() - 0.5) * 1.4, p.z + (rng() - 0.5) * 1.4, { amount: 35 }));
       return out;
     },
 
@@ -240,6 +251,11 @@ export function createLoot({ scene, state, getPlayerPos, arsenal, syncHUD, flash
             arsenal.addReserve(tgt.id, it.rounds);
             flashObjective(`Picked up ${it.rounds} ${tgt.name} rounds`);
           }
+        } else if (it.kind === "health") {
+          const amt = state.stats ? Math.round(it.amount * state.stats.mods.healMul()) : it.amount;
+          state.hp = Math.min(100, (state.hp || 100) + amt);
+          syncHUD();
+          flashObjective(`Salvaged Stimpak (+${amt} HP)`);
         } else {
           const w = WEAPONS[it.id];
           arsenal.give(it.id, it.rounds);

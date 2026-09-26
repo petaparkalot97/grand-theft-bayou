@@ -384,6 +384,39 @@ export function makeAct(o = {}) {
   return { tick, info, actor: a, script, bounds, hype: CHEER_TIME };
 }
 
+function applyScatter(actors, fromX, fromZ) {
+  for (const x of actors) {
+    if (!x.live || x.dead || x.flee) continue;
+    if (x.beat === "act") continue;
+    x.flee = true;
+    x.fleeSpeed = 4.0 + Math.random() * 2.0;
+    const dx = x.a.position.x - fromX;
+    const dz = x.a.position.z - fromZ;
+    const len = Math.hypot(dx, dz) || 1;
+    x.fleeGoal = new THREE.Vector3(x.a.position.x + (dx/len) * 50, x.a.position.y, x.a.position.z + (dz/len) * 50);
+  }
+}
+
+function tickFlee(x, dt) {
+  if (!x.flee) return false;
+  const a = x.a;
+  const dx = x.fleeGoal.x - a.position.x;
+  const dz = x.fleeGoal.z - a.position.z;
+  const d = Math.hypot(dx, dz);
+  if (d > 1.0) {
+    a.position.x += (dx / d) * x.fleeSpeed * dt;
+    a.position.z += (dz / d) * x.fleeSpeed * dt;
+    if (a.anim !== "walk") a.play("walk");
+    a._yaw = Math.atan2(dx, dz);
+    a.rotation.y = a._yaw;
+  } else {
+    a.visible = false;
+    x.live = false;
+  }
+  a.update(dt);
+  return true;
+}
+
 /**
  * Build the actors for `spots`.
  *
@@ -648,6 +681,7 @@ export function makeCrowd(spots, o = {}) {
       // dead: only the fall keeps playing (death's own timer sets `finished`,
       // same as main.js's street enemies) — no beat, no script, no act.
       if (x.dead) { a.update(dt); continue; }
+      if (tickFlee(x, dt)) continue;
       // the act runs his own script; `hype` is what he does to the room
       if (x.act) { x.act.tick(dt, hype); continue; }
       // ...and a scripted errand (an escort, an arrival) owns the actor outright
@@ -737,7 +771,7 @@ export function makeCrowd(spots, o = {}) {
   }
 
   return {
-    group, actors, meshes, tick, setShift, cheerAt,
+    group, actors, meshes, tick, setShift, cheerAt, scatter: (fromX, fromZ) => applyScatter(actors, fromX, fromZ),
     // the show, for the district to expose (and for the QA to watch run)
     act, fans,
     // runtime arrivals: `claim()` brings one up at the kerb, `retire()` sends it
@@ -866,6 +900,7 @@ export function makePavement(spec) {
       if (!x.live) continue;
       const a = x.a;
       if (x.dead) { a.update(dt); continue; }
+      if (tickFlee(x, dt)) continue;
       x.t += dt;
 
       // a cheer interrupts a pavement walker the same way it does a crowd
@@ -975,7 +1010,7 @@ export function makePavement(spec) {
   ];
   for (const s of spots) routes.push({ what: "a stop", a: { x: s.x, z: line.z }, b: { x: s.x, z: s.z } });
 
-  return { group, actors, meshes, tick, setShift, cheer, line, door, routes };
+  return { group, actors, meshes, tick, setShift, cheer, line, door, routes, scatter: (fromX, fromZ) => applyScatter(actors, fromX, fromZ) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1080,6 +1115,7 @@ export function makeCrossing(spec) {
       if (x.live === false) continue;
       const a = x.a;
       if (x.dead) { a.update(dt); continue; }
+      if (tickFlee(x, dt)) continue;
 
       if (x.state === CROSS_OFF) {
         if (x.hidden) {
@@ -1186,7 +1222,7 @@ export function makeCrossing(spec) {
     { what: "the crossing", a: { x: A.x + px * wide / 2, z: A.z + pz * wide / 2 }, b: { x: B.x + px * wide / 2, z: B.z + pz * wide / 2 } },
   ];
 
-  return { group, actors, meshes, tick, setShift, obstacles, routes, kerbA: A, kerbB: B, roadHalf, wide };
+  return { group, actors, meshes, tick, setShift, obstacles, routes, kerbA: A, kerbB: B, roadHalf, wide, scatter: (fromX, fromZ) => applyScatter(actors, fromX, fromZ) };
 }
 
 /**

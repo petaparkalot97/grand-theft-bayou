@@ -519,7 +519,8 @@ export function createTusouxroeNorth(ctx) {
   function playStation(kind, label) {
     const s = ctx.state, say = (t) => ctx.flashObjective && ctx.flashObjective(t), sync = () => ctx.syncHUD && ctx.syncHUD();
     if (!s) return false;
-    const pay = (amt) => { if ((s.cash || 0) < amt) { say(`${label.split(" — ")[0]}: you need $${amt}. Come back when you've got it.`); return false; } s.cash -= amt; return true; };
+    const safeLabel = label || "Station";
+    const pay = (amt) => { if ((s.cash || 0) < amt) { say(`${safeLabel.split(" — ")[0]}: you need $${amt}. Come back when you've got it.`); return false; } s.cash -= amt; return true; };
     const heal = (n) => { s.hp = Math.min(100, (s.hp || 100) + n); };
     const pickOne = (a) => a[(Math.random() * a.length) | 0];
     if (kind === "slots") {
@@ -1513,13 +1514,15 @@ export function createTusouxroeNorth(ctx) {
      * the prompt chip is up, which is the same rule the door already used.
      */
     interact() {
-      if (!crownPrompt) return false;
-      // Inside, F plays the station you are standing at (the games, the bar, the stage...); at the
-      // door it just prints the venue's line. (It only ever printed the line, and was not even wired
-      // into main.js's F key — so F fell through to "There are no vehicles nearby.")
-      if (crownPrompt.kind && playStation(crownPrompt.kind, crownPrompt.text)) return true;
-      if (ctx.flashObjective) ctx.flashObjective(crownPrompt.text);
-      return true;
+      if (crownPrompt) {
+        if (crownPrompt.kind && playStation(crownPrompt.kind, crownPrompt.text)) return true;
+        if (ctx.flashObjective) ctx.flashObjective(crownPrompt.text);
+        return true;
+      }
+      // If we are inside a venue but not near a station, consume the interact key 
+      // anyway to prevent falling through to enterExitVehicle (which could hijack cars through walls).
+      for (const r of crownRecs) if (r.inside) return true;
+      return false;
     },
 
     /**
@@ -1554,6 +1557,16 @@ export function createTusouxroeNorth(ctx) {
           if (r.pave) r.pave.setShift(shift);
         }
         if (crownWalk) crownWalk.setShift(shift);
+      }
+
+      const pev = ctx.npcs && ctx.npcs.panicEvent ? ctx.npcs.panicEvent(playerPos) : null;
+      if (pev) {
+        for (const r of crownRecs) {
+          if (r.crowdIn) r.crowdIn.scatter(pev.x, pev.z);
+          if (r.crowdOut) r.crowdOut.scatter(pev.x, pev.z);
+          if (r.pave) r.pave.scatter(pev.x, pev.z);
+        }
+        if (crownWalk) crownWalk.scatter(pev.x, pev.z);
       }
 
       crownPrompt = null;

@@ -108,15 +108,16 @@ dependencies and acceptance criteria.
   5. The hog no longer casts 5 shadow-meshes per animal.
   6. **JS is not the problem:** a CPU profile shows game code at <0.2 % of sampled JS; the lag is GPU/draw-call bound (`tools/qa/cpu_profile.mjs`, `tools/qa/perf_audit.mjs`).
 
-**Still to do (perf) — in priority order**
+**Still to do (perf) — in priority order.** Handoff 2026-09-26: the shelf-stock item below, small-mesh culling, shadow casters and shader prewarm all need a measured
+headless/GPU run (`npm i` for puppeteer, `node serve.mjs 8899`, `node tools/qa/perf_audit.mjs`); not attempted blind. `main.js` already shows hidden clusters for the batch (`hiddenClusters`) — re-measure whether that fixed the shelves before digging.
 - [ ] **~2,300 shelf-stock meshes (`Foods_*`, `Shelf_*`, `cardboard_boxes`: the general-store / rest-stop interiors) are `batchable` yet still unbatched** (they appear 3x: `parish:rest-stop`,
       `Chatboro:crossroads lot`, and a bare `Group<Group<Scene`). Find why `batchStatic` leaves them (probe: `perf_audit.mjs` topMaterials; check `matSignature`/`root.visible`/`exclude`
       for the third, scene-root copy) — this is ~1,500 draw calls in the worst views. Interiors also need distance culling (walls hide them).
 - [ ] Small-mesh distance culling inside clusters (a mesh under ~0.5 m radius is < 5 px past ~100 m).
-- [ ] **HIGH is the default tier on most desktops** (`autoTier`: >=1800 px and >=6 cores): GTAO + bloom + SMAA + 2048 shadows. Pick by GPU string (WEBGL_debug_renderer_info: Intel/UHD -> BALANCED)
-      and make the governor react at < 45 fps, not < 32.
+- [x] **Default tier by GPU** (2026-09-26): `autoTier()` (graphics.js) reads WEBGL_debug_renderer_info; Intel/UHD/Iris/Mali/Adreno/Apple/software -> MEDIUM (LOW on small screens);
+      the governor now steps down at < 45 fps (was 32). Untested on real hardware.
 - [ ] Shadows: 2,000-2,500 casters per frame; give small props `castShadow = false`, shrink the shadow box (70 m half-size) on BALANCED/PERFORMANCE, or update it every 2nd frame.
-- [ ] Swamp-tree puddles (a transparent 5x5 plane per tree, 7,500) — hide beyond ~120 m; 887 instanced chunk draws near Chatboro.
+- [x] Swamp-tree puddles hidden beyond ~130 m of the player (`cullSwampPuddles`, main.js; per 160 m chunk, checked every 20 frames). Not measured (no puppeteer installed locally: `npm i` it to run `tools/qa/perf_audit.mjs`).
 - [ ] Shader compile hitches (80-116 programs): `renderer.compileAsync` after the build, and prewarm the light-count variants.
 - [ ] Real-GPU numbers (frame ms per pass) — headless SwiftShader cannot give them.
 
@@ -197,6 +198,7 @@ jump (peak, stamina 100 -> 80, lands), Tab opens/closes the Pip-Boy and pauses, 
 end to end and classified as road, all four wonders above their density floor, 0 page errors.
 
 **Still to do / handoff**
+- [x] Pip-Boy / creation screen / XP + stealth HUD recoloured from Fallout green to an indigo-violet / cyan / pink gradient scheme (src/pipboy.js CSS only, 2026-09-26; look-only).
 - [ ] Real-hands playtest: jump 3 m / 22 stamina and the 0.4 s double-tap window are guesses; stealth multipliers are unit-tested, not felt.
 - [ ] Pip-Boy: no controller/keyboard navigation (mouse only); no perk *descriptions* beyond the tooltip line; no save of the character (there is no save game — audit §2.2).
 - [ ] The wonders' interiors: none (exteriors only). The prison has no inmates (its ground is a "building" zone); the rodeo has no crowd.

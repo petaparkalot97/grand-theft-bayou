@@ -153,12 +153,12 @@ function handlingOf(def) {
   return _handling.get(def);
 }
 
-export function stepArcadeVehicle(v, { throttle, steer, brake }, dt) {
+export function stepArcadeVehicle(v, { throttle, steer, brake }, dt, driveMul = 1) {
   const DRIVE = handlingOf(v.def);        // bikes and scooters bring their own numbers
-  v.speed += throttle * DRIVE.accel * dt;
+  v.speed += throttle * (DRIVE.accel * driveMul) * dt;
   if (brake) v.speed *= 1 - Math.min(1, dt * DRIVE.brakeDamp);
   v.speed *= 1 - dt * DRIVE.drag;
-  v.speed = THREE.MathUtils.clamp(v.speed, -DRIVE.maxReverse, DRIVE.maxForward);
+  v.speed = THREE.MathUtils.clamp(v.speed, -DRIVE.maxReverse, DRIVE.maxForward * driveMul);
   if (Math.abs(v.speed) < 0.05) v.speed = 0;
   // Steering right turns the heading clockwise seen from above, which lowers h
   // (north h = π, east h = π/2). Reversing flips it, like a real car.

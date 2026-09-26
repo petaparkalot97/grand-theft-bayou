@@ -462,9 +462,10 @@ function applyRecoil(dt) {
   }
   // Recoil: snap out and settle, oscillating. `pitch` is how far the muzzle
   // climbs, `kick` how far the weapon rides back toward the shoulder.
+  const rMul = a.recoilMul || 1;
   const k = Math.exp(-p * 5.5) * Math.cos(p * Math.PI * 1.6);
-  rig.recoil.rotation.set(-r.pitch * k, r.yaw * k, 0);
-  rig.recoil.position.set(0, 0, -r.kick * Math.max(0, k));
+  rig.recoil.rotation.set(-r.pitch * rMul * k, r.yaw * rMul * k, 0);
+  rig.recoil.position.set(0, 0, -r.kick * rMul * Math.max(0, k));
 }
 
 /**
@@ -593,12 +594,12 @@ export function getWeaponMuzzleDir(out) {
   return out.copy(_fwd);
 }
 
-export function playFireAnim3D(weaponId, isMelee) {
+export function playFireAnim3D(weaponId, isMelee, recoilMul = 1) {
   const def = rigFor(weaponId);
   // Melee matches main.js's attackTimer (0.42 s) so the arm's swing and the
   // player clip end together instead of the pose popping off mid-swing.
   const t = isMelee ? 0.42 : def.recoil.time;
-  rig.anim = { type: isMelee ? "swing" : "fire", time: t, duration: t };
+  rig.anim = { type: isMelee ? "swing" : "fire", time: t, duration: t, recoilMul };
   return rig.anim.type;
 }
 

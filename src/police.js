@@ -336,7 +336,8 @@ export function createPoliceSystem({ scene, MAP, npcs, loot, hitPlayer, busted, 
       o.userData.beacon.red.visible = on;
       o.userData.beacon.blue.visible = !on;
       h.shootCd -= dt;
-      if (h.shootCd <= 0 && shootPlayer && d < 58) {
+      const invisible = env.state.stance > 0 && env.state.stats && env.state.stats.mods.invisibleToHeli();
+      if (h.shootCd <= 0 && shootPlayer && d < 58 && !invisible) {
         h.shootCd = 1.4 + Math.random() * 0.8;
         shootPlayer(o.position, 4.5, "helicopter");
       }

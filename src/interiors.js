@@ -487,6 +487,13 @@ export const FIXTURES = {
       }
     }
     for (let i = 0; i <= 3; i++) b.block(s.x - w / 2 + (i * w) / 3, s.z + d / 2 - 0.2, 0.8);
+    // Fill the deck footprint with collision blockers so the player cannot clip into the hollow mesh if they jump on it
+    const cols = Math.max(1, Math.ceil(w / 1.5)), rows = Math.max(1, Math.ceil(d / 1.5));
+    for (let i = 0; i <= cols; i++) {
+      for (let j = 0; j <= rows; j++) {
+        b.block(s.x - w / 2 + (i * w) / cols, s.z - d / 2 + (j * d) / rows, 0.9);
+      }
+    }
     b.lit(s.x, 4.6, s.z, 80, 18);
     b.station(s.x, s.z + d / 2 + 1.0, "stage", "The stage — the show's about to start");
     // the act, on the deck: a girl on each pole if this stage has them, else two

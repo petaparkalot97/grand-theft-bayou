@@ -87,7 +87,7 @@ export function createFpsView({ scene, camera }) {
       holder.quaternion.copy(q).multiply(pitchQ).multiply(rollQ);
       holder.updateMatrixWorld(true);
     },
-    fire(melee) { if (melee) swing = 1; else kick = 1; },
+    fire(melee, recoilMul = 1) { if (melee) swing = 1; else kick = 1 * recoilMul; },
     reload(seconds) { dipDur = Math.max(0.3, seconds || 1); dip = dipDur; },
     /** The barrel's world position, or null when nothing is showing. */
     muzzle(out) {

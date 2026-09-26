@@ -576,6 +576,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
     get hostileCount() { return hostiles; },
     becomeHostile,
     noise,
+    panicEvent,
     release,
 
     /** Give a freshly spawned NPC record its temperament and home turf. */

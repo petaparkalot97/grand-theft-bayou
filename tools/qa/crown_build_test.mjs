@@ -28,6 +28,8 @@ function check(label, ok, detail = "") {
   console.log(`${ok ? "  ok  " : " FAIL "} ${label}${detail ? `  — ${detail}` : ""}`);
 }
 
+const inCrownRect = (r, x, z) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1;
+
 // ------------------------------------------------------------------ stub three
 // A proportional text metric, so neonsign.js's fit loop is actually exercised:
 // it reads the px size out of the font string and advances ~0.64 em per glyph

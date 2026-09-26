@@ -722,6 +722,19 @@ function buildSwampTrees() {
       swampTrees.push({ x, z, hp: 100, dead: false, chunk, i });
     });
     for (const im of [trunks, foliage, puddles]) { im.computeBoundingSphere(); scene.add(im); }
+    swampPuddleChunks.push(puddles);
+  }
+}
+// A puddle is a transparent 5 m plane, so 1,900 of them are ~1,900 blended draws' worth of overdraw and are invisible past
+// a hundred-odd metres anyway (TASK-086 perf list): show a chunk's puddles only while the player is near it.
+const swampPuddleChunks = [];
+const PUDDLE_SHOW = 130;
+let _puddleTick = 0;
+function cullSwampPuddles() {
+  if ((_puddleTick++ % 20) !== 0) return;
+  for (const im of swampPuddleChunks) {
+    const b = im.boundingSphere;
+    im.visible = Math.hypot(b.center.x - playerPos.x, b.center.z - playerPos.z) < PUDDLE_SHOW + b.radius;
   }
 }
 /** Chop a swamp tree down: its three instances shrink to nothing. */
@@ -1602,6 +1615,7 @@ const loot = createLoot({
   scene, state, arsenal, flashObjective,
   getPlayerPos: () => playerPos,
   syncHUD: () => syncHUD(),
+  medDropChance: () => (state.stats ? state.stats.mods.medDropChance() : 0),
   // zombie mode: the dead carry ammo and a little cash (Luck / Scavenger / Survival make it more), and a
   // pickup tops up whichever of your guns is running lowest — not only the one in your hands
   lootMul: () => (state.stats ? state.stats.mods.lootMul() : 1),
@@ -1619,13 +1633,21 @@ const worldTime = createWorldTime();
 const weather = createWeather({ initial: "clear" });
 // GTA-style car-jacking (hijack.js): F at a car someone's driving pulls them out first.
 // Getters, not values: playerPos, enemies and npcs are declared further down.
+function provokeNPC(e) {
+  if (state.stats && e.type !== "zombie" && e.type !== "hog" && Math.random() < state.stats.mods.calmChance()) {
+    flashObjective("Speech check: bystander stood down.");
+    return;
+  }
+  npcs.provoke(e);
+}
+
 const hijacker = createHijacker({
   state,
   getPlayerPos: () => playerPos,
   getPlayer: () => player,
   releaseFromTraffic: (v) => { if (traffic) traffic.releaseVehicle(v); },
   spawnDriver: (x, z, v) => dismountRider(v, x, z),
-  provoke: (e) => npcs.provoke(e),
+  provoke: (e) => provokeNPC(e),
   enterVehicle: (v) => { state.veh = v; if (v) { arsenal.enforceVehicle(); if (multiplayerMode && multiplayer?.connected && v.netId) { multiplayer.send("VEHICLE_ENTER", { id: v.netId }); } } playerPos.copy(v.obj.position); player.visible = false; },
   flashObjective,
   crime,
@@ -2085,6 +2107,13 @@ function explodeCar(v) {
       }
     }
   });
+
+  const dist = playerPos.distanceTo(v.obj.position);
+  if (dist < 8) {
+    const raw = (8 - dist) * 15;
+    const dmg = Math.round(raw * (state.stats ? state.stats.mods.explosionDamageMul() : 1));
+    if (dmg > 0) { hitPlayer(dmg); flashObjective("Caught in blast!"); }
+  }
 
   // Spawn explosion effect (using torch since muzzle is missing)
   const ex = new AnimatedSprite(atlases.torch, 8.0);
@@ -3931,12 +3960,16 @@ function fire() {
     _aim3D.copy(_aim);
   }
 
-  if (camCtl.firstPerson) { fpsView.fire(gun.melee); if (!gun.melee) camCtl.kick(0.006 + (gun.damage || 1) * 0.004); }
+  if (camCtl.firstPerson) { 
+    const rMul = state.stats ? state.stats.mods.recoilMul() : 1;
+    fpsView.fire(gun.melee, rMul); 
+    if (!gun.melee) camCtl.kick((0.006 + (gun.damage || 1) * 0.004) * rMul); 
+  }
   if (!state.veh) { 
     attackTimer = 0.42; 
     player.play(gun.melee ? (state.weapon === "bat" ? "swing_bat" : "attack") : "shoot", { fps: 12, loop: false, force: true }); 
     if (!gun.melee && isAiming) player._yaw = camCtl.heading;
-    playFireAnim3D(state.weapon, gun.melee); 
+    playFireAnim3D(state.weapon, gun.melee, state.stats ? state.stats.mods.recoilMul() : 1); 
   }
 
   let best = null, bestScore = Infinity, bestKind = null, bestDist = 0;
@@ -4120,7 +4153,7 @@ function fire() {
     } else if (kind === "enemy") {
       t.hp -= dmg;
       const freshFight = t.state !== "hostile" && t.state !== "flee";
-      npcs.provoke(t);
+      provokeNPC(t);
       spawnBloodSpray(t.spr.position.clone().setY(t.type === "hog" ? 0.6 : 1.0), _aim3D);
       if (t.type !== "hog") { t.spr.play("hurt", { loop: false, force: true }); t.t = 0; }
       else t.spr.position.addScaledVector(t.spr.position.clone().sub(playerPos).setY(0).normalize(), 0.4);
@@ -4537,6 +4570,7 @@ function tick() {
   }
   composer.grade.uniforms.uBlur.value = rush;
 
+  cullSwampPuddles();
   const r0 = performance.now();
   renderer.info.reset();
   wetRoads.render();
@@ -4779,12 +4813,21 @@ function onFootUpdate(dt) {
   if (!grounded || state.vy > 0) {
     state.vy -= GRAVITY * dt;
     playerPos.y = Math.max(0, playerPos.y + state.vy * dt);
-    if (playerPos.y <= 0) { playerPos.y = 0; state.vy = 0; }
+    if (playerPos.y <= 0) { 
+      if (state.vy < -14) {
+        const dmg = Math.round((Math.abs(state.vy) - 14) * 4 * (state.stats ? state.stats.mods.fallDamageMul() : 1));
+        if (dmg > 0) { hitPlayer(dmg); flashObjective("Ouch! Fall damage."); }
+      }
+      playerPos.y = 0; state.vy = 0; 
+    }
   }
+  if (state.sp <= 0) state.exhausted = true;
+  else if (state.sp > 30) state.exhausted = false;
+
   const stanceMul = [1, 0.5, 0.2][state.stance];
   let speed = 6.5 * (M ? M.speedMul() : 1) * stanceMul;
-  const runs = sprint && state.sp > 1 && moving && state.stance === 0;
-  if (runs) { speed = 12.5 * (M ? M.speedMul() : 1); state.sp -= dt * 26 * (M ? M.sprintCostMul() / M.staminaMul() : 1); }
+  const runs = sprint && !state.exhausted && state.sp > 0 && moving && state.stance === 0;
+  if (runs) { speed = 12.5 * (M ? M.speedMul() : 1); state.sp = Math.max(0, state.sp - dt * 26 * (M ? M.sprintCostMul() / M.staminaMul() : 1)); }
   else state.sp = Math.min(100, state.sp + dt * 14 * (M ? M.staminaRegenMul() : 1) * (state.stance > 0 && !moving ? 1.6 : 1));
   // ---- how visible you are to the dead: stance x motion x torch x a recent shot x Sneak
   {
@@ -4796,8 +4839,17 @@ function onFootUpdate(dt) {
     if (performance.now() / 1000 - state.lastShotT < 4) st *= 2.2;
     state.stealth = st * (M ? M.stealthMul() : 1);
     if (state.zombieMode) {
-      const s = state.stealth, lv = s < 0.45 ? "" : s < 1 ? "caution" : "danger";
-      pipboy.stealth(`${["STANDING", "CROUCHED", "PRONE"][state.stance]} · ${s < 0.45 ? "HIDDEN" : s < 1 ? "CAUTION" : "EXPOSED"}`, lv);
+      let detected = false;
+      for (const e of enemies) {
+        if (e.state === "hostile" && !e.rivalTarget) { detected = true; break; }
+      }
+      const s = state.stealth;
+      if (detected) {
+        pipboy.stealth(`${["STANDING", "CROUCHED", "PRONE"][state.stance]} · DETECTED`, "danger");
+      } else {
+        const lv = s < 0.45 ? "" : s < 1 ? "caution" : "danger";
+        pipboy.stealth(`${["STANDING", "CROUCHED", "PRONE"][state.stance]} · ${s < 0.45 ? "HIDDEN" : s < 1 ? "CAUTION" : "EXPOSED"}`, lv);
+      }
     }
   }
 
@@ -4879,7 +4931,8 @@ function drivingUpdate(dt) {
   // Push bikes need a deliberate pedal input: Space adds momentum, while
   // releasing it lets the bicycle coast and naturally slow down.
   const throttle = v.def && v.def.pedal ? (input.isDown("jump") ? 1 : 0) : input.axis("back", "forward");
-  stepArcadeVehicle(v, { throttle, steer: inX, brake: input.isDown("brake") }, dt);
+  const driveMul = state.stats ? state.stats.mods.driveMul() : 1;
+  stepArcadeVehicle(v, { throttle, steer: inX, brake: input.isDown("brake") }, dt, driveMul);
   forwardFromHeading(v.heading, _fwd);
   const next = _next.copy(v.obj.position).addScaledVector(_fwd, v.speed * dt);
 
@@ -4921,7 +4974,9 @@ function drivingUpdate(dt) {
   // once it clears CRASH_MIN_IMPACT — anything below that is a scrape, not a
   // crash, and does no damage at all)
   if (v.impact > 0) {
-    v.hp -= Math.max(0, v.impact - CRASH_MIN_IMPACT) * CRASH_DAMAGE_SCALE;
+    let dmg = Math.max(0, v.impact - CRASH_MIN_IMPACT) * CRASH_DAMAGE_SCALE;
+    if (v === state.veh && state.stats) dmg *= state.stats.mods.vehDamageTakenMul();
+    v.hp -= dmg;
     v.impact = 0;
     if (v.hp <= 0 && !v.exploded) { crime(0.5); explodeCar(v); }
     else if (v.hp / (v.hpMax || 40) < VEHICLE_FIRE_HP_FRAC) startVehicleFire(v);
@@ -4940,7 +4995,7 @@ function drivingUpdate(dt) {
       if (e.dead) continue;
       if (e.spr.position.distanceTo(next) < 2.4) {
         e.hp -= 5;
-        npcs.provoke(e);
+        provokeNPC(e);
         e.spr.position.addScaledVector(_fwd, 1.2);
         v.speed *= 0.82;
         if (e.hp <= 0) { killEnemy(e); if (e.type !== "hog") crime(1.1); }
@@ -5333,6 +5388,7 @@ function updateSheriffs(dt) {
 }
 
 function damageVehicle(v, amount) {
+  if (v === state.veh && state.stats) amount *= state.stats.mods.vehDamageTakenMul();
   v.hp -= amount;
 
   if (v.def && v.def.bike && v.seats && v.seats[0] && v.seats[0].occupant === "npc") {
@@ -5341,7 +5397,7 @@ function damageVehicle(v, amount) {
     const e = dismountRider(v, v.obj.position.x, v.obj.position.z);
     e.hp -= amount; 
     const freshFight = e.state !== "hostile" && e.state !== "flee";
-    npcs.provoke(e);
+    provokeNPC(e);
     spawnBloodSpray(e.spr.position.clone().setY(1.0), new THREE.Vector3(0, 1, 0));
     if (e.hp <= 0) { 
       killEnemy(e); 

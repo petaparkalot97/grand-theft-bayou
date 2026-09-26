@@ -143,10 +143,22 @@ export const GFX = {
 
 // Pick a sane starting tier. A 4K buffer on integrated graphics is a slideshow,
 // so only opt in when the display itself is already large / high-DPI.
+function gpuIsIntegrated() {
+  try {
+    const gl = document.createElement("canvas").getContext("webgl");
+    const ext = gl && gl.getExtension("WEBGL_debug_renderer_info");
+    const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : "";
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
+    return /intel|uhd|iris|hd graphics|mali|adreno|apple gpu|swiftshader|llvmpipe|software/i.test(name) && !/arc/i.test(name);
+  } catch { return false; }
+}
+
 export function autoTier() {
+  const integrated = gpuIsIntegrated();
   const px = Math.max(screen.width, screen.height) * (devicePixelRatio || 1);
   const mem = navigator.deviceMemory || 4;
   const cores = navigator.hardwareConcurrency || 4;
+  if (integrated) return px >= 1400 ? "medium" : "low";
   if (px >= 3000 && mem >= 8 && cores >= 8) return "ultra";
   if (px >= 1800 && cores >= 6) return "high";
   if (px >= 1400) return "medium";
@@ -1135,7 +1147,7 @@ export function createGovernor(onChange) {
       return;
     }
     const i = TIER_ORDER.indexOf(GFX.tier);
-    if (fps < 32 && i > 0) {
+    if (fps < 45 && i > 0) {
       GFX.tier = TIER_ORDER[i - 1];
       warmup = 3;
       onChange(GFX.tier, fps);
