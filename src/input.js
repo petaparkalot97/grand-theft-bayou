@@ -17,10 +17,13 @@ export const DEFAULT_BINDINGS = Object.freeze({
   back: ["KeyS", "ArrowDown"],
   left: ["KeyA"],
   right: ["KeyD"],
-  sprint: ["ShiftLeft", "ShiftRight"],     // on foot
-  brake: ["ShiftLeft", "ShiftRight"],      // in a vehicle (handbrake)
-  orbitLeft: ["KeyQ", "ArrowLeft"],        // keyboard camera orbit, secondary to the mouse
+  sprint: ["ShiftLeft"],                   // on foot (Right Shift is the camera-turn modifier)
+  brake: ["ShiftLeft"],                    // in a vehicle (handbrake)
+  orbitLeft: ["ArrowLeft"],                // keyboard camera orbit, secondary to the mouse
   orbitRight: ["ArrowRight"],
+  orbitModifier: ["ShiftRight"],           // Q / E turn the camera only while Right Shift is held (E is also "use")
+  orbitLeftMod: ["KeyQ"],
+  orbitRightMod: ["KeyE"],
   interact: ["KeyE"],                      // enter / exit a vehicle, use things (Enter is the cutscene key)
   jump: ["Space"],
   crouch: ["KeyC"],

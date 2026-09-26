@@ -310,7 +310,7 @@ Then hit **Start the story**.
 | **Tab** | the Pip-Boy (zombie mode): S.P.E.C.I.A.L., skills, perks, traits — spend level-up points here |
 | **C** | crouch (the sneak: slower, quieter, harder for the dead to notice) · **C C** quickly: prone (the crawl: slowest, the most stealth) · **C** again stands · sprinting stands you up |
 | **K** | mute the car radio on its own (or click 📻 next to the ♪ button) |
-| **Q / →** | turn the view (secondary) |
+| **Right Shift + Q / E** (or **← / →**) | turn the view (secondary) |
 | **F3** | frame-time / draw-call readout |
 | **F4** | orientation debug: world axes, player / camera / vehicle headings and arrows |
 | **[** / **]** | step graphics quality down / up |

@@ -149,7 +149,7 @@ export function buildRoadside(R, { name, seed, bounds, road, junctions = [], avo
   }
 
   // first in line: where a track's bounds overlap a town's, the track's road cells must still read as road
-  R.regions.unshift({ C, rect: bounds, zone: profile.zone || "rural", outside: "rural", wildAs: "rural" });
+  R.regions.unshift({ C, rect: bounds, zone: profile.zone || "rural", outside: "rural", wildAs: "forest" });   // the forest behind a road is hog country, not "rural" (hogs 0.25, hoodrats 0.15)
   const m = C.minimap;
   R.minimap.buildings.push(...m.buildings);
   R.pois.push(...C.pois);

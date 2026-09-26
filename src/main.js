@@ -1500,7 +1500,8 @@ const mapEditor = createMapEditor({
 
 // Every "E" belongs to whichever thing you are standing at; only if none claims it is it "get in the car".
 // (tusouxroeNorth's Crown Strip was never asked, so its games answered "There are no vehicles nearby.")
-input.onPress("interact", () => { if (services.interact() || nightlife.interact() || casinos.interact() || (tusouxroeNorth && tusouxroeNorth.interact()) || (orlea && orlea.interact()) || (newton && newton.interact())) return; enterExitVehicle(); });
+input.onPress("interact", () => { if (input.isDown("orbitModifier")) return;   // Right Shift + E turns the camera, it does not "use"
+  if (services.interact() || nightlife.interact() || casinos.interact() || (tusouxroeNorth && tusouxroeNorth.interact()) || (orlea && orlea.interact()) || (newton && newton.interact())) return; enterExitVehicle(); });
 input.onPress("mute", () => toggleMute());
 // [ / ] step the graphics tier down / up; once you touch it, the auto
 // governor stops overriding your choice.
@@ -2246,31 +2247,62 @@ const ENEMY_TYPES = {
             h: 1.9, hp: 5, speed: 2.1, aggro: 30, melee: 1.7, dmg: 9, atkGap: 0.8 },
 };
 
+// A feral hog, nose to +z (npc.js turns the group with atan2(vx, vz), so local +z is forward). A boar, not a box: a barrel
+// body with a shoulder hump and a bristle mane down the spine, a wedge head ending in a flat pink snout with nostrils,
+// floppy ears, small mean eyes, curved tusks, a curled tail, and tapered legs on cloven hooves. Geometry is built once;
+// each hog picks a coat (wild boar brown, black, red, or a pale escaped farm pig) so a herd is not one hog copied.
+let _hogParts = null;
 function buildHog() {
-  const g = new THREE.Group();
-  const hide = new THREE.MeshStandardMaterial({ color: 0x3b2f28, roughness: 1 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x241c18, roughness: 1 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.0, 0.95), hide);
-  body.position.y = 0.95; body.castShadow = true;
-  const rump = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 1.05), hide);
-  rump.position.set(-0.7, 1.0, 0); rump.castShadow = true;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), hide);
-  head.position.set(1.0, 0.8, 0); head.castShadow = true;
-  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.5), dark);
-  snout.position.set(1.45, 0.7, 0);
-  const tuskGeo = new THREE.ConeGeometry(0.07, 0.35, 5);
-  const tuskMat = new THREE.MeshStandardMaterial({ color: 0xe8e0cc });
-  const t1 = new THREE.Mesh(tuskGeo, tuskMat); t1.position.set(1.5, 0.6, 0.18); t1.rotation.z = -0.5;
-  const t2 = t1.clone(); t2.position.z = -0.18;
-  const legGeo = new THREE.BoxGeometry(0.22, 0.7, 0.22);
-  const legs = [];
-  for (const [lx, lz] of [[0.6, 0.34], [0.6, -0.34], [-0.7, 0.36], [-0.7, -0.36]]) {
-    const l = new THREE.Mesh(legGeo, dark);
-    l.position.set(lx, 0.35, lz); l.castShadow = true;
-    legs.push(l); g.add(l);
+  if (!_hogParts) {
+    const sph = (r, sx, sy, sz) => new THREE.SphereGeometry(r, 14, 10).scale(sx, sy, sz);
+    const nose = (r0, r1, h) => new THREE.CylinderGeometry(r0, r1, h, 12).rotateX(Math.PI / 2);      // axis along +z, r0 at the front
+    _hogParts = {
+      torso: sph(0.5, 1.1, 1.0, 1.95), hump: sph(0.5, 0.85, 0.7, 0.95), belly: sph(0.5, 0.9, 0.5, 1.5), rump: sph(0.5, 0.95, 0.9, 0.9),
+      head: nose(0.3, 0.44, 0.8), snout: nose(0.24, 0.26, 0.2), nostril: new THREE.BoxGeometry(0.06, 0.07, 0.04),
+      ear: new THREE.ConeGeometry(0.19, 0.36, 4), eye: new THREE.SphereGeometry(0.04, 6, 5),
+      tusk: new THREE.ConeGeometry(0.055, 0.34, 6), bristle: new THREE.ConeGeometry(0.07, 0.3, 4),
+      tail: new THREE.TorusGeometry(0.1, 0.025, 6, 10, Math.PI * 1.5), leg: new THREE.CylinderGeometry(0.1, 0.075, 0.7, 7),
+      hoof: new THREE.BoxGeometry(0.15, 0.1, 0.19),
+    };
+    _hogParts.mats = {
+      dark: new THREE.MeshStandardMaterial({ color: 0x1d1612, roughness: 1 }), tusk: new THREE.MeshStandardMaterial({ color: 0xe8e0cc, roughness: 0.6 }),
+      snout: new THREE.MeshStandardMaterial({ color: 0xa87a6c, roughness: 0.8 }), eye: new THREE.MeshStandardMaterial({ color: 0x1a0505, emissive: 0x551010, emissiveIntensity: 0.6 }),
+      coats: [0x4a3628, 0x2a211c, 0x6a4030, 0x3b2f28, 0xb89484].map((c) => [new THREE.MeshStandardMaterial({ color: c, roughness: 1 }), new THREE.MeshStandardMaterial({ color: new THREE.Color(c).multiplyScalar(1.35), roughness: 1 })]),
+    };
+    for (const m of [_hogParts.mats.dark, _hogParts.mats.tusk, _hogParts.mats.snout, _hogParts.mats.eye, ..._hogParts.mats.coats.flat()]) m.userData.gtbRealized = true;
   }
-  g.add(body, rump, head, snout, t1, t2);
+  const P = _hogParts, M = P.mats, g = new THREE.Group();
+  const roll = Math.random();
+  const [hide, belly] = M.coats[roll < 0.42 ? 0 : roll < 0.62 ? 1 : roll < 0.8 ? 2 : roll < 0.93 ? 3 : 4];
+  const add = (geo, mat, x, y, z, o = {}) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    if (o.rx) m.rotation.x = o.rx; if (o.ry) m.rotation.y = o.ry; if (o.rz) m.rotation.z = o.rz;
+    if (o.shadow) m.castShadow = true;
+    g.add(m); return m;
+  };
+  add(P.torso, hide, 0, 0.88, 0, { shadow: true });
+  add(P.hump, hide, 0, 1.12, 0.55, { shadow: true });
+  add(P.rump, hide, 0, 0.9, -0.75);
+  add(P.belly, belly, 0, 0.62, 0.05);
+  for (let i = 0; i < 9; i++) add(P.bristle, M.dark, 0, 1.4 - Math.abs(i - 3) * 0.05, 0.95 - i * 0.24, { rx: -0.35 });   // the mane, hackles up
+  add(P.head, hide, 0, 0.92, 1.2, { shadow: true });
+  add(P.snout, M.snout, 0, 0.82, 1.68);
+  for (const s of [-1, 1]) {
+    add(P.nostril, M.dark, s * 0.09, 0.82, 1.79);
+    add(P.ear, hide, s * 0.3, 1.32, 1.02, { rz: s * 0.95, rx: 0.5 });
+    add(P.eye, M.eye, s * 0.2, 1.05, 1.5);
+    add(P.tusk, M.tusk, s * 0.2, 0.86, 1.62, { rx: 0.8, rz: -s * 0.25 });
+  }
+  const tail = add(P.tail, hide, 0, 1.15, -1.22, { ry: Math.PI / 2 });
+  const legs = [];
+  for (const [lx, lz] of [[0.34, 0.68], [-0.34, 0.68], [0.34, -0.7], [-0.34, -0.7]]) {
+    const l = add(P.leg, hide, lx, 0.35, lz, { shadow: true });
+    const h = new THREE.Mesh(P.hoof, M.dark); h.position.y = -0.36; l.add(h);
+    legs.push(l);
+  }
   g.userData.legs = legs;
+  g.userData.tail = tail;
   return g;
 }
 
@@ -4563,8 +4595,8 @@ function simulate(dt) {
     env.setIntensity(sky.envIntensity * f, sky.bgIntensity);
   }
 
-  // ---- camera orbit (Q/E), secondary to mouse look ----
-  const orbit = input.axis("orbitLeft", "orbitRight");
+  // ---- camera orbit (Right Shift + Q/E, or the arrow keys), secondary to mouse look ----
+  const orbit = input.axis("orbitLeft", "orbitRight") + (input.isDown("orbitModifier") ? input.axis("orbitLeftMod", "orbitRightMod") : 0);
   if (orbit) camCtl.addYaw(orbit * dt * 2.0);
 
   if (state.veh) drivingUpdate(dt);
