@@ -20,8 +20,8 @@ export const DEFAULT_BINDINGS = Object.freeze({
   sprint: ["ShiftLeft", "ShiftRight"],     // on foot
   brake: ["ShiftLeft", "ShiftRight"],      // in a vehicle (handbrake)
   orbitLeft: ["KeyQ", "ArrowLeft"],        // keyboard camera orbit, secondary to the mouse
-  orbitRight: ["KeyE", "ArrowRight"],
-  interact: ["KeyF"],                      // enter / exit a vehicle, use things (Enter is the cutscene key)
+  orbitRight: ["ArrowRight"],
+  interact: ["KeyE"],                      // enter / exit a vehicle, use things (Enter is the cutscene key)
   jump: ["Space"],
   crouch: ["KeyC"],
   mute: ["KeyM"],
@@ -39,8 +39,8 @@ export const DEFAULT_BINDINGS = Object.freeze({
   holster: ["KeyX"],
   equipBat: ["Digit1"],
   equipPistol: ["Digit2"], equipTec9: ["Digit3"], equipShotgun: ["Digit4"], equipRifle: ["Digit5"],   // weapon slots
-  flashlight: ["KeyT"],
-  pipboy: ["Tab"],                     // the character screen (zombie mode)                // first person: the torch on your gun
+  flashlight: ["KeyF"],                // the torch on your gun (first person)
+  pipboy: ["Tab"],                     // the character screen (zombie mode)
   viewToggle: ["KeyV"],                // first person <-> third person
   horn: ["KeyH"],                      // honk / call a prostitute to the passenger door
 });

@@ -136,7 +136,7 @@ export function createCameraController({ camera, dom, canCapture }) {
       on = !!on;
       if (on === fps) return;
       fps = on;
-      if (on) { fpsPitch = 0; camera.fov = settings.fov; }
+      if (on) { fpsPitch = 0; fpsKick = 0; eyeNow = eyeWant; bobT = 0; bobAmt = 0; camera.fov = settings.fov; }   // a clean head every time: nothing stale survives a V
       else { camera.fov = baseFov; targetYaw = yaw; }
       camera.updateProjectionMatrix();
     },
@@ -146,9 +146,9 @@ export function createCameraController({ camera, dom, canCapture }) {
     /** Look pitch in first person, radians above the horizon. */
     get fpsPitch() { return fpsPitch; },
     /** Where the head is, in metres above the feet (eased): 1.62 standing, ~1.05 crouched, ~0.42 prone. */
-    setEye(h) { eyeWant = h; },
+    setEye(h) { eyeWant = Number.isFinite(h) ? h : EYE_HEIGHT; },
     /** Recoil: the muzzle climbs. Eased back down by update(), so a burst walks the view up. */
-    kick(rad) { fpsKick = Math.min(0.12, fpsKick + rad); fpsPitch = THREE.MathUtils.clamp(fpsPitch + rad * 0.5, -1.35, 1.35); },
+    kick(rad) { if (!Number.isFinite(rad)) return; fpsKick = Math.min(0.12, fpsKick + rad); fpsPitch = THREE.MathUtils.clamp(fpsPitch + rad * 0.5, -1.35, 1.35); },
     get pitch() { return pitch; },
     /** The heading the camera is looking along. */
     get heading() { return cameraYawToHeading(yaw); },
@@ -188,8 +188,13 @@ export function createCameraController({ camera, dom, canCapture }) {
         // walking: a small head bob; the recoil kick settles back
         bobAmt += ((moveHeading != null ? 1 : 0) - bobAmt) * (1 - Math.exp(-8 * dt));
         bobT += dt * 9 * bobAmt;
+        // a single bad number (a NaN from a weapon stat, a stance index...) would stick to the head forever and freeze the pitch:
+        // looking would stop working, and toggling V would not clear it. Never let one through.
+        if (!Number.isFinite(fpsKick)) fpsKick = 0;
+        if (!Number.isFinite(fpsPitch)) fpsPitch = 0;
+        if (!Number.isFinite(eyeNow)) eyeNow = Number.isFinite(eyeWant) ? eyeWant : EYE_HEIGHT;
         fpsKick *= Math.exp(-9 * dt);
-        fpsPitch -= fpsKick * dt * 2.2;
+        fpsPitch = THREE.MathUtils.clamp(fpsPitch - fpsKick * dt * 2.2, -1.35, 1.35);
         const cp = Math.cos(fpsPitch), fx = -Math.sin(yaw), fz = -Math.cos(yaw);
         eyeNow += (eyeWant - eyeNow) * (1 - Math.exp(-11 * dt));
         const eye = eyeNow + Math.abs(Math.sin(bobT)) * 0.045 * bobAmt * (eyeNow / EYE_HEIGHT) - (aiming ? 0.03 : 0);

@@ -565,7 +565,7 @@ export function createActOne(ctx) {
         }
       } else if (phase === "door") {
         const d = Math.hypot(playerPos.x - NADIA_DOOR.x, playerPos.z - NADIA_DOOR.z);
-        if (state.veh && d < 14) ctx.setObjective("Get out of the car and go inside (F).");
+        if (state.veh && d < 14) ctx.setObjective("Get out of the car and go inside (E).");
         else if (!state.veh) ctx.setObjective("Go inside: Mama Emiko's house (the green one).");
         if (!state.veh && d < 2.6 && !state.cinematic) {
           phase = "inside";
@@ -573,7 +573,7 @@ export function createActOne(ctx) {
         }
       } else if (phase === "toMama") {
         const d = Math.hypot(playerPos.x - NADIA_DOOR.x, playerPos.z - NADIA_DOOR.z);
-        if (state.veh && d < 14) ctx.setObjective("Get out of the car and go to Mama's door (F).");
+        if (state.veh && d < 14) ctx.setObjective("Get out of the car and go to Mama's door (E).");
         else if (d < 14) ctx.setObjective("Go to Mama's door: the green house.");
         else ctx.setObjective(MAMA_OBJECTIVE);
         if (!state.veh && d < 2.6 && !state.cinematic) reachedMama();

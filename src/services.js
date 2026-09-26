@@ -293,11 +293,16 @@ export function createServices(ctx) {
 
   // ---------------------------------------------------------------- gun counter
   let menu = null;              // { s, sel }
+  // Ammo for every gun you carry (the one in your hands first). A gun counter stocks guns AND ammo; Popeyes stocks
+  // chicken and ammo only, no guns (human request, 2026-09-26).
+  function ammoItems() {
+    const owned = GUN_PRICES.map(([id]) => id).filter((id) => id === state.weapon || (state.reserve && state.reserve[id] > 0) || (state.freeRoam && WEAPONS[id]));
+    owned.sort((a, b) => (b === state.weapon) - (a === state.weapon));
+    return owned.filter((id) => WEAPONS[id] && !WEAPONS[id].melee).map((id) => ({ ammo: true, id, price: price("ammo"), label: `Ammo: ${WEAPONS[id].name} (+${WEAPONS[id].clip * 2})` }));
+  }
   function menuItems() {
-    const items = GUN_price("map")(([id, price]) => ({ id, price, label: WEAPONS[id].name }));
-    const w = WEAPONS[state.weapon];
-    if (w && !w.melee) items.push({ ammo: true, id: state.weapon, price: price("ammo"), label: `Ammo: ${w.name} (+${w.clip * 2})` });
-    return items;
+    if (menu && menu.s.kind === "food") return [{ food: true, price: price("food"), label: `${menu.s.dish || "Popeyes 3-piece spicy combo"} (+${Math.round(FOOD_HP * heal())} HP)` }, ...ammoItems()];
+    return [...GUN_PRICES.map(([id, base]) => ({ id, price: scaled(base), label: WEAPONS[id].name })), ...ammoItems()];
   }
   function renderMenu() {
     if (!menu) return;
@@ -305,7 +310,7 @@ export function createServices(ctx) {
     menu.sel = Math.max(0, Math.min(items.length - 1, menu.sel));
     menuEl.innerHTML = `<h3>${menu.s.name.toUpperCase()}</h3><div class="cash">Cash $${state.cash.toLocaleString()}</div>` +
       items.map((it, i) => `<div class="row${i === menu.sel ? " sel" : ""}${state.cash < it.price ? " poor" : ""}"><span>${it.label}</span><span>$${it.price}</span></div>`).join("") +
-      `<div class="keys">W / S choose · F or Enter buy · Esc leave</div>`;
+      `<div class="keys">W / S choose · E or Enter buy · Esc leave</div>`;
   }
   function openMenu(s) {
     menu = { s, sel: 0 };
@@ -324,22 +329,24 @@ export function createServices(ctx) {
   function buy() {
     const it = menuItems()[menu.sel];
     if (!it) return;
+    if (it.food) { eat(menu.s); renderMenu(); return; }        // eat() charges, heals and flashes for itself
     if (state.cash < it.price) { flash(`Not enough cash for the ${it.label}.`); return; }
     state.cash -= it.price;
     const w = WEAPONS[it.id];
-    ctx.arsenal.give(it.id, it.ammo ? w.clip * 2 : w.clip * 3);
+    if (it.ammo) ctx.arsenal.addReserve(it.id, w.clip * 2);      // ammo for a gun in your pack must not swap it into your hands
+    else ctx.arsenal.give(it.id, w.clip * 3);
     ctx.syncHUD();
     ctx.cine.sfx("chime", 0.35);
     flash(it.ammo ? `Bought ammo for the ${w.name}. -$${it.price}` : `Bought a ${w.name}. It's in your hands. -$${it.price}`);
     renderMenu();
   }
-  // capture-phase, so the game's own bindings (F, Esc, W/S) never see these keys
+  // capture-phase, so the game's own bindings (E, Esc, W/S) never see these keys
   window.addEventListener("keydown", (e) => {
     if (!menu) return;
     const k = e.code;
     if (k === "KeyW" || k === "ArrowUp") { menu.sel--; renderMenu(); }
     else if (k === "KeyS" || k === "ArrowDown") { menu.sel++; renderMenu(); }
-    else if (k === "KeyF" || k === "Enter" || k === "Space") buy();
+    else if (k === "KeyE" || k === "Enter" || k === "Space") buy();
     else if (k === "Escape" || k === "Backspace") closeMenu();
     else return;
     e.preventDefault();
@@ -348,9 +355,9 @@ export function createServices(ctx) {
 
   // ---------------------------------------------------------------- per frame
   function describe(s) {
-    if (s.kind === "gun") return `<b>F</b> · ${s.name}: guns & ammo`;
-    if (s.kind === "hospital") return `<b>F</b> · ${s.name}: full health, $${price("hospital")}`;
-    if (s.kind === "food") return `<b>F</b> · ${s.dish || "Popeyes 3-piece spicy combo"}: $${price("food")}, +${Math.round(FOOD_HP * heal())} HP`;
+    if (s.kind === "gun") return `<b>E</b> · ${s.name}: guns & ammo`;
+    if (s.kind === "hospital") return `<b>E</b> · ${s.name}: full health, $${price("hospital")}`;
+    if (s.kind === "food") return (s.dish ? `<b>E</b> · ${s.dish}: $${price("food")}, +${Math.round(FOOD_HP * heal())} HP` : `<b>E</b> · Popeyes: chicken $${price("food")} · ammo $${price("ammo")}`);
     return "";
   }
 
@@ -384,13 +391,13 @@ export function createServices(ctx) {
     else promptEl.hidden = true;
   }
 
-  /** F pressed: true if a service took it (main.js then skips car enter/exit). */
+  /** E pressed: true if a service took it (main.js then skips car enter/exit). */
   function interact() {
     if (busy || !prompt || state.veh) return false;
     const s = prompt.s;
     if (s.kind === "gun") openMenu(s);
     else if (s.kind === "hospital") treat(s);
-    else if (s.kind === "food") eat(s);
+    else if (s.kind === "food") { if (s.dish) eat(s); else openMenu(s); }      // Popeyes: chicken and ammo
     else return false;
     return true;
   }

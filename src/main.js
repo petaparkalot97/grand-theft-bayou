@@ -1498,7 +1498,7 @@ const mapEditor = createMapEditor({
   removeLitSpot: (spot) => { const i = litSpots.indexOf(spot); if (i >= 0) litSpots.splice(i, 1); },
 });
 
-// Every "F" belongs to whichever thing you are standing at; only if none claims it is it "get in the car".
+// Every "E" belongs to whichever thing you are standing at; only if none claims it is it "get in the car".
 // (tusouxroeNorth's Crown Strip was never asked, so its games answered "There are no vehicles nearby.")
 input.onPress("interact", () => { if (services.interact() || nightlife.interact() || casinos.interact() || (tusouxroeNorth && tusouxroeNorth.interact()) || (orlea && orlea.interact()) || (newton && newton.interact())) return; enterExitVehicle(); });
 input.onPress("mute", () => toggleMute());
@@ -4180,7 +4180,7 @@ function syncHUD() {
     vehIndic.hidden = false;
     vehIndic.textContent = state.veh.sheriff
       ? `⚡ SHERIFF CRUISER — ${Math.round(Math.abs(state.veh.speed) * 3)} mph`
-      : `${Math.round(Math.abs(state.veh.speed) * 3)} mph   ·   F to get out`;
+      : `${Math.round(Math.abs(state.veh.speed) * 3)} mph   ·   E to get out`;
   } else {
     vehIndic.hidden = true;
   }

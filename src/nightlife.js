@@ -555,9 +555,9 @@ export function createNightlife(ctx) {
     prompt = null;
     if (inside.dancers[0].dead) { promptEl.hidden = true; return; }   // no rail tip, no VIP dance — she's down
     if (Math.hypot(l.x - inside.rail.lx, l.z - inside.rail.lz) < 0.9) {
-      prompt = { c: inside, job: "tip", text: `<b>F</b> · Make it rain on ${inside.dancers[0].a.name}: $${PRICES.tip} (+${HEAL.tip} HP)` };
+      prompt = { c: inside, job: "tip", text: `<b>E</b> · Make it rain on ${inside.dancers[0].a.name}: $${PRICES.tip} (+${HEAL.tip} HP)` };
     } else if (Math.hypot(l.x - inside.vip.lx, l.z - inside.vip.lz) < 0.9) {
-      prompt = { c: inside, job: "lap", text: `<b>F</b> · VIP lap dance with ${inside.dancers[0].a.name}: $${PRICES.lapDance} (+${HEAL.lapDance} HP)` };
+      prompt = { c: inside, job: "lap", text: `<b>E</b> · VIP lap dance with ${inside.dancers[0].a.name}: $${PRICES.lapDance} (+${HEAL.lapDance} HP)` };
     }
     if (prompt) { promptEl.innerHTML = prompt.text; promptEl.hidden = false; }
     else promptEl.hidden = true;

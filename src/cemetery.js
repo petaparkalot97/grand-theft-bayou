@@ -757,7 +757,7 @@ export function createCemetery(ctx, b) {
     const atStep = here && Math.hypot(playerPos.x - OFFERING.x, playerPos.z - OFFERING.z) < 2.6;
     prompt = !!(atStep && offerCd <= 0 && !state.cinematic);
     if (prompt) {
-      promptEl.innerHTML = `<b>F</b> · Leave an offering at Marie Laveau's tomb: $${OFFERING_COST} (+${OFFERING_HEAL} HP)`;
+      promptEl.innerHTML = `<b>E</b> · Leave an offering at Marie Laveau's tomb: $${OFFERING_COST} (+${OFFERING_HEAL} HP)`;
       promptEl.hidden = false;
     } else {
       promptEl.hidden = true;

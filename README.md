@@ -249,7 +249,7 @@ and WEBM all work.
   - It pulls in when a building gets between you and it.
 - **Vehicles** (`src/vehicles.js`). Every model's nose is corrected once, by
   definition, so cars drive the way they face.
-- **Car-jacking** (`src/hijack.js`). Traffic cars have drivers. Press F by a
+- **Car-jacking** (`src/hijack.js`). Traffic cars have drivers. Press E by a
   slow or stopped one and Keseme walks to the driver's door and hauls the
   driver out. Timid drivers run; brave ones swing at you. Then the car is
   yours. It's a small crime, so the Sheriff notices if he's already on to you.
@@ -302,15 +302,15 @@ Then hit **Start the story**.
 | **Right click** | aim down the sights (zoom, steadier hand) |
 | **1 – 5** | bat · 9mm · Tec-9 · sawn-off shotgun · deer rifle (mouse wheel cycles too) |
 | **R** | reload on foot · **in a car or on a bike: switch the radio on / off** (there is no other music) |
-| **T** | torch on / off (first person) |
+| **F** | torch on / off (first person) |
 | **V** | first person <-> the old third-person orbit camera |
-| **F** | get in / out of a car · use whatever you are standing at: a slot machine, the bar, the stage, a Pay 'n' Spray, a hospital, a food counter |
+| **E** | get in / out of a car · use whatever you are standing at: a slot machine, the bar, the stage, a Pay 'n' Spray, a hospital, a gun counter (guns and ammo), a Popeyes counter (chicken and ammo, no guns) |
 | **Shift** | sprint on foot · handbrake in a car |
 | **Space** | jump — high, and it costs stamina · the DeLorean hovers: **Space** hops it |
 | **Tab** | the Pip-Boy (zombie mode): S.P.E.C.I.A.L., skills, perks, traits — spend level-up points here |
 | **C** | crouch (the sneak: slower, quieter, harder for the dead to notice) · **C C** quickly: prone (the crawl: slowest, the most stealth) · **C** again stands · sprinting stands you up |
 | **K** | mute the car radio on its own (or click 📻 next to the ♪ button) |
-| **Q / E** | turn the view (secondary) |
+| **Q / →** | turn the view (secondary) |
 | **F3** | frame-time / draw-call readout |
 | **F4** | orientation debug: world axes, player / camera / vehicle headings and arrows |
 | **[** / **]** | step graphics quality down / up |

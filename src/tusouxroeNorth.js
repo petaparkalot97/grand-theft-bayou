@@ -1623,7 +1623,7 @@ export function createTusouxroeNorth(ctx) {
       if (near) crownPrompt = near;
       if (crownPromptEl) {
         crownPromptEl.hidden = !crownPrompt;
-        if (crownPrompt) crownPromptEl.innerHTML = `<b>F</b> · ${crownPrompt.text}`;
+        if (crownPrompt) crownPromptEl.innerHTML = `<b>E</b> · ${crownPrompt.text}`;
       }
     },
 

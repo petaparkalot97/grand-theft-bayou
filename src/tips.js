@@ -11,8 +11,8 @@
 export const TIPS = Object.freeze({
   guns: {
     title: "BUYING GUNS",
-    text: "Walk onto the yellow ring at a gun counter — <b>G</b> on the radar — and press <b>F</b>. " +
-      "Pick with <b>W/S</b>, buy with <b>F</b>. Cash drops from the people you take down; the 9mm, " +
+    text: "Walk onto the yellow ring at a gun counter — <b>G</b> on the radar — and press <b>E</b>. " +
+      "Pick with <b>W/S</b>, buy with <b>E</b>. Cash drops from the people you take down; the 9mm, " +
       "Tec-9, sawed-off and deer rifle are all for sale, and ammo for whatever you're holding.",
   },
   health: {
@@ -37,7 +37,7 @@ export const TIPS = Object.freeze({
   clubs: {
     title: "FRENCHMEN STREET",
     text: "OrleaRouge's bars and clubs are the <b>♥</b> on the radar — The Pink Pelican, Bayou " +
-      "Belles, Club Bounce and Big Easy Beefcake. Walk in. At the stage rail, <b>F</b> makes it " +
+      "Belles, Club Bounce and Big Easy Beefcake. Walk in. At the stage rail, <b>E</b> makes it " +
       "rain ($10, +15 HP); the VIP chair is a lap dance ($40, +45 HP).",
   },
 });

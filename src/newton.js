@@ -342,7 +342,7 @@ export function createNewton(ctx, at) {
     const fed = fedOnDay === ctx.worldTime.day;
     prompt = !!(nearTable() && !fed && !state.cinematic && !state.veh && state.hp < 100);
     if (prompt) {
-      promptEl.innerHTML = `<b>F</b> · Free Breakfast (+${HEAL} HP) — <b>no charge</b>`;
+      promptEl.innerHTML = `<b>E</b> · Free Breakfast (+${HEAL} HP) — <b>no charge</b>`;
       promptEl.hidden = false;
     } else if (nearTable() && fed && !state.cinematic) {
       promptEl.innerHTML = "You've eaten today. Come back tomorrow morning.";

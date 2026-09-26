@@ -167,8 +167,8 @@ export function createCasinos(ctx) {
     prompt = null;
     if (inside && !state.cinematic) {
       const l = new THREE.Vector3(playerPos.x - inside.cx, 0, playerPos.z - inside.cz).applyAxisAngle(new THREE.Vector3(0, 1, 0), -inside.rot);
-      if (Math.hypot(l.x, l.z + 1.8) < 1.3) prompt = { text: `<b>F</b> · Try a slot machine — $10`, type: "slot" };
-      else if (Math.hypot(l.x, l.z - 1.2) < 2.6) prompt = { text: `<b>F</b> · Play roulette — $25`, type: "table" };
+      if (Math.hypot(l.x, l.z + 1.8) < 1.3) prompt = { text: `<b>E</b> · Try a slot machine — $10`, type: "slot" };
+      else if (Math.hypot(l.x, l.z - 1.2) < 2.6) prompt = { text: `<b>E</b> · Play roulette — $25`, type: "table" };
     }
     promptEl.hidden = !prompt;
     if (prompt) promptEl.innerHTML = prompt.text;
