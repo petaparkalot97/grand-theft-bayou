@@ -23,6 +23,23 @@ goes stale, add a new one saying why; don't rewrite history.
   ### Finding
   What you discovered.
   
+## 2026-09-26 (later) — Claude
+
+**Type:** DISCOVERY · **Task:** TASK-085 follow-up (human report: no hogs or zombies in wooded areas)
+
+### Finding
+`spawnZones.pick` was fine everywhere (measured: forest/rural picks land, swamp-tree proximity passes). The population loop was the
+bug: `updateEnemyPopulation` returned early once 48 NPCs were alive, and the "release anyone >160 m away" pass sat AFTER the spawn, so it
+never ran at the cap — the crowd left behind held the cap forever and nothing spawned where you now stood. Zombies had the same problem
+(cap 60, no distance cull, only cleared at dawn). Reproduced by teleporting between forests and running 400 population ticks: 0 hogs / 0 zombies
+near the player; after the fix 2-9 hogs and a full horde at every spot.
+
+### Action
+`cullFar()` in `main.js` runs first, on its own timer, for civilians (>160 m) and zombies (>170 m); `__game` exposes
+`updateEnemyPopulation` / `updateZombiePopulation` for probes like the above.
+
+---
+
 ## 2026-09-26 — Claude
 
 **Type:** DISCOVERY + DECISION · **Task:** TASK-085 (stance / stealth / stats / wonders / audit easy list)

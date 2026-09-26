@@ -3126,8 +3126,25 @@ const ENEMY_KINDS = ["hog", "redneck", "hobo", "hoodrat", "prostitute", "dockwor
 const ENEMY_CAP = 48;         // living NPCs to maintain (off-screen ones are hidden, npc.js)
 let enemyRespawnCd = 0;
 let populationOn = true;      // missions switch spawning off during set pieces
+// Anyone left far behind is released, so the cap counts only the people around you. This used to run only AFTER a
+// successful spawn, and the spawn is skipped once the cap is reached: the crowd you left behind held the cap
+// forever, and walking into the woods (or away from a horde) meant nothing ever spawned near you again
+// (human report, 2026-09-26: "a lot of trees ... not a single hog or zombie").
+const cullCd = { civ: 0, zombie: 0 };
+function cullFar(key, dt, maxDist, only) {
+  cullCd[key] -= dt;
+  if (cullCd[key] > 0) return;
+  cullCd[key] = 0.5;
+  let any = false;
+  for (const e of enemies) {
+    if (e.dead || e.leash || (only && !only(e))) continue;
+    if (Math.hypot(e.spr.position.x - playerPos.x, e.spr.position.z - playerPos.z) > maxDist) { npcs.release(e); scene.remove(e.spr); e.dead = "gone"; any = true; }
+  }
+  if (any) for (let i = enemies.length - 1; i >= 0; i--) if (enemies[i].dead === "gone") enemies.splice(i, 1);
+}
 function updateEnemyPopulation(dt) {
   if (!populationOn) return;
+  cullFar("civ", dt, 160, (e) => e.type !== "zombie");
   // Zombie mode's horde (updateZombiePopulation, below) shares this same
   // `enemies` array and its own separate cap — counted out here so it can't
   // eat into this budget and thin out the ordinary population as it fills
@@ -3143,17 +3160,8 @@ function updateEnemyPopulation(dt) {
   if (!spot) return;
   spawnEnemy(spot.kind, spot.x, spot.z, spot);
 
-  // cull enemies that wandered absurdly far, then compact the list. Mission-penned
-  // NPCs (e.leash) stay put: culling Hog Wild's herd would count as clearing it.
-  for (const e of enemies) {
-    if (!e.dead && !e.leash && Math.hypot(e.spr.position.x - playerPos.x, e.spr.position.z - playerPos.z) > 160) {
-      npcs.release(e);
-      scene.remove(e.spr); e.dead = "gone";
-    }
-  }
-  for (let i = enemies.length - 1; i >= 0; i--) {
-    if (enemies[i].dead === "gone") enemies.splice(i, 1);
-  }
+  // (far-behind NPCs are culled at the top of this function; mission-penned ones, e.leash, stay put:
+  // culling Hog Wild's herd would count as clearing it)
 }
 
 // Zombie Survival Nightmare (human request, 2026-09-23): "the zombies come out
@@ -3189,6 +3197,7 @@ function updateZombiePopulation(dt) {
   // occasional distant groans, thicker the more zombies are close (audio.js;
   // idempotent, and silent until the audio context is unlocked)
   startZombieAmbience(() => playerPos, nearbyZombieCount);
+  cullFar("zombie", dt, 170, (e) => e.type === "zombie");    // stragglers left far behind no longer hold the horde's cap
   let alive = 0;
   for (const e of enemies) if (!e.dead && e.type === "zombie") alive++;
   
@@ -5484,7 +5493,7 @@ async function boot() {
   camera.lookAt(playerPos);
   syncHUD();
 
-  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs, swampTrees, fire, fpsView, gore, playerPos, pipboy,
+  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs, swampTrees, fire, fpsView, gore, playerPos, pipboy, updateEnemyPopulation, updateZombiePopulation,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
     get policeHelicopters() { return police.helicopters; },
