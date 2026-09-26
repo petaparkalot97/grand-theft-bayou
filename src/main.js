@@ -3168,7 +3168,7 @@ function updateEnemyPopulation(dt) {
 // after dark" in free roam. Added on top of the ordinary population above,
 // not instead of it — the horde is capped separately, and existing NPCs are
 // valid targets for it, not just the player (npc.js's zombie branch in
-// decide()). Runs only in state.zombieMode; the horde clears out at dawn.
+// decide()). Runs only in state.zombieMode; the horde thins to a quarter of its cap by day.
 let zombieRespawnCd = 0;
 function nearbyZombieCount() {
   let n = 0;
@@ -3183,27 +3183,18 @@ function updateZombiePopulation(dt) {
   // this is a single boolean check for them, forever — not a per-frame scan
   // of `enemies` for a type that can never appear.
   if (!state.zombieMode) return;
-  if (!worldTime.isNight()) {
-    stopZombieAmbience();
-    // the sun's up: nobody's left standing come morning
-    for (const e of enemies) {
-      if (e.type === "zombie" && !e.dead) { npcs.release(e); scene.remove(e.spr); e.dead = "gone"; }
-    }
-    for (let i = enemies.length - 1; i >= 0; i--) {
-      if (enemies[i].dead === "gone") enemies.splice(i, 1);
-    }
-    return;
-  }
-  // occasional distant groans, thicker the more zombies are close (audio.js;
-  // idempotent, and silent until the audio context is unlocked)
-  startZombieAmbience(() => playerPos, nearbyZombieCount);
+  // A day lasts ~50 real minutes, so clearing the horde at dawn left zombie mode empty for most of a session (human report,
+  // 2026-09-26: "I'm playing zombie mode" and saw none). They thin out in daylight instead of vanishing: a quarter of the night's cap.
+  const night = worldTime.isNight();
+  if (night) startZombieAmbience(() => playerPos, nearbyZombieCount);   // distant groans (audio.js; idempotent)
+  else stopZombieAmbience();
   cullFar("zombie", dt, 170, (e) => e.type === "zombie");    // stragglers left far behind no longer hold the horde's cap
   let alive = 0;
   for (const e of enemies) if (!e.dead && e.type === "zombie") alive++;
   
   // Dynamic scaling: "The more you kill the more they swarm, they should form big hordes"
   const zKills = kills.zombie || 0;
-  const currentCap = Math.min(300, 60 + zKills * 2);
+  const currentCap = Math.max(15, Math.round(Math.min(300, 60 + zKills * 2) * (night ? 1 : 0.25)));
   
   zombieRespawnCd -= dt;
   if (zombieRespawnCd > 0 || alive >= currentCap) return;
