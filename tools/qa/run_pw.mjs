@@ -13,7 +13,7 @@ import path from "node:path";
 const [script, url = "http://localhost:8899/"] = process.argv.slice(2);
 if (!script) { console.error("usage: node tools/qa/run_pw.mjs <script.mjs> [url]"); process.exit(2); }
 
-const browser = await puppeteer.launch({ args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader", "--autoplay-policy=no-user-gesture-required"] });
+const browser = await puppeteer.launch({ args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader", "--autoplay-policy=no-user-gesture-required", "--mute-audio"] });
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 720 });
 const consoleErrors = [];

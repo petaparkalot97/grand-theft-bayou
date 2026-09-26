@@ -39,6 +39,7 @@ export const DEFAULT_BINDINGS = Object.freeze({
   // click to grab the pointer.
   holster: ["KeyX"],
   equipBat: ["Digit1"],
+  viewToggle: ["KeyV"],                // zombie mode: first person <-> third person
   horn: ["KeyH"],                      // honk / call a prostitute to the passenger door
 });
 

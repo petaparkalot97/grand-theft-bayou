@@ -7,7 +7,7 @@
 //   node serve.mjs 8899   then   node tools/qa/pop_check.mjs
 import puppeteer from 'puppeteer';
 const spots = [["Oyster Bay",640,596],["Oyster harbor",720,860],["Port Calypso",760,-650],["Port quay",860,-930],["Red Dust",-650,-598],["Lakeshore",-700,760],["Lakeshore boardwalk",-690,900],["US-167 north",-6,-800],["US-167 south",-6,900],["Delta Road",778,-40]];
-const browser = await puppeteer.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await puppeteer.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--mute-audio'] });
 const page = await browser.newPage();
 const errs = []; page.on('pageerror', e => errs.push(String(e).slice(0,200)));
 await page.goto('http://localhost:8899/', { waitUntil: 'domcontentloaded', timeout: 90000 });

@@ -5,7 +5,7 @@
 // Needs puppeteer (`npm install puppeteer --no-save`).
 //   node serve.mjs 8899   then   node tools/qa/heatmap.mjs
 import puppeteer from 'puppeteer';
-const browser = await puppeteer.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await puppeteer.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--mute-audio'] });
 const page = await browser.newPage();
 await page.setViewport({ width: 1100, height: 650 });
 await page.goto('http://localhost:8899/', { waitUntil: 'domcontentloaded', timeout: 90000 });

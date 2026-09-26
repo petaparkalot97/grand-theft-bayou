@@ -74,7 +74,7 @@ const REGIONS = JSON.parse(process.env.REGIONS || "null") || [
   ["Delta Road", 690, 870, -430, 436, 60],
 ];
 
-const browser = await puppeteer.launch({ args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader"] });
+const browser = await puppeteer.launch({ args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader", "--mute-audio"] });
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 720 });
 const errors = [];

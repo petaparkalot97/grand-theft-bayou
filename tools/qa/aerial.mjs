@@ -9,7 +9,7 @@
 import puppeteer from 'puppeteer';
 // usage: node aerial.mjs '[["name",x,z,dist,hourOfDay],...]' tag
 const spots = JSON.parse(process.argv[2]); const tag = process.argv[3] || 'aer';
-const browser = await puppeteer.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await puppeteer.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--mute-audio'] });
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 720 });
 const errs = []; page.on('pageerror', e => errs.push(String(e).slice(0,300)));

@@ -52,6 +52,11 @@ export function createCameraController({ camera, dom, canCapture }) {
   let rightOffset = 0;
   let wasDriving = false;
   let aiming = false;
+  // First person (zombie mode): the eye is the player's head, the mouse turns the head, and
+  // nothing of the third-person orbit — recentring, zoom, collision pull-in — applies.
+  let fps = false, fpsPitch = 0;
+  const baseFov = camera.fov;
+  const FPS_FOV = 76, EYE_HEIGHT = 1.62;
   let lastMouse = -1e9;
   let locked = false;
   let dragging = false, lastX = 0, lastY = 0;
@@ -80,6 +85,13 @@ export function createCameraController({ camera, dom, canCapture }) {
 
   // Mouse → camera orientation only. It never moves the player directly.
   function turn(dx, dy) {
+    if (fps) {
+      // mouse up = look up; no smoothing, so the crosshair never lags the hand
+      yaw -= dx * C.cameraOrbitSensitivity.x; targetYaw = yaw;
+      fpsPitch = THREE.MathUtils.clamp(fpsPitch - dy * C.cameraOrbitSensitivity.y, -1.35, 1.35);
+      lastMouse = performance.now() / 1000;
+      return;
+    }
     targetYaw -= dx * C.cameraOrbitSensitivity.x;
     targetPitch = THREE.MathUtils.clamp(targetPitch + dy * C.cameraOrbitSensitivity.y, C.cameraPitchMin, C.cameraPitchMax);
     lastMouse = performance.now() / 1000;
@@ -104,6 +116,7 @@ export function createCameraController({ camera, dom, canCapture }) {
   dom.addEventListener("wheel", (e) => {
     if (!canCapture()) return;
     e.preventDefault();
+    if (fps) return;
     const k = Math.exp(Math.sign(e.deltaY) * 0.1);
     if (wasDriving) driveDist = THREE.MathUtils.clamp(driveDist * k, C.driving.minDistance, C.driving.maxDistance);
     else footDist = THREE.MathUtils.clamp(footDist * k, C.onFoot.minDistance, C.onFoot.maxDistance);
@@ -113,6 +126,18 @@ export function createCameraController({ camera, dom, canCapture }) {
     get locked() { return locked; },
     /** Orbit yaw (world.js: 0 = looking north). */
     get yaw() { return yaw; },
+    get firstPerson() { return fps; },
+    /** Switch the eye between the orbit camera and the player's head. */
+    setFirstPerson(on) {
+      on = !!on;
+      if (on === fps) return;
+      fps = on;
+      if (on) { fpsPitch = 0; camera.fov = FPS_FOV; }
+      else { camera.fov = baseFov; targetYaw = yaw; }
+      camera.updateProjectionMatrix();
+    },
+    /** Look pitch in first person, radians above the horizon. */
+    get fpsPitch() { return fpsPitch; },
     get pitch() { return pitch; },
     /** The heading the camera is looking along. */
     get heading() { return cameraYawToHeading(yaw); },
@@ -144,6 +169,17 @@ export function createCameraController({ camera, dom, canCapture }) {
         wasDriving = driving;
       }
       if (!primed) { focus.copy(target); primed = true; }
+      if (fps && !driving) {
+        // the head: at the player, at eye height, looking along yaw + pitch. Keyboard orbit
+        // (Q / E) still turns it; the mouse is handled in turn().
+        yaw += wrap(targetYaw - yaw) * (1 - Math.exp(-C.yawSmoothing * dt)); targetYaw = yaw;
+        focus.copy(target);
+        const cp = Math.cos(fpsPitch), fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+        camera.position.set(target.x, target.y + EYE_HEIGHT, target.z);
+        look.set(target.x + fx * cp, target.y + EYE_HEIGHT + Math.sin(fpsPitch), target.z + fz * cp);
+        camera.lookAt(look);
+        return;
+      }
 
       // Recentring: drift back behind whatever you're steering, once the mouse is left alone.
       if (now - lastMouse > M.recenterAfter) {

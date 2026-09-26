@@ -95,7 +95,7 @@ export function createCinema({ camera, muted = () => false }) {
   // Returns a Promise for the clip's real duration (0 if there's no audio —
   // muted, skipping, or the browser TTS fallback) so say() can hold the line
   // on screen at least that long instead of guessing from text length alone.
-  function playVoiceLine(who, text) {
+  function playVoiceLine(who, text, { tts = true } = {}) {
     stopVoice();
     if (muted() || skipping) return Promise.resolve(0);
     if (voiceManifest) {
@@ -112,7 +112,7 @@ export function createCinema({ camera, muted = () => false }) {
         });
       }
     }
-    if ("speechSynthesis" in window) {
+    if (tts && "speechSynthesis" in window) {
       try {
         const u = new SpeechSynthesisUtterance(text);
         u.volume = 0.85;

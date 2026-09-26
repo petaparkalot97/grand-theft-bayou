@@ -146,6 +146,22 @@ checks (free roam now gives infinite ammo, so "32/16 rounds" can't hold). Not to
 
 ---
 
+### Zombie mode is a first-person shooter; voices; panic (human requests, 2026-09-26) — Claude, `REVIEW`
+- **First person:** zombie mode launches in first person (`camera.js` `setFirstPerson`: eye at the head, mouse turns
+  it, 76° lens; `fpsview.js`: the gun and hands in front of the camera, recoil/bob/reload dip, a swinging bat;
+  `weapons_3d.js` `createViewmodel`). Shots leave the view model's barrel along the crosshair; the character is hidden.
+  **V** toggles back to the orbit camera; a car uses the normal camera. Starts with the Tec-9 drawn. Headless-verified
+  (look, V, fire hits); not felt on a real GPU. Hit tests are still planar (aim pitch does not change what a shot hits).
+- **Pedestrian voices:** generated the 35 missing Gay Guy / Lesbian lines (`tools/pedestrian-voiceover-gen.mjs`, Fish Audio).
+  Barks are now a recorded voice or silence — never the browser's generic text-to-speech (`cinema.playVoiceLine`
+  `{ tts: false }`). Tuxedo / escort / klansman types borrow the suit / prostitute / redneck lines and voices
+  (`pedestrianChatter.voiceType`); **zombies no longer speak** ("Brute: Oh, it's on now!" was a zombie).
+- **Panic:** every non-fighter (not hoodrat / redneck / thug / klansman / zombie / hog / story cast) hears gunfire at
+  1.8x its radius, sprints (2.3x) directly away for 8-12 s. Tests in `zombie_test.mjs`.
+- QA browsers now launch `--mute-audio` (a headless test run had been playing the game's barks through the speakers).
+
+---
+
 ### Zombie & hog spawning fixes (human reports, 2026-09-26) — Claude, `REVIEW`
 - **"Some zombies just stand there":** zombie hostility was drawing on the shared hostile budget
   (`ZOMBIE_MAX_HOSTILE` 20), so with 60-300 out, everyone past the 20th never engaged. Zombies are now

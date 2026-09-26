@@ -539,6 +539,45 @@ export function updateWeapon3D(actor, playerPos, aimDir, stateWeapon, dt, aiming
   }
 }
 
+/**
+ * A free-standing copy of a weapon's model for the first-person view (fpsview.js): the same
+ * grip-at-origin build the character holds, barrel down +Z, at the rig's scale, with its muzzle
+ * node — but parented to nothing, and drawn on top of the world (no depth test) so it never
+ * sinks into a wall you are standing against.
+ */
+export function createViewmodel(id, { skinColor = 0xb07a5a, sleeveColor = 0x2b3a3a } = {}) {
+  const def = rigFor(id);
+  const model = buildModel(BUILDERS[id] ? id : FALLBACK);
+  model.scale.setScalar(def.scale);
+  const muzzle = new THREE.Object3D();
+  muzzle.position.set(def.muzzleOffset[0], def.muzzleOffset[1], def.muzzleOffset[2]);
+  model.add(muzzle);
+  // hands and a sleeve, so it is a gun someone is HOLDING and not one floating at the edge of the screen
+  const skin = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.8, name: "viewmodel skin" });
+  const sleeve = new THREE.MeshStandardMaterial({ color: sleeveColor, roughness: 0.9, name: "viewmodel sleeve" });
+  const part = (w, h, d, m, x, y, z, rx = 0) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); b.rotation.x = rx; model.add(b); return b; };
+  if (def.type === "melee") {
+    part(0.07, 0.07, 0.08, skin, 0, 0, 0);                                    // the fist round the handle
+    part(0.06, 0.06, 0.34, sleeve, 0, -0.03, -0.2, 0.1);
+  } else {
+    part(0.04, 0.07, 0.06, skin, 0, -0.04, -0.01);                         // the firing hand on the grip
+    part(0.05, 0.05, 0.34, sleeve, 0, -0.075, -0.2, 0.16);                 // forearm, running back under the eye
+    if (def.twoHanded && def.foregrip) part(0.04, 0.04, 0.07, skin, def.foregrip[0], def.foregrip[1] - 0.04, def.foregrip[2]);   // the support hand on the forend
+  }
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false; o.renderOrder = 1000;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!m) continue;
+      m.depthTest = false; m.depthWrite = false;
+      // it sits in the dark on a night street: lit by itself as well as the world, so it always reads
+      if (m.emissive && m.color) m.emissive.copy(m.color).multiplyScalar(0.5).add(new THREE.Color(0x1a1c22));
+      if (m.userData) m.userData.gtbRealized = true;
+    }
+  });
+  return { model, muzzle, def };
+}
+
 /** The muzzle in world space, or null when nothing is held. */
 export function getWeaponMuzzle(out) {
   if (!rig.muzzle || !rig.grip || !rig.grip.visible) return null;

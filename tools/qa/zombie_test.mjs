@@ -100,5 +100,26 @@ check([...seen].every((n) => n in ZOMBIE_ARCHETYPES) && seen.size === Object.key
   check(!(safe.state === "wander" && Math.hypot(safe.goal.x, safe.goal.z) < 5), "...nor toward a player in a safehouse");
 }
 
+// ---- gunfire: everyone who isn't a fighter runs for their life ----
+{
+  const civ = (type, x, z) => {
+    const spr = new THREE.Group(); spr.position.set(x, 0, z); spr.setFlip = () => {}; spr.play = () => {};
+    const T = { label: type, hp: 5, speed: 2.6, aggro: 18, melee: 1.7, dmg: 5, atkGap: 1 };
+    const e = { type, T, spr, hp: 5, t: 0, atkCd: 0, dead: false, fade: 1, charge: 0, chargeCd: 0 };
+    npcs.init(e); e.mood = "brave";           // even a brave one runs, unless its type stands its ground
+    return e;
+  };
+  const shot = (x, z) => { npcs.noise(x, z, 26); };
+  const run = (e) => { const env = mkEnv({ others: [e] }); think(e, env, 0, -60); return e; };
+  shot(0, 0);
+  const tourist = run(civ("tourist", 35, 0)), suit = run(civ("suit", 0, 40)), far = run(civ("tourist", 0, 60)), hood = run(civ("hoodrat", 10, 0)), red = run(civ("redneck", 10, 5));
+  check(tourist.state === "flee" && tourist.panic === true, "a tourist 35 m from a pistol shot panics (26 m radius x 1.8)");
+  check(suit.state === "flee" && suit.panic, "a suit 40 m away panics");
+  check(far.state !== "flee", "...but not one 60 m away");
+  check(hood.state !== "flee" || !hood.panic, "a hoodrat does not panic");
+  check(red.state !== "flee" || !red.panic, "a redneck does not panic");
+  check(tourist.stateT >= 8, "the run is long (" + tourist.stateT.toFixed(1) + " s)");
+}
+
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log("\nAll zombie checks passed");

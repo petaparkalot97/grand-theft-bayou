@@ -356,7 +356,17 @@ const CHATTER = {
  * Returns `{ text, display }`: `text` is the raw line (for the voice
  * manifest lookup), `display` is the "LABEL: text" string flashObjective()
  * shows. */
+/**
+ * Types with no lines or voice of their own borrow a cast member's, so what they say is in a
+ * recorded human voice, never the browser's generic text-to-speech (human report, 2026-09-26:
+ * "the pedestrian chatter is in a generic voice ... it needs to be an actual human voice"). The tuxedo
+ * regulars talk like suits, the escorts like the prostitutes, the klansmen like rednecks.
+ */
+const BORROWS = { tuxedo: "suit", highendescort: "prostitute", klansman: "redneck" };
+export const voiceType = (type) => BORROWS[type] || type;
+
 export function bumpLine(type, label) {
+  type = voiceType(type);
   const bucket = (CHATTER[type] && CHATTER[type].bump) || GENERIC.bump;
   const text = pick(bucket);
   return { text, display: `${label}: ${text}` };
@@ -365,6 +375,7 @@ export function bumpLine(type, label) {
 /** The player just hurt this NPC. `mood` (npc.js temperament) picks the
  * bucket. Same `{ text, display }` shape as bumpLine(). */
 export function fightLine(type, label, mood) {
+  type = voiceType(type);
   const flees = mood === "timid" || mood === "skittish";
   const table = CHATTER[type];
   const bucket = (table && table[flees ? "flee" : "fightBack"]) || GENERIC[flees ? "flee" : "fightBack"];

@@ -80,6 +80,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
       e.rivalTarget = null;
     }
     if (s === "hostile" && e.state !== "hostile" && budgeted(e)) hostiles++;
+    if (s !== "flee") e.panic = false;
     e.state = s;
     e.stateT = time != null ? time : rand(2, 5);
   }
@@ -98,6 +99,23 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
     const a = Math.random() * Math.PI * 2;
     const r = Math.random() * (base.r || 10) * (e.wanderR || 1) * (e.marketSaturday ? 0.5 : 1);
     e.goal.set(base.x + Math.cos(a) * r, 0, base.z + Math.sin(a) * r);
+  }
+
+  // Gunfire and fights: the crowd that isn't a fighter runs for its life (human request, 2026-09-26).
+  // Hoodrats, rednecks, thugs and klansmen hold their ground (and fight or flee by temperament); zombies and
+  // hogs have their own logic; the story's cast is scripted. Everyone else — the tourists, suits,
+  // escorts, dockworkers, mechanics, hobos, the Frenchmen Street regulars — hears a shot from far
+  // off and bolts, flat out and for a good while, directly away from it.
+  const STANDS_GROUND = new Set(["hoodrat", "redneck", "thug", "klansman", "zombie", "hog", "mally", "bubba"]);
+  const PANIC_HEARING = 1.8;            // x the event's own radius: a pistol carries ~47 m, a shotgun ~72 m
+  function panicEvent(p) {
+    for (let i = events.length - 1; i >= 0; i--) {
+      const ev = events[i];
+      if (now - ev.t > 4) break;
+      const r = ev.r * PANIC_HEARING;
+      if ((ev.x - p.x) ** 2 + (ev.z - p.z) ** 2 < r * r) return ev;
+    }
+    return null;
   }
 
   function recentViolence(p) {
@@ -324,6 +342,15 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
     }
 
     // gunfire or a fight nearby: bystanders scatter, nobody joins in
+    if (!STANDS_GROUND.has(e.type)) {
+      const pev = panicEvent(p);
+      if (pev && (e.state !== "flee" || !e.panic)) {
+        flee(e, pev.x, pev.z);
+        e.panic = true;
+        e.stateT = rand(8, 12);                    // a long run, not a few steps
+        return;
+      }
+    }
     const ev = recentViolence(p);
     if (ev && e.state !== "flee") {
       flee(e, ev.x, ev.z);
@@ -404,7 +431,7 @@ export function createNpcSystem({ pois, resolveCollision, hitPlayer, bounds, wor
     } else if (e.state === "flee") {
       const fx = p.x - e.threat.x, fz = p.z - e.threat.z;
       const d = Math.hypot(fx, fz) || 1;
-      const s = (hog ? 7 : T.speed * 1.2) * e.pace;
+      const s = (hog ? 7 : T.speed * (e.panic ? 2.3 : 1.2)) * e.pace;      // a panicked one sprints
       vel.set((fx / d) * s, 0, (fz / d) * s);
       anim = "walk"; fps = 12;
     } else if (e.state === "wander") {

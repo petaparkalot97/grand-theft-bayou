@@ -14,9 +14,10 @@ import { batchStatic } from "./merge.js";
 import { initAudio, createCarAudio, resumeAudio, startZombieAmbience, stopZombieAmbience, playZombieScream } from "./audio.js";
 import { initWeapons3D, updateWeapon3D, playFireAnim3D, notifyReload3D, getWeaponMuzzle, RemoteWeaponRig } from "./weapons_3d.js";
 import { createNpcSystem, MAX_HOSTILE } from "./npc.js";
-import { bumpLine, fightLine } from "./pedestrianChatter.js";
+import { bumpLine, fightLine, voiceType } from "./pedestrianChatter.js";
 import { pedestrianVoiceWho } from "./voiceCast.js";
 import { createCameraController } from "./camera.js";
+import { createFpsView } from "./fpsview.js";
 import { createTraffic } from "./traffic.js";
 import { randomHoodrat, randomProstitute, makeHoodrat, randomHobo, makeHobo, randomGayMan, randomLesbian, randomTuxedo, randomHighEndEscort, randomKlansman, randomZombie } from "./characters.js";
 import { createCinema } from "./cinema.js";
@@ -1271,6 +1272,7 @@ function updateBlood(dt) {
 // ---------------------------------------------------------------- game state
 const state = {
   running: false, over: false,
+  firstPerson: false,       // zombie mode: the eye is the player's head (camera.js setFirstPerson, fpsview.js)
   hp: 100, sp: 100, cash: 0,
   fireCd: 0, hurtCd: 0, dusk: 0, prostituteTrips: 0,
   selectedCharacter: "keseme", campaign: "main",   // Keseme Nadia, the story's protagonist, is the default pick
@@ -1460,7 +1462,8 @@ const minimap = createMinimap({ MAP });
 // onReload is the one seam between the weapon slot and how it is presented:
 // weapons.js says "this reload started and it takes this long" and weapons_3d.js
 // turns that into the dip-and-return. Neither has to know about the other.
-const arsenal = createArsenal({ state, flashObjective, onReload: notifyReload3D });
+const fpsView = createFpsView({ scene, camera });   // the gun in your hands, first-person zombie mode (fpsview.js)
+const arsenal = createArsenal({ state, flashObjective, onReload: (id, seconds) => { notifyReload3D(id, seconds); fpsView.reload(seconds); } });
   initWeapons3D(scene);
 const kills = { hog: 0, redneck: 0, hoodrat: 0, prostitute: 0 };
 const EMOJI = { hog: "🐗", redneck: "🧢", hoodrat: "🎧", prostitute: "💋" };
@@ -1632,7 +1635,14 @@ function confirmCharacter() {
       // visual dusk — 21:00 reads dark already but isNight() would still say
       // no and the horde would never spawn. 22:30 clears both.
       worldTime.setTime(22.5);
-      flashObjective("The Bayou is infected. Survive the night.");
+      // ...and it is a first-person shooter: the eye is the player's head, the mouse aims,
+      // the gun is out and in your hands (V swaps back to the orbit camera).
+      state.firstPerson = true;
+      state.holstered = false;
+      state.weapon = "tec9";
+      arsenal.render();
+      try { const lock = renderer.domElement.requestPointerLock(); if (lock && lock.catch) lock.catch(() => {}); } catch (e) { /* the first click captures it instead */ }
+      flashObjective("The Bayou is infected. Survive the night. · Mouse to aim, click to shoot, V for third person");
     }
   }
 }
@@ -3673,13 +3683,14 @@ function fire() {
   // for the frames before a freshly-swapped weapon's model is up, and while
   // driving (the rig is hidden and the car is the view).
   const origin = _tmpV.copy(playerPos).setY(state.veh ? 1.4 : 1.2);
-  if (!state.veh && getWeaponMuzzle(_muzzleV)) origin.copy(_muzzleV);
+  if (camCtl.firstPerson) { if (!fpsView.muzzle(origin)) origin.copy(camera.position); }     // out of the view model's barrel
+  else if (!state.veh && getWeaponMuzzle(_muzzleV)) origin.copy(_muzzleV);
 
   const _ray = new THREE.Raycaster();
   const _crosshairNDC = new THREE.Vector2(0, 0);
   const _aim3D = new THREE.Vector3();
 
-  const isAiming = input.isDown("aim") || state.veh;
+  const isAiming = input.isDown("aim") || state.veh || camCtl.firstPerson;   // first person is always down the sights
   if (isAiming) {
     _ray.setFromCamera(_crosshairNDC, camera);
     const target3D = _ray.ray.at(1000, new THREE.Vector3());
@@ -3692,6 +3703,7 @@ function fire() {
     _aim3D.copy(_aim);
   }
 
+  if (camCtl.firstPerson) fpsView.fire(gun.melee);
   if (!state.veh) { 
     attackTimer = 0.42; 
     player.play(gun.melee ? (state.weapon === "bat" ? "swing_bat" : "attack") : "shoot", { fps: 12, loop: false, force: true }); 
@@ -4061,6 +4073,7 @@ function samplePerf(frameMs) {
   }
 }
 let lastFrameStamp = performance.now();
+let fpsHidPlayer = false;       // first person hid the character; give it back when the view leaves
 
 function tick() {
   requestAnimationFrame(tick);
@@ -4153,7 +4166,13 @@ function tick() {
     } else if (!cine.hasCamera) {
       const isAimingCamera = input.isDown("aim") && (!state.veh || state.weapon === "pistol" || state.weapon === "tec9");
       camCtl.setAiming(isAimingCamera);
-      crosshair.style.display = isAimingCamera && !arsenal.current.melee ? "block" : "none";
+      // First person (zombie mode's default): the eye is the player's head. Not in a car, and
+      // the character is hidden for it (restored the moment the view leaves first person).
+      const fpsOn = !!state.firstPerson && !state.veh;
+      camCtl.setFirstPerson(fpsOn);
+      if (fpsOn) { if (player.visible) { player.visible = false; fpsHidPlayer = true; } }
+      else if (fpsHidPlayer) { fpsHidPlayer = false; if (!state.veh) player.visible = true; }
+      crosshair.style.display = fpsOn ? "block" : (isAimingCamera && !arsenal.current.melee ? "block" : "none");
       camCtl.update(dt, playerPos, state.veh, blockerGrid, playerMoveHeading);
       if (state.veh && state.veh.jolt > 0) {
         const j = state.veh.jolt;
@@ -4168,7 +4187,12 @@ function tick() {
     // last pose froze in the world — and while holstered (X).
     const shooting = input.isDown("attack") && !arsenal.current.melee;
     updateWeapon3D(player, playerPos, _camFwd, state.weapon, dt, input.isDown("aim"),
-      state.cinematic || (!!state.veh && !input.isDown("aim")) || state.holstered, shooting);
+      state.cinematic || (!!state.veh && !input.isDown("aim")) || state.holstered || camCtl.firstPerson, shooting);
+    fpsView.update({
+      dt, active: camCtl.firstPerson && !state.cinematic, weaponId: state.weapon, holstered: state.holstered,
+      moving: input.isDown("forward") || input.isDown("back") || input.isDown("left") || input.isDown("right"),
+      sprinting: input.isDown("sprint"),
+    });
 
     // Automatic fire: holding the trigger keeps firing at the weapon's own rate.
     // fire() gates on state.fireCd (= 60/rpm), so this cannot outrun the
@@ -4223,7 +4247,7 @@ function tick() {
   updateFx(dt);
   headlights.update(dt, state.veh);
   const rush = state.veh ? THREE.MathUtils.smoothstep(Math.abs(state.veh.speed), 12, 30) : 0;
-  const fov = THREE.MathUtils.damp(camera.fov, 52 + rush * 8, 3, dt);
+  const fov = THREE.MathUtils.damp(camera.fov, camCtl.firstPerson ? 76 + rush * 6 : 52 + rush * 8, 3, dt);   // first person: a wider lens
   if (Math.abs(fov - camera.fov) > 1e-3) {
     camera.fov = fov;
     camera.updateProjectionMatrix();
@@ -4496,9 +4520,11 @@ function onFootUpdate(dt) {
 // Hoodrat); the flat-sprite archetypes ignore the female arg entirely
 // (pedestrianVoiceWho only branches gender for hoodrat/hobo/thug).
 function speakPedestrian(e, line) {
+  if (e.type === "zombie") return;                       // the dead don't trade barbs (they used to: "Brute: Oh, it's on now!")
   flashObjective(line.display);
-  const voiceWho = pedestrianVoiceWho(e.type, !!e.spr.female);
-  if (voiceWho) cine.playVoiceLine(voiceWho, line.text);
+  const voiceWho = pedestrianVoiceWho(voiceType(e.type), !!e.spr.female);
+  // a recorded voice or silence: never the browser's generic text-to-speech
+  if (voiceWho) cine.playVoiceLine(voiceWho, line.text, { tts: false });
 }
 
 // A calm pedestrian jostled on the sidewalk gets a one-liner and a shove out
@@ -5207,7 +5233,7 @@ async function boot() {
   camera.lookAt(playerPos);
   syncHUD();
 
-  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs, swampTrees,
+  window.__game = { scene, camera, state, enemies, buckets, kills, vehicles, sheriffs, swampTrees, fire, fpsView,
     gfxStats: GFX.stats, MIST, wetRoads, headlights, npcs, camCtl, MAP,
     get traffic() { return traffic; },
     get policeHelicopters() { return police.helicopters; },
@@ -5421,6 +5447,11 @@ input.onPress("holster", () => {
     : `Drew the ${arsenal.stats(!!state.veh).name}. Hold right click to aim, left click to use it.`);
 });
 input.onPress("equipBat", () => { if (state.running) arsenal.give("bat"); });
+input.onPress("viewToggle", () => {
+  if (!state.running || state.cinematic || !state.zombieMode) return;
+  state.firstPerson = !state.firstPerson;
+  flashObjective(state.firstPerson ? "First person — V for third person." : "Third person — V for first person.");
+});
 input.onPress("nextWeapon", () => { if (state.running) arsenal.cycleWeapon(1); });
 input.onPress("prevWeapon", () => { if (state.running) arsenal.cycleWeapon(-1); });
 input.onPress("horn", () => { if (state.running) honkHorn(); });
